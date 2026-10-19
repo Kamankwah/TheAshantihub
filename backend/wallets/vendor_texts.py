@@ -497,34 +497,60 @@ def digest_text(day, summary, pending, available):
     )
 
 
-def queue_digests(day, now=None):
-    """Queue `day`'s digest (spec §6, "optional daily digest") with its in-app copy for each business that turned it on
-    and whose money moved that Accra day. A business already sent that day's digest is skipped, so a re-run adds
-    nothing; two runs at once (the beat entry and a manual run) also give one text and one in-app notice, because the text
-    is queued first (its key is unique) and the notice is made only if the text has none yet, under a lock on its row; one
-    business that fails is logged and skipped. Returns how many were queued."""
-    queued = 0
-    for owner in BusinessOwner.objects.filter(vendor_preference__daily_digest=True).order_by("pk"):
-        key = digest_key(owner, day)
-        if VendorText.objects.filter(key=key, notification__isnull=False).exists():
-            continue
-        try:
-            days = vendor.daily(owner, day, day)["days"]
-            if not days:
-                continue  # nothing moved: no text
-            body = digest_text(
-                day, days[0], posting.balance_of(Account.VENDOR_PENDING, owner), posting.balance_of(Account.VENDOR_AVAILABLE, owner),
-            )
-            with transaction.atomic():
-                text = queue(owner, VendorText.DAILY_DIGEST, key, body, day=day, now=now)  # first: an overlapping run gets this row
-                if text is None:
-                    continue
-                if VendorText.objects.select_for_update().get(pk=text.pk).notification_id is None:
-                    notice = notify_business_owner(
-                        owner, VENDOR_MONEY, f"Your AshantiHub day, {day:%d %b}", body=body, link="/business-dashboard", icon="💰",
-                    )
-                    VendorText.objects.filter(pk=text.pk).update(notification=notice)
-                    queued += 1
-        except Exception as exc:  # noqa: BLE001 - one business never stops the others' digests
-            logger.error("Digest for business %s not worked out: %s", owner.pk, type(exc).__name__)
-    return queued
+def run_digests(day, now=None, *, after_pk=0, batch=None, deadline=None):
+    """One batch of `day`'s digests (spec §6, "optional daily digest"), with its in-app copy, for the businesses that
+    turned it on, are not suspended and whose money moved that Accra day. Works through them in pk order after
+    `after_pk`, at most `batch` of them (default: the digest_batch_size setting) and stopping once `deadline` (a
+    time.monotonic() instant; default: now plus the digest_time_budget_seconds setting) has passed, but always handling
+    at least one so a run cannot stall. Returns (queued, cursor): how many digests this batch queued, and the last pk
+    handled if more businesses remain after it, else None.
+
+    A business already sent that day's digest is skipped, so a re-run, or a catch-up after a killed run, adds nothing;
+    two runs at once also give one text and one in-app notice, because the text is queued first (its key is unique)
+    and the notice is made only if the text has none yet, under a lock on its row; one business that fails is logged
+    and skipped."""
+    if batch is None:
+        batch = settings_store.current("digest_batch_size")
+    if deadline is None:
+        deadline = time.monotonic() + settings_store.current("digest_time_budget_seconds")
+    owners = BusinessOwner.objects.filter(vendor_preference__daily_digest=True, is_suspended=False, pk__gt=after_pk).order_by("pk")
+    queued, handled, last = 0, 0, None
+    for owner in owners.iterator():
+        if handled and (handled >= batch or time.monotonic() >= deadline):
+            break
+        handled, last = handled + 1, owner.pk
+        queued += _queue_digest(owner, day, now)
+    more = last is not None and owners.filter(pk__gt=last).exists()
+    return queued, (last if more else None)
+
+
+def queue_digests(day, now=None, *, after_pk=0, batch=None, deadline=None):
+    """`run_digests` for a caller that only needs the cursor: the last pk handled if more businesses remain, else None."""
+    return run_digests(day, now, after_pk=after_pk, batch=batch, deadline=deadline)[1]
+
+
+def _queue_digest(owner, day, now):
+    """Queue one business's digest; 1 if this call queued it, else 0."""
+    key = digest_key(owner, day)
+    if VendorText.objects.filter(key=key, notification__isnull=False).exists():
+        return 0
+    try:
+        days = vendor.daily(owner, day, day)["days"]
+        if not days:
+            return 0  # nothing moved: no text
+        body = digest_text(
+            day, days[0], posting.balance_of(Account.VENDOR_PENDING, owner), posting.balance_of(Account.VENDOR_AVAILABLE, owner),
+        )
+        with transaction.atomic():
+            text = queue(owner, VendorText.DAILY_DIGEST, key, body, day=day, now=now)  # first: an overlapping run gets this row
+            if text is None:
+                return 0
+            if VendorText.objects.select_for_update().get(pk=text.pk).notification_id is None:
+                notice = notify_business_owner(
+                    owner, VENDOR_MONEY, f"Your AshantiHub day, {day:%d %b}", body=body, link="/business-dashboard", icon="💰",
+                )
+                VendorText.objects.filter(pk=text.pk).update(notification=notice)
+                return 1
+    except Exception as exc:  # noqa: BLE001 - one business never stops the others' digests
+        logger.error("Digest for business %s not worked out: %s", owner.pk, type(exc).__name__)
+    return 0
