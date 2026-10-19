@@ -59,7 +59,7 @@ def _price(value):
 
 def _listing_rows(queryset, kind, q, limit, request):
     queryset = queryset.select_related("category").order_by("-created_at", "-pk")[: limit * 3]
-    rows = [{"id": item.pk, "kind": kind, "name": item.name, "price": _price(item.price_amount),
+    rows = [{"id": item.pk, "kind": kind, "name": item.name, "price": _price(item.effective_price),
              "photo": _url(item.main_photo, request), "category_label": item.category.label} for item in queryset]
     return _order(rows, q)[:limit]
 

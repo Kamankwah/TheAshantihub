@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from accounts.models import Customer
 from accounts.permissions import HasRolePermission, RequiresSudo
 
-from . import notify, opening, search
+from . import feeds, notify, opening, search
 from .models import TestAccount
 
 MANAGE = "opening.manage"
@@ -127,3 +127,18 @@ class SearchView(APIView):
             limit = search.MAX_LIMIT
         body = search.run(params.get("q"), department=params.get("category") or None, kind=kind, limit=limit, request=request)
         return Response(body)
+
+
+class DealsView(APIView):
+    """Public Deals feed: live product listings with a real discount, plus sponsored ones. ?limit= (1-48, default 24)."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "storefront_deals"
+
+    def get(self, request):
+        try:
+            limit = int(request.query_params.get("limit", feeds.DEFAULT_LIMIT))
+        except (TypeError, ValueError):
+            limit = feeds.DEFAULT_LIMIT
+        return Response(feeds.deals(limit=limit, request=request))

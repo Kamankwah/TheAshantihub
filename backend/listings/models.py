@@ -90,6 +90,13 @@ class Listing(models.Model):
     name = models.CharField(max_length=150)
     description = models.TextField()
     price_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # A live discount (Plan M1 Deals): goes live at once, valid only below price_amount (see listings.pricing).
+    sale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # Flagged by marketing/operations/super admin (`deals.manage`): appears in Deals even without a discount.
+    sponsored = models.BooleanField(default=False)
+    sponsored_by = models.ForeignKey(
+        "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="sponsored_listings",
+    )
     price_unit = models.CharField(max_length=30, null=True, blank=True)
     tag = models.CharField(max_length=50, null=True, blank=True)
     contact_phone = models.CharField(max_length=20)
@@ -191,6 +198,52 @@ class Listing(models.Model):
 
     def __str__(self):
         return self.name
+
+    _UNKNOWN = object()
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        # What the row held when loaded, to tell a price change from a plain save without a query.
+        instance._loaded_price = instance.__dict__.get("price_amount", cls._UNKNOWN)
+        return instance
+
+    @property
+    def effective_price(self):
+        """The one price read: the sale price while it is a real discount, otherwise `price_amount`."""
+        from . import pricing
+
+        return pricing.effective_price(self)
+
+    def save(self, *args, **kwargs):
+        from . import pricing
+
+        update_fields = kwargs.get("update_fields")
+        adding = self._state.adding
+        touches_price = update_fields is None or "price_amount" in update_fields
+        loaded = getattr(self, "_loaded_price", self._UNKNOWN)
+        changed = adding or loaded is self._UNKNOWN or pricing.dec(loaded) != pricing.dec(self.price_amount)
+        super().save(*args, **kwargs)
+        if touches_price and changed:
+            pricing.record_price(self)
+        if touches_price:
+            self._loaded_price = self.price_amount
+
+
+class ListingPriceHistory(models.Model):
+    """One regular price a listing held, from `started_at` until `ended_at` (null while it is the current one).
+    Recorded from the day Task 6 shipped; it backs the 7-day "was" price rule (listings.pricing)."""
+
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="price_history")
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    started_at = models.DateTimeField(default=timezone.now)
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["listing", "ended_at"], name="listing_price_open_idx")]
+
+    def __str__(self):
+        return f"{self.listing_id}: {self.price} from {self.started_at:%Y-%m-%d}"
 
 
 class ListingPhoto(models.Model):

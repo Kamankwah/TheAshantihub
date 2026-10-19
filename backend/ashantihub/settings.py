@@ -400,6 +400,7 @@ REST_FRAMEWORK = {
         "notify_me_stop": "30/hour",
         "category_visit": "60/min",
         "storefront_search": "120/min",
+        "storefront_deals": "120/min",
         "customer_register": "5/min",
         "business_owner_register": "5/min",
         "staff_activate": "5/min",

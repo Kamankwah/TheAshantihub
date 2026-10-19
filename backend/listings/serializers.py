@@ -5,6 +5,7 @@ from rest_framework import serializers
 from accounts.models import BusinessOwner
 from billing.models import Subscription
 
+from . import pricing
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
 
 # The product/service decision fields added by the comprehensive listing-
@@ -88,6 +89,11 @@ class PublicListingSerializer(serializers.ModelSerializer):
     # backing this serializer (reviews/ratings/Q&A plan, docs/PROJECT_SCOPE.md).
     avg_rating = serializers.SerializerMethodField()
     review_count = serializers.SerializerMethodField()
+    # Deals (Plan M1 Task 6): the sale price only while it is a real discount, and a "was" price only when the
+    # regular price has stood 7 full days (listings.pricing) - otherwise null, never an invented value.
+    sale_price = serializers.SerializerMethodField()
+    was_price = serializers.SerializerMethodField()
+    effective_price = serializers.SerializerMethodField()
 
     class Meta:
         model = Listing
@@ -95,6 +101,7 @@ class PublicListingSerializer(serializers.ModelSerializer):
             "id", "name", "description", "category", "zone", "price_amount", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "created_at",
             "is_promoted", "specs", "service_duration", "avg_rating", "review_count",
+            "sale_price", "was_price", "effective_price",
             "business_owner", *LISTING_DECISION_FIELDS, "cancellation_policy",
         ]
         # This serializer only ever backs read-only views (list/detail/
@@ -104,6 +111,17 @@ class PublicListingSerializer(serializers.ModelSerializer):
 
     def get_is_promoted(self, obj):
         return bool(getattr(obj, "is_promoted", False))
+
+    def get_sale_price(self, obj):
+        return str(pricing.dec(obj.sale_price)) if pricing.is_discounted(obj) else None
+
+    def get_was_price(self, obj):
+        was = pricing.was_price(obj)
+        return None if was is None else str(was)
+
+    def get_effective_price(self, obj):
+        value = obj.effective_price
+        return None if value is None else str(value)
 
     def get_avg_rating(self, obj):
         return getattr(obj, "avg_rating", None)
@@ -186,6 +204,21 @@ def clean_listing_barcode(value, instance=None, category=None):
     return key
 
 
+SALE_PRICE_MESSAGE = "A sale price must be above 0 and below the regular price."
+
+
+def validate_sale_price(data, instance=None):
+    """0 < sale_price < price_amount, using the incoming price_amount when both are sent. Null ends the sale. A sale
+    goes live at once: this is the only check, there is no approval."""
+    sale = data.get("sale_price")
+    if sale is None:
+        return data
+    price = data["price_amount"] if "price_amount" in data else getattr(instance, "price_amount", None)
+    if price is None or not (0 < sale < price):
+        raise serializers.ValidationError({"sale_price": SALE_PRICE_MESSAGE})
+    return data
+
+
 def save_sent_fields(instance, validated_data):
     """Write only the fields this request sent (catalogue plan 6). ModelSerializer.update saves the whole row, which would
     write back the catalogue_product and stock_quantity this request read over a staff grouping decision or a
@@ -214,12 +247,15 @@ class OwnerListingManageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Listing
         fields = [
-            "id", "price_amount", "price_unit", "tag", "contact_phone",
+            "id", "price_amount", "sale_price", "price_unit", "tag", "contact_phone",
             "specs", "service_duration", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
         ]
 
     def validate_barcode(self, value):
         return clean_listing_barcode(value, self.instance)
+
+    def validate(self, data):
+        return validate_sale_price(data, self.instance)
 
     def update(self, instance, validated_data):
         return save_sent_fields(instance, validated_data)
@@ -358,7 +394,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Listing
         fields = [
-            "id", "category", "zone", "name", "description", "price_amount", "price_unit",
+            "id", "category", "zone", "name", "description", "price_amount", "sale_price", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "specs",
             "service_duration", "units_total", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
             "status", "rejection_reason", "created_at", "updated_at",
@@ -372,6 +408,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     def validate(self, data):
         if data.get("barcode"):
             clean_listing_barcode(data["barcode"], self.instance, data.get("category"))
+        validate_sale_price(data, self.instance)
         return validate_listing_for_owner(
             self.context["request"].user, data, instance=self.instance, initial_data=self.initial_data,
         )

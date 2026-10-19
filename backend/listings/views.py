@@ -522,6 +522,24 @@ class ListingManageView(generics.UpdateAPIView):
     http_method_names = ["patch"]
 
 
+class ListingSponsoredView(APIView):
+    """POST /api/listings/<id>/sponsored/ {"sponsored": bool} - flag or unflag a listing as sponsored so it appears
+    in Deals without a discount (Plan M1). Marketing, operations and super admin (`deals.manage`)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("deals.manage")]
+
+    def post(self, request, pk):
+        flag = request.data.get("sponsored") if isinstance(request.data, dict) else None
+        if not isinstance(flag, bool):
+            return Response({"sponsored": "Send true or false."}, status=400)
+        listing = generics.get_object_or_404(Listing, pk=pk)
+        listing.sponsored = flag
+        listing.sponsored_by = request.user if flag else None
+        listing.save(update_fields=["sponsored", "sponsored_by", "updated_at"])
+        return Response({"id": listing.pk, "sponsored": listing.sponsored})
+
+
 class ListingRestockView(APIView):
     """POST /api/listings/mine/{id}/restock/ — a business owner sets a
     listing's stock count (Wave F). Unlike the general edit endpoint (which

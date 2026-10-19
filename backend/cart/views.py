@@ -83,7 +83,7 @@ class CartItemCreateView(APIView):
             else:
                 item = CartItem.objects.create(
                     cart=cart, listing=listing, quantity=quantity,
-                    unit_price_snapshot=listing.price_amount,
+                    unit_price_snapshot=listing.effective_price,
                 )
                 created = True
 
