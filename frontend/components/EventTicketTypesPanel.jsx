@@ -258,7 +258,7 @@ const addBtnStyle = {
 const retryBtnStyle = {
   background: "none",
   border: `1px solid ${C.kente1}`,
-  color: C.kente1,
+  color: C.danger,
   borderRadius: 20,
   padding: "1px 8px",
   fontSize: "0.68rem",

@@ -17,7 +17,7 @@ function Row({ item, renderCard }) {
       {renderCard(item)}
       {item.cart_label && <div style={tag}>{item.cart_label}</div>}
       {blocked && (
-        <div role="note" style={{ ...tag, color: C.kente1 }}>
+        <div role="note" style={{ ...tag, color: C.danger }}>
           {blocked.code === "not_deliverable" ? null : blocked.code === "food_far" || blocked.code === "food_unlocated" ? "Too far for this delivery" : "Delivery limit reached"}
           <div style={{ fontWeight: 400 }}>{blocked.detail}</div>
         </div>
@@ -46,16 +46,16 @@ export default function CartTieredResults({ listings, renderCard }) {
     <div>
       <Group title="From shops in your cart" rows={inCart} renderCard={renderCard} />
       <Group title="Near the shops in your cart" rows={near} renderCard={renderCard} />
-      {!inCart.length && !near.length && <div style={{ color: "#aaa", fontSize: "0.8rem", margin: "12px 0" }}>Nothing in these results from the shops in your cart or shops near them.</div>}
+      {!inCart.length && !near.length && <div style={{ color: C.inkFaint, fontSize: "0.8rem", margin: "12px 0" }}>Nothing in these results from the shops in your cart or shops near them.</div>}
       <Group title="Services, stays and events" rows={separate} renderCard={renderCard} />
       <button type="button" aria-expanded={showOthers} onClick={() => setShowOthers((v) => !v)}
         style={{ marginTop: 16, background: "none", border: `1px solid ${C.gold}`, color: C.lightGold, borderRadius: 20, padding: "7px 16px", fontWeight: 800, fontSize: "0.78rem", cursor: "pointer", fontFamily: "inherit" }}>
         {showOthers ? "Hide other shops" : `See other shops too${others.length ? ` (${others.length})` : ""}`}
       </button>
       {showOthers && (others.length === 0
-        ? <div style={{ color: "#aaa", fontSize: "0.8rem", marginTop: 10 }}>No other shops in these results.</div>
+        ? <div style={{ color: C.inkFaint, fontSize: "0.8rem", marginTop: 10 }}>No other shops in these results.</div>
         : <div style={{ ...grid, marginTop: 12 }}>{others.map((item) => <Row key={item.id} item={item} renderCard={renderCard} />)}</div>)}
-      <div style={{ color: "#999", fontSize: "0.7rem", marginTop: 10 }}>One rider collects from every shop in your cart on one trip, so shops near each other come first.</div>
+      <div style={{ color: C.inkFaint, fontSize: "0.7rem", marginTop: 10 }}>One rider collects from every shop in your cart on one trip, so shops near each other come first.</div>
     </div>
   );
 }

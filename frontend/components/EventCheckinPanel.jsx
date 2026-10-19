@@ -93,7 +93,7 @@ export default function EventCheckinPanel({ eventId }) {
 
       {checkinError && <div style={{ marginBottom: 8, color: "#ffb4b4", fontSize: "0.72rem" }}>{checkinError}</div>}
       {lastCheckedIn && (
-        <div style={{ marginBottom: 10, color: C.kente2, fontSize: "0.72rem", fontWeight: 700 }}>
+        <div style={{ marginBottom: 10, color: C.trust, fontSize: "0.72rem", fontWeight: 700 }}>
           ✓ Checked in {lastCheckedIn.purchased_by_name} — {lastCheckedIn.ticket_type_name}
         </div>
       )}
@@ -102,7 +102,7 @@ export default function EventCheckinPanel({ eventId }) {
       {isError && (
         <div style={{ color: "#ffb4b4", fontSize: "0.74rem" }}>
           Could not load tickets.{" "}
-          <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.kente1, borderRadius: 20, padding: "1px 8px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
+          <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "1px 8px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
             Retry
           </button>
         </div>

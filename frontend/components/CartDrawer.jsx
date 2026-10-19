@@ -217,23 +217,23 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
     if (!promosOn) return null;
     return (
       <div style={{ marginBottom: 10 }}>
-        {quote?.notes?.map((n) => <div key={n} style={{ fontSize: "0.68rem", color: "#555", marginBottom: 4 }}>{n}</div>)}
-        {quote?.lines?.some((l) => l.flash_sale) && <div style={{ fontSize: "0.68rem", color: "#555", marginBottom: 4 }}>Flash-sale prices are applied at checkout. Coupons don't apply to them.</div>}
+        {quote?.notes?.map((n) => <div key={n} style={{ fontSize: "0.68rem", color: C.inkDim, marginBottom: 4 }}>{n}</div>)}
+        {quote?.lines?.some((l) => l.flash_sale) && <div style={{ fontSize: "0.68rem", color: C.inkDim, marginBottom: 4 }}>Flash-sale prices are applied at checkout. Coupons don't apply to them.</div>}
         {quote?.coupon ? (
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.74rem", color: C.darkBrown, marginBottom: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.74rem", color: C.ink, marginBottom: 6 }}>
             <span>Coupon {quote.coupon.code}: − {formatAmount(quote.coupon.discount)}</span>
-            <button type="button" onClick={() => { setAppliedCode(""); setCouponInput(""); }} style={{ background: "none", border: "none", color: C.kente1, cursor: "pointer", fontSize: "0.7rem", fontWeight: 700 }}>Remove</button>
+            <button type="button" onClick={() => { setAppliedCode(""); setCouponInput(""); }} style={{ background: "none", border: "none", color: C.danger, cursor: "pointer", fontSize: "0.7rem", fontWeight: 700 }}>Remove</button>
           </div>
         ) : (
           <div style={{ display: "flex", gap: 6 }}>
             <label style={{ flex: 1 }}>
               <span style={{ position: "absolute", left: -9999 }}>Coupon code</span>
-              <input value={couponInput} onChange={(e) => { setCouponInput(e.target.value); setCouponError(""); }} placeholder="Coupon code" style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: "1.5px solid #e0e0e0", fontSize: "0.76rem", fontFamily: "inherit", boxSizing: "border-box" }} />
+              <input value={couponInput} onChange={(e) => { setCouponInput(e.target.value); setCouponError(""); }} placeholder="Coupon code" style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: `1.5px solid ${C.line}`, fontSize: "0.76rem", fontFamily: "inherit", boxSizing: "border-box" }} />
             </label>
-            <button type="button" disabled={!couponInput.trim() || quoting} onClick={() => setAppliedCode(couponInput.trim())} style={{ background: "#f0f0f0", color: C.darkBrown, border: "none", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}>Apply</button>
+            <button type="button" disabled={!couponInput.trim() || quoting} onClick={() => setAppliedCode(couponInput.trim())} style={{ background: C.surface2, color: C.ink, border: "none", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}>Apply</button>
           </div>
         )}
-        {couponError && <div role="alert" style={{ color: "#dc2626", fontSize: "0.7rem", marginTop: 4 }}>{couponError}</div>}
+        {couponError && <div role="alert" style={{ color: C.errInk, fontSize: "0.7rem", marginTop: 4 }}>{couponError}</div>}
       </div>
     );
   };
@@ -242,38 +242,38 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
     <>
     <div style={{ position: "fixed", inset: 0, zIndex: 999 }} onClick={onClose}>
       <div
-        style={{ position: "absolute", top: 65, right: 16, background: "white", borderRadius: 16, width: 340, maxHeight: "82vh", overflowY: "auto", boxShadow: "0 8px 40px rgba(0,0,0,0.2)" }}
+        style={{ position: "absolute", top: 65, right: 16, background: C.surface, borderRadius: 16, width: 340, maxHeight: "82vh", overflowY: "auto", boxShadow: "0 8px 40px rgba(0,0,0,0.2)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ padding: "14px 16px", borderBottom: "1px solid #f0f0f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontWeight: 800, color: C.darkBrown, fontSize: "0.85rem" }}>🛒 Your Cart {items.length > 0 ? `(${items.length})` : ""}</div>
-          <button onClick={onClose} aria-label="Close cart" style={{ background: "none", border: "none", cursor: "pointer", color: "#999", fontSize: "1.1rem" }}>✕</button>
+        <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 800, color: C.ink, fontSize: "0.85rem" }}>🛒 Your Cart {items.length > 0 ? `(${items.length})` : ""}</div>
+          <button onClick={onClose} aria-label="Close cart" style={{ background: "none", border: "none", cursor: "pointer", color: C.inkFaint, fontSize: "1.1rem" }}>✕</button>
         </div>
 
         {isLoading && (
-          <div style={{ padding: "20px", textAlign: "center", color: "#aaa", fontSize: "0.78rem" }}>Loading your cart…</div>
+          <div style={{ padding: "20px", textAlign: "center", color: C.inkFaint, fontSize: "0.78rem" }}>Loading your cart…</div>
         )}
 
         {isError && (
-          <div style={{ padding: "20px", textAlign: "center", color: "#dc2626", fontSize: "0.78rem" }}>
+          <div style={{ padding: "20px", textAlign: "center", color: C.errInk, fontSize: "0.78rem" }}>
             Could not load your cart.
-            <div><button onClick={() => refetch()} style={{ marginTop: 8, background: "none", border: `1px solid ${C.kente1}`, color: C.kente1, borderRadius: 20, padding: "4px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button></div>
+            <div><button onClick={() => refetch()} style={{ marginTop: 8, background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "4px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button></div>
           </div>
         )}
 
         {!isLoading && !isError && step === "cart" && (
           <>
-            {actionError && <div style={{ margin: "10px 14px 0", background: "#fee2e2", color: "#dc2626", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem" }}>{actionError}</div>}
+            {actionError && <div style={{ margin: "10px 14px 0", background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem" }}>{actionError}</div>}
 
             {items.length === 0 && (
-              <div style={{ padding: "20px", textAlign: "center", color: "#aaa", fontSize: "0.78rem" }}>Your cart is empty.<br />Add items from the Business tab to get started.</div>
+              <div style={{ padding: "20px", textAlign: "center", color: C.inkFaint, fontSize: "0.78rem" }}>Your cart is empty.<br />Add items from the Business tab to get started.</div>
             )}
 
             {items.map((item) => (
-              <div key={item.id} style={{ padding: "10px 14px", borderBottom: "1px solid #f9f9f9", display: "flex", gap: 10, alignItems: "center" }}>
+              <div key={item.id} style={{ padding: "10px 14px", borderBottom: `1px solid ${C.line}`, display: "flex", gap: 10, alignItems: "center" }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: "0.78rem", color: C.darkBrown }}>{item.listing_name}</div>
-                  <div style={{ fontSize: "0.65rem", color: "#888" }}>{formatAmount(item.unit_price_snapshot)} each</div>
+                  <div style={{ fontWeight: 700, fontSize: "0.78rem", color: C.ink }}>{item.listing_name}</div>
+                  <div style={{ fontSize: "0.65rem", color: C.inkFaint }}>{formatAmount(item.unit_price_snapshot)} each</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                     <button
                       disabled={pendingId === item.id || item.quantity <= 1}
@@ -291,20 +291,20 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 800, fontSize: "0.78rem", color: C.darkBrown }}>{formatAmount(item.line_total)}</div>
+                  <div style={{ fontWeight: 800, fontSize: "0.78rem", color: C.ink }}>{formatAmount(item.line_total)}</div>
                   <button
                     disabled={pendingId === item.id}
                     onClick={() => removeItem(item)}
                     aria-label={`Remove ${item.listing_name} from cart`}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: C.kente1, fontSize: "0.9rem", marginTop: 4 }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: C.danger, fontSize: "0.9rem", marginTop: 4 }}
                   >✕</button>
                 </div>
               </div>
             ))}
 
             {items.length > 0 && (
-              <div style={{ padding: "14px 16px", borderTop: "1px solid #f0f0f0" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", fontWeight: 800, color: C.darkBrown, marginBottom: 10 }}>
+              <div style={{ padding: "14px 16px", borderTop: `1px solid ${C.line}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", fontWeight: 800, color: C.ink, marginBottom: 10 }}>
                   <span>Total</span>
                   <span>{formatAmount(shownTotal)}</span>
                 </div>
@@ -312,7 +312,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                 <button
                   disabled={!canBuy}
                   onClick={() => { if (!canBuy || staffGate.blocked()) return; setStep("confirm"); }}
-                  style={{ width: "100%", background: canBuy ? C.gold : "#ccc", color: canBuy ? C.darkBrown : "#555", border: "none", borderRadius: 24, padding: "11px", fontWeight: 900, fontSize: "0.82rem", cursor: canBuy ? "pointer" : "not-allowed", fontFamily: "inherit" }}
+                  style={{ width: "100%", background: canBuy ? C.gold : C.surface3, color: canBuy ? C.darkBrown : C.inkDim, border: "none", borderRadius: 24, padding: "11px", fontWeight: 900, fontSize: "0.82rem", cursor: canBuy ? "pointer" : "not-allowed", fontFamily: "inherit" }}
                 >{canBuy ? "Checkout →" : opensLabel}</button>
                 {staffGate.shownFor && <StaffGateNotice style={{ marginTop: 10 }} />}
               </div>
@@ -322,28 +322,28 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
 
         {!isLoading && !isError && step === "confirm" && (
           <div style={{ padding: "16px" }}>
-            <div style={{ fontWeight: 800, color: C.darkBrown, fontSize: "0.85rem", marginBottom: 10 }}>Confirm your order</div>
+            <div style={{ fontWeight: 800, color: C.ink, fontSize: "0.85rem", marginBottom: 10 }}>Confirm your order</div>
             {items.map((item) => (
-              <div key={`confirm-${item.id}`} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.76rem", color: "#555", marginBottom: 6 }}>
+              <div key={`confirm-${item.id}`} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.76rem", color: C.inkDim, marginBottom: 6 }}>
                 <span>{item.listing_name} × {item.quantity}</span>
-                <span style={{ fontWeight: 700, color: C.darkBrown }}>{formatAmount(item.line_total)}</span>
+                <span style={{ fontWeight: 700, color: C.ink }}>{formatAmount(item.line_total)}</span>
               </div>
             ))}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, color: C.kente2, fontSize: "0.9rem", borderTop: "1px solid #eee", paddingTop: 8, marginTop: 8, marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, color: C.price, fontSize: "0.9rem", borderTop: `1px solid ${C.line}`, paddingTop: 8, marginTop: 8, marginBottom: 14 }}>
               <span>Total</span>
               <span>{formatAmount(shownTotal)}</span>
             </div>
             {promosOn && quote?.coupon && (
-              <div style={{ fontSize: "0.72rem", color: "#555", margin: "-8px 0 12px" }}>Includes coupon {quote.coupon.code}: − {formatAmount(quote.coupon.discount)}</div>
+              <div style={{ fontSize: "0.72rem", color: C.inkDim, margin: "-8px 0 12px" }}>Includes coupon {quote.coupon.code}: − {formatAmount(quote.coupon.discount)}</div>
             )}
             {delivery && (
-              <div data-testid="cart-delivery" style={{ fontSize: "0.72rem", color: "#555", margin: "-8px 0 12px" }}>
+              <div data-testid="cart-delivery" style={{ fontSize: "0.72rem", color: C.inkDim, margin: "-8px 0 12px" }}>
                 {delivery.waived
-                  ? <>Delivery: <b style={{ color: C.kente2 }}>Free</b> ({delivery.waiver_name}){delivery.waived_fee != null ? <>, saving {formatAmount(delivery.waived_fee)}</> : null}</>
+                  ? <>Delivery: <b style={{ color: C.trust }}>Free</b> ({delivery.waiver_name}){delivery.waived_fee != null ? <>, saving {formatAmount(delivery.waived_fee)}</> : null}</>
                   : delivery.fee != null
                     ? <>Delivery: {formatAmount(delivery.fee)}</>
                     : delivery.fee_status === "out_of_area"
-                      ? <b data-testid="cart-delivery-out-of-area" role="alert" style={{ color: "#dc2626" }}>{delivery.message}</b>
+                      ? <b data-testid="cart-delivery-out-of-area" role="alert" style={{ color: C.errInk }}>{delivery.message}</b>
                       : delivery.fee_status === "no_rate_card"
                         ? <>No delivery fee is being charged right now.</>
                         : <>Choose your delivery location on the map to see the delivery fee. Without one, no delivery fee is added.</>}
@@ -361,13 +361,13 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
             )}
 
             {/* Delivery method (Wave F) */}
-            <div style={{ fontWeight: 800, color: C.darkBrown, fontSize: "0.78rem", marginBottom: 8 }}>How would you like it?</div>
+            <div style={{ fontWeight: 800, color: C.ink, fontSize: "0.78rem", marginBottom: 8 }}>How would you like it?</div>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
               {[["store_pickup", "🏬 Store pickup"], ["door_to_door", "🚚 Door-to-door"]].map(([value, label]) => (
                 <button
                   key={value}
                   onClick={() => setDeliveryMethod(value)}
-                  style={{ flex: 1, background: deliveryMethod === value ? C.kente2 : "#f0f0f0", color: deliveryMethod === value ? "white" : "#666", border: "none", borderRadius: 12, padding: "9px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
+                  style={{ flex: 1, background: deliveryMethod === value ? C.kente2 : C.surface2, color: deliveryMethod === value ? "white" : C.inkDim, border: "none", borderRadius: 12, padding: "9px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
                 >
                   {label}
                 </button>
@@ -379,13 +379,13 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                   value={deliveryAddress}
                   onChange={(e) => setDeliveryAddress(e.target.value)}
                   placeholder="Delivery address"
-                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e0e0e0", fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: `1.5px solid ${C.line}`, fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
                 />
                 <input
                   value={deliveryPhone}
                   onChange={(e) => setDeliveryPhone(e.target.value)}
                   placeholder="Contact phone for delivery"
-                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e0e0e0", fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: `1.5px solid ${C.line}`, fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
                 />
                 <LocationPicker
                   lat={deliveryLat}
@@ -396,17 +396,17 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
               </div>
             )}
 
-            {promosOn && pinChosen && quoteFailed && <div data-testid="cart-delivery-unchecked" style={{ fontSize: "0.72rem", color: "#555", marginBottom: 12 }}>We couldn't check delivery to this location yet. Try again.</div>}
-            {guardBlock && <div data-testid="cart-guard-block" role="alert" style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{guardBlock.detail}{deliveryLimitBlock && <div>Store pickup is still available.</div>}</div>}
-            {guardUnchecked && !guardBlock && <div data-testid="cart-guard-unchecked" style={{ fontSize: "0.72rem", color: "#555", marginBottom: 12 }}>{guardError ? "We couldn't check your delivery limits yet. Try again shortly." : "Checking your delivery limits…"}</div>}
-            {checkoutError && <div style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{checkoutError}</div>}
+            {promosOn && pinChosen && quoteFailed && <div data-testid="cart-delivery-unchecked" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>We couldn't check delivery to this location yet. Try again.</div>}
+            {guardBlock && <div data-testid="cart-guard-block" role="alert" style={{ background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{guardBlock.detail}{deliveryLimitBlock && <div>Store pickup is still available.</div>}</div>}
+            {guardUnchecked && !guardBlock && <div data-testid="cart-guard-unchecked" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>{guardError ? "We couldn't check your delivery limits yet. Try again shortly." : "Checking your delivery limits…"}</div>}
+            {checkoutError && <div style={{ background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{checkoutError}</div>}
             {staffGate.shownFor && <StaffGateNotice style={{ marginBottom: 12 }} />}
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setStep("cart")} style={{ flex: 1, background: "#f0f0f0", color: "#666", border: "none", borderRadius: 20, padding: "10px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>← Back</button>
+              <button onClick={() => setStep("cart")} style={{ flex: 1, background: C.surface2, color: C.inkDim, border: "none", borderRadius: 20, padding: "10px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>← Back</button>
               <button
                 onClick={() => { if (staffGate.blocked()) return; setCheckoutAmount(parseFloat(shownTotal) || 0); setShowPayment(true); }}
                 disabled={!payReady}
-                style={{ flex: 2, background: payReady ? C.kente2 : "#ccc", color: "white", border: "none", borderRadius: 20, padding: "10px", fontWeight: 900, cursor: payReady ? "pointer" : "not-allowed", fontFamily: "inherit" }}
+                style={{ flex: 2, background: payReady ? C.kente2 : C.surface3, color: "white", border: "none", borderRadius: 20, padding: "10px", fontWeight: 900, cursor: payReady ? "pointer" : "not-allowed", fontFamily: "inherit" }}
               >
                 Confirm &amp; Pay
               </button>
@@ -417,18 +417,18 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
         {!isLoading && !isError && step === "confirmation" && order && (
           <div style={{ padding: "20px 16px", textAlign: "center" }}>
             <div style={{ fontSize: "2.4rem", marginBottom: 10 }}>✅</div>
-            <div style={{ fontWeight: 900, color: C.kente2, fontSize: "0.95rem", marginBottom: 6 }}>Order Confirmed!</div>
-            <div style={{ background: "#f9f9f9", borderRadius: 12, padding: "12px 14px", marginBottom: 14, textAlign: "left", fontSize: "0.74rem", lineHeight: 1.8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "#888" }}>Order Ref</span><span style={{ fontWeight: 700 }}>#{order.id}</span></div>
+            <div style={{ fontWeight: 900, color: C.trust, fontSize: "0.95rem", marginBottom: 6 }}>Order Confirmed!</div>
+            <div style={{ background: C.surface2, borderRadius: 12, padding: "12px 14px", marginBottom: 14, textAlign: "left", fontSize: "0.74rem", lineHeight: 1.8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.inkFaint }}>Order Ref</span><span style={{ fontWeight: 700 }}>#{order.id}</span></div>
               {order.items?.map((oi, i) => (
                 <div key={oi.id ?? i} style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "#888" }}>{oi.listing_name || oi.listing} × {oi.quantity}</span>
+                  <span style={{ color: C.inkFaint }}>{oi.listing_name || oi.listing} × {oi.quantity}</span>
                   <span>{formatAmount(oi.line_total)}</span>
                 </div>
               ))}
-              <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #e0e0e0", paddingTop: 6, marginTop: 4 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${C.line}`, paddingTop: 6, marginTop: 4 }}>
                 <span style={{ fontWeight: 800 }}>Total Paid</span>
-                <span style={{ fontWeight: 900, color: C.kente2 }}>{formatAmount(order.total_amount)}</span>
+                <span style={{ fontWeight: 900, color: C.price }}>{formatAmount(order.total_amount)}</span>
               </div>
             </div>
             <button onClick={startOver} style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 24, padding: "10px 22px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>Continue Shopping</button>
@@ -459,9 +459,9 @@ const stepperBtnStyle = {
   width: 22,
   height: 22,
   borderRadius: "50%",
-  border: "1px solid #ddd",
-  background: "white",
-  color: C.darkBrown,
+  border: `1px solid ${C.line}`,
+  background: C.surface,
+  color: C.ink,
   fontWeight: 800,
   fontSize: "0.85rem",
   cursor: "pointer",

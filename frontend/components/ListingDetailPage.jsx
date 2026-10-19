@@ -1,6 +1,6 @@
 import FlashPriceTag from "./FlashPriceTag.jsx";
 import { useState } from "react";
-import { C } from "../theme.js";
+import { C, tint } from "../theme.js";
 import { apiPost } from "../apiClient.js";
 import { useListing } from "../hooks/useListing.js";
 import { useCartGuard } from "../hooks/useCartGuard.js";
@@ -172,7 +172,7 @@ export default function ListingDetailPage({
       <div style={{ display: "flex", gap: 28, flexWrap: "wrap", marginTop: 16 }}>
         {/* Gallery */}
         <div style={{ flex: "1 1 380px", minWidth: 300 }}>
-          <div style={{ height: 340, borderRadius: 16, overflow: "hidden", position: "relative", background: `linear-gradient(135deg,${accentColor}22,${accentColor}44)` }}>
+          <div style={{ height: 340, borderRadius: 16, overflow: "hidden", position: "relative", background: `linear-gradient(135deg,${tint(accentColor, "22")},${tint(accentColor, "44")})` }}>
             {gallery.length > 0 ? (
               <img src={gallery[galleryIndex]} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             ) : (

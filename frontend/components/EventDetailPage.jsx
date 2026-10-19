@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { C } from "../theme.js";
+import { C, tint } from "../theme.js";
 import { useEvent } from "../hooks/useEvent.js";
 import { useEventReviews } from "../hooks/useEventReviews.js";
 import { useOrganizerReviews } from "../hooks/useOrganizerReviews.js";
@@ -203,7 +203,7 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
     return (
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 14px 40px", background: C.void, borderRadius: 20 }}>
         <button onClick={onBack} style={backBtnStyle}>‹ Back to events</button>
-        <div style={{ marginTop: 20, textAlign: "center", padding: "36px 20px", background: "rgba(255,255,255,0.04)", borderRadius: 16, border: `1.5px solid ${accentColor}55` }}>
+        <div style={{ marginTop: 20, textAlign: "center", padding: "36px 20px", background: "rgba(255,255,255,0.04)", borderRadius: 16, border: `1.5px solid ${tint(accentColor, "55")}` }}>
           <div style={{ fontSize: "2.2rem", marginBottom: 10 }}>🔒</div>
           <h1 style={{ color: "white", fontSize: "1.2rem", fontWeight: 900, margin: "0 0 4px" }}>{detail.name}</h1>
           <div style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.8rem", marginBottom: 6 }}>
@@ -251,7 +251,7 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
 
       <div style={{ display: "flex", gap: 28, flexWrap: "wrap", marginTop: 16 }}>
         <div style={{ flex: "1 1 380px", minWidth: 300 }}>
-          <div style={{ height: 320, borderRadius: 16, overflow: "hidden", position: "relative", background: `linear-gradient(135deg,${accentColor}22,${accentColor}44)` }}>
+          <div style={{ height: 320, borderRadius: 16, overflow: "hidden", position: "relative", background: `linear-gradient(135deg,${tint(accentColor, "22")},${tint(accentColor, "44")})` }}>
             {gallery.length > 0 ? (
               <img src={gallery[galleryIndex]} alt={detail.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             ) : (
@@ -466,7 +466,7 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user,
       {ticketTypesQuery.isError && (
         <div style={{ color: "#ffb4b4", fontSize: "0.8rem" }}>
           Could not load ticket types.{" "}
-          <button onClick={() => ticketTypesQuery.refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.kente1, borderRadius: 20, padding: "2px 10px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button>
+          <button onClick={() => ticketTypesQuery.refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "2px 10px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button>
         </div>
       )}
       {payError && <div style={{ marginBottom: 12, color: "#ffb4b4", fontSize: "0.76rem" }}>{payError}</div>}
@@ -526,7 +526,7 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user,
 
             {purchased && (
               <div style={{ marginTop: 12, background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 12px" }}>
-                <div style={{ color: C.kente2, fontWeight: 800, fontSize: "0.8rem", marginBottom: 4 }}>✅ Purchased!</div>
+                <div style={{ color: C.trust, fontWeight: 800, fontSize: "0.8rem", marginBottom: 4 }}>✅ Purchased!</div>
                 <div style={{ color: "white", fontSize: "0.78rem", marginBottom: 4 }}>
                   Your ticket code{purchased.length > 1 ? "s" : ""}: <strong>{purchased.map((t) => t.code).join(", ")}</strong>
                 </div>

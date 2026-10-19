@@ -9,6 +9,8 @@ import { setStoredAuth } from '../apiClient.js'
 import { fullHome } from '../mocks/storefront.js'
 import StorefrontHeader from '../components/storefront/StorefrontHeader.jsx'
 import StorefrontHome from '../components/storefront/StorefrontHome.jsx'
+import ListingDetailPage from '../components/ListingDetailPage.jsx'
+import CartDrawer from '../components/CartDrawer.jsx'
 
 // Per-area smoke tests: render a key page with <html data-theme="dark"> and
 // assert nothing on it is a light-only inline surface or light-only text.
@@ -162,6 +164,36 @@ describe('dark mode smoke: home', () => {
     await screen.findByRole('heading', { name: "Today's deals" })
     await screen.findByRole('heading', { name: 'Most visited categories' })
     expect(screen.getByTestId('storefront-home').getAttribute('style')).toContain('var(--ah-canvas')
+    expect(lightOnlyStyles()).toEqual([])
+  })
+})
+
+describe('dark mode smoke: listing detail', () => {
+  it('a product page renders with no light-only surfaces', async () => {
+    server.use(http.get(`${API}/api/listings/1/`, () => HttpResponse.json({
+      id: 1, name: 'Royal Ashanti Lodge', description: 'Luxury rooms.', category: { slug: 'hotels', icon: '🏨', label: 'Hotels', color: '#000080', kind: 'product' },
+      zone: { name: 'Manhyia' }, price_amount: '450.00', price_unit: '/night', tag: 'Featured', lat: null, lng: null, main_photo: null, photos: [],
+      created_at: '2026-07-09T00:00:00Z', is_promoted: false, specs: [{ label: 'Bed size', value: 'King' }], service_duration: '',
+      avg_rating: 4.5, review_count: 2, business_owner: { id: 9, full_name: 'Ama Boateng', kyc_status: 'verified' },
+    })))
+    withClient(
+      <ListingDetailPage id={1} onBack={vi.fn()} user={null} favourites={[]} onFavourite={vi.fn()} currency="GHS" onMessage={vi.fn()}
+        onAddToCart={vi.fn().mockResolvedValue(undefined)} CardComponent={({ item }) => <div>{item.name}</div>} />,
+    )
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(lightOnlyStyles()).toEqual([])
+  })
+})
+
+describe('dark mode smoke: cart drawer', () => {
+  it('the cart drawer (items, totals, checkout button) renders with theme tokens and no light-only surfaces', async () => {
+    server.use(http.get(`${API}/api/cart/`, () => HttpResponse.json({
+      id: 1, total: '300.00', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-10T00:00:00Z',
+      items: [{ id: 10, listing: 5, listing_name: 'Kente Cloth', quantity: 2, unit_price_snapshot: '150.00', line_total: '300.00', added_at: '2026-07-10T00:00:00Z' }],
+    })))
+    withClient(<CartDrawer onClose={vi.fn()} user={{ fullName: 'Ama Boateng', accountType: 'customer' }} currency="GHS" PaymentComponent={() => null} />)
+    await screen.findByText('Kente Cloth')
+    expect(usesThemeTokens()).toBe(true)
     expect(lightOnlyStyles()).toEqual([])
   })
 })
