@@ -337,7 +337,7 @@ def refund_apply(request):
         except refunds.RefundError as exc:
             raise ApprovalError(exc.message) from exc
     if refund is not None:
-        summary = (f"Refund of GH₵ {from_pesewas(refund.amount_pesewas + refund.processing_pesewas)} for case #{dispute_id} approved "
+        summary = (f"Refund of GH₵ {from_pesewas(refund.wallet_pesewas)} for case #{dispute_id} approved "
                    "and returned to the customer's AshantiHub wallet")
     else:
         summary = f"Refund of GH₵ {amount} for case #{dispute_id} approved (recorded only; payments are simulated)"

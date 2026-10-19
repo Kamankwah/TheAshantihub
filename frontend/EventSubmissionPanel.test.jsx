@@ -69,6 +69,63 @@ describe('EventSubmissionPanel', () => {
     expect(screen.getByText(/Akwasidae Festival.*is now pending approval/)).toBeInTheDocument()
   })
 
+  it('lets the organiser offer ticket refunds until N days before, and leaves it blank for none', async () => {
+    const bodies = []
+    server.use(
+      http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([])),
+      http.post('http://localhost:8000/api/events/submit/', async ({ request }) => {
+        const body = await request.json()
+        bodies.push(body)
+        return HttpResponse.json({ id: 10, name: body.name, status: 'pending', access_level: body.access_level }, { status: 201 })
+      }),
+    )
+    renderPanel()
+    fireEvent.click(screen.getByText('📅 Submit an Event'))
+    expect(screen.getByText(/Leave blank and tickets are not refundable after purchase \(only if the event is cancelled\)/)).toBeInTheDocument()
+    const fill = () => {
+      fireEvent.change(screen.getByLabelText('Event Name'), { target: { value: 'Akwasidae Festival' } })
+      fireEvent.change(screen.getByLabelText('Category'), { target: { value: '1' } })
+      fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Royal drumming.' } })
+      fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'Manhyia Palace' } })
+      fireEvent.change(screen.getByLabelText('Event Date'), { target: { value: '2026-08-03T10:00' } })
+      fireEvent.change(screen.getByLabelText('Visibility'), { target: { value: '15' } })
+    }
+    fill()
+    fireEvent.change(screen.getByLabelText('Refund tickets until this many days before (optional)'), { target: { value: '3' } })
+    fireEvent.click(screen.getByText('Submit for Review'))
+    await screen.findByText('✅ Submitted for review')
+    expect(bodies[0].refund_until_days_before).toBe(3)
+  })
+
+  it('does not accept 0 days (a refund the server would refuse at the start)', async () => {
+    server.use(http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([])))
+    renderPanel()
+    fireEvent.click(screen.getByText('📅 Submit an Event'))
+    expect(screen.getByLabelText('Refund tickets until this many days before (optional)')).toHaveAttribute('min', '1')
+  })
+
+  it('sends no refund window when it is left blank', async () => {
+    let sent = null
+    server.use(
+      http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([])),
+      http.post('http://localhost:8000/api/events/submit/', async ({ request }) => {
+        sent = await request.json()
+        return HttpResponse.json({ id: 10, name: sent.name, status: 'pending', access_level: sent.access_level }, { status: 201 })
+      }),
+    )
+    renderPanel()
+    fireEvent.click(screen.getByText('📅 Submit an Event'))
+    fireEvent.change(screen.getByLabelText('Event Name'), { target: { value: 'Akwasidae Festival' } })
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Royal drumming.' } })
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'Manhyia Palace' } })
+    fireEvent.change(screen.getByLabelText('Event Date'), { target: { value: '2026-08-03T10:00' } })
+    fireEvent.change(screen.getByLabelText('Visibility'), { target: { value: '15' } })
+    fireEvent.click(screen.getByText('Submit for Review'))
+    await screen.findByText('✅ Submitted for review')
+    expect(sent.refund_until_days_before).toBeNull()
+  })
+
   it('uploads the post-submission photo as multipart form-data and confirms', async () => {
     // The request body itself can't be consumed here — reading a
     // jsdom-created File part hangs under this test setup's interceptor —

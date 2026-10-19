@@ -200,8 +200,9 @@ class RiderRefundTests(RefundBase):
         with self.captureOnCommitCallbacks(execute=False) as callbacks:
             refunds.refund_order(order, source="dispute-1")
             self.assertEqual(notices.count(), 0)
-        self.assertEqual(len(callbacks), 1)
-        callbacks[0]()
+        self.assertGreaterEqual(len(callbacks), 2)  # the rider's notice, and the business's refund text send
+        for callback in callbacks:
+            callback()
         self.assertEqual(notices.count(), 1)
 
     def test_a_full_commission_rate_does_not_say_nothing_came_back(self):

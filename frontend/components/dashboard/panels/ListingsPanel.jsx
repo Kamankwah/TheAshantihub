@@ -1,4 +1,5 @@
 import { useState } from "react";
+import CancellationPolicyField from "../../CancellationPolicyField.jsx";
 import { apiPost, apiPatch, apiPostForm } from "../../../apiClient.js";
 import { useMyListings } from "../../../hooks/useMyListings.js";
 import { useMyHeroSubmission } from "../../../hooks/useMyHeroSubmission.js";
@@ -19,6 +20,7 @@ const inputStyle = {
 const labelStyle = { fontSize: "0.68rem", fontWeight: 700, color: D.textDim, display: "block", marginBottom: 3 };
 const textareaStyle = { ...inputStyle, minHeight: 56, resize: "vertical" };
 const fieldGrid2 = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 };
+const policyHint = { fontSize: "0.66rem", color: D.textFaint, marginTop: 3 };
 
 const PRICE_UNITS = ["per night", "per person", "per day", "per item", "per service"];
 
@@ -31,6 +33,7 @@ const emptyCreateForm = () => ({
   has_warranty: "", warranty_details: "", has_expiry: "", expiry_date: "", return_policy: "",
   brand: "", condition: "", dimensions: "", weight: "", stock_quantity: "",
   service_duration: "", whats_included: "", requirements: "", revisions: "", delivery_time: "",
+  cancellation_policy: "",
   specs: [],
 });
 
@@ -54,6 +57,8 @@ const decisionFieldsBody = (form) => ({
   dimensions: form.dimensions || "",
   weight: form.weight || "",
   stock_quantity: form.stock_quantity === "" || form.stock_quantity == null ? null : Number(form.stock_quantity),
+  // Services and stays only (the form has no policy control for a product): omitted when unchosen.
+  cancellation_policy: form.cancellation_policy || undefined,
   // Only meaningful for accommodation listings; omitted (undefined → not sent,
   // backend keeps its default of 1) when blank.
   units_total: form.units_total === "" || form.units_total == null ? undefined : Number(form.units_total),
@@ -121,9 +126,10 @@ function DecisionFields({ kind, isAccommodation, form, update }) {
           <textarea value={form.whats_included || ""} placeholder="e.g. Free Wi-Fi, air conditioning, breakfast, parking, 24/7 security" onChange={e => update("whats_included", e.target.value)} style={textareaStyle} />
         </div>
         <div style={{ marginBottom: 10 }}>
-          <label style={labelStyle}>House rules & cancellation policy</label>
-          <textarea value={form.requirements || ""} placeholder="e.g. No smoking indoors. Free cancellation up to 48h before check-in." onChange={e => update("requirements", e.target.value)} style={textareaStyle} />
+          <label style={labelStyle}>House rules</label>
+          <textarea value={form.requirements || ""} placeholder="e.g. No smoking indoors. Quiet after 10pm." onChange={e => update("requirements", e.target.value)} style={textareaStyle} />
         </div>
+        <CancellationPolicyField value={form.cancellation_policy} onChange={v => update("cancellation_policy", v)} labelStyle={labelStyle} inputStyle={inputStyle} hintStyle={policyHint} />
       </>
     );
   }
@@ -197,6 +203,8 @@ function DecisionFields({ kind, isAccommodation, form, update }) {
   if (kind === "service") {
     return (
       <>
+        {/* A service has no scheduled start, so no policy tiers apply: it is cancelled in full until the job is done. */}
+        <div style={{ ...policyHint, marginBottom: 10 }}>Customers can cancel a service for a full refund until you mark the job done.</div>
         <div style={{ marginBottom: 10 }}>
           <label style={labelStyle}>Service duration (e.g. '1 hour', '2-3 days')</label>
           <input value={form.service_duration || ""} placeholder="e.g. 2 hours" onChange={e => update("service_duration", e.target.value)} style={inputStyle} />
@@ -289,7 +297,8 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   );
   const canSubmitCreate = Boolean(
     createForm.category && createForm.zone && createForm.name.trim() &&
-    createForm.description.trim() && productAnswersComplete,
+    createForm.description.trim() && productAnswersComplete &&
+    (!createIsAccommodation || createForm.cancellation_policy),
   );
 
   const submitCreate = async () => {
@@ -303,6 +312,8 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         price_unit: createForm.price_unit, tag: createForm.tag.trim() || null,
         specs: createForm.specs,
         ...decisionFieldsBody(createForm),
+        // Only a stay carries a policy; a stale choice from another category is never sent.
+        ...(createIsAccommodation ? {} : { cancellation_policy: undefined }),
       });
       if (createPhoto) {
         // Photo goes to the existing gallery endpoint (same "JSON create,
@@ -333,6 +344,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         name: editForm.name, price_amount: editForm.price_amount, price_unit: editForm.price_unit,
         specs: editForm.specs,
         ...decisionFieldsBody(editForm),
+        ...(categoryIsAccommodationById(editForm.category_id) ? {} : { cancellation_policy: undefined }),
       });
       setEditingId(null); toast(); refetchListings();
     } catch (err) {
@@ -635,6 +647,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                     {canEdit && <button onClick={() => { setEditingId(item.id); setEditForm({
                       name: item.name, price_amount: item.price_amount, price_unit: item.price_unit,
                       specs: item.specs || [], service_duration: item.service_duration || "",
+                      cancellation_policy: categoryIsAccommodationById(item.category) ? item.cancellation_policy || "" : "", category_id: item.category,
                       whats_included: item.whats_included || "", requirements: item.requirements || "",
                       revisions: item.revisions || "", delivery_time: item.delivery_time || "",
                       // Tri-state selects seeded to the stored boolean — an

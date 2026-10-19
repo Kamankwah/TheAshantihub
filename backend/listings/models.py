@@ -153,6 +153,12 @@ class Listing(models.Model):
     # price_amount doubles as the per-night rate for an accommodation listing.
     units_total = models.PositiveIntegerField(default=1)
 
+    # What a customer gets back when they cancel a service or stay before it is delivered (ledger.cancellation, Plan 7E).
+    # Copied onto the sale when it is paid, so an edit here never changes a sale already paid.
+    cancellation_policy = models.CharField(
+        max_length=10, choices=[("flexible", "Flexible"), ("moderate", "Moderate"), ("strict", "Strict")], default="flexible",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

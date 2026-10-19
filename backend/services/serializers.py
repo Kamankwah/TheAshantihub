@@ -11,6 +11,10 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
     listing_name = serializers.CharField(source="listing.name", read_only=True)
     customer_name = serializers.CharField(source="customer.full_name", read_only=True)
     business_owner_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+    # Ledger Plan 7E: when the service is accepted by itself, whether its money is settled, and whether a problem is open.
+    auto_accept_at = serializers.SerializerMethodField()
+    settled = serializers.SerializerMethodField()
+    problem_reported = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceRequest
@@ -18,8 +22,32 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             "id", "listing", "listing_name", "customer_name", "business_owner_name",
             "message", "budget", "agreed_price", "decline_reason", "progress_note",
             "status", "responded_at", "paid_at", "completed_at", "created_at",
+            "auto_accept_at", "settled", "problem_reported",
         ]
         read_only_fields = fields
+
+
+    def _sale(self, obj):
+        return getattr(obj, "sale", None)
+
+    def get_auto_accept_at(self, obj):
+        from ledger import sales
+
+        sale = self._sale(obj)
+        if sale is None or sale.released_at is not None or sale.reversed_at is not None or obj.completed_at is None:
+            return None
+        at = sales.release_at(sale)
+        return serializers.DateTimeField().to_representation(at) if at else None
+
+    def get_settled(self, obj):
+        sale = self._sale(obj)
+        return bool(sale and (sale.released_at is not None or sale.reversed_at is not None))
+
+    def get_problem_reported(self, obj):
+        from ledger import sales
+
+        sale = self._sale(obj)
+        return bool(sale and sales.has_open_dispute(sale))
 
 
 class ServiceRequestCreateSerializer(serializers.ModelSerializer):

@@ -9,6 +9,7 @@ import { formatEventDate } from "./EventCard.jsx";
 import { ReviewsList, ReviewWriteForm, starString } from "./ReviewComponents.jsx";
 import TicketQr from "./TicketQr.jsx";
 import StaffGateNotice from "./StaffGateNotice.jsx";
+import BookingTermsNote from "./BookingTermsNote.jsx";
 import { useStaffGate } from "../hooks/useStaffGate.js";
 
 // ─── EventDetailPage ────────────────────────────────────────────────────────
@@ -364,7 +365,7 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
       {/* Tickets section (event ticketing + escrow work) — sits after the
           RSVP block and before Reviews/Organizer, same "full-width block
           below the gallery+details flex row" placement. */}
-      <EventTicketsSection eventId={id} hasTickets={detail.has_tickets} user={user} PaymentComponent={PaymentComponent} />
+      <EventTicketsSection eventId={id} hasTickets={detail.has_tickets} eventDate={detail.event_date} refundDays={detail.refund_until_days_before} user={user} PaymentComponent={PaymentComponent} />
 
       {/* Reviews + Organizer sections (reviews/ratings/Q&A plan, Phase 6) —
           see the block comment above the component for the full rationale.
@@ -393,7 +394,7 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
 // MoMoPayment) opens immediately on "Buy" with a locally snapshotted
 // amount/quantity, and the actual
 // POST /api/events/{id}/tickets/purchase/ only fires from its onSuccess.
-function EventTicketsSection({ eventId, hasTickets, user, PaymentComponent }) {
+function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user, PaymentComponent }) {
   const ticketTypesQuery = useEventTicketTypes(hasTickets ? eventId : null);
   const ticketTypes = ticketTypesQuery.data || [];
 
@@ -465,6 +466,10 @@ function EventTicketsSection({ eventId, hasTickets, user, PaymentComponent }) {
         </div>
       )}
       {payError && <div style={{ marginBottom: 12, color: "#ffb4b4", fontSize: "0.76rem" }}>{payError}</div>}
+      {/* The refund and payout terms are the event's, not each ticket type's: shown once, above the list, to someone who can buy. */}
+      {ticketTypes.length > 0 && user && (isCustomer || staffGate.isStaff) && (
+        <BookingTermsNote kind="ticket" start={eventDate ? new Date(eventDate) : null} refundDays={refundDays ?? null} />
+      )}
 
       {ticketTypes.map((tt) => {
         const soldOut = tt.quantity_remaining != null && tt.quantity_remaining <= 0;

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { BusinessDashboard } from './App.jsx'
@@ -441,6 +441,83 @@ describe('BusinessDashboard Listings & Prices — create a new listing', () => {
     expect(screen.getByText('✓ Create Listing')).not.toBeDisabled()
   })
 
+  it('offers no cancellation policy for a product', async () => {
+    mockDashboardData()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    await openCreateForm()
+    fillCommonFields({ categoryId: 2 })
+    await screen.findByText('Return policy *')
+    expect(screen.queryByLabelText('Cancellation policy *')).not.toBeInTheDocument()
+  })
+
+  const LODGE = { id: 3, slug: 'lodges', icon: '🛏️', label: 'Lodges', color: '#000080', kind: 'service', is_accommodation: true }
+  const withLodgeCategory = () => server.use(
+    http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json([
+      { id: 1, slug: 'hotels', icon: '🏨', label: 'Hotels', color: '#000080', kind: 'service' },
+      { id: 2, slug: 'food', icon: '🍲', label: 'Food', color: '#CC0000', kind: 'product' },
+      LODGE,
+    ])),
+  )
+
+  it('spells out each cancellation policy in plain words for a stay', async () => {
+    mockDashboardData()
+    withLodgeCategory()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    await openCreateForm()
+    await screen.findByRole('option', { name: /Lodges/ })
+    fillCommonFields({ categoryId: 3 })
+    await screen.findByRole('option', { name: /^Flexible:/ })
+    const select = screen.getByLabelText('Cancellation policy *')
+    expect(within(select).getByRole('option', { name: 'Flexible: Full refund until 24 hours before the start.' })).toBeInTheDocument()
+    expect(within(select).getByRole('option', { name: 'Moderate: Full refund until 5 days before the start, half until 24 hours before.' })).toBeInTheDocument()
+    expect(within(select).getByRole('option', { name: 'Strict: Half refunded until 7 days before the start, nothing after.' })).toBeInTheDocument()
+  })
+
+  it('requires a cancellation policy for a stay and sends it', async () => {
+    mockDashboardData()
+    withLodgeCategory()
+    let postBody = null
+    server.use(http.post('http://localhost:8000/api/listings/mine/', async ({ request }) => {
+      postBody = await request.json()
+      return HttpResponse.json({ id: 44, ...postBody, status: 'draft' }, { status: 201 })
+    }))
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    await openCreateForm()
+    await screen.findByRole('option', { name: /Lodges/ })
+    fillCommonFields({ categoryId: 3 })
+    expect(screen.getByText('✓ Create Listing')).toBeDisabled()
+    await screen.findByRole('option', { name: /^Moderate:/ })
+    fireEvent.change(screen.getByLabelText('Cancellation policy *'), { target: { value: 'moderate' } })
+    expect(screen.getByText('✓ Create Listing')).not.toBeDisabled()
+    fireEvent.click(screen.getByText('✓ Create Listing'))
+    await waitFor(() => expect(postBody).toMatchObject({ category: 3, cancellation_policy: 'moderate' }))
+  })
+
+  it('lets the vendor choose a stay policy while the ledger is off', async () => {
+    mockDashboardData()
+    withLodgeCategory()
+    server.use(http.get('http://localhost:8000/api/ledger/booking-terms/', () => HttpResponse.json({
+      enabled: false,
+      policies: { flexible: { label: 'Flexible', tiers: [[24, 10000]], text: 'Full refund until 24 hours before the start.' } },
+    })))
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    await openCreateForm()
+    await screen.findByRole('option', { name: /Lodges/ })
+    fillCommonFields({ categoryId: 3 })
+    expect(await screen.findByRole('option', { name: /^Flexible:/ })).toBeInTheDocument()
+    expect(screen.getByLabelText('Cancellation policy *')).toBeEnabled()
+  })
+
+  it('has no policy to choose for an ordinary service, only a line saying how it is cancelled', async () => {
+    mockDashboardData()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    await openCreateForm()
+    fillCommonFields({ categoryId: 1 })
+    expect(await screen.findByText('Customers can cancel a service for a full refund until you mark the job done.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Cancellation policy *')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Customers see this before they pay/)).not.toBeInTheDocument()
+  })
+
   it('creates a product listing with the decision fields in the POST body and shows the toast', async () => {
     mockDashboardData()
     let postBody = null
@@ -488,7 +565,7 @@ describe('BusinessDashboard Listings & Prices — create a new listing', () => {
     fireEvent.change(screen.getByPlaceholderText('What you need from the customer before you can start'), { target: { value: 'Comfortable shoes.' } })
     fireEvent.change(screen.getByPlaceholderText('e.g. 2 hours'), { target: { value: '3 hours' } })
     fireEvent.change(screen.getByPlaceholderText('e.g. 3-5 business days'), { target: { value: 'Within 48 hours' } })
-    // No product answers needed for a service — button enabled already
+    // No product answers needed for a service, and no policy to choose (a service is cancelled until it is done)
     expect(screen.getByText('✓ Create Listing')).not.toBeDisabled()
     fireEvent.click(screen.getByText('✓ Create Listing'))
     await waitFor(() => expect(postBody).toMatchObject({
@@ -496,6 +573,7 @@ describe('BusinessDashboard Listings & Prices — create a new listing', () => {
       service_duration: '3 hours', whats_included: 'Transport and guide.',
       requirements: 'Comfortable shoes.', delivery_time: 'Within 48 hours',
     }))
+    expect(postBody).not.toHaveProperty('cancellation_policy')
   })
 
   it('uploads the chosen photo to the owner photo route after the listing is created', async () => {
