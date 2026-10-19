@@ -15,11 +15,12 @@ class DisputeSerializer(serializers.ModelSerializer):
     resolved_by_name = serializers.CharField(source="resolved_by.full_name", read_only=True, default=None)
     order_total_amount = serializers.SerializerMethodField()
     order_status = serializers.SerializerMethodField()
+    order_refundable_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Dispute
         fields = [
-            "id", "order", "order_total_amount", "order_status",
+            "id", "order", "order_total_amount", "order_status", "order_refundable_amount",
             "raised_by", "raised_by_name", "reason", "description", "status",
             "resolution_notes", "refund_amount",
             "flagged_by", "flagged_by_name", "resolved_by", "resolved_by_name",
@@ -36,6 +37,17 @@ class DisputeSerializer(serializers.ModelSerializer):
 
     def get_order_status(self, obj):
         return obj.order.status if obj.order_id else None
+
+    def get_order_refundable_amount(self, obj):
+        """What can still be refunded to the customer (ledger.refunds.refundable: what they paid net of the coupon, less a
+        delivery fee kept for the rider, less earlier refunds), or None while the ledger is off or without a ledger order."""
+        if not obj.order_id:
+            return None
+        from ledger.money import from_pesewas
+        from ledger.refunds import refundable
+
+        amount = refundable(obj.order)
+        return str(from_pesewas(amount)) if amount is not None else None
 
 
 class DisputeResolveSerializer(serializers.Serializer):

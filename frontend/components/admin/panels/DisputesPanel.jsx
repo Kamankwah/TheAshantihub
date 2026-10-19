@@ -81,6 +81,7 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
           <div style={{ color: D.textDim, fontSize: "0.65rem" }}>
             Raised by {dispute.raised_by_name || "—"} • {dispute.created_at?.slice(0, 10)}
             {dispute.order_total_amount != null && ` • Order total GHS ${dispute.order_total_amount}`}
+            {dispute.order_refundable_amount != null && ` • Can still be refunded GHS ${dispute.order_refundable_amount}`}
           </div>
           {dispute.flagged_by_name && (
             <div style={{ color: D.textDim, fontSize: "0.65rem", marginTop: 2 }}>Flagged by {dispute.flagged_by_name}</div>

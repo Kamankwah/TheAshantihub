@@ -222,19 +222,19 @@ class FulfilmentCheck(models.Model):
 class OrderRefund(models.Model):
     """Money given back to a customer for a paid order, always into their AshantiHub wallet (ledger.refunds). One row
     per (order, source): the source names what asked for it ("cancel", "pickup_expired", "dispute-<id>"), so the same
-    request can never refund twice. Pesewas: `amount_pesewas` is the order money this refund settles (items_pesewas +
-    delivery_pesewas − subsidy_pesewas, plus the kept fee on a whole refund: it is inside `amount_pesewas` but not returned,
-    see `delivery_kept_pesewas`); `processing_pesewas` is a collection charge AshantiHub gave back on its own or
+    request can never refund twice. Pesewas: `amount_pesewas` is the customer's real credit from order money (items_pesewas +
+    delivery_pesewas − subsidy_pesewas, less the kept fee on a whole refund; never more than they paid net of the coupon,
+    and never the kept fee itself); `processing_pesewas` is a collection charge AshantiHub gave back on its own or
     a vendor's error; `delivery_kept_pesewas` is the delivery fee kept from the customer because the rider had picked up (it belongs to
     the rider and is never refunded; `wallet_pesewas` is the credit the customer got). `allocation` lists what each fee snapshot gave. `journal` is null only when nothing had to move."""
 
     order = models.ForeignKey("orders.Order", on_delete=models.PROTECT, related_name="refunds")
     source = models.CharField(max_length=60)
     whole = models.BooleanField(default=False)
-    amount_pesewas = models.BigIntegerField()
+    amount_pesewas = models.BigIntegerField()       # the customer's real credit from order money (excludes the kept fee)
     items_pesewas = models.BigIntegerField(default=0)
     delivery_pesewas = models.BigIntegerField(default=0)
-    subsidy_pesewas = models.BigIntegerField(default=0)
+    subsidy_pesewas = models.BigIntegerField(default=0)    # the coupon share closed off (a shortfall is kept out of the credit)
     processing_pesewas = models.BigIntegerField(default=0)
     delivery_kept_pesewas = models.BigIntegerField(default=0)    # the delivery fee kept from the customer because the rider had picked up
     allocation = models.JSONField(default=list, blank=True)
@@ -249,9 +249,9 @@ class OrderRefund(models.Model):
 
     @property
     def wallet_pesewas(self):
-        """What actually went into the customer's wallet: the order money returned plus any processing charge given back,
-        less the delivery fee kept for the rider (never below zero). Show this, not `amount_pesewas`, to the customer."""
-        return max(0, self.amount_pesewas + self.processing_pesewas - self.delivery_kept_pesewas)
+        """What actually went into the customer's wallet: the order money returned (already net of the delivery fee kept for
+        the rider) plus any processing charge given back. Show this to the customer."""
+        return self.amount_pesewas + self.processing_pesewas
 
     def __str__(self):
         return f"Refund {self.source} on order {self.order_id}"

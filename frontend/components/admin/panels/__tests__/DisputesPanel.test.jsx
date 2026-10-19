@@ -11,12 +11,12 @@ const DISPUTE = {
 }
 const auth = { hasPermission: (c) => c === 'disputes.resolve_financial' }
 
-function setup() {
+function setup(dispute = DISPUTE) {
   const resolveBodies = []
   server.use(
     http.get('http://localhost:8000/api/disputes/', ({ request }) => {
       const status = new URL(request.url).searchParams.get('status')
-      return HttpResponse.json({ count: 1, next: null, previous: null, results: status === 'pending' ? [DISPUTE] : [] })
+      return HttpResponse.json({ count: 1, next: null, previous: null, results: status === 'pending' ? [dispute] : [] })
     }),
     http.post('http://localhost:8000/api/disputes/:id/resolve/', async ({ request }) => {
       resolveBodies.push(await request.json())
@@ -59,5 +59,18 @@ describe('DisputesPanel Reject confirmation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm reject' }))
     await waitFor(() => expect(bodies).toHaveLength(1))
     expect(bodies[0]).toMatchObject({ outcome: 'rejected', refund_amount: null })
+  })
+})
+
+describe('DisputesPanel refundable amount', () => {
+  it('shows "Can still be refunded" from order_refundable_amount and hides it when null', async () => {
+    setup({ ...DISPUTE, order_total_amount: '105.00', order_refundable_amount: '90.00' })
+    expect(await screen.findByText(/Can still be refunded GHS 90\.00/)).toBeInTheDocument()
+  })
+
+  it('hides "Can still be refunded" when order_refundable_amount is null', async () => {
+    setup({ ...DISPUTE, order_total_amount: '105.00', order_refundable_amount: null })
+    expect(await screen.findByText(/Order total GHS 105\.00/)).toBeInTheDocument()
+    expect(screen.queryByText(/Can still be refunded/)).not.toBeInTheDocument()
   })
 })

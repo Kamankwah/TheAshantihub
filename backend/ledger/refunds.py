@@ -11,17 +11,24 @@ A refund always goes to the customer's AshantiHub wallet and is recorded as an `
   `refunded_fee_pesewas`; the fee share is cumulative and rounded half up, so the fee given back never exceeds the fee
   taken and reaches it exactly when the whole base is refunded. That frees the lifetime cap (fees.charged_to_date), and
   release pays only what is left. A snapshot refunded in full gets `reversed_at`.
+* A refund never exceeds what the customer actually paid, net of the coupon, minus the delivery fee kept for the rider
+  (ruling R1). `Left.customer` is what a whole refund gives the customer now (the fee included when it is not kept);
+  `Left.partial` is what a partial or shop-scoped refund may give: the delivery fee still held is reserved from the very
+  first refund, whether or not a pickup has happened yet, so a partial refund can never hand back money the fee needs.
+  `OrderRefund.amount_pesewas` is the customer's real credit from order money, never the kept fee; `refundable(order)`
+  is what staff see as "can still be refunded".
 * A partial refund of R comes out of the item lines in proportion to what is left of each (largest remainder); the
-  customer gets R. The delivery fee comes back only with the whole order. A scoped refund that takes every item
-  leaves it held until the order is released (escrow.release_verified then releases the Delivery payable balance) or
-  refunded whole. The refund that empties the order ("whole") also returns the rest of any coupon to AshantiHub (Cr promo
+  customer gets R and the vendors give R. The delivery fee comes back only with the whole order. A scoped refund that
+  takes every item leaves it held until the order is released (escrow.release_verified then releases the Delivery
+  payable balance) or refunded whole. A free-delivery promo (Order.delivery_fee 0, WaivedFeeCharge) has no fee to reserve. The refund that empties the order ("whole") also returns the rest of any coupon to AshantiHub (Cr promo
   subsidy), so the customer never gets back more than they paid.
 * The delivery fee belongs to the rider once any pickup is done (ledger.riders.delivery_kept: a collected stop, else the
   assignment's `picked_up_at`; a delivery that failed after a pickup counts). A refund of goods, partial or whole, never
-  returns it: `Left.delivery` is 0, the wallet credit is `amount + processing - kept` (floored at 0: a coupon can leave the
-  customer less than the fee; the rider is still paid in full and AshantiHub bears the gap, as the promo subsidy that would
-  have gone back is reduced by it), and `OrderRefund.delivery_kept_pesewas` records it. A whole refund before release settles
-  the fee there and then, since the release will never run (escrow.settle_delivery, first: the fee leaves the Delivery
+  returns it: `Left.delivery` is 0, the customer is given what they paid net of the coupon less the kept fee, and
+  `OrderRefund.delivery_kept_pesewas` records it. A coupon can leave the customer having paid less than the kept fee
+  (`Left.shortfall`): a whole refund then still pays the rider in full, the customer's credit from order money is 0, and
+  AshantiHub's cost is only that gap, taken off the promo subsidy that would have gone back (subsidy - shortfall). A
+  processing charge given back is never eaten by the kept fee. A whole refund before release settles the fee there and then, since the release will never run (escrow.settle_delivery, first: the fee leaves the Delivery
   payable and a third-party rider is paid as at a release); a partial or shop-scoped refund moves nothing, and the held fee
   still goes to the rider at the usual release. After release a whole refund takes nothing back from the rider. With no
   pickup, a whole refund returns the fee as usual and the rider is paid nothing. A delivery earned also keeps the
@@ -56,12 +63,16 @@ class RefundError(Exception):
 
 @dataclass(frozen=True)
 class Left:
-    """What can still be refunded on an order, in pesewas."""
+    """What can still be refunded on an order, in pesewas. `customer`: what a whole refund gives the customer now, net of
+    the coupon and of the kept fee; `partial`: what a partial or shop-scoped refund may give (the held fee reserved);
+    `shortfall`: the part of the kept fee the customer did not pay, which AshantiHub covers out of the subsidy."""
 
     customer: int
     delivery: int
     subsidy: int
     processing: int
+    partial: int
+    shortfall: int
 
 
 def is_wholly_refunded(order):
@@ -92,12 +103,43 @@ def left(order, *, kept=None):
         customer=Sum("amount_pesewas"), delivery=Sum("delivery_pesewas"), subsidy=Sum("subsidy_pesewas"),
         processing=Sum("processing_pesewas"),
     )
+    paid_left = to_pesewas(order.total_amount) - (done["customer"] or 0)
+    fee_held = to_pesewas(order.delivery_fee or 0) - (done["delivery"] or 0)
     return Left(
-        customer=to_pesewas(order.total_amount) - (done["customer"] or 0),
-        delivery=max(0, to_pesewas(order.delivery_fee or 0) - (done["delivery"] or 0) - kept),
+        customer=max(0, paid_left - kept),
+        delivery=max(0, fee_held - kept),
         subsidy=to_pesewas(order.discount_amount or 0) - (done["subsidy"] or 0),
         processing=processing_paid(order) - (done["processing"] or 0),
+        partial=max(0, paid_left - fee_held),
+        shortfall=max(0, kept - paid_left),
     )
+
+
+def refundable(order):
+    """What can still be refunded to the customer on this order, in pesewas: what a whole refund would give now. None while
+    the ledger is off or for an order whose payment was never recorded in it. An unlocked read, for display only."""
+    if not escrow.enabled() or not Journal.objects.filter(key=escrow.pay_key(order)).exists():
+        return None
+    return left(order).customer
+
+
+def _partial_limits(customer, remaining, items_room, scoped):
+    """Raise RefundError when a partial or shop-scoped refund of `customer` pesewas cannot be given (refund_order and
+    check share it, so the pre-check never disagrees with the refund)."""
+    if customer > remaining.customer:
+        raise RefundError(f"Only GH₵ {from_pesewas(remaining.customer)} of this order can still be refunded.")
+    if scoped and customer > items_room:
+        raise RefundError(f"Only GH₵ {from_pesewas(items_room)} of those items can still be refunded.")
+    if not scoped and customer > items_room:
+        raise RefundError(
+            f"The items left are worth GH₵ {from_pesewas(items_room)}. The delivery fee comes back only with the "
+            f"whole order: GH₵ {from_pesewas(remaining.customer)}."
+        )
+    if customer > remaining.partial:
+        raise RefundError(
+            f"Only GH₵ {from_pesewas(remaining.partial)} of this order can be refunded before the whole order (the "
+            f"delivery fee is kept back)."
+        )
 
 
 def allocate(amount, rooms):
@@ -180,20 +222,15 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
                     escrow.settle_delivery(order, now, rider=rider)
                 return None
             customer, delivery, subsidy, shares = remaining.customer, remaining.delivery, remaining.subsidy, dict(rooms)
+            shortfall = remaining.shortfall
         else:
-            customer = items_room if amount_pesewas is None else amount_pesewas
-            if customer > remaining.customer:
-                raise RefundError(f"Only GH₵ {from_pesewas(remaining.customer)} of this order can still be refunded.")
-            if owner_ids is not None and customer > items_room:
-                raise RefundError(f"Only GH₵ {from_pesewas(items_room)} of those items can still be refunded.")
-            if customer > items_room:
-                raise RefundError(
-                    f"The items left are worth GH₵ {from_pesewas(items_room)}. The delivery fee comes back only with the "
-                    f"whole order: GH₵ {from_pesewas(remaining.customer)}."
-                )
+            # A scoped refund with no amount takes what its shops' lines hold, capped by what a partial refund may give
+            # (the vendor debit equals the customer credit; the unrefunded coupon share returns with the whole refund).
+            customer = min(items_room, remaining.partial) if amount_pesewas is None else amount_pesewas
+            _partial_limits(customer, remaining, items_room, owner_ids is not None)
             if customer <= 0:
                 raise RefundError("Nothing is left to refund on those items.")
-            delivery, subsidy, shares = 0, 0, allocate(customer, rooms)
+            delivery, subsidy, shortfall, shares = 0, 0, 0, allocate(customer, rooms)
             if processing:
                 # A partial refund gives back only its share of the charge, half up; the refund that empties the order
                 # gives back whatever is left of it (spec §1 row 14: AshantiHub bears only what went wrong).
@@ -207,7 +244,7 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
         ))
         refund = _post(
             order, snapshots, shares, customer=customer, delivery=delivery, subsidy=subsidy, processing=processing,
-            whole=whole, source=source, by=by, note=note, now=now, earned=earned, kept_fee=kept_fee,
+            whole=whole, source=source, by=by, note=note, now=now, earned=earned, kept_fee=kept_fee, shortfall=shortfall,
             extra_locks=escrow.waiver_return_accounts(order) if clears_promo else (),
         )
         if clears_promo:
@@ -253,7 +290,8 @@ def _free_promo(order, extra, now=None):
     reverse_for_order(order, "order_refunded")
 
 
-def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, whole, source, by, note, now, earned, kept_fee, extra_locks=()):
+def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, whole, source, by, note, now, earned, kept_fee, shortfall,
+          extra_locks=()):
     released = Journal.objects.filter(key=escrow.release_key(order)).exists()
     # The delivery fee belongs to the rider once any pickup is done: a whole refund never returns it (`delivery` is already 0
     # then). Before release it is settled here, since the release will never run: the delivery assignment and rider rows are
@@ -261,10 +299,10 @@ def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, 
     kept = kept_fee if whole else 0       # read under the assignment row's lock by refund_order
     settling = whole and not released and earned
     settle_rider = riders.rider_for_settle(order) if settling else None
-    # What the customer can still be given: a coupon may have left them less than the fee kept. The rider is paid in full
-    # anyway; the unfunded part comes out of the promo subsidy that would have gone back (AshantiHub bears it).
-    wallet_credit = max(0, customer + processing - kept)
-    unfunded = wallet_credit - (customer + processing - kept)
+    # `customer` is already net of the kept fee (Left.customer). A coupon may have left the customer having paid less than
+    # that fee: the rider is paid in full anyway, and the gap (`shortfall`) comes off the promo subsidy that would have gone
+    # back (AshantiHub bears it). A processing charge given back is never eaten by the kept fee.
+    wallet_credit = customer + processing
     by_vendor, allocation = {}, []
     for snap in snapshots:
         base = shares.get(snap.pk, 0)
@@ -306,8 +344,8 @@ def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, 
         debits.append(posting.debit(holder, delivery))
     if processing:
         debits.append(posting.debit(posting.account_for(Account.PROVIDER_FEES), processing))
-    if subsidy - unfunded:
-        credits.append(posting.credit(posting.account_for(Account.PLATFORM_PROMO_SUBSIDY), subsidy - unfunded))
+    if subsidy - shortfall:
+        credits.append(posting.credit(posting.account_for(Account.PLATFORM_PROMO_SUBSIDY), subsidy - shortfall))
     if wallet_credit:
         credits.append(posting.credit(posting.account_for(Account.CUSTOMER_WALLET, order.customer), wallet_credit))
     # Every account this transaction posts to, in one sorted pass before the first posting (spec W7); `extra_locks`
@@ -358,16 +396,10 @@ def check(order, amount_pesewas, *, owner_ids=None):
         return
     _check_amount(amount_pesewas)
     remaining = left(order)
+    if owner_ids is None and amount_pesewas == remaining.customer:
+        return                                              # a whole refund: refund_order gives it
     snaps = OrderFeeSnapshot.objects.filter(order=order, reversed_at__isnull=True)
     if owner_ids is not None:
         snaps = snaps.filter(business_owner_id__in=owner_ids)
     items_room = sum(s.base_pesewas - s.refunded_base_pesewas for s in snaps)
-    if amount_pesewas > remaining.customer:
-        raise RefundError(f"Only GH₵ {from_pesewas(remaining.customer)} of this order can still be refunded.")
-    if owner_ids is not None and amount_pesewas > items_room:
-        raise RefundError(f"Only GH₵ {from_pesewas(items_room)} of those items can still be refunded.")
-    if owner_ids is None and amount_pesewas != remaining.customer and amount_pesewas > items_room:
-        raise RefundError(
-            f"The items left are worth GH₵ {from_pesewas(items_room)}. The delivery fee comes back only with the "
-            f"whole order: GH₵ {from_pesewas(remaining.customer)}."
-        )
+    _partial_limits(amount_pesewas, remaining, items_room, owner_ids is not None)

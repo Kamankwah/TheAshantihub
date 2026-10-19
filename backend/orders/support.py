@@ -115,6 +115,16 @@ def _row(order):
     }
 
 
+def _refundable(order):
+    """What can still be refunded to the customer, as a string (ledger.refunds.refundable), or None while the ledger is off
+    or for an order paid before it was on."""
+    from ledger.money import from_pesewas
+    from ledger.refunds import refundable
+
+    amount = refundable(order)
+    return str(from_pesewas(amount)) if amount is not None else None
+
+
 class SupportOrderSearchView(APIView):
     """GET /api/orders/support/?q= — by order number, customer name or phone
     (nine or more digits). Without q, the latest orders. Phones come back masked."""
@@ -170,6 +180,7 @@ class SupportOrderDetailView(APIView):
                 for line in order.items.all()
             ],
             "rider": assignment.dispatch.full_name if assignment is not None and assignment.dispatch_id else None,
+            "refundable": _refundable(order),
             "timeline": delivery_events_for(order),
             "actions": allowed_actions(order),
             "payments": payments_note(),
