@@ -157,7 +157,15 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `full_name`, `login_phone` or `email` (`proposals.PROTECTED_OWNER_FIELDS`, claimed or not): the
   business files those itself (`portfolio.detail_changes`, `business.detail_change`) and a scout visit
   verifies them. A pending or historical `business.update` that still holds one cannot be approved,
-  and its undo lists the field as not reverted. A proposed phone that belongs to staff is refused. Deactivating a scout counts only their non-rejected managed businesses.
+  and its undo lists the field as not reverted. A proposed phone that belongs to staff is refused. Deactivating a
+  scout counts only their non-rejected managed businesses.
+- **Business detail change request (`portfolio/detail_changes.py`).** A claimed business files a
+  `BusinessDetailChangeRequest` for its `full_name`, `login_phone` or `email` (step-up forced while the ledger is on;
+  the refusals for a contact someone else holds are one generic message). Operations assigns an independent scout
+  (not the registrar or account manager) who visits and verifies in range of the business's pin; the scout then
+  submits `business.detail_change` (two people, sudo, `public_payload` masks the new value). Applying re-runs
+  `clean(detailed=True)`, restarts payout cooling, revokes the owner's trusted devices when the sign-in contact
+  changes (JWTs already issued stay valid) and notifies the old contact. There is no owner undo for an applied change.
 - **Owner claim tokens** (`accounts.claims`) are stored as SHA-256 hashes; a hand-over token works
   only on the scout session that started it; the claim view is `activity_exempt` and records
   `business.claimed` itself, so the password never reaches the activity log. The claim strips
@@ -273,6 +281,16 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   on Support's "matches" (`sales.record_verification`, `/api/ledger/bookings/`), with the 72-hour window counted from
   hand-over (provisional until the owner confirms it: spec gate (lvii)). Tickets for a customer-organised event stay outside the ledger (MoMo only). With the ledger on a ticket's
   escrow flag follows its sale: a scan no longer releases it, the manual release and hold answer `409 ledger_on`.
+  **A door scan never releases money, ledger on or off:** it records evidence and tells the customer. A ticket with no
+  `BookingSale` (legacy) stays held until Accounting releases it by hand (`unreleased_legacy`; the serializer's
+  `in_ledger`, the summary's `legacy_held`).
+  **Event cancellation (`events/cancellation.py`):** `cancel_event` marks the event `CANCELLED` (one record: first
+  reason, time and staff win), then refunds each ticket in its own transaction, in full (price plus its processing
+  share) from AshantiHub's own account through `sales.refund`; the organiser is not charged. The organiser
+  (`events/mine/<pk>/cancel/`, refused once the event date has passed) or Operations (`events/moderation/<pk>/cancel/`,
+  sudo) cancels; a beat job (`ledger.tasks.finish_cancelled_event_refunds`) finishes leftovers. A cancelled event takes
+  no ticket sale, edit, approval, rejection or renewal; a Hubtel payment confirmed after the cancel marks its session
+  FAILED (`not_applied="event_cancelled"`) and is refunded by hand; `release_due` skips its sales.
   Refunds go to the wallet through `sales.refund` (one `BookingRefund` per sale and source; the refund that empties a
   sale cancels a booking not yet handed over), wired into the customer's stay cancel, Support's booking cancel, the
   Accountant's ticket refund and dispute resolution. **Lock order:** the service request or stay row (tickets: the

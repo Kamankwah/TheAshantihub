@@ -160,6 +160,14 @@ release). Products are unchanged (§4.1: Support's call, 72 hours from purchase)
 | Stay | this long after the scheduled check-in time (14:00 Accra), whether or not the guest arrived | `stay_issue_window_hours` (24) |
 | Event tickets | this long after the end of the event's day (an event carries no end time); a door scan only tells the customer and records evidence, the organiser is liable for its scans | `event_release_delay_hours` (48) |
 
+2026-10-19 owner ruling, event cancellation: an event can be cancelled by its organiser (`POST events/mine/<id>/cancel/`,
+reason of 5-300 characters, refused once the event date has passed) or by Operations (`events/moderation/<id>/cancel/`,
+sudo). Every ticket is refunded in full, price plus the processing charge, from AshantiHub's own account (the
+organiser-funded refund), a cancelled event takes no new sales, renewals or edits, buyers and the organiser are told,
+and a nightly job finishes any refund left over. Built in 7F-C Tasks 1-2. 2026-10-19 owner ruling, door scans: a scan
+never releases money, with the ledger on or off; a ticket with no `BookingSale` (a legacy ticket) stays held until
+Accounting releases it by hand, and the scan only records evidence and tells the customer. Built in 7F-C Task 3.
+
 An open dispute stops the timer until it closes. A customer can report a problem before release (it opens a dispute and
 tells Support). Before the milestone a cancel follows the vendor's cancellation policy, snapshotted on the sale at payment:
 flexible (full refund until 24 h before the start), moderate (full until 5 days, 50% until 24 h), strict (50% until 7
@@ -214,7 +222,9 @@ per-transaction limits are editable.
   bound to the action; at **every sign-in for staff and vendors**; for customers on a **new
   device or after a gap** (editable, default 30 days).
 - **Authenticator-app 2FA:** optional for anyone, with recovery codes; when enabled it replaces
-  the sign-in OTP.
+  the sign-in OTP. 2026-10-19 owner ruling: the authenticator app is offered (setup, confirm, and sign-in asking for
+  it) whatever `OTP_SIGNIN_ENFORCED` says; with the switches off a step-up code for `authenticator_change` can be
+  texted or emailed so a customer or owner can set it up. Built in 7F-C Task 5.
 - Trusted-device records, lockouts, an audit log of OTP events, an SMS-spend alert, and recovery
   via the other channel or an approved staff-assisted request.
 
@@ -515,14 +525,39 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   no sudo, and send no notice; the portfolio `business.update` approval can change a KYC-verified owner's name with no
   re-KYC. While the ledger is on these need sudo and maker-checker, the old contacts must be notified, and a contact or
   name change must restart the cooling period or block withdrawals.
+  **Built (7C Task 5):** while the ledger is on, those two PATCH doors need sudo and submit `wallets.holder_details_edit`
+  (two_people; one approval from another `users.manage` holder or a Super Admin applies it). Applying revalidates, restarts
+  `payout_cooling_hours` on the holder's destinations and logs the change masked; a stale check uses a keyed digest. Not
+  built: notices to the old contacts, the portfolio `business.update` route (parked), and a staff-name edit door.
+  2026-10-19 owner ruling: a scout can no longer change a business's name or contact at all; the business files the
+  change itself, a scout visits to verify it, and two staff approve it with the password, restarting the cooling
+  period; built in 7F-C Tasks 6-9 (`portfolio.detail_changes`, `business.detail_change`; the portfolio
+  `business.update` route no longer carries `full_name`, `login_phone` or `email`, Task 9). Notices to the old
+  contact are built in 7F-C Task 11 (the holder is told, in the app and at the old contact, of a staff edit or an
+  applied request). Applying a new sign-in contact also revokes the owner's trusted devices; JWTs already issued
+  stay valid (stateless, no revocation mechanism). The staff-name door is still open (a third-party rider's
+  `StaffUser` name is not a payout holder edit and tells nobody). Owner question: should Operations be able to edit a
+  third-party rider's staff name at all while the ledger is on?
 - (xxxv) **DECIDED 2026-10-18:** a second approver (maker-checker) is required to fail a stuck withdrawal, for any amount (built by plan 7C Task 4, approval kind `wallets.withdrawal_resolution`). Original text, superseded: **Owner question: a second approver (maker-checker) for failing a stuck withdrawal by hand** is undecided (plan
   B6). Today `wallets.manage` plus sudo and a password suffice, after the provider is asked.
+  2026-10-19 owner ruling: confirmed; a payout stuck at PROCESSING can be settled only as "paid" with evidence,
+  never failed. Chain wording (the note naming how many approvals are needed above the co-sign limit) corrected in 7F-C
+  Task 11.
 - (xxxvi) **Amount cases and the staff fail action.** A CONFIRMED amount case is treated like a dismissed one. Staff fail
   is REFUSED (409 `provider_processing`) while the provider says PROCESSING or answers any unmapped status; an
   unreachable provider answers 503 and changes nothing. A payout the provider keeps reporting as PROCESSING, or with a
   different amount, therefore cannot be ended in the app: a maker-checker "settle as paid / fail with provider evidence"
-  action is required before switch-on. Owner to confirm.
+  action is required before switch-on.
   **DECIDED 2026-10-18:** the maker-checker "settle as paid / fail with provider evidence" action is the way out for a payout stuck at processing, with mandatory evidence (built by plan 7C Task 4); the staff fail door submits it rather than failing directly.
+  **Built (7C Task 4):** `wallets.withdrawal_resolution`
+  (two_people, sudo; `POST staff/withdrawals/<id>/resolve/`, and the fail door asks with outcome failed). The provider is
+  asked again at approval: PROCESSING (or unmapped) blocks "failed" (409 `provider_processing`); "paid" with evidence is
+  allowed; a provider not wired to report (NotConnected) lets the evidence stand; an opposite final answer is 409
+  `provider_changed`.
+  2026-10-19 owner ruling: a payout stuck at PROCESSING can be settled only as "paid" with evidence, never failed
+  (owner confirmed; the earlier "owner should confirm" question is closed). The chain note now quotes the
+  approval setting `cosign_threshold` (7F-C Task 11). The holder's row lock is taken before the duplicate-pending
+  check there (7F-C Task 11).
 - (xxxvii) **The simulated statement is built from AshantiHub's own records,** so reconciliation can only prove sessions
   and journals agree. Plan 7 must supply: a Hubtel status client that raises a distinct "unreachable" exception (see
   (xxvii-b)), real `find()`, `pending_payouts()` and `statement()` implementations, and a flag on any reference that
@@ -557,9 +592,42 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   not assert the token was spent. Plan text B6, E5 and the line near 428 is stale; this spec is correct.
 - (li) **DECIDED 2026-10-18:** top-up money is withdrawable only after a hold of 1 hour, held in the governed setting `wallet_topup_hold_minutes` (default 60, minimum 60); setting in plan 7A Task 1, hold built by plan 7C Task 3. Original text, superseded: **Owner question: top-up money can be withdrawn immediately,** so a MoMo collection reversal after a withdrawal
   could cost AshantiHub money. Consider a hold period on newly topped-up funds.
+  **Built (7C Task 3):** `wallet_topup_hold_minutes` holds newly topped-up money. 2026-10-19: the refund-after-spend
+  bypass was tested (7F-C Task 4) and found not to exist in the old code; the tests are kept as regressions, the
+  held amount is capped by the balance, and `withdrawable` and `request` now share one formula.
 - (lii) **Migrations 0003 and 0004 of `wallets` could be folded into one before any deploy** (nothing is deployed yet;
   the 0003 file is root-owned, so fold it with the right permissions).
 - (liii) **Parked:** the daily/per-withdrawal limit check can race with a concurrent proposal and ignores future-dated rows.
+
+### 7F-C follow-ups (2026-10-19)
+
+Built in `docs/superpowers/plans/2026-10-19-wallet-rulings-7f-c-followups.md` (branch feature/wallet-rulings-7c):
+
+- (7F-C-a) **Frontend contracts (rulings R1, R8; 7F-C Task 10).** The staff-edit screen reads `approval_id` from a 201
+  (the change waits for a second person), staff sudo and the fail-with-evidence 201 are contract-tested, and the owner
+  profile has a "request a name or contact change" form (`DetailChangeRequest`). **Not built:** a step-up prompt;
+  see the open question below.
+- (7F-C-b) **Owner questions still open after 7F-C** (record the answer here and close):
+  1. R3's field list: the owner may request `full_name`, `login_phone` and `email`; `business_name` was left out.
+     Should it be added?
+  2. The unclaimed-business path: an unclaimed owner cannot file a request (409); a scout's hand-over claim still sets
+     an unclaimed owner's email once (`accounts/claims.py`). What is the rule?
+  3. The processing charge on an event cancellation: tickets are refunded price plus processing, funded by AshantiHub
+     from the organiser's account. Is refunding the processing charge right?
+  4. An organiser cannot cancel after the event date has passed (Task 2 ruling). Should Operations alone be able to?
+  5. A new sign-in contact revokes trusted devices but not already-issued JWTs (stateless). Build token revocation?
+  6. An applied detail change has no owner undo. Should one exist (and for how long)?
+  7. The frontend has no step-up prompt, so with the ledger on (step-up always forced) an owner cannot file a detail
+     change from the form until the wallet frontend (Plan 3F) lands.
+  8. A Hubtel payment confirmed after the event was cancelled is marked FAILED (`metadata.not_applied =
+     "event_cancelled"`, webhook answers 200) with no ticket and no staff queue; the customer's money is refunded by
+     hand from the webhook note. Add a queue?
+  9. The staff-name door is open (see (xxxiv)).
+- (7F-C-c) **Still open from 7C, not fixed in 7F-C:** staff authenticator guesses are not counted toward the daily
+  cap (the race of l.333) and a trusted-device sign-in bypasses it; the provider is asked twice per withdrawal
+  approval while locks are held; the scan-notice retry sweep; real concurrency tests (the lock-order tests assert query
+  order and captured on-commit callbacks); renewal after a cancel is unrefunded; a partly refunded sale can loop in the
+  cancel sweep; the in-ledger filter ignores `LEDGER_ENABLED`.
 
 ### Stage 5 (third-party dispatch) reconciliation (2026-10-16)
 
@@ -853,14 +921,15 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
   together (`fees.charged_to_date`), read after the business's Pending account is locked.
 - **B3 Journals.** `booking-pay-<session reference>`, `booking-release-<sale>`, `booking-refund-<sale>-<source>`; the
   nightly reconciliation expects `booking-pay-` for the three kinds when the session is marked `metadata["ledger"]`.
-- **B4 Handed over (§4.2).** A service the business marked done; a stay checked in; tickets once one of the purchase is
+- **B4 Handed over (§4.2).** (Since 7F-C Task 3 a scan releases nothing; a cancelled event's tickets are refunded in
+  full, Tasks 1-2.) A service the business marked done; a stay checked in; tickets once one of the purchase is
   scanned or the event's date has passed. Receipt is confirmed by Support on the call, or by a ticket scanned at the
   door. Provisional, owner to confirm (gate (lvii)): for bookings the 72-hour window runs from hand-over, not from purchase as §4.1 says for products.
 - **B5 Release and disputes.** As products: Support's "matches" releases at once; "does not match" opens a dispute
   logged the disputes way (`raised_by` null, `logged_by` the staff member), linked on the sale, which alone blocks
   release.
 - **B6 Ticket escrow flags.** With the ledger on, a ticket's held/released flag follows its sale: a scan no longer
-  releases it, release releases the purchase's tickets, the manual release and hold answer `409 ledger_on`, and the
+  releases it (nor does it with the ledger off: legacy tickets wait for Accounting, 7F-C Task 3), release releases the purchase's tickets, the manual release and hold answer `409 ledger_on`, and the
   Accountant's ticket refund pays the ticket's price to the wallet.
 - **B7 Paying.** The three pay endpoints take `payment_method` and carry "payment processing" on MoMo while the ledger is
   on, like order checkout; a wallet must cover the whole booking. Tickets for customer-organised events stay outside the
