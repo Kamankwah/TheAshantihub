@@ -83,6 +83,7 @@ class MoreTextTests(VendorBase):
         texts = self.texts("balance_negative")
         self.assertEqual(texts.count(), 1)
         self.assertIn("below zero", texts.get().body)
+        self.assertTrue(vendor_texts.fits(texts.get().body) and len(texts.get().body) <= 160, len(texts.get().body))
         day = timezone.localdate()
         self.assertEqual(texts.get().key, f"balance-{owner.pk}-negative-{day}")
         vendor_texts.balance_text(owner, -500, "negative")                          # same day again
@@ -104,6 +105,8 @@ class MoreTextTests(VendorBase):
         spend("s2", 5000)                                                            # 100.00: at the threshold
         self.assertEqual(self.texts("balance_low").count(), 1)
         self.assertIn("GHS 100.00", self.texts("balance_low").get().body)
+        low = self.texts("balance_low").get().body
+        self.assertTrue(vendor_texts.fits(low) and len(low) <= 160, len(low))
         MoneySetting.objects.create(key="vendor_low_balance_pesewas", value=2000, effective_from=timezone.now() - timedelta(days=1))
         fund(Account.VENDOR_AVAILABLE, owner, 20000, "fund-b")                       # 300.00
         VendorText.objects.all().delete()
@@ -136,3 +139,22 @@ class MoreTextTests(VendorBase):
             vendor_texts.send_due()
         self.assertFalse(VendorText.objects.exists())
         self.assertEqual(senders.sms_outbox, [])
+
+
+    def test_a_text_queued_before_a_suspension_is_never_sent(self):
+        owner = self.kofi.owner
+        text = vendor_texts.balance_text(owner, 500, "low")
+        self.assertEqual(text.status, VendorText.QUEUED)
+        senders.sms_outbox.clear()
+        owner.is_suspended = True
+        owner.save(update_fields=["is_suspended"])
+        text.next_attempt_at = timezone.now() - timedelta(minutes=1)
+        text.save(update_fields=["next_attempt_at"])
+        self.assertEqual(vendor_texts.send_due(), 0)
+        self.assertEqual(senders.sms_outbox, [])
+        self.assertEqual(VendorText.objects.get(pk=text.pk).status, VendorText.FAILED)
+        owner.is_suspended = False                                                  # lifted: nothing goes out late
+        owner.save(update_fields=["is_suspended"])
+        self.assertEqual(vendor_texts.send_due(), 0)
+        self.assertEqual(senders.sms_outbox, [])
+        self.assertEqual(VendorText.objects.get(pk=text.pk).status, VendorText.FAILED)

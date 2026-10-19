@@ -102,7 +102,9 @@ def post(*, key, kind, lines, reference_type="", reference_id="", memo="", allow
             if lowered_below_zero and account.kind not in Account.MAY_GO_NEGATIVE and account.kind not in allow_negative:
                 raise InsufficientFunds(account)
             account.save(update_fields=["net_credit"])
-        from wallets import vendor_texts
+        lowered = [a for a in locked.values() if a.kind == Account.VENDOR_AVAILABLE and a.balance < before[a.pk]]
+        if lowered:  # unrelated postings pay nothing for the balance warnings
+            from wallets import vendor_texts
 
-        vendor_texts.after_posting(locked.values(), before)  # a business whose Available just fell below zero or low is texted; never raises
+            vendor_texts.after_posting(lowered, before)  # a business whose Available just fell below zero or low is texted; never raises
         return journal

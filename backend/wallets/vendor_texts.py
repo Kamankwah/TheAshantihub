@@ -156,6 +156,8 @@ def deliver(pk, now=None):
     # The claim bumped `attempts`; that value is this worker's fencing token. If the lease runs out and another worker
     # re-claims the text, `attempts` moves on and every write below matches nothing: a late worker changes nothing.
     mine = VendorText.objects.filter(pk=pk, status=VendorText.QUEUED, attempts=text.attempts)
+    if text.business_owner.is_suspended:  # suspended since it was queued: never sent, and not left to go out when lifted
+        return VendorText.FAILED if mine.update(status=VendorText.FAILED) else None
     phone = confirmed_phone(text.business_owner)
     if not phone:
         return VendorText.NO_PHONE if mine.update(status=VendorText.NO_PHONE) else None
@@ -357,13 +359,17 @@ def order_released(order, journal):
             body = promo_only_text(order, share["promo"])
         else:
             body = released_text(order, share["released"], share["base"] - share["released"], share["promo"])
-        notice = notify_business_owner(
-            owner, VENDOR_MONEY, f"Order #{order.pk} released", body=body, link="/business-dashboard", icon="💰",
-        )
-        if owner.is_suspended:
-            continue
-        if queue(owner, VendorText.ORDER_RELEASED, released_key(order, owner), body, order=order, notification=notice) is not None:
-            queued += 1
+        try:
+            with transaction.atomic():  # a savepoint: a database error here must not poison the release's transaction
+                notice = notify_business_owner(
+                    owner, VENDOR_MONEY, f"Order #{order.pk} released", body=body, link="/business-dashboard", icon="💰",
+                )
+                if owner.is_suspended:
+                    continue
+                if queue(owner, VendorText.ORDER_RELEASED, released_key(order, owner), body, order=order, notification=notice) is not None:
+                    queued += 1
+        except Exception as exc:  # noqa: BLE001 - a text never stops a release
+            logger.error("Release text not queued: %s", type(exc).__name__)
     return queued
 
 
@@ -379,16 +385,16 @@ def refund_text(order, owner, amount, where=""):
     """The business's share of a refund on a paid order (`amount` pesewas, the fee given back already taken off), with its
     in-app copy (kept for a suspended business). One per order and business."""
     try:
-        if amount <= 0 or VendorText.objects.filter(key=refund_key(order, owner)).exists():
-            return None
-        body = f"AshantiHub: order #{order.pk} was refunded to the customer. GHS {money(amount)} came off your {where or 'balance'}."
-        with transaction.atomic():
+        with transaction.atomic():  # a savepoint: a database error here must not poison the refund's transaction
+            if amount <= 0 or VendorText.objects.filter(key=refund_key(order, owner)).exists():
+                return None
+            body = f"AshantiHub: order #{order.pk} was refunded to the customer. GHS {money(amount)} came off your {where or 'balance'}."
             notice = notify_business_owner(
                 owner, VENDOR_MONEY, f"Order #{order.pk} refunded", body=body, link="/business-dashboard", icon="💰",
             )
-        if owner.is_suspended:
-            return None
-        return queue(owner, VendorText.REFUND, refund_key(order, owner), body, order=order, notification=notice)
+            if owner.is_suspended:
+                return None
+            return queue(owner, VendorText.REFUND, refund_key(order, owner), body, order=order, notification=notice)
     except Exception as exc:  # noqa: BLE001 - a text never stops a refund
         logger.error("Refund text not queued: %s", type(exc).__name__)
         return None
@@ -403,16 +409,17 @@ def withdrawal_text(withdrawal, state):
     try:
         if state not in WITHDRAWAL_STATES or withdrawal.holder_type != OWNER_KEY:
             return None
-        owner = BusinessOwner.objects.filter(pk=withdrawal.holder_id).first()
-        if owner is None or owner.is_suspended:
-            return None
-        if state == "requested":
-            body = f"AshantiHub: withdrawal of GHS {money(withdrawal.amount_pesewas)} requested. We will text you when it is paid."
-        elif state == "paid":
-            body = f"AshantiHub: withdrawal paid. GHS {money(withdrawal.net_pesewas)} was sent to your payout account."
-        else:
-            body = f"AshantiHub: withdrawal of GHS {money(withdrawal.amount_pesewas)} did not go through. The money is back in your balance."
-        return queue(owner, VendorText.WITHDRAWAL, f"withdrawal-{withdrawal.pk}-{state}", body)
+        with transaction.atomic():  # a savepoint: a database error here must not poison the payout's transaction
+            owner = BusinessOwner.objects.filter(pk=withdrawal.holder_id).first()
+            if owner is None or owner.is_suspended:
+                return None
+            if state == "requested":
+                body = f"AshantiHub: withdrawal of GHS {money(withdrawal.amount_pesewas)} requested. We will text you when it is paid."
+            elif state == "paid":
+                body = f"AshantiHub: withdrawal paid. GHS {money(withdrawal.net_pesewas)} was sent to your payout account."
+            else:
+                body = f"AshantiHub: withdrawal of GHS {money(withdrawal.amount_pesewas)} did not go through. The money is back in your balance."
+            return queue(owner, VendorText.WITHDRAWAL, f"withdrawal-{withdrawal.pk}-{state}", body)
     except Exception as exc:  # noqa: BLE001 - a text never stops a payout
         logger.error("Withdrawal text not queued: %s", type(exc).__name__)
         return None
@@ -424,17 +431,18 @@ def balance_text(owner, available, kind):
     try:
         if kind not in ("negative", "low") or owner.is_suspended:
             return None
-        if kind == "negative":
-            body = (
-                f"AshantiHub: your Available balance is below zero (GHS {money(available)}). Withdrawals are paused; "
-                "your next sales will clear it."
+        with transaction.atomic():  # a savepoint: a database error here must not poison the posting's transaction
+            if kind == "negative":
+                body = (
+                    f"AshantiHub: your Available balance is below zero (GHS {money(available)}). Withdrawals are paused; "
+                    "your next sales will clear it."
+                )
+            else:
+                body = f"AshantiHub: your Available balance is low: GHS {money(available)}."
+            return queue(
+                owner, VendorText.BALANCE_NEGATIVE if kind == "negative" else VendorText.BALANCE_LOW,
+                f"balance-{owner.pk}-{kind}-{timezone.localdate()}", body, day=timezone.localdate(),
             )
-        else:
-            body = f"AshantiHub: your Available balance is low: GHS {money(available)}."
-        return queue(
-            owner, VendorText.BALANCE_NEGATIVE if kind == "negative" else VendorText.BALANCE_LOW,
-            f"balance-{owner.pk}-{kind}-{timezone.localdate()}", body, day=timezone.localdate(),
-        )
     except Exception as exc:  # noqa: BLE001 - a text never stops a posting
         logger.error("Balance text not queued: %s", type(exc).__name__)
         return None

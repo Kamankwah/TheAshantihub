@@ -200,7 +200,7 @@ class RiderRefundTests(RefundBase):
         with self.captureOnCommitCallbacks(execute=False) as callbacks:
             refunds.refund_order(order, source="dispute-1")
             self.assertEqual(notices.count(), 0)
-        self.assertGreaterEqual(len(callbacks), 1)  # the rider's notice, and the business's refund text send
+        self.assertGreaterEqual(len(callbacks), 2)  # the rider's notice, and the business's refund text send
         for callback in callbacks:
             callback()
         self.assertEqual(notices.count(), 1)
