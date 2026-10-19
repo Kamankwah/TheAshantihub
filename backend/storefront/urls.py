@@ -6,4 +6,6 @@ urlpatterns = [
     path("opening/", views.OpeningView.as_view(), name="storefront-opening"),
     path("opening/delay/", views.DelayOpeningView.as_view(), name="storefront-opening-delay"),
     path("test-accounts/", views.TestAccountsView.as_view(), name="storefront-test-accounts"),
+    path("notify-me/", views.NotifyMeView.as_view(), name="storefront-notify-me"),
+    path("notify-me/stop/", views.NotifyStopView.as_view(), name="storefront-notify-stop"),
 ]

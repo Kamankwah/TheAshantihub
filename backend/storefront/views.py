@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from accounts.models import Customer
 from accounts.permissions import HasRolePermission, RequiresSudo
 
-from . import opening
+from . import notify, opening
 from .models import TestAccount
 
 MANAGE = "opening.manage"
@@ -75,3 +75,32 @@ class TestAccountsView(APIView):
             return Response({"customer": "No such customer."}, status=status.HTTP_400_BAD_REQUEST)
         get_object_or_404(TestAccount, customer=customer).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class NotifyMeView(APIView):
+    """Public: ask to be told when the marketplace opens. Answers the same for a new and a repeated request."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "notify_me"
+
+    def post(self, request):
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            notify.subscribe(phone=data.get("phone"), email=data.get("email"))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"status": "saved"})
+
+
+class NotifyStopView(APIView):
+    """Public: the stop link. The same answer whether or not the token exists, so it cannot be used to probe."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "notify_me_stop"
+
+    def post(self, request):
+        data = request.data if isinstance(request.data, dict) else {}
+        notify.opt_out(data.get("token"))
+        return Response({"status": "stopped"})

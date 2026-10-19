@@ -395,6 +395,9 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
     "DEFAULT_THROTTLE_RATES": {
         "vendor_statement_export": "6/min",
+        # Marketplace opening: the public "Notify me" form and its one-click stop link.
+        "notify_me": "5/hour",
+        "notify_me_stop": "30/hour",
         "customer_register": "5/min",
         "business_owner_register": "5/min",
         "staff_activate": "5/min",
@@ -505,6 +508,10 @@ CELERY_TASK_PUBLISH_RETRY_POLICY = {"max_retries": 1, "interval_start": 0, "inte
 # Each job's owning app adds its own entry; core/tests/test_background_jobs.py
 # fails if an entry names a task that doesn't exist. Times are Africa/Accra.
 CELERY_BEAT_SCHEDULE = {
+    "storefront-send-opening-notices": {
+        "task": "storefront.tasks.send_opening_notices",
+        "schedule": 60.0,
+    },
     "activity-verify-chain": {
         "task": "activity.tasks.verify_activity_chain_nightly",
         "schedule": crontab(hour=1, minute=45),

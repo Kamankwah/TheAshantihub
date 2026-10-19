@@ -28,3 +28,24 @@ class TestAccount(models.Model):
 
     class Meta:
         ordering = ["created_at", "id"]
+
+
+class NotifyRequest(models.Model):
+    """Someone who asked to be told when the marketplace opens: a phone, an email, or both. One row per person
+    (unique on the phone's 9-digit key and on the lowercased email). The *_claimed_at fields are a short lease
+    taken before the provider is called, so two workers never send the same notice; *_sent_at is stamped only
+    after the provider accepted it."""
+
+    phone_key = models.CharField(max_length=9, null=True, blank=True, unique=True)
+    phone = models.CharField(max_length=20, blank=True, default="")
+    email_lower = models.EmailField(null=True, blank=True, unique=True)
+    sms_claimed_at = models.DateTimeField(null=True, blank=True)
+    email_claimed_at = models.DateTimeField(null=True, blank=True)
+    sms_sent_at = models.DateTimeField(null=True, blank=True)
+    email_sent_at = models.DateTimeField(null=True, blank=True)
+    opted_out_at = models.DateTimeField(null=True, blank=True)
+    token = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
