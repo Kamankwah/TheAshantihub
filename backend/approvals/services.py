@@ -34,6 +34,7 @@ STALE_MESSAGE = "This changed since it was requested — ask for a fresh request
 
 class ApprovalError(Exception):
     status_code = 400
+    code = ""  # a machine-readable reason the API answers beside the message, when a kind gives one
 
     def __init__(self, message):
         super().__init__(message)
@@ -73,6 +74,11 @@ class NoteRequired(ApprovalError):
 
 class UnknownKind(ApprovalError):
     pass
+
+
+def logged_payload(kind, approval):
+    """The payload as the append-only activity log and the inbox show it: the kind's masked copy when it has one."""
+    return approval.payload if kind.public_payload is None else _normalise(kind.public_payload(approval))
 
 
 def _normalise(value):
@@ -303,7 +309,9 @@ def _submit(maker, kind, now, title, payload, target_type, target_id, target_lab
             target_type=target_type[:50], target_id=str(target_id)[:64], target_label=target_label[:200],
             payload=_normalise(payload), maker_note=maker_note, created_at=now,
         )
-        if maker.role.name == Role.SUPER_ADMIN:
+        # A two_people kind (a hand-resolved withdrawal) is never applied by its maker alone, Super Admin or not.
+        direct = maker.role.name == Role.SUPER_ADMIN and not kind.two_people
+        if direct:
             _lock_target(approval)
         approval.before = _normalise(kind.current_state(approval))
         if kind.amount_of is not None:
@@ -312,9 +320,9 @@ def _submit(maker, kind, now, title, payload, target_type, target_id, target_lab
         # staged requests carry the second-approval requirement. This is the canvas rule
         # ("a Super Admin's own changes apply at once and are recorded"), decided on purpose:
         # the co-signer constrains requests staged by others, not a Super Admin's own. Also
-        # note no ApprovalKind defines amount_of yet, so the co-sign threshold is dormant.
-        approval.required_approvals = 1 if maker.role.name == Role.SUPER_ADMIN else rules.required_approvals_for(approval.amount)
-        if maker.role.name == Role.SUPER_ADMIN:
+        # note wallets.withdrawal_resolution defines amount_of, so the co-sign threshold is live for it (above GHS 20,000).
+        approval.required_approvals = 1 if direct else rules.required_approvals_for(approval.amount)
+        if direct:
             if kind.validate is not None:
                 kind.validate(approval)
             approval.status = ApprovalRequest.APPROVED
@@ -330,14 +338,14 @@ def _submit(maker, kind, now, title, payload, target_type, target_id, target_lab
                     body=approval.target_label, link=_link(approval), icon="🗳️",
                 )
             record(maker, "approval.applied_directly", target=approval,
-                   after={"kind": kind.key, "payload": approval.payload}, request=request)
+                   after={"kind": kind.key, "payload": logged_payload(kind, approval)}, request=request)
             return approval
         stage, staff = chain_for(approval)[0]
         _enter_stage(approval, stage, staff, now)
         approval.save()
         _notify_approvers(approval, "approval_waiting", f"Waiting for you: {approval.title}")
         record(maker, "approval.requested", target=approval,
-               after={"kind": kind.key, "payload": approval.payload}, request=request)
+               after={"kind": kind.key, "payload": logged_payload(kind, approval)}, request=request)
     return approval
 
 

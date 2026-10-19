@@ -136,7 +136,9 @@ class BalanceAndStatementTests(WalletApiBase):
     def test_a_customer_sees_their_wallet_and_its_lines_newest_first(self):
         self.top_up("30.00")
         self.top_up("5.50")
-        self.assertEqual(self.client.get("/api/wallet/").json(), {"kind": "customer", "balance": "35.50"})
+        body = self.client.get("/api/wallet/").json()
+        self.assertEqual((body["kind"], body["balance"], body["held_topup_pesewas"]), ("customer", "35.50", 3550))  # both top-ups still held
+        self.assertTrue(body["topup_free_at"])
         page = self.client.get("/api/wallet/transactions/").json()
         self.assertEqual(page["count"], 2)
         first = page["results"][0]

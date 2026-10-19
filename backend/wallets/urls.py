@@ -5,6 +5,7 @@ from . import views, views_payouts, views_staff, views_vendor
 urlpatterns = [
     path("staff/wallets/", views_staff.StaffWalletsView.as_view(), name="wallet-staff-wallets"),
     path("staff/withdrawals/", views_staff.StaffWithdrawalsView.as_view(), name="wallet-staff-withdrawals"),
+    path("staff/withdrawals/<int:pk>/resolve/", views_staff.StaffWithdrawalResolveView.as_view(), name="wallet-staff-withdrawal-resolve"),
     path("staff/withdrawals/<int:pk>/fail/", views_staff.StaffWithdrawalFailView.as_view(), name="wallet-staff-withdrawal-fail"),
     path("staff/reconciliation/", views_staff.StaffReconciliationView.as_view(), name="wallet-staff-reconciliation"),
     path("vendor/", views_vendor.VendorOverviewView.as_view(), name="wallet-vendor"),

@@ -198,7 +198,10 @@ class _DecisionView(APIView):
         try:
             self.decide(approval, request)
         except services.ApprovalError as exc:
-            return Response({"detail": exc.message}, status=exc.status_code)
+            body = {"detail": exc.message}
+            if exc.code:
+                body["code"] = exc.code
+            return Response(body, status=exc.status_code)
         approval.refresh_from_db()
         return Response(ApprovalDetailSerializer(approval, context={"request": request}).data)
 

@@ -717,7 +717,57 @@ def _users_detail_permissions(request):
     return [HasRolePermission("users.manage")]
 
 
-class StaffCustomerDetailView(generics.RetrieveUpdateAPIView):
+class HolderDetailsGuard:
+    """While the ledger is on, a staff PATCH that changes a customer's or owner's name, phone or email does not write it
+    (wallets.holder_details_edit, spec §13 (xxxiv)): it needs the password again and submits one approval per changed
+    column, answering 201 {..., approval_id, approval_ids, status}; the record keeps its old values until a second person
+    approves. The other fields of the same PATCH are written as before. A PATCH that sends only the current values of
+    protected columns is refused (400 no_change). With the ledger off nothing here applies."""
+
+    def update(self, request, *args, **kwargs):
+        from wallets import holder_details
+
+        if not holder_details.guarded():
+            return super().update(request, *args, **kwargs)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        sent = [name for name in serializer.validated_data if holder_details.protected(instance, name)]
+        if not sent:
+            return super().update(request, *args, **kwargs)
+        changed = [
+            name for name in sent
+            if (getattr(instance, name) or "") != (serializer.validated_data[name] or "")
+        ]
+        if not changed and len(sent) == len(serializer.validated_data):
+            return Response(
+                {"detail": "That is already the current value.", "code": "no_change"}, status=status.HTTP_400_BAD_REQUEST,
+            )
+        if changed:
+            RequiresSudo().has_permission(request, self)
+        # The message and the response never echo what was sent but not applied.
+        serializer.initial_data = {key: value for key, value in request.data.items() if not holder_details.protected(instance, key)}
+        raw = getattr(request, "_request", request)
+        try:
+            with transaction.atomic():
+                approvals = holder_details.divert(request.user, instance, serializer.validated_data, request=request)
+                self.perform_update(serializer)
+        except ApprovalError as exc:
+            body = {"detail": getattr(exc, "message", None) or str(exc)}
+            if getattr(exc, "code", None):
+                body["code"] = exc.code
+            return Response(body, status=getattr(exc, "status_code", 400))
+        raw._activity_recorded = True  # the approval(s) are the record; the middleware must not keep the raw body
+        data = dict(serializer.data)
+        if not approvals:
+            return Response(data)
+        data.update(
+            approval_id=approvals[0].pk, approval_ids=[approval.pk for approval in approvals], status=approvals[0].status,
+        )
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+class StaffCustomerDetailView(HolderDetailsGuard, generics.RetrieveUpdateAPIView):
     queryset = Customer.objects.all()
     serializer_class = StaffCustomerDetailSerializer
     http_method_names = ["get", "patch"]
@@ -725,8 +775,25 @@ class StaffCustomerDetailView(generics.RetrieveUpdateAPIView):
     def get_permissions(self):
         return _users_detail_permissions(self.request)
 
+    def perform_update(self, serializer):
+        from wallets import holder_details
 
-class StaffBusinessOwnerDetailView(generics.RetrieveUpdateAPIView):
+        customer = serializer.instance
+        if not holder_details.guarded():
+            return super().perform_update(serializer)
+        fields = list(serializer.validated_data)
+        before = {field: getattr(customer, field) for field in fields}
+        serializer.save()
+        changed_before, changed_after = owner_details_change(before, {field: getattr(customer, field) for field in fields})
+        if changed_after:  # the middleware's copy of the request would hold the raw body; this holds only what changed
+            record_activity(
+                self.request.user, "customer.details_changed", method=self.request.method, target=customer,
+                summary="Changed " + ", ".join(field.replace("_", " ") for field in changed_after),
+                before=changed_before, after=changed_after, request=self.request,
+            )
+
+
+class StaffBusinessOwnerDetailView(HolderDetailsGuard, generics.RetrieveUpdateAPIView):
     """A PATCH that changes anything records business_owner.details_changed
     itself - only the changed fields, masked (owner_details_change) - and the
     editor never decides this owner's KYC (accounts.kyc.is_kyc_submitter).
