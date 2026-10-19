@@ -126,7 +126,7 @@ effective time. Super admin may edit directly in an emergency (logged). Added 20
 `digest_batch_size` (200; businesses per digest batch) and `digest_time_budget_seconds` (600; longest one digest batch may run), the three low-stock numbers
 `low_stock_cover_days` (7), `low_stock_fallback_units` (5) and `stock_cover_window_days` (28), and also: `service_auto_accept_hours` (48),
 `stay_issue_window_hours` (24) and `event_release_delay_hours` (48) for the booking milestones (§4.2); the verification-overdue
-window now covers products only.
+window now covers products only. Added 2026-10-19 (plan 7F-D Task 3): `rider_withdrawals_per_day` (3; 1 to 20; riders' withdrawals per Accra day, on top of the amount limits).
 
 ### 3.4 Subscriptions
 
@@ -194,7 +194,7 @@ A store-pickup order is collected at the AshantiHub office within 24 hours of pu
 
 ## 7. Third-party dispatch
 
-Per-delivery earnings shown to the rider; reserve and daily commission per §2.2 and §3.3. Company
+Per-delivery earnings shown to the rider; reserve and daily commission per §2.2 and §3.3. The delivery fee belongs to the rider once any pickup is done (gate (xciii)); riders are capped at `rider_withdrawals_per_day` withdrawals a day (gate (xcviii)). Company
 riders: wallet disabled by role.
 
 ## 8. Payout destinations
@@ -641,7 +641,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
   DECIDED 2026-10-18: a rider's withdrawal activity events show the amount (built by plan 7D Task 2; the payout number stays masked). Original text: Owner question (Task 6): a rider's withdrawal activity events carry the amount and are readable by Operations and line
   managers who lack `wallets.view`; decide whether to log only the reference. Owner question: `staff_row` returns the
   withdrawal's `provider_reference` to every `wallets.view` holder, riders' withdrawals included.
-- (xciii) **DECIDED 2026-10-18:** a third-party rider whose delivery was picked up (`picked_up_at` set) before a whole refund is paid, net of the rider commission split (90% of the delivery fee to the rider, 10% commission), and the remainder, including the 10% commission, goes to the customer; a rider who was only assigned (no pickup) gets nothing. If a coupon leaves the customer less than the rider share, the customer's credit floors at 0 and AshantiHub bears the shortfall. `OrderRefund.rider_pesewas` records the share, the posting is keyed `rider-refund-{order.pk}` (idempotent), and pay waits for Support's decision on the refund. Built by plan 7D Task 1. Original text, superseded: **Owner question: a rider is paid nothing for a delivery whose order is refunded whole,** before release (the fee
+- (xciii) **DECIDED 2026-10-19 (round 2), supersedes 2026-10-18:** the delivery fee belongs to the rider once any pickup is done; goods refunds never return it, and with no pickup a whole refund returns it to the customer. The rider is paid through the usual 90/10 split. A promo-covered fee is paid by the promo's owner (a business promo is debited from the business, an AshantiHub promo from the promo subsidy account). A coupon shortfall is covered by AshantiHub (7D ruling 5 kept). `OrderRefund.delivery_kept_pesewas` replaces `rider_pesewas`. For multi-stop jobs "any pickup" replaces 7D ruling 7, and the 7D final-review note on the promo-funded rider pay gap is closed. The vendor sales view and the paid text count only business-funded promos. Built by plan 7F-D Tasks 1-2. Open questions: (a) an in-house rider who picked up: the fee is kept as platform income (assumed). (b) A failed delivery re-assigned to a second rider: only the first rider with a pickup is paid and the fee is not paid twice. (c) A staff-created AshantiHub-funded free-delivery promo (the field exists, there is no screen). (d) A failed delivery re-assigned to a second rider: `stops.reopen_for_new_rider` clears every stop's `collected_at` while a single-stop `picked_up_at` survives, so the earned-fee evidence can disappear for multi-stop jobs and the payee is the current rider (pre-existing at release). Superseded text (2026-10-18): a third-party rider whose delivery was picked up (`picked_up_at` set) before a whole refund is paid, net of the rider commission split (90% of the delivery fee to the rider, 10% commission), and the remainder, including the 10% commission, goes to the customer; a rider who was only assigned (no pickup) gets nothing. If a coupon leaves the customer less than the rider share, the customer's credit floors at 0 and AshantiHub bears the shortfall. `OrderRefund.rider_pesewas` records the share, the posting is keyed `rider-refund-{order.pk}` (idempotent), and pay waits for Support's decision on the refund. Built by plan 7D Task 1. Original text, superseded: **Owner question: a rider is paid nothing for a delivery whose order is refunded whole,** before release (the fee
   goes back to the customer, W4) or after it (the earning is taken back and the balance may go below zero), even when the
   business was at fault and the rider did the work. The alternative is for AshantiHub to pay the rider from its own
   income in those cases. (See also (c): the same wait applies to an unreachable customer, who never pays the rider.)
@@ -684,7 +684,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
 - (xcvii) **Delivery fees are off (`DELIVERY_FEE_ENABLED`, default off).** Until they are charged most orders carry no
   delivery fee, and a third-party rider earns only fees a business covered with its free-delivery promo. Third-party
   riders need delivery fees on (owner decision 2026-10-13).
-- (xcviii) **Owner question: rider withdrawal limits.** Riders share the customers' and vendors' governed limits
+- (xcviii) **DECIDED 2026-10-19:** riders share the governed amount limits and are additionally capped at `rider_withdrawals_per_day` (default 3) withdrawals per Accra day; refusal code `daily_count_limit` with `resets_at`; built by plan 7F-D Task 3. Original text: **Owner question: rider withdrawal limits.** Riders share the customers' and vendors' governed limits
   (GH₵ 5,000 per withdrawal, GH₵ 10,000 a day, 24-hour cooling); separate rider limits would need new settings.
 - (xcix) **DECIDED 2026-10-18:** `Rider.company_name` stays free text; company records only if a real company signs (no build). Original text: **Owner question: rider companies.** `Rider.company_name` is free text. If a rider company itself is to be
   contracted, invoiced or paid (instead of each rider), a company record and company payouts are a new plan.

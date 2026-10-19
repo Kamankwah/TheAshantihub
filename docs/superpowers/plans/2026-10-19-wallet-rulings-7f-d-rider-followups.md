@@ -30,7 +30,7 @@
 - Refund after release: no rider reversal any more; the fee stays with the rider; the order's remaining goods money returns as before.
 - Promo order: vendor-funded charge debits that vendor and pays the rider; platform-funded debits the subsidy account; no pickup: charge reversed and nobody paid.
 - Idempotence: the same refund twice (same source) and a refund then a release never pay the rider twice.
-- Fourth rider withdrawal of the day refused with `rider_daily_count` and the reset time; cancelled/failed/reversed ones do not count.
+- Fourth rider withdrawal of the day refused with `daily_count_limit` and the reset time; cancelled/failed/reversed ones do not count.
 
 ---
 
