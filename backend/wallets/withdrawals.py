@@ -20,7 +20,7 @@ from payments import providers
 
 from . import destinations, names
 from .models import PayoutDestination, Withdrawal
-from .services import money
+from .services import held_topups, money
 
 
 class WithdrawalError(Exception):
@@ -88,6 +88,15 @@ def existing(holder, request_id):
     return mine(holder).filter(request_id=request_id).first()
 
 
+def withdrawable(holder, now=None, balance=None):
+    """What the holder can withdraw now: the balance (read fresh unless the caller already holds the lock and passes it)
+    less top-ups still inside their hold window, never below zero."""
+    now = now or timezone.now()
+    if balance is None:
+        balance = posting.balance_of(source_kind(holder), holder)
+    return max(balance - held_topups(holder, now)[0], 0)
+
+
 def request(holder, *, destination_id, amount_pesewas, request_id, now=None):
     """Hold `amount_pesewas` of the holder's balance for a payout to `destination_id` and return the new PENDING
     Withdrawal. Call inside transaction.atomic(); raises WithdrawalError, writing nothing, when anything is wrong."""
@@ -135,6 +144,12 @@ def request(holder, *, destination_id, amount_pesewas, request_id, now=None):
         raise WithdrawalError(NEGATIVE[kind], "negative_balance", 409)
     if amount_pesewas > balance:
         raise WithdrawalError(f"You have GH₵ {from_pesewas(max(balance, 0))} to withdraw.", "insufficient_funds", 409)
+    held, free_at = held_topups(holder, now)
+    if held and amount_pesewas > max(balance - held, 0):
+        raise WithdrawalError(
+            f"Money you just added is held until it can be withdrawn. You can withdraw GH₵ {from_pesewas(max(balance - held, 0))} now.",
+            "topup_held", 409, free_at=free_at.isoformat(), held_topup_pesewas=held,
+        )
     today = mine(holder).filter(status__in=Withdrawal.COUNTED, created_at__gte=start_of_day(now)).aggregate(total=Sum("amount_pesewas"))["total"] or 0
     daily = settings_store.current("withdrawal_daily_limit_pesewas", now)
     if today + amount_pesewas > daily:

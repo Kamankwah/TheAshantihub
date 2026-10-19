@@ -1,7 +1,11 @@
 """Customer wallets and vendor balances as their holders see them (spec §5, §6), over the ledger. Money is integer
 pesewas inside and GH₵ strings at the API edge. Reading a balance never opens an account; only a posting does."""
+from datetime import timedelta
+
+from django.utils import timezone
+
 from accounts.models import BusinessOwner, Customer
-from ledger import posting
+from ledger import posting, settings_store
 from ledger.models import Account, JournalLine
 from ledger.money import from_pesewas, to_pesewas
 
@@ -60,10 +64,34 @@ def account_kinds(holder):
     raise TypeError(f"{type(holder).__name__} holds no wallet")
 
 
+def held_topups(holder, now=None):
+    """(held pesewas, free_at) for a customer: the top-ups credited less than `wallet_topup_hold_minutes` ago cannot be
+    withdrawn yet, and `free_at` is when the last of them is free (None when nothing is held). A top-up is free at exactly
+    credited_at + hold. Only `wallet_top_up` journals are held: sale proceeds and other credits never are."""
+    if not isinstance(holder, Customer):
+        return 0, None
+    now = now or timezone.now()
+    hold = timedelta(minutes=settings_store.current("wallet_topup_hold_minutes", now))
+    lines = JournalLine.objects.filter(
+        journal__kind="wallet_top_up", side=JournalLine.CREDIT, journal__created_at__gt=now - hold,
+        account__kind=Account.CUSTOMER_WALLET, account__owner_type=holder._meta.label_lower, account__owner_id=str(holder.pk),
+    ).select_related("journal")
+    held, free_at = 0, None
+    for line in lines:
+        held += line.amount
+        at = line.journal.created_at + hold
+        free_at = at if free_at is None or at > free_at else free_at
+    return held, free_at
+
+
 def summary(holder):
     """A customer's wallet balance, or a vendor's Pending and Available (Available may be negative after a late refund)."""
     if isinstance(holder, Customer):
-        return {"kind": "customer", "balance": money(posting.balance_of(Account.CUSTOMER_WALLET, holder))}
+        held, free_at = held_topups(holder)
+        return {
+            "kind": "customer", "balance": money(posting.balance_of(Account.CUSTOMER_WALLET, holder)),
+            "held_topup_pesewas": held, "topup_free_at": free_at.isoformat() if free_at else None,
+        }
     return {
         "kind": "vendor",
         "pending": money(posting.balance_of(Account.VENDOR_PENDING, holder)),
