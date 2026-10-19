@@ -19,8 +19,8 @@ from django.utils import timezone
 
 from accounts.models import StaffUser
 from ledger import escrow, sales
-from ledger.models import BookingSale
-from ledger.money import to_pesewas
+from ledger.models import BookingRefund, BookingSale
+from ledger.money import from_pesewas, to_pesewas
 from ledger.refunds import RefundError
 
 from .models import Event, Ticket
@@ -42,9 +42,10 @@ class CancelResult:
     tickets_left: int  # the event's tickets still to refund (a failed refund, waiting for the sweep)
 
 
-def cancel_event(event, *, by, reason, now=None):
+def cancel_event(event, *, by, reason, now=None, refunded=None):
     """Cancel `event` (by its organiser or a staff member) and refund its tickets. Idempotent: a second call changes
-    nothing on the event (the first reason, time and staff member stay) and only retries tickets still unrefunded."""
+    nothing on the event (the first reason, time and staff member stay) and only retries tickets still unrefunded.
+    `refunded`, when a list, receives the ids of the tickets this call refunded (for the notices)."""
     now = now or timezone.now()
     with transaction.atomic():
         locked = Event.objects.select_for_update().get(pk=event.pk)
@@ -54,7 +55,7 @@ def cancel_event(event, *, by, reason, now=None):
             locked.cancel_reason = (reason or "").strip()[:300]
             locked.cancelled_by_staff = by if isinstance(by, StaffUser) else None
             locked.save(update_fields=["status", "cancelled_at", "cancel_reason", "cancelled_by_staff", "updated_at"])
-    refund_unrefunded(locked, by=by, reason=locked.cancel_reason, now=now)
+    refund_unrefunded(locked, by=by, reason=locked.cancel_reason, now=now, refunded=refunded)
     return result_of(locked)
 
 
@@ -74,37 +75,51 @@ def _sale_of(ticket):
 
 
 def _refund_one(ticket_id, *, by, reason, now):
-    """Inside transaction.atomic(): refund one ticket unless it already is. True when this call refunded it."""
+    """Inside transaction.atomic(): refund one ticket unless it already is. True when this call refunded it.
+
+    With a sale, the ticket gets its price or what is left on the sale, whichever is less: a sale partly refunded
+    before the cancel (a dispute refund not tied to a ticket) cannot give every ticket its full price, and asking for
+    more than is left would raise RefundError on every retry. A ticket with nothing left on its sale is marked refunded
+    with no money moved and no REFUNDED row (the buyer already has that money back)."""
     sale = _sale_of(Ticket.objects.get(pk=ticket_id))
     if sale is not None:
-        sales.lock(sale)  # the purchase's tickets, then the sale: the order refund_ticket and the scan use
+        sale = sales.lock(sale)  # the purchase's tickets, then the sale: the order refund_ticket and the scan use
     ticket = Ticket.objects.select_for_update(of=("self",)).select_related("ticket_type__event", "purchased_by").get(pk=ticket_id)
     if ticket.refunded_at is not None:
         return False
-    if sale is not None:
-        sales.refund(
-            sale, to_pesewas(ticket.price), source=f"ticket-{ticket.pk}", by=by, refund_processing=True, note=reason, now=now,
-        )
-    sales._ticket_refund_row(ticket)
+    if sale is None:
+        sales._ticket_refund_row(ticket)
+    else:
+        source = f"ticket-{ticket.pk}"
+        already = BookingRefund.objects.filter(sale=sale, source=source).first()
+        amount = already.amount_pesewas if already is not None else min(to_pesewas(ticket.price), sale.base_pesewas - sale.refunded_base_pesewas)
+        if amount > 0:
+            sales.refund(sale, amount, source=source, by=by, refund_processing=True, note=reason, now=now)
+            sales._ticket_refund_row(ticket, amount=from_pesewas(amount))
+        else:
+            logger.warning("Cancelled event ticket %s: nothing left on its sale %s; marked refunded with no money moved", ticket.pk, sale.pk)
     Ticket.objects.filter(pk=ticket.pk).update(
         refunded_at=now, refunded_by_staff=by if isinstance(by, StaffUser) else None, refund_reason=(reason or "")[:500],
     )
     return True
 
 
-def refund_unrefunded(event, *, by, reason, now=None):
-    """Refund every unrefunded ticket of `event`, each in its own transaction. Returns how many this call refunded. A
-    RefundError on one ticket is logged (by type only) and leaves it for a later call; the rest carry on."""
+def refund_unrefunded(event, *, by, reason, now=None, refunded=None):
+    """Refund every unrefunded ticket of `event`, each in its own transaction. Returns how many this call refunded (their
+    ids appended to `refunded` when it is a list). A RefundError on one ticket is logged (by type only) and leaves it for
+    a later call; the rest carry on."""
     now = now or timezone.now()
     ids = list(Ticket.objects.filter(ticket_type__event=event, refunded_at__isnull=True).order_by("pk").values_list("pk", flat=True))
-    refunded = 0
+    count = 0
     for ticket_id in ids:
         try:
             with transaction.atomic():
                 if _refund_one(ticket_id, by=by, reason=reason, now=now):
-                    refunded += 1
+                    count += 1
+                    if refunded is not None:
+                        refunded.append(ticket_id)
         except RefundError as exc:
             logger.warning(
                 "Cancelled event %s: refund of ticket %s failed (%s); left for the sweep", event.pk, ticket_id, type(exc).__name__,
             )
-    return refunded
+    return count

@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 from accounts.models import BusinessOwner, StaffUser
 from accounts.permissions import HasAnyRolePermission, HasRolePermission, RequiresSudo
 from accounts.views import IsCustomer
+from activity.services import record
 from billing.models import Transaction
 from listings.visibility import hidden_business_q
 from notifications.services import (
@@ -31,8 +32,9 @@ from payments import booking_pay
 from storefront.permissions import MarketplaceOpen
 from payments.models import CheckoutSession
 from payments.services import process_payment
+from wallets.approval_kinds import mask_numbers
 
-from . import cancellation, scan_notice
+from . import cancel_notice, cancellation, scan_notice
 from .models import Event, EventPricingTier, EventRSVP, EventTicketType, Ticket
 from .permissions import (
     IsCustomerOrBusinessOwner,
@@ -641,22 +643,95 @@ class EventRejectView(APIView):
         reason = (request.data.get("reason") or "").strip()
         if not reason:
             return Response({"reason": "A rejection reason is required."}, status=400)
-        event = generics.get_object_or_404(Event, pk=pk)
-        if event.status == Event.CANCELLED:
-            return _cancelled_response()  # a cancelled event is final (Plan 7F-C)
-        event.status = Event.REJECTED
-        event.rejection_reason = reason
-        event.reviewed_by = request.user
-        event.reviewed_at = timezone.now()
-        event.save(
-            update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"]
-        )
+        with db_transaction.atomic():
+            # Locked like EventApproveView, so a reject never crosses a cancel (Plan 7F-C).
+            event = generics.get_object_or_404(Event.objects.select_for_update(), pk=pk)
+            if event.status == Event.CANCELLED:
+                return _cancelled_response()  # a cancelled event is final (Plan 7F-C)
+            event.status = Event.REJECTED
+            event.rejection_reason = reason
+            event.reviewed_by = request.user
+            event.reviewed_at = timezone.now()
+            event.save(
+                update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"]
+            )
         _notify_event_organizer(
             event, "event_rejected", "Event not approved",
             body=f"“{event.name}” was rejected: {reason}",
             link="/events", icon="⚠️",
         )
         return Response({"id": event.id, "status": event.status})
+
+
+CANCEL_REASON_MIN, CANCEL_REASON_MAX = 5, 300
+
+
+def _cancel_reason(request):
+    """The cancel's reason, 5-300 characters once trimmed, or None."""
+    reason = str(request.data.get("reason") or "").strip()
+    return reason if CANCEL_REASON_MIN <= len(reason) <= CANCEL_REASON_MAX else None
+
+
+def _reason_required():
+    return Response(
+        {"detail": f"Say why the event is cancelled ({CANCEL_REASON_MIN}-{CANCEL_REASON_MAX} characters).", "code": "reason_required"},
+        status=400,
+    )
+
+
+def _cancel_and_notify(event, *, by, reason):
+    """Cancel `event` (events.cancellation) and queue the notices for the tickets this call refunded; the organiser's
+    summary goes only with the call that cancelled it. Returns the response body {status, tickets_refunded, tickets_left},
+    the same on a repeat."""
+    now = timezone.now()
+    refunded = []
+    result = cancellation.cancel_event(event, by=by, reason=reason, now=now, refunded=refunded)
+    first = result.event.cancelled_at == now
+    if refunded or first:
+        cancel_notice.send(result.event, cancel_notice.refunded_by_ticket(result.event, refunded), result=result if first else None)
+    return {"status": result.event.status, "tickets_refunded": result.tickets_refunded, "tickets_left": result.tickets_left}
+
+
+class EventOwnerCancelView(APIView):
+    """POST /api/events/mine/{id}/cancel/ {reason} — the organiser cancels their own event (Plan 7F-C, ruling R4): every
+    ticket is refunded in full from their side, scanned or not. A repeat answers 200 with the same body (and retries any
+    ticket still unrefunded). Refused once the event's date has passed: by then the money may be released and paid out,
+    and a cancel would put it back in the buyers' wallets at AshantiHub's risk; Operations can still cancel it."""
+
+    permission_classes = [IsAuthenticated, IsEventOwner]
+
+    def post(self, request, pk):
+        event = generics.get_object_or_404(Event, pk=pk)
+        self.check_object_permissions(request, event)
+        reason = _cancel_reason(request)
+        if reason is None:
+            return _reason_required()
+        if event.status != Event.CANCELLED and event.event_date <= timezone.now():
+            return Response(
+                {"detail": "This event has already taken place. Contact AshantiHub Support to cancel it.", "code": "event_already_held"},
+                status=409,
+            )
+        return Response(_cancel_and_notify(event, by=request.user, reason=reason))
+
+
+class EventStaffCancelView(APIView):
+    """POST /api/events/moderation/{id}/cancel/ {reason} — Operations (event.approve) cancels an event, with the password
+    again because it moves money out of the organiser's account (Plan 7F-C). Records `event.cancelled`."""
+
+    def get_permissions(self):
+        return [HasRolePermission("event.approve"), RequiresSudo()]
+
+    def post(self, request, pk):
+        event = generics.get_object_or_404(Event, pk=pk)
+        reason = _cancel_reason(request)
+        if reason is None:
+            return _reason_required()
+        body = _cancel_and_notify(event, by=request.user, reason=reason)
+        record(
+            request.user, "event.cancelled", target=event, request=request,
+            after={"reason": mask_numbers(reason), **body},
+        )
+        return Response(body)
 
 
 class EventReReviewView(APIView):
@@ -966,6 +1041,8 @@ class TicketPurchaseView(APIView):
                 tickets = Ticket.objects.filter(id__in=ticket_ids)
         except posting.InsufficientFunds as exc:
             return booking_pay.too_low(exc)  # the reservation rolled back with the payment
+        except cancellation.EventCancelledError:
+            return _cancelled_response()  # cancelled between the live check and the finalizer; all of it rolled back
 
         return Response(
             TicketSerializer(tickets, many=True, context={"request": request}).data, status=201

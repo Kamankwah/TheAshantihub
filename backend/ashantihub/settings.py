@@ -617,6 +617,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "ledger.tasks.release_due_booking_sales",
         "schedule": crontab(minute=40),  # hourly: services, stays and tickets past their release time; a no-op while the ledger is off
     },
+    "ledger-finish-cancelled-event-refunds": {
+        "task": "ledger.tasks.finish_cancelled_event_refunds",
+        "schedule": crontab(minute=50),  # hourly: tickets of a cancelled event a cancel left unrefunded; a no-op when none are
+    },
     "ledger-post-rider-commission": {
         "task": "ledger.tasks.post_rider_commission",
         "schedule": crontab(hour=0, minute=20),  # earlier days' rider commission (Accra); a no-op while the ledger is off

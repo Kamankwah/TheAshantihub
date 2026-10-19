@@ -729,13 +729,14 @@ def tell_cancelled(sale, given):
     )
 
 
-def _ticket_refund_row(ticket):
-    """Today's REFUNDED billing.Transaction for one ticket, as the Accountant's per-ticket refund has always written it."""
+def _ticket_refund_row(ticket, amount=None):
+    """Today's REFUNDED billing.Transaction for one ticket, as the Accountant's per-ticket refund has always written it
+    (`amount`, in cedis, when less than the price was refunded: an event cancel on a partly refunded sale)."""
     from billing.models import Transaction
     from django.utils.crypto import get_random_string
 
     Transaction.objects.create(
-        customer=ticket.purchased_by, amount=-ticket.price, status=Transaction.REFUNDED,
+        customer=ticket.purchased_by, amount=-(ticket.price if amount is None else amount), status=Transaction.REFUNDED,
         purpose=f"Refund for ticket {ticket.code} ('{ticket.ticket_type.event.name}')",
         reference=f"AH-REFUND-{ticket.id}-{get_random_string(8).upper()}",
     )

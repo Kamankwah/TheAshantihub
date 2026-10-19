@@ -99,6 +99,8 @@ class HubtelWebhookView(APIView):
     throttle_scope = "hubtel_webhook"
 
     def post(self, request):
+        from events.cancellation import EventCancelledError  # lazily: events imports payments
+
         raw_body = request.body
         try:
             payload = request.data if isinstance(request.data, dict) else {}
@@ -183,12 +185,16 @@ class HubtelWebhookView(APIView):
                     txn_kwargs["business_owner"] = session.business_owner
                 else:
                     txn_kwargs["customer"] = session.customer
-                txn = Transaction.objects.create(**txn_kwargs)
+                try:
+                    with db_transaction.atomic():  # a savepoint: a refused finalizer undoes the SUCCESS row with it
+                        txn = Transaction.objects.create(**txn_kwargs)
 
-                session.status = CheckoutSession.SUCCESS
-                session.transaction = txn
-                session.save(update_fields=["status", "transaction", "updated_at"])
-                finalize_success(session)
+                        session.status = CheckoutSession.SUCCESS
+                        session.transaction = txn
+                        session.save(update_fields=["status", "transaction", "updated_at"])
+                        finalize_success(session)
+                except EventCancelledError:
+                    return self._paid_for_cancelled_event(session, webhook_event, reference)
 
                 webhook_event.processed = True
                 webhook_event.processing_note = f"Finalized success for {reference}."
@@ -212,6 +218,27 @@ class HubtelWebhookView(APIView):
             )
             webhook_event.save(update_fields=["processing_note"])
             return Response({"detail": "Acknowledged, no action taken."}, status=200)
+
+    @staticmethod
+    def _paid_for_cancelled_event(session, webhook_event, reference):
+        """Hubtel took the money for tickets to an event cancelled meanwhile (Plan 7F-C): no ticket is created. The
+        session is marked failed and its inventory reservation released (finalize_failure), and the webhook row carries a
+        note for Support to refund the customer by hand. 200, so Hubtel stops retrying a payment nothing can apply."""
+        from events.cancellation import CODE
+
+        session.refresh_from_db()
+        session.status = CheckoutSession.FAILED
+        session.metadata = {**session.metadata, "not_applied": CODE}
+        session.save(update_fields=["status", "metadata", "updated_at"])
+        finalize_failure(session)
+        webhook_event.processed = True
+        webhook_event.processing_note = (
+            f"Paid after its event was cancelled: {reference} marked failed, no tickets created. "
+            "The customer was charged - refund by hand (manual reconciliation)."
+        )
+        webhook_event.save(update_fields=["processed", "processing_note"])
+        logger.warning("Hubtel payment %s arrived after its event was cancelled; marked failed for manual refund", reference)
+        return Response({"detail": "Event cancelled, not applied."}, status=200)
 
 
 class CheckoutSessionStatusView(generics.RetrieveAPIView):

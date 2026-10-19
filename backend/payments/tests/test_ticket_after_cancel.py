@@ -1,6 +1,7 @@
-"""Plan 7F-C, task 1: a payment confirmed after its event was cancelled creates nothing. The ticket finalizer raises,
-rolling the payment's effects back (no ticket, no SUCCESS transaction); a renewal paid after the cancel never reopens
-the event."""
+"""Plan 7F-C: a payment confirmed after its event was cancelled creates nothing. The ticket finalizer raises, rolling
+the payment's effects back (no ticket, no SUCCESS transaction); the webhook then marks the session failed, releases the
+inventory, notes the WebhookEvent for a manual refund and answers 200 so Hubtel stops retrying (task 2). A renewal paid
+after the cancel never reopens the event."""
 from datetime import timedelta
 
 from django.test import TestCase, override_settings
@@ -11,7 +12,7 @@ from accounts.models import Customer
 from billing.models import Transaction
 from events.models import Event, EventTicketType, Ticket
 from listings.models import Category, Zone
-from payments.models import CheckoutSession
+from payments.models import CheckoutSession, WebhookEvent
 
 from .test_webhook import WEBHOOK_SECRET, WEBHOOK_URL, _sign, _signature_for
 
@@ -49,26 +50,42 @@ class TicketAfterCancelTests(TestCase):
             },
         )
 
-    def _assert_nothing_finalized(self, session):
+    def _assert_nothing_finalized(self, session, response):
+        self.assertEqual(response.status_code, 200, response.content)
         self.assertFalse(Ticket.objects.exists())
         session.refresh_from_db()
-        self.assertEqual(session.status, CheckoutSession.PENDING)
+        self.assertEqual(session.status, CheckoutSession.FAILED)
+        self.assertEqual(session.metadata.get("not_applied"), "event_cancelled")
+        self.assertTrue(session.metadata.get("rolled_back"))
         self.assertFalse(Transaction.objects.filter(reference=session.reference).exists())
+        self.ticket_type.refresh_from_db()
+        self.assertEqual(self.ticket_type.quantity_sold, 0)  # the reservation of 2 is released
+        note = WebhookEvent.objects.get(hubtel_reference=session.reference)
+        self.assertTrue(note.processed)
+        self.assertIn("manual reconciliation", note.processing_note)
 
     def test_hubtel_success_after_cancel_creates_no_ticket(self):
         session = self._ticket_session()
         Event.objects.filter(pk=self.event.pk).update(status=Event.CANCELLED, cancelled_at=timezone.now())
         response = self._post({"ClientReference": session.reference, "Status": "Success", "Amount": "50.00"})
-        self.assertEqual(response.status_code, 500)
-        self._assert_nothing_finalized(session)
+        self._assert_nothing_finalized(session, response)
 
     @override_settings(LEDGER_ENABLED=True)
     def test_hubtel_success_after_cancel_creates_no_ticket_with_ledger_on(self):
         session = self._ticket_session()
         Event.objects.filter(pk=self.event.pk).update(status=Event.CANCELLED, cancelled_at=timezone.now())
         response = self._post({"ClientReference": session.reference, "Status": "Success", "Amount": "50.00"})
-        self.assertEqual(response.status_code, 500)
-        self._assert_nothing_finalized(session)
+        self._assert_nothing_finalized(session, response)
+
+    def test_hubtel_retry_after_cancel_is_a_noop(self):
+        session = self._ticket_session()
+        Event.objects.filter(pk=self.event.pk).update(status=Event.CANCELLED, cancelled_at=timezone.now())
+        payload = {"ClientReference": session.reference, "Status": "Success", "Amount": "50.00"}
+        self._post(payload)
+        again = self._post(payload)
+        self.assertEqual(again.status_code, 200, again.content)
+        self.ticket_type.refresh_from_db()
+        self.assertEqual(self.ticket_type.quantity_sold, 0)
 
     def test_success_before_cancel_still_creates_tickets(self):
         session = self._ticket_session()

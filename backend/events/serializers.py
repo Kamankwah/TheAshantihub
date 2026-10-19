@@ -139,6 +139,7 @@ class EventOwnerSerializer(serializers.ModelSerializer):
             "id", "name", "description", "category", "zone", "address", "lat", "lng",
             "event_date", "visibility_days", "status", "rejection_reason", "access_level",
             "access_code", "paid_at", "expires_at", "going_count", "media", "created_at", "refund_until_days_before",
+            "cancelled_at", "cancel_reason",
         ]
         read_only_fields = fields
 

@@ -26,3 +26,22 @@ def release_due_booking_sales():
     from . import sales
 
     return sales.release_due()
+
+
+@shared_task
+def finish_cancelled_event_refunds():
+    """Hourly: a cancelled event whose cancel was interrupted (a crash, or one ticket's refund failing) has its remaining
+    tickets refunded (Plan 7F-C), each buyer told. Returns how many tickets it refunded; a no-op when nothing is left. A
+    ticket whose refund keeps failing is logged each hour (by type only) and counted in `tickets_left` until Accounting
+    resolves it. The beat entry makes core.jobs keep a JobRun heartbeat for it."""
+    from events import cancel_notice, cancellation
+    from events.models import Event
+
+    total = 0
+    events = Event.objects.filter(status=Event.CANCELLED, ticket_types__tickets__refunded_at__isnull=True).distinct()
+    for event in events:
+        refunded = []
+        total += cancellation.refund_unrefunded(event, by=None, reason=event.cancel_reason, refunded=refunded)
+        if refunded:
+            cancel_notice.send(event, cancel_notice.refunded_by_ticket(event, refunded))
+    return total
