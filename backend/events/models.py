@@ -393,10 +393,11 @@ def _generate_unique_ticket_code():
 class Ticket(models.Model):
     """A single purchased ticket (event ticketing + escrow work). Payment for
     a ticket is held in escrow (`escrow_status=held`) until the ticket is
-    delivered/checked in (`EventCheckinView`), at which point it is
-    auto-released — or a staff `accountant` (holding `escrow.release`/
-    `escrow.hold`/`escrow.refund`) can manually override that lifecycle as
-    an exception path (fraud, dispute, no-show, etc.).
+    released. A check-in (`EventCheckinView`) only records delivery and never
+    releases: a ticket in a ledger booking sale is released by the clock
+    (`ledger.sales.release_due`), any other ticket by a staff `accountant`
+    (holding `escrow.release`/`escrow.hold`/`escrow.refund`) by hand, which
+    is also the exception path (fraud, dispute, no-show, etc.).
 
     `delivery_method`/`price` are snapshotted from the `EventTicketType` at
     purchase time rather than FK'd live — mirrors how `cart`/`orders`
