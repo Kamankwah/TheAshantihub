@@ -67,15 +67,6 @@ class OwnerUndoTests(UndoTestBase):
         self.assertEqual(flag.status, FraudFlag.OPEN)
         self.assertIn("Not reverted: Opening hours", flag.evidence)
 
-    def test_a_number_taken_since_is_not_restored(self):
-        BusinessOwner.objects.filter(pk=self.owner.pk).update(claimed_at=None)  # a scout can only set sign-in details before a login
-        change = self.applied_update({"login_phone": "024 555 0101"})
-        BusinessOwner.objects.create(full_name="Yaa Asantewaa", login_phone="0244100200", password_hash="x")
-        self.as_owner(self.owner)
-        self.assertEqual(self.client.post(self.undo_url(change)).json()["undo_failed"], undo.PARTLY_REVERTED)
-        self.owner.refresh_from_db()
-        self.assertEqual(self.owner.login_phone, "+233245550101")
-
     def test_undoing_a_new_address_brings_back_its_decision(self):
         decided_at = timezone.now() - timedelta(days=3)
         BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(

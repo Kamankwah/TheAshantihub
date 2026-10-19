@@ -153,9 +153,11 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
   `PortfolioConfig.ready()`); only the business's account manager may submit them; each applied
   change writes a `portfolio.AppliedChange` the owner can undo for 7 days
-  (`portfolio.undo.undo_change`), which always opens a fraud case. `email` / `login_phone` are
-  proposable only while the owner `needs_claim`, and a proposed email or phone that belongs to
-  staff is refused. Deactivating a scout counts only their non-rejected managed businesses.
+  (`portfolio.undo.undo_change`), which always opens a fraud case. A scout can never propose
+  `full_name`, `login_phone` or `email` (`proposals.PROTECTED_OWNER_FIELDS`, claimed or not): the
+  business files those itself (`portfolio.detail_changes`, `business.detail_change`) and a scout visit
+  verifies them. A pending or historical `business.update` that still holds one cannot be approved,
+  and its undo lists the field as not reverted. A proposed phone that belongs to staff is refused. Deactivating a scout counts only their non-rejected managed businesses.
 - **Owner claim tokens** (`accounts.claims`) are stored as SHA-256 hashes; a hand-over token works
   only on the scout session that started it; the claim view is `activity_exempt` and records
   `business.claimed` itself, so the password never reaches the activity log. The claim strips
