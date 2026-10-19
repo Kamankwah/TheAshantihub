@@ -121,7 +121,7 @@ export default function EventCheckinPanel({ eventId }) {
             <div style={{ color: "rgba(255,255,255,0.55)" }}>{t.purchased_by_name} · {t.delivery_method === "digital" ? "Digital" : "Physical"}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ background: t.delivered_at ? `${C.kente2}33` : "rgba(255,255,255,0.12)", color: t.delivered_at ? C.kente2 : "rgba(255,255,255,0.6)", fontSize: "0.62rem", fontWeight: 700, padding: "2px 9px", borderRadius: 20 }}>
+            <span style={{ background: t.delivered_at ? `${C.kente2}33` : "rgba(255,255,255,0.12)", color: t.delivered_at ? C.trust : "rgba(255,255,255,0.6)", fontSize: "0.62rem", fontWeight: 700, padding: "2px 9px", borderRadius: 20 }}>
               {t.delivered_at ? "Delivered" : "Pending"}
             </span>
             {!t.delivered_at && (

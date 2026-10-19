@@ -30,7 +30,7 @@ const toggleStyle = {
   textDecoration: "underline", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit",
 };
 const problemStyle = {
-  background: `${C.kente1}12`, border: `1px solid ${C.kente1}`, color: C.darkBrown, borderRadius: 10,
+  background: `${C.kente1}12`, border: `1px solid ${C.kente1}`, color: C.ink, borderRadius: 10,
   padding: "10px 12px", fontSize: "0.82rem", fontWeight: 700,
 };
 

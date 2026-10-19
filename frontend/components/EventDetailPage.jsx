@@ -278,7 +278,7 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
 
         <div style={{ flex: "1 1 320px", minWidth: 280 }}>
           {detail.access_level === "private" && (
-            <span style={{ display: "inline-block", background: `${C.kente1}22`, color: C.kente1, fontSize: "0.62rem", fontWeight: 700, padding: "3px 9px", borderRadius: 20, marginBottom: 8 }}>
+            <span style={{ display: "inline-block", background: `${C.kente1}22`, color: C.danger, fontSize: "0.62rem", fontWeight: 700, padding: "3px 9px", borderRadius: 20, marginBottom: 8 }}>
               🔒 Private Event — unlocked
             </span>
           )}

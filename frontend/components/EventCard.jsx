@@ -91,7 +91,7 @@ export default function EventCard({ item, onOpen }) {
           {item.category?.icon} {item.category?.label} · 📍 {item.zone?.name}
         </div>
         {item.is_private && (
-          <span style={{ display: "inline-block", marginTop: 8, background: `${C.kente1}22`, color: C.kente1, fontSize: "0.62rem", fontWeight: 700, padding: "3px 9px", borderRadius: 20 }}>
+          <span style={{ display: "inline-block", marginTop: 8, background: `${C.kente1}22`, color: C.danger, fontSize: "0.62rem", fontWeight: 700, padding: "3px 9px", borderRadius: 20 }}>
             🔒 Code required
           </span>
         )}
