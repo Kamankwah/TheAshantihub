@@ -128,6 +128,7 @@ INSTALLED_APPS = [
     "realtime",
     "delivery",
     "routing",
+    "storefront",
 ]
 
 MIDDLEWARE = [
@@ -661,6 +662,10 @@ CATALOGUE_MATCHER_ENABLED = env.bool("CATALOGUE_MATCHER_ENABLED", default=False)
 # hides the offer"). Off until the Plan 6F screens tell a business to leave the count empty when it does not count stock;
 # the listing's own page and the other-sellers list are not affected by it (see listings.visibility.sold_out_q).
 SOLD_OUT_HIDDEN_ENABLED = env.bool("SOLD_OUT_HIDDEN_ENABLED", default=False)
+
+# The marketplace opening gate (storefront.opening). Off by default: while off the marketplace is open to everyone
+# and nothing is blocked. Turn on once the opening time is confirmed.
+MARKETPLACE_GATE_ENABLED = env.bool("MARKETPLACE_GATE_ENABLED", default=False)
 
 # One-time codes and 2-step sign-in for everyone (otp app; spec §9, plan docs/superpowers/plans/2026-10-16-otp-security.md).
 # All three default OFF: with them off, sign-in, sign-up and every sensitive endpoint behave exactly as before. Turn
