@@ -558,6 +558,10 @@ export const handlers = [
   http.post('http://localhost:8000/api/notifications/read-all/', () => {
     return HttpResponse.json({ unread_count: 0 })
   }),
+  // The business's own change requests (Profile & Settings): none by default.
+  http.get('http://localhost:8000/api/accounts/business-owners/me/detail-changes/', () => HttpResponse.json({ results: [] })),
+  // The staff wallet's fail-a-withdrawal door answers 201 {approval_id, status:'pending'}: a second person approves.
+  http.post('http://localhost:8000/api/wallet/staff/withdrawals/:id/fail/', () => HttpResponse.json({ approval_id: 9, status: 'pending' }, { status: 201 })),
   http.get('http://localhost:8000/api/approvals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/approvals/counts/', () => HttpResponse.json({ mine: 0, made: 0, team: 0, decided: 0, escalated_to_me: 0, makers: [], kinds: [], can_view_all: false })),
   http.get('http://localhost:8000/api/approvals/stats/', () => HttpResponse.json({ decided_today: 0, approved_today: 0, returned_today: 0, median_minutes: null })),

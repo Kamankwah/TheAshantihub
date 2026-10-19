@@ -123,3 +123,55 @@ describe('UsersPanel detail view', () => {
     expect(patched).not.toHaveProperty('phone')
   })
 })
+
+describe('UsersPanel save: the second-person contract', () => {
+  const DETAIL = { ...CUSTOMER, address: 'Adum', created_at: '2026-01-01T00:00:00Z' }
+  const open = async (patchHandler) => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/customers/', () => HttpResponse.json({ count: 1, next: null, previous: null, results: [CUSTOMER] })),
+      http.get('http://localhost:8000/api/accounts/customers/1/', () => HttpResponse.json(DETAIL)),
+      http.patch('http://localhost:8000/api/accounts/customers/1/', patchHandler),
+    )
+    renderPanel(['users.view', 'users.manage'])
+    fireEvent.click(await screen.findByText('✏️ Edit'))
+    await screen.findByText('Save changes')
+  }
+
+  it('shows sent-for-approval on a 201 with approval_id', async () => {
+    await open(() => HttpResponse.json({ ...CUSTOMER, approval_id: 41, approval_ids: [41], status: 'pending' }, { status: 201 }))
+    fireEvent.click(screen.getByText('Save changes'))
+    const note = await screen.findByRole('status')
+    expect(note).toHaveTextContent('Sent for approval (request #41). The details change when another person approves.')
+    expect(note).not.toHaveTextContent('Other changes were saved')
+    expect(screen.queryByText('Save changes')).not.toBeInTheDocument()
+  })
+
+  it('counts the requests when more than one was sent', async () => {
+    await open(() => HttpResponse.json({ ...CUSTOMER, approval_id: 41, approval_ids: [41, 42], status: 'pending' }, { status: 201 }))
+    fireEvent.click(screen.getByText('Save changes'))
+    expect(await screen.findByRole('status')).toHaveTextContent('Sent for approval (2 requests).')
+  })
+
+  it('plain save still says nothing special', async () => {
+    await open(() => HttpResponse.json({ ...CUSTOMER }))
+    fireEvent.click(screen.getByText('Save changes'))
+    await screen.findByText('✏️ Edit')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Sent for approval/)).not.toBeInTheDocument()
+  })
+
+  it('no_change shows its own message', async () => {
+    await open(() => HttpResponse.json({ detail: 'That is already the current value.', code: 'no_change' }, { status: 400 }))
+    fireEvent.click(screen.getByText('Save changes'))
+    expect(await screen.findByText('That is already the current value.')).toBeInTheDocument()
+    expect(screen.queryByText(/Could not save/)).not.toBeInTheDocument()
+  })
+
+  it('mixed PATCH reports the saved part', async () => {
+    await open(() => HttpResponse.json({ ...CUSTOMER, address: 'Bantama', approval_id: 7, approval_ids: [7], status: 'pending' }, { status: 201 }))
+    fireEvent.change(screen.getByDisplayValue('Adum'), { target: { value: 'Bantama' } })
+    fireEvent.click(screen.getByText('Save changes'))
+    expect(await screen.findByRole('status')).toHaveTextContent('Sent for approval (request #7). The details change when another person approves. Other changes were saved.')
+  })
+})
+

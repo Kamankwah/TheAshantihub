@@ -313,3 +313,46 @@ describe('setSudoHandler', () => {
     expect(handler2).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('second-person and password contracts of the staff APIs', () => {
+  const needSudo = () => HttpResponse.json({ detail: 'Re-enter your password to continue.', code: 'sudo_required' }, { status: 403 })
+
+  it('retries a POST to /api/ledger/orders/7/verification/ once after sudo_required', async () => {
+    let calls = 0
+    server.use(http.post('http://localhost:8000/api/ledger/orders/7/verification/', () => { calls += 1; return calls === 1 ? needSudo() : HttpResponse.json({ ok: 1 }) }))
+    const off = setSudoHandler(async () => true)
+    await expect(apiPost('/api/ledger/orders/7/verification/', { outcome: 'verified' })).resolves.toEqual({ ok: 1 })
+    off()
+    expect(calls).toBe(2)
+  })
+
+  it('surfaces the 403 when the prompt is cancelled', async () => {
+    let calls = 0
+    server.use(http.post('http://localhost:8000/api/ledger/orders/7/verification/', () => { calls += 1; return needSudo() }))
+    const off = setSudoHandler(async () => false)
+    await expect(apiPost('/api/ledger/orders/7/verification/', {})).rejects.toMatchObject({ status: 403, body: { code: 'sudo_required' } })
+    off()
+    expect(calls).toBe(1)
+  })
+
+  it('does not loop when the retry is 403 again', async () => {
+    let calls = 0
+    const handler = vi.fn(async () => true)
+    server.use(http.post('http://localhost:8000/api/ledger/orders/7/verification/', () => { calls += 1; return needSudo() }))
+    const off = setSudoHandler(handler)
+    await expect(apiPost('/api/ledger/orders/7/verification/', {})).rejects.toMatchObject({ status: 403 })
+    off()
+    expect(calls).toBe(2)
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  it('a 201 {approval_id, status:"pending"} from staff/withdrawals/3/fail/ resolves to the body', async () => {
+    await expect(apiPost('/api/wallet/staff/withdrawals/3/fail/', { reason: 'Number not valid' })).resolves.toEqual({ approval_id: 9, status: 'pending' })
+  })
+
+  it('a staff PATCH answered 201 resolves to the body, approval ids included', async () => {
+    server.use(http.patch('http://localhost:8000/api/accounts/customers/1/', () => HttpResponse.json({ id: 1, approval_id: 5, approval_ids: [5], status: 'pending' }, { status: 201 })))
+    await expect(apiPatch('/api/accounts/customers/1/', { phone: '0240000000' })).resolves.toMatchObject({ approval_id: 5, approval_ids: [5] })
+  })
+})
+

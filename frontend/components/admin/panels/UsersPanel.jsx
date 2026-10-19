@@ -18,6 +18,8 @@ import { D, glassCard } from "../theme.js";
 const CONFIG = {
   customers: {
     basePath: "/api/accounts/customers",
+    // While the ledger is on, changing these needs a second person's approval.
+    protectedFields: ["full_name", "phone", "email"],
     editFields: [
       { name: "full_name", label: "Full name" },
       { name: "phone", label: "Phone" },
@@ -37,6 +39,7 @@ const CONFIG = {
   },
   owners: {
     basePath: "/api/accounts/business-owners",
+    protectedFields: ["full_name", "login_phone", "email"],
     editFields: [
       { name: "full_name", label: "Full name" },
       { name: "login_phone", label: "Login phone" },
@@ -180,6 +183,7 @@ function UserRow({ user, config, canManage, onChanged }) {
   const [suspendReason, setSuspendReason] = useState("");
   const [form, setForm] = useState({});
   const [actionError, setActionError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const seededRef = useRef(false);
   const detail = useUserDetail(config.basePath, user.id, { enabled: mode !== "none" });
 
@@ -202,9 +206,24 @@ function UserRow({ user, config, canManage, onChanged }) {
 
   const save = async () => {
     setActionError(null);
+    setNotice(null);
     const body = Object.fromEntries(Object.entries(form).filter(([k, v]) => !(PHONE_FIELDS.includes(k) && !String(v).trim())));
-    try { await apiPatch(`${config.basePath}/${user.id}/`, body); close(); onChanged(); }
-    catch (err) { setActionError("Could not save these changes. Please try again."); }
+    try {
+      const res = await apiPatch(`${config.basePath}/${user.id}/`, body);
+      // 201 {approval_id, approval_ids}: the protected details were not written; they change when a second person
+      // approves. Other fields of the same PATCH were saved by the same call.
+      if (res?.approval_id) {
+        const count = res.approval_ids?.length || 1;
+        const protectedSet = config.protectedFields || [];
+        const otherSaved = Object.entries(body).some(([k, v]) => !protectedSet.includes(k) && String(v ?? "") !== String(detail.data?.[k] ?? ""));
+        const sent = count > 1 ? `Sent for approval (${count} requests).` : `Sent for approval (request #${res.approval_id}).`;
+        setNotice(`${sent} The details change when another person approves.${otherSaved ? " Other changes were saved." : ""}`);
+      }
+      close(); onChanged();
+    }
+    catch (err) {
+      setActionError(err?.body?.code === "no_change" ? "That is already the current value." : "Could not save these changes. Please try again.");
+    }
   };
   const suspend = async () => {
     setActionError(null);
@@ -241,6 +260,7 @@ function UserRow({ user, config, canManage, onChanged }) {
       </div>
 
       {actionError && <div style={{ color: D.red, fontSize: "0.78rem", marginTop: 8 }}>{actionError}</div>}
+      {notice && <div role="status" style={{ color: D.textDim, fontSize: "0.78rem", marginTop: 8 }}>{notice}</div>}
 
       {canManage && suspending && !user.is_suspended && (
         <div style={{ marginTop: 8, display: "flex", gap: 6 }}>

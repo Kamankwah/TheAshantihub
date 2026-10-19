@@ -5,6 +5,7 @@ import BusinessHoursEditor from "../../BusinessHoursEditor.jsx";
 import { useBusinessProfile } from "../../../hooks/useBusinessProfile.js";
 import { D, glassCard } from "../theme.js";
 import MarketingConsentCard from "../../MarketingConsentCard.jsx";
+import DetailChangeRequest from "../DetailChangeRequest.jsx";
 
 // "Profile & Settings" — reachable from the header's avatar dropdown. Read-only:
 // GET /api/accounts/business-owners/me/profile/ (the same hook AnalyticsPanel's
@@ -92,6 +93,8 @@ export default function ProfilePanel({ user }) {
           <BusinessHoursEditor key={profile?.has_hours ? "saved" : "blank"} initialDays={profile?.hours} onSave={saveHours} saving={hoursSaving} error={hoursError} />
         </div>
       )}
+
+      <DetailChangeRequest />
 
       <MarketingConsentCard />
 
