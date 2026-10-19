@@ -5,6 +5,7 @@ in one transaction creates the owner (with an unusable password until they
 claim the login), the profile, the account-manager assignment, any fraud
 cases (similar business nearby, self-dealing) and the business.kyc approval
 request, and records business.registered last."""
+import json
 import logging
 from decimal import Decimal
 
@@ -12,8 +13,11 @@ from django.contrib.auth.hashers import make_password
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from rest_framework import serializers
 
+from accounts import hours
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Role
+from accounts.serializers import _strict_bool
 from activity.services import record
 from approvals.models import ApprovalRequest
 from approvals.services import submit
@@ -30,6 +34,7 @@ logger = logging.getLogger(__name__)
 KYC_KIND = "business.kyc"
 OWNER_TARGET_TYPE = "accounts.businessowner"
 MANAGES_PORTFOLIO = "businesses.manage_portfolio"
+HOURS_REQUIRED_MESSAGE = "Enter the weekly opening hours before you submit."
 DUPLICATE_MESSAGE = "Already registered — ask Operations."
 PROSPECT_GONE_MESSAGE = "That prospect isn't on your list any more."
 NOT_WAITING_MESSAGE = "This business isn't waiting for KYC any more."
@@ -71,6 +76,37 @@ def _delete_replaced(names):
             logger.exception("Couldn't delete replaced KYC photo %s", name)
 
 
+def _week(data):
+    """The weekly hours from the form — a JSON string in multipart, or a list —
+    through the same rules as the owner's own editor. Returns the day list."""
+    raw = data.get("hours") if isinstance(data, dict) else None
+    if isinstance(raw, str):
+        raw = raw.strip()
+        try:
+            raw = json.loads(raw) if raw else None
+        except ValueError:
+            raise RegistrationError("The opening hours couldn't be read.", code="hours_invalid") from None
+    if raw is None or raw == []:
+        raise RegistrationError(HOURS_REQUIRED_MESSAGE, code="hours_required")
+    if isinstance(raw, dict) and "days" in raw:
+        raw = raw["days"]
+    if not isinstance(raw, list) or not all(isinstance(day, dict) for day in raw):
+        raise RegistrationError("The opening hours couldn't be read.", code="hours_invalid")
+    days = []
+    for day in raw:
+        day = dict(day)
+        try:
+            day["closed"] = _strict_bool(day.get("closed"))
+        except serializers.ValidationError:
+            raise RegistrationError("Each day's closed must be true or false.", code="hours_invalid") from None
+        days.append(day)
+    try:
+        hours.validate_week(days)
+    except hours.HoursError as exc:
+        raise RegistrationError(str(exc), code="hours_invalid") from None
+    return days
+
+
 def _six(value):
     return Decimal(f"{float(value):.6f}")
 
@@ -79,6 +115,7 @@ def register_business(scout, data, files, *, http_request=None):
     serializer = ScoutRegistrationSerializer(data=_as_dict(data, files))
     serializer.is_valid(raise_exception=True)
     values = serializer.validated_data
+    week = _week(_as_dict(data))
     identity = {
         "phone": values["owner_phone"],
         "gps_address": values["gps_address"],
@@ -97,6 +134,7 @@ def register_business(scout, data, files, *, http_request=None):
             if prospect is None:
                 raise RegistrationError(PROSPECT_GONE_MESSAGE, code="prospect", status_code=404)
         owner = _create_business(scout, values, identity)
+        hours.set_week(owner, week)
         if prospect is not None:
             prospects.link_registration(prospect, owner, name)
         if MANAGES_PORTFOLIO in scout.effective_permission_codenames():

@@ -29,7 +29,8 @@ def _to_time(value, label):
         raise HoursError(f"{label}: enter a time like 09:00.")
 
 
-def set_week(owner, days):
+def validate_week(days):
+    """The seven-day rules, checked without writing: {weekday: (closed, opens, closes)}."""
     seen = {}
     for day in days:
         try:
@@ -49,6 +50,11 @@ def set_week(owner, days):
         raise HoursError("Hours are needed for all seven days of the week.")
     if all(closed for closed, _, _ in seen.values()):
         raise HoursError("The business must be open at least one day a week.")
+    return seen
+
+
+def set_week(owner, days):
+    seen = validate_week(days)
     with transaction.atomic():
         BusinessHours.objects.filter(business_owner=owner).delete()
         BusinessHours.objects.bulk_create(
