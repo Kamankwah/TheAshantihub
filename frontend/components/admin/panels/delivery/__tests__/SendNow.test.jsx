@@ -17,7 +17,7 @@ describe('Sending a held order early', () => {
       http.get(`${API}/api/orders/dispatches/`, () => HttpResponse.json([])),
       http.post(`${API}/api/delivery/orders/9/send-early/`, async ({ request }) => { body = await request.json(); return HttpResponse.json({ order_id: 9 }) }),
     )
-    wrap(<DeliveryManagerPanel />)
+    wrap(<DeliveryManagerPanel auth={{ hasPermission: (c) => c === 'delivery.manage' }} />)
     const open = await screen.findByRole('button', { name: 'Send now' })
     expect(screen.getAllByRole('button', { name: 'Send now' })).toHaveLength(1)
     fireEvent.click(open)
@@ -26,5 +26,15 @@ describe('Sending a held order early', () => {
     fireEvent.change(screen.getByLabelText(/Why send it/), { target: { value: 'Shop is open' } })
     fireEvent.click(screen.getAllByRole('button', { name: 'Send now' })[0])
     await waitFor(() => expect(body).toEqual({ reason: 'Shop is open' }))
+  })
+
+  it('send now hidden without the permission', async () => {
+    server.use(
+      http.get(`${API}/api/orders/delivery/`, () => HttpResponse.json({ count: 1, results: [order({ ready_not_before: new Date(Date.now() + 3600e3).toISOString() })] })),
+      http.get(`${API}/api/orders/dispatches/`, () => HttpResponse.json([])),
+    )
+    wrap(<DeliveryManagerPanel auth={{ hasPermission: (c) => c === 'orders.manage_delivery' }} />)
+    expect(await screen.findByText(/Held until the shop opens/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send now' })).not.toBeInTheDocument()
   })
 })

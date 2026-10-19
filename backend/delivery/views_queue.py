@@ -9,7 +9,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import HasRolePermission
+from accounts.permissions import HasAnyRolePermission, HasRolePermission
 from orders.models import DeliveryAssignment, Order
 from routing import service as routing_service
 
@@ -145,8 +145,12 @@ class ScheduledPagination(PageNumberPagination):
 
 
 class ScheduledView(ManageView):
-    """GET scheduled/ — paginated ({count, next, previous, results}) paid orders held until their vendors open, soonest
+    """GET scheduled/ — readable by delivery.manage or orders.manage_delivery (the delivery-management panel's
+    permission); sending early (SendEarlyView) stays delivery.manage only. Paginated ({count, next, previous, results}) paid orders held until their vendors open, soonest
     opening first. The same queryset as the queue's scheduled_count (board.scheduled_orders)."""
+
+    def get_permissions(self):
+        return [HasAnyRolePermission("delivery.manage", "orders.manage_delivery")]
 
     def get(self, request):
         now = timezone.now()

@@ -12,7 +12,8 @@ import SendNow from "./SendNow.jsx";
 // Paid orders held until their vendors open (GET /api/delivery/scheduled/, the same set as the queue's
 // scheduled_count), soonest first. Each shows the held-until time and every vendor's own next opening; a vendor
 // the server gives no opening for (open now, or no hours) says so instead of showing a made-up time.
-export default function ScheduledPanel() {
+export default function ScheduledPanel({ auth }) {
+  const canSend = Boolean(auth?.hasPermission?.("delivery.manage"));
   const [pageNo, setPageNo] = useState(1);
   const scheduled = useDeliveryScheduled(pageNo);
   const queryClient = useQueryClient();
@@ -40,7 +41,7 @@ export default function ScheduledPanel() {
                           <div key={v.business_id}>{v.business_name}: <span style={{ fontWeight: 700 }}>{v.next_open ? `opens ${dayTime(v.next_open)}` : "no opening time to show"}</span></div>
                         ))}</td>
                         <td style={{ ...td, fontWeight: 800 }}>{dayTime(o.ready_not_before)}</td>
-                        <td style={td}><SendNow orderId={o.order_id} readyNotBefore={o.ready_not_before} onDone={refresh} /></td>
+                        <td style={td}><SendNow canSend={canSend} orderId={o.order_id} readyNotBefore={o.ready_not_before} onDone={refresh} /></td>
                       </tr>
                     ))}
                   </tbody>

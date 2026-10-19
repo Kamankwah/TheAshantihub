@@ -12,12 +12,14 @@ export const isHeld = (readyNotBefore, now = Date.now()) => Boolean(readyNotBefo
 
 export const MIN_REASON = 3;
 
-export default function SendNow({ orderId, readyNotBefore, onDone }) {
+// `canSend` is whether the signed-in staffer holds delivery.manage (the server refuses anyone else with a 403);
+// without it nothing renders, so a read-only viewer never sees a button that cannot work.
+export default function SendNow({ orderId, readyNotBefore, onDone, canSend = false }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  if (!isHeld(readyNotBefore)) return null;
+  if (!canSend || !isHeld(readyNotBefore)) return null;
   const ok = reason.trim().length >= MIN_REASON;
   const send = async () => {
     setError("");

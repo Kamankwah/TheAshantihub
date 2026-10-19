@@ -45,3 +45,15 @@ describe('the Delivery Manager menu (canvas 2026-10-07, 20 screens)', () => {
     expect(NAV_ITEMS.filter((i) => i.id.startsWith('dm-'))).toHaveLength(15)
   })
 })
+
+describe('the Scheduled orders tab outside the Delivery Manager menu', () => {
+  const ids = (role, perms) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
+  it('scheduled tab appears for orders.manage_delivery', () => {
+    expect(ids('scout', ['orders.manage_delivery'])).toContain('delivery-scheduled')
+    expect(ids('scout', ['delivery.manage'])).toContain('delivery-scheduled')
+  })
+  it('is absent without either permission, and the Delivery Manager keeps its own Scheduled screen', () => {
+    expect(ids('scout', ['kyc.approve'])).not.toContain('delivery-scheduled')
+    expect(ids('delivery_manager', ['delivery.manage', 'orders.manage_delivery'])).not.toContain('delivery-scheduled')
+  })
+})

@@ -16,13 +16,26 @@ describe('Scheduled tab', () => {
       results: [{ order_id: 41, placed_at: new Date().toISOString(), ready_not_before: opens, customer_name: 'Ama', delivery_address: '12 Ash Rd',
         vendors: [{ business_id: 3, business_name: 'Akosua Ntoma', next_open: opens }, { business_id: 4, business_name: 'Kofi Foods', next_open: null }] }],
     })))
-    wrap(<ScheduledPanel />)
+    wrap(<ScheduledPanel auth={{ hasPermission: (c) => c === 'delivery.manage' }} />)
     expect(await screen.findByText('#41')).toBeInTheDocument()
     expect(screen.getByText(/Akosua Ntoma:/)).toBeInTheDocument()
     expect(screen.getAllByText(/^opens /)).toHaveLength(1)
     expect(screen.getByText('no opening time to show')).toBeInTheDocument()
     expect(screen.getByText(/Kofi Foods:/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send now' })).toBeInTheDocument()
+  })
+})
+
+describe('Scheduled tab without the send permission', () => {
+  it('send now hidden without the permission', async () => {
+    const opens = new Date(Date.now() + 5 * 3600e3).toISOString()
+    server.use(http.get(`${API}/api/delivery/scheduled/`, () => HttpResponse.json({
+      count: 1, next: null, previous: null,
+      results: [{ order_id: 61, placed_at: new Date().toISOString(), ready_not_before: opens, customer_name: 'Ama', delivery_address: '', vendors: [] }],
+    })))
+    wrap(<ScheduledPanel auth={{ hasPermission: (c) => c === 'orders.manage_delivery' }} />)
+    expect(await screen.findByText('#61')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send now' })).not.toBeInTheDocument()
   })
 })
 
@@ -36,7 +49,7 @@ describe('Scheduled tab paging', () => {
       if (page === '2') return HttpResponse.json({ detail: 'Invalid page.' }, { status: 404 })
       return HttpResponse.json({ count: 11, next: 'x', previous: null, results: [row] })
     }))
-    wrap(<ScheduledPanel />)
+    wrap(<ScheduledPanel auth={{ hasPermission: () => true }} />)
     await screen.findByText('#51')
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
     await waitFor(() => expect(pages).toContain('2'))
