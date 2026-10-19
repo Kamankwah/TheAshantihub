@@ -165,3 +165,6 @@ class EventCancelLedgerOffTests(BookingBase):
         notice = Notification.objects.get(customer=self.customer, kind="event_cancelled")
         self.assertIn("Support will refund you", notice.body)
         self.assertNotIn("wallet", notice.body)
+        organiser = Notification.objects.get(business_owner=self.owner, kind="event_cancelled")
+        self.assertNotIn("from your account", organiser.body)
+        self.assertIn("2 tickets marked refunded. No money left your account", organiser.body)

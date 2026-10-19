@@ -33,46 +33,79 @@ def unrefunded_ids(event):
 
 
 def refunded_by_ticket(event, ticket_ids):
-    """{ticket id: pesewas that went to the buyer's wallet (0: no ledger sale)} for those of `ticket_ids` now refunded."""
+    """{ticket id: pesewas that went to the buyer's wallet} for those of `ticket_ids` now refunded. None: the ticket has
+    no ledger sale (ledger off, bought before it, or a customer organiser), so Support refunds it; 0: it has a sale but
+    nothing was left on it (an earlier refund already returned that money)."""
+    from .cancellation import _sale_of
+
     tickets = Ticket.objects.filter(pk__in=ticket_ids, ticket_type__event=event, refunded_at__isnull=False)
     out = {}
     for ticket in tickets:
         given = BookingRefund.objects.filter(
             source=f"ticket-{ticket.pk}", sale__kind=BookingSale.TICKETS, sale__session__transaction_id=ticket.transaction_id,
         ).first()
-        out[ticket.pk] = (given.amount_pesewas + given.processing_pesewas) if given is not None else 0
+        if given is not None:
+            out[ticket.pk] = given.amount_pesewas + given.processing_pesewas
+        else:
+            out[ticket.pk] = 0 if _sale_of(ticket) is not None else None
     return out
 
 
-def buyer_body(label, wallet_pesewas, without_wallet):
+ALREADY_RETURNED = "was already returned to you by an earlier refund, so nothing more goes to your wallet"
+
+
+def buyer_body(label, wallet_pesewas, without_sale, already_returned):
+    """`without_sale`: some ticket has no ledger sale (Support refunds it). `already_returned`: some ticket had nothing
+    left on its sale (an earlier refund returned it)."""
+    text = f"“{label}” was cancelled."
     if wallet_pesewas > 0:
-        text = f"“{label}” was cancelled. GH₵ {from_pesewas(wallet_pesewas):.2f} went back to your AshantiHub wallet."
-        if without_wallet:
+        text += f" GH₵ {from_pesewas(wallet_pesewas):.2f} went back to your AshantiHub wallet."
+        if already_returned:
+            text += f" The rest of your payment {ALREADY_RETURNED}."
+        if without_sale:
             text += " Support will refund you for the rest."
         return text
-    return f"“{label}” was cancelled. Support will refund you."
+    if already_returned:
+        text += f" Your payment {ALREADY_RETURNED}."
+        if without_sale:
+            text += " Support will refund you for the rest."
+        return text
+    return text + " Support will refund you."
 
 
-def organiser_body(label, tickets_refunded, tickets_left):
-    text = f"“{label}” was cancelled. {tickets_refunded} ticket{'' if tickets_refunded == 1 else 's'} refunded in full from your account."
+def organiser_body(label, tickets_refunded, tickets_left, from_account=True):
+    """`from_account`: the refunds come out of the organiser's AshantiHub account (ledger on, business-organised)."""
+    text = f"“{label}” was cancelled."
+    if not tickets_refunded and not tickets_left:
+        return text + " It had no tickets to refund."
+    plural = "" if tickets_refunded == 1 else "s"
+    if from_account:
+        text += f" {tickets_refunded} ticket{plural} refunded in full from your account."
+    else:
+        text += f" {tickets_refunded} ticket{plural} marked refunded. No money left your account: AshantiHub Support refunds the buyers."
     if tickets_left:
         text += f" {tickets_left} more will be refunded shortly."
     return text
 
 
 def send(event, refunded_by_ticket, *, result=None):
-    """Queue the cancellation notices for `refunded_by_ticket` ({ticket id: wallet pesewas}) and, when `result` (the
+    """Queue the cancellation notices for `refunded_by_ticket` ({ticket id: wallet pesewas, 0 or None}) and, when `result` (the
     CancelResult) is given, the organiser's summary; they go out after the surrounding transaction commits (at once
     outside one). Never raises."""
     try:
         label = event_label(event)
         per_buyer = {}
         for ticket in Ticket.objects.filter(pk__in=list(refunded_by_ticket)).select_related("purchased_by"):
-            wallet, without = per_buyer.get(ticket.purchased_by_id, (0, False))
+            wallet, without, returned = per_buyer.get(ticket.purchased_by_id, (0, False, False))
             given = refunded_by_ticket[ticket.pk]
-            per_buyer[ticket.purchased_by_id] = (wallet + given, without or given == 0)
-        buyers = [(customer_id, buyer_body(label, wallet, without)) for customer_id, (wallet, without) in per_buyer.items()]
-        organiser = organiser_body(label, result.tickets_refunded, result.tickets_left) if result is not None else None
+            per_buyer[ticket.purchased_by_id] = (wallet + (given or 0), without or given is None, returned or given == 0)
+        buyers = [(customer_id, buyer_body(label, *state)) for customer_id, state in per_buyer.items()]
+        organiser = None
+        if result is not None:
+            from ledger import escrow
+
+            from_account = escrow.enabled() and event.submitted_by_business_id is not None
+            organiser = organiser_body(label, result.tickets_refunded, result.tickets_left, from_account)
         transaction.on_commit(lambda: _deliver(event.pk, buyers, organiser), robust=True)
     except Exception as exc:  # noqa: BLE001 - a notice never stops a cancel
         logger.error("Event %s cancel notices not queued: %s", event.pk, type(exc).__name__)

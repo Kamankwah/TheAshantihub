@@ -54,6 +54,26 @@ class CancelSweepTests(BookingBase):
         self.assertEqual(tasks.finish_cancelled_event_refunds(), 0)
         self.assertFalse(Ticket.objects.filter(refunded_at__isnull=False).exists())
 
+    def test_candidates_are_cancelled_events_with_an_unrefunded_ticket(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from events.models import Event
+
+        self.paid_tickets(quantity=2)
+        now = timezone.now()
+        bare = Event.objects.create(
+            category=self.event.category, zone=self.zone, submitted_by_business=self.owner, name="No Tickets",
+            description="D.", address="Kumasi", event_date=now + timedelta(days=5), visibility_days=14,
+            status=Event.CANCELLED, cancelled_at=now,
+        )
+        Event.objects.filter(pk=self.event.pk).update(status=Event.CANCELLED, cancelled_at=now)
+        self.assertEqual(list(tasks.cancelled_events_to_finish()), [self.event])     # two unrefunded tickets: listed once
+        self.assertNotIn(bare, tasks.cancelled_events_to_finish())
+        Ticket.objects.update(refunded_at=now)
+        self.assertEqual(list(tasks.cancelled_events_to_finish()), [])                 # all refunded: excluded
+
     def test_beat_runs_hourly_at_fifty_past(self):
         entry = settings.CELERY_BEAT_SCHEDULE["ledger-finish-cancelled-event-refunds"]
         self.assertEqual(entry["task"], "ledger.tasks.finish_cancelled_event_refunds")

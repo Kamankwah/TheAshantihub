@@ -28,6 +28,16 @@ def release_due_booking_sales():
     return sales.release_due()
 
 
+def cancelled_events_to_finish():
+    """Cancelled events with at least one unrefunded ticket (Exists, not a multi-valued join)."""
+    from django.db.models import Exists, OuterRef
+
+    from events.models import Event, Ticket
+
+    unrefunded = Ticket.objects.filter(ticket_type__event=OuterRef("pk"), refunded_at__isnull=True)
+    return Event.objects.filter(Exists(unrefunded), status=Event.CANCELLED).order_by("pk")
+
+
 @shared_task
 def finish_cancelled_event_refunds():
     """Hourly: a cancelled event whose cancel was interrupted (a crash, or one ticket's refund failing) has its remaining
@@ -35,11 +45,9 @@ def finish_cancelled_event_refunds():
     ticket whose refund keeps failing is logged each hour (by type only) and counted in `tickets_left` until Accounting
     resolves it. The beat entry makes core.jobs keep a JobRun heartbeat for it."""
     from events import cancel_notice, cancellation
-    from events.models import Event
 
     total = 0
-    events = Event.objects.filter(status=Event.CANCELLED, ticket_types__tickets__refunded_at__isnull=True).distinct()
-    for event in events:
+    for event in cancelled_events_to_finish():
         refunded = []
         total += cancellation.refund_unrefunded(event, by=None, reason=event.cancel_reason, refunded=refunded)
         if refunded:
