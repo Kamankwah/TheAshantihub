@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../../../mocks/server.js'
@@ -173,5 +173,21 @@ describe('UsersPanel save: the second-person contract', () => {
     fireEvent.click(screen.getByText('Save changes'))
     expect(await screen.findByRole('status')).toHaveTextContent('Sent for approval (request #7). The details change when another person approves. Other changes were saved.')
   })
-})
 
+  it('does not send an unchanged masked email, and does send a really changed one', async () => {
+    const bodies = []
+    await open(async ({ request }) => { bodies.push(await request.json()); return HttpResponse.json({ ...CUSTOMER }) })
+    fireEvent.change(screen.getByDisplayValue('Adum'), { target: { value: 'Bantama' } })
+    fireEvent.click(screen.getByText('Save changes'))
+    await screen.findByText('✏️ Edit')
+    expect(bodies[0]).toEqual({ address: 'Bantama' })
+    expect(bodies[0]).not.toHaveProperty('email')
+
+    fireEvent.click(screen.getByText('✏️ Edit'))
+    await screen.findByText('Save changes')
+    fireEvent.change(await screen.findByDisplayValue('am•••@example.com'), { target: { value: 'new@example.com' } })
+    fireEvent.click(screen.getByText('Save changes'))
+    await waitFor(() => expect(bodies).toHaveLength(2))
+    expect(bodies[1].email).toBe('new@example.com')
+  })
+})

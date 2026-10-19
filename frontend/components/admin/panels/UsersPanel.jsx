@@ -207,7 +207,12 @@ function UserRow({ user, config, canManage, onChanged }) {
   const save = async () => {
     setActionError(null);
     setNotice(null);
-    const body = Object.fromEntries(Object.entries(form).filter(([k, v]) => !(PHONE_FIELDS.includes(k) && !String(v).trim())));
+    // Only what the staff member actually changed: a field still equal to the loaded record (a masked email or
+    // phone included) is never sent back, and a blank phone means "keep".
+    const body = Object.fromEntries(Object.entries(form).filter(([k, v]) => {
+      if (PHONE_FIELDS.includes(k) && !String(v).trim()) return false;
+      return String(v ?? "") !== String(detail.data?.[k] ?? "");
+    }));
     try {
       const res = await apiPatch(`${config.basePath}/${user.id}/`, body);
       // 201 {approval_id, approval_ids}: the protected details were not written; they change when a second person
