@@ -30,6 +30,7 @@ from payments import booking_pay
 from payments.models import CheckoutSession
 from payments.services import process_payment
 
+from . import scan_notice
 from .models import Event, EventPricingTier, EventRSVP, EventTicketType, Ticket
 from .permissions import (
     IsCustomerOrBusinessOwner,
@@ -983,12 +984,13 @@ class EventCheckinListView(generics.ListAPIView):
 class EventCheckinView(APIView):
     """POST /api/events/{id}/tickets/checkin/ — organizer/staff scans or
     keys in a ticket's `code` to admit the holder. This is the normal,
-    non-exceptional path by which escrow is released: a held, undelivered,
-    non-refunded ticket is marked delivered and auto-released in the same
-    write (escrow_released_by_staff stays null, distinguishing an
-    auto-release from a manual EscrowReleaseView override). With the ledger
-    on and the ticket in a booking sale, the scan only marks it delivered and
-    leaves it held: it counts as hand-over, and Support's call releases it.
+    non-exceptional path by which escrow is released when the ledger holds no
+    money for the ticket: a held, undelivered, non-refunded ticket with no
+    ledger sale is marked delivered and auto-released in the same write
+    (escrow_released_by_staff stays null, distinguishing an auto-release from
+    a manual EscrowReleaseView override). A ticket in a ledger sale is only
+    marked delivered (evidence) and the buyer is told once (events.scan_notice);
+    the money releases on the clock (ledger.sales.release_due), never on a scan.
     """
 
     permission_classes = [IsAuthenticated, IsEventOwnerOrCanApproveEvents]
@@ -1016,12 +1018,14 @@ class EventCheckinView(APIView):
             update_fields = ["delivered_at", "delivered_by_staff"]
 
             # With the ledger on, a ticket bought in a booking sale is released by Support's call, not by the scan.
-            if ticket.escrow_status == Ticket.HELD and _ledger_sale(ticket) is None:
+            sale = _ledger_sale(ticket)
+            if ticket.escrow_status == Ticket.HELD and sale is None:
                 ticket.escrow_status = Ticket.RELEASED
                 ticket.escrow_released_at = timezone.now()
                 update_fields += ["escrow_status", "escrow_released_at"]
 
             ticket.save(update_fields=update_fields)
+            scan_notice.send(ticket, sale)
         return Response(_checkin_serializer_for(request.user)(ticket).data)
 
 
