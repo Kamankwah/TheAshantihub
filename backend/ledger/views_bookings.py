@@ -4,13 +4,16 @@ call, and recording the call (a positive one releases the money at once). Every 
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts import sessions
 from accounts.permissions import HasRolePermission
-from notifications.services import notify_business_owner, notify_customer
+from accounts.views import IsCustomer
+from notifications.services import notify_business_owner, notify_customer, notify_staff_role
 
-from . import escrow, sales, settings_store
+from . import escrow, sales
 from .models import BookingSale
 from .money import from_pesewas
 from .verification import VerificationError
@@ -39,15 +42,14 @@ class AwaitingBookingsView(APIView):
         if not escrow.enabled():
             return ledger_off()
         now = timezone.now()
-        hours = settings_store.current("verification_overdue_hours", now)
         paginator = Pagination()
         page = paginator.paginate_queryset(sales.awaiting(now), request, view=self)
-        return paginator.get_paginated_response([sales.queue_row(sale, now, hours) for sale in page])
+        return paginator.get_paginated_response([sales.queue_row(sale, now) for sale in page])
 
 
 class BookingVerificationView(APIView):
     """POST bookings/<id>/verification/ {outcome: matches|does_not_match|unreachable, note?, customer_confirmed_by_phone?}.
-    A positive outcome releases the booking's money at once."""
+    A positive outcome releases the booking's money at once, and needs the password re-entered (RequiresSudo)."""
 
     def get_permissions(self):
         return [HasRolePermission(VERIFY)]
@@ -57,6 +59,8 @@ class BookingVerificationView(APIView):
             return ledger_off()
         sale = get_object_or_404(BookingSale, pk=pk)
         data = request.data if isinstance(request.data, dict) else {}
+        if data.get("outcome") == "matches":
+            sessions.require_sudo(request)  # a positive call releases money by hand: the password is asked again
         try:
             sale = sales.record_verification(
                 sale, request.user, data.get("outcome"), note=data.get("note"),
@@ -105,3 +109,23 @@ class BookingCancelView(APIView):
             link="/business-dashboard", icon="⚠️",
         )
         return Response({"sale": sale.pk, "refunded": str(back)})
+
+
+class BookingReportProblemView(APIView):
+    """POST bookings/<sale id>/report-problem/ {reason} — the customer reports a problem with a stay or tickets (a
+    service has its own door under services/requests/). Stops the automatic release and tells Support (Plan 7E)."""
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def post(self, request, pk):
+        sale = get_object_or_404(BookingSale, pk=pk, customer=request.user)
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            sale = sales.report_problem(sale, request.user, data.get("reason"))
+        except sales.AcceptError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        notify_staff_role(
+            VERIFY, "booking_problem", "A customer reported a problem",
+            body=f"{sale.label().capitalize()} — dispute #{sale.dispute_id}.", link="/staff", icon="⚠️",
+        )
+        return Response({"dispute_id": sale.dispute_id}, status=201)

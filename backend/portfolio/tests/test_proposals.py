@@ -263,6 +263,15 @@ class ProposeListingApiTests(ChangeTestBase):
         self.assertFalse(Listing.objects.filter(business_owner=self.owner).exists())
         self.assertEqual(ActivityEvent.objects.order_by("-id").first().verb, "business.change_proposed")
 
+    def test_the_chosen_cancellation_policy_travels_with_the_proposal(self):
+        main = self.staged()
+        self.as_staff(self.scout)
+        response = self.post({**product_body(), "cancellation_policy": "strict"}, main=main.pk)
+        self.assertEqual(response.status_code, 201, response.content)
+        approval = ApprovalRequest.objects.get(pk=response.json()["approval_id"])
+        self.assertEqual(approval.payload["listing"]["cancellation_policy"], "strict")
+        self.assertEqual(self.post({**product_body(), "cancellation_policy": "lenient"}, main=main.pk).status_code, 400)
+
     def test_the_business_needs_approved_kyc(self):
         BusinessOwner.objects.filter(pk=self.owner.pk).update(kyc_status=BusinessOwner.PENDING)
         self.as_staff(self.scout)
@@ -393,9 +402,19 @@ class ListingFormMetaTests(ChangeTestBase):
         names = {category["name"] for category in body["categories"]}
         self.assertIn("Shops", names)
         self.assertNotIn("Hotels", names)  # a product business only sees product categories
+        self.assertTrue(all(category["is_accommodation"] is False for category in body["categories"]))
         self.assertIn({"id": Zone.objects.get(name="Adum").id, "name": "Adum"}, body["zones"])
         self.assertEqual(set(body["required_answers"]), {"has_warranty", "has_expiry", "return_policy"})
         self.assertEqual((body["business_kind"], body["max_photos"]), ("product", proposals.MAX_PHOTOS))
+
+    def test_a_service_business_sees_which_categories_are_stays(self):
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(business_kind="service")
+        Category.objects.filter(label="Hotels").update(is_accommodation=True)
+        self.as_staff(self.scout)
+        body = self.client.get(f"/api/portfolio/meta/listing-form/?business={self.owner.pk}").json()
+        flags = {category["name"]: category["is_accommodation"] for category in body["categories"]}
+        self.assertTrue(flags["Hotels"])
+        self.assertFalse(all(flags.values()))
 
     def test_someone_elses_business_and_a_missing_business(self):
         self.as_staff(self.other_scout)

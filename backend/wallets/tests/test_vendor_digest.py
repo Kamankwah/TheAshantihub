@@ -108,8 +108,8 @@ class DigestTests(VendorBase):
             release(sold)
         paid_order(self.buyer, [(self.kofi.listing("80.00"), 1)])                                 # today: not in yesterday's digest
         with self.captureOnCommitCallbacks(execute=True):
-            self.assertEqual(vendor_texts.queue_digests(self.day), 1)
-            self.assertEqual(vendor_texts.queue_digests(self.day), 0)                            # a re-run adds nothing
+            self.assertEqual(vendor_texts.run_digests(self.day)[0], 1)
+            self.assertEqual(vendor_texts.run_digests(self.day)[0], 0)                            # a re-run adds nothing
         expected = (
             f"AshantiHub {self.day:%d %b}: 2 orders paid, items GHS 720.00. Released GHS 115.00, fees GHS 5.00, "
             "refunds GHS 0.00. Now Pending GHS 680.00, Available GHS 115.00."
@@ -121,7 +121,7 @@ class DigestTests(VendorBase):
     def test_a_business_that_did_not_ask_gets_none(self):
         with self.yesterday():
             paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
-        self.assertEqual(vendor_texts.queue_digests(self.day), 0)
+        self.assertEqual(vendor_texts.run_digests(self.day)[0], 0)
         self.assertFalse(VendorText.objects.filter(kind=VendorText.DAILY_DIGEST).exists())
 
     def test_the_digest_job_is_a_no_op_with_the_ledger_off_and_both_jobs_are_scheduled(self):
@@ -142,7 +142,7 @@ class DigestTests(VendorBase):
         with mock.patch("django.utils.timezone.now", return_value=datetime.combine(self.day + timedelta(days=1), time(0, 1), tzinfo=accra)):
             paid_order(self.buyer, [(self.kofi.listing("600.00"), 1)])
         with self.captureOnCommitCallbacks(execute=True):
-            self.assertEqual(vendor_texts.queue_digests(self.day), 1)
+            self.assertEqual(vendor_texts.run_digests(self.day)[0], 1)
         body = senders.sms_outbox[-1].body
         self.assertIn("1 order paid, items GHS 120.00", body)
         self.assertNotIn("600.00 ", body.split("Now Pending")[0])
@@ -152,10 +152,10 @@ class DigestTests(VendorBase):
         with self.yesterday():
             paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
         with self.captureOnCommitCallbacks(execute=True):
-            self.assertEqual(vendor_texts.queue_digests(self.day), 1)
+            self.assertEqual(vendor_texts.run_digests(self.day)[0], 1)
         text = VendorText.objects.get(kind=VendorText.DAILY_DIGEST)
         self.assertIsNotNone(text.notification_id)
-        self.assertEqual(vendor_texts.queue_digests(self.day), 0)
+        self.assertEqual(vendor_texts.run_digests(self.day)[0], 0)
         self.assertEqual(Notification.objects.filter(business_owner=self.kofi.owner, kind="vendor_money").count(), 1)
 
     def test_a_run_that_finds_the_text_already_queued_without_a_notice_makes_exactly_one_notice(self):
@@ -164,12 +164,12 @@ class DigestTests(VendorBase):
         with self.yesterday():
             paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
         with self.captureOnCommitCallbacks(execute=True):
-            self.assertEqual(vendor_texts.queue_digests(self.day), 1)
+            self.assertEqual(vendor_texts.run_digests(self.day)[0], 1)
         VendorText.objects.filter(kind=VendorText.DAILY_DIGEST).update(notification=None)
         Notification.objects.all().delete()
         with self.captureOnCommitCallbacks(execute=True):
-            vendor_texts.queue_digests(self.day)
-            vendor_texts.queue_digests(self.day)
+            vendor_texts.run_digests(self.day)[0]
+            vendor_texts.run_digests(self.day)[0]
         self.assertEqual(VendorText.objects.filter(kind=VendorText.DAILY_DIGEST).count(), 1)
         self.assertEqual(Notification.objects.filter(business_owner=self.kofi.owner, kind="vendor_money").count(), 1)
 
@@ -194,7 +194,7 @@ class DigestConcurrencyTests(TransactionTestCase):
         def run():
             try:
                 barrier.wait(timeout=10)
-                results.append(vendor_texts.queue_digests(day))
+                results.append(vendor_texts.run_digests(day)[0])
             except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
             finally:

@@ -105,6 +105,10 @@ class Event(models.Model):
         validators=[MinValueValidator(7), MaxValueValidator(90)]
     )
 
+    # Tickets are not refundable after purchase unless the organiser says so: refund in full until this many days before
+    # the event (ledger.cancellation, Plan 7E). Null: no refunds, except for a cancelled event.
+    refund_until_days_before = models.PositiveSmallIntegerField(null=True, blank=True)
+
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
 
@@ -451,3 +455,14 @@ class Ticket(models.Model):
         if not self.code:
             self.code = _generate_unique_ticket_code()
         super().save(*args, **kwargs)
+
+
+class TicketScanNotice(models.Model):
+    """The one notice to a ticket's buyer that the ticket was scanned at the door (Plan 7C): idempotent on `key`
+    (ticket-scan-<ticket pk>), so a re-scan or a retry never sends a second. Holds the text only, never a phone."""
+
+    key = models.CharField(max_length=40, unique=True)
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="scan_notices")
+    body = models.CharField(max_length=320)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)

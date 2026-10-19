@@ -179,7 +179,7 @@ class DisputeResolveView(APIView):
         if refund is not None:
             from ledger.money import from_pesewas
 
-            body = {**body, "wallet_refund": str(from_pesewas(refund.amount_pesewas + refund.processing_pesewas))}
+            body = {**body, "wallet_refund": str(from_pesewas(refund.wallet_pesewas))}
         return Response(body)
 
 

@@ -91,6 +91,13 @@ class ApprovalDetailSerializer(ApprovalSerializer):
     class Meta(ApprovalSerializer.Meta):
         fields = ApprovalSerializer.Meta.fields + ["payload", "before", "diff", "stale", "timeline", "consequences"]
 
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        kind = get_kind(obj.kind)
+        if kind is not None and kind.public_payload is not None:
+            data["payload"] = services.logged_payload(kind, obj)
+        return data
+
     def get_timeline(self, obj):
         return services.timeline(obj)
 

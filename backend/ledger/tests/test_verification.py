@@ -24,8 +24,8 @@ class VerificationBase(OrderPaymentBase):
         self.support = make_staff("support", "esi@example.com")
         self.accountant = make_staff("accountant", "kofi@example.com")
 
-    def as_staff(self, staff):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff)}")
+    def as_staff(self, staff, sudo=True):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff, sudo=sudo)}")
 
     def paid_order(self, *, delivered=True, customer_confirmed=False, price="120.00", delivery="10.00"):
         """A paid door-to-door order (items 120.00 + delivery 10.00) with its payment recorded."""

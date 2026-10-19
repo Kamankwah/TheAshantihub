@@ -69,8 +69,9 @@ def _check_code(ticket, body, request):
 
 def _check_authenticator(account, body, request):
     """None when the authenticator code (or a recovery code) is right, else the refusal to answer. Wrong codes count
-    towards the same 15-minute lock as texted ones, one guess at a time per account (service.guessing). The holder
-    is told when the lock engages and whenever a recovery code signs someone in (otp.notices)."""
+    towards the same 15-minute lock and daily cap as texted ones, one guess at a time per account
+    (service.guessing). The holder is told when a lock engages and whenever a recovery code signs someone in
+    (otp.notices)."""
     recovery = _text(body.get("recovery_code"))
     try:
         with service.guessing(account):
@@ -79,7 +80,7 @@ def _check_authenticator(account, body, request):
         return Response({"detail": UNREADABLE, "code": "authenticator_unreadable"}, status=400)
     # The guess has committed; only now tell the holder.
     if locked_now:
-        notices.account_locked(account, purpose=SIGN_IN)
+        notices.account_locked(account, purpose=SIGN_IN, until_tomorrow=locked_now == service.DAILY_LOCK)
     if refusal is not None:
         return _refused(refusal)
     if recovery:

@@ -2,16 +2,17 @@
 (maker-checker through the approvals engine)."""
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import status
+from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts import sessions
 from accounts.permissions import HasAnyRolePermission, HasRolePermission
 from approvals import services as approvals
 from approvals.models import ApprovalRequest
 from orders.models import Order
 
-from . import escrow, fees, settings_store, verification
+from . import cancellation, escrow, fees, sales, settings_store, verification
 from .approval_kinds import CATEGORY_LABELS, FEE_RULES_KEY, SETTING_KEY, STOCK_SETTING_KEYS, bands_as_dicts, effective_time
 from .models import FeeRuleSet, Journal, MoneySetting
 
@@ -141,7 +142,7 @@ class AwaitingVerificationView(APIView):
 
 class OrderVerificationView(APIView):
     """POST orders/<id>/verification/ {outcome: matches|does_not_match|unreachable, note?, customer_confirmed_by_phone?}.
-    A positive outcome releases the order's money at once."""
+    A positive outcome releases the order's money at once, and needs the password re-entered (RequiresSudo)."""
 
     def get_permissions(self):
         return [HasRolePermission("orders.verify")]
@@ -149,6 +150,8 @@ class OrderVerificationView(APIView):
     def post(self, request, pk):
         order = get_object_or_404(Order, pk=pk)
         data = request.data if isinstance(request.data, dict) else {}
+        if data.get("outcome") == "matches":
+            sessions.require_sudo(request)  # a positive call releases money by hand: the password is asked again
         try:
             check = verification.record(
                 order, request.user, data.get("outcome"), note=data.get("note"),
@@ -185,3 +188,31 @@ class PickupCollectedView(APIView):
         except verification.VerificationError as exc:
             return Response({"detail": exc.message}, status=exc.status_code)
         return Response({"order": order.pk, "collected_at": check.collected_at})
+
+
+class BookingTermsView(APIView):
+    """GET booking-terms/ — public. What a customer is told before paying for a stay or ticket: the hours that govern
+    when the money is released (read at this moment from the money settings), the stay check-in time, and the
+    cancellation policies a vendor can choose from, so no screen carries its own copy of these numbers.
+    With the ledger off no sale is recorded, nothing refunds itself and nothing releases on a timer, so `enabled` is
+    false and the hours are left out (customer screens then say nothing); the policies are still listed because choosing
+    one only stores a choice."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        policies = {
+            name: {"label": cancellation.POLICIES[name]["label"], "tiers": cancellation.POLICIES[name]["tiers"], "text": cancellation.POLICIES[name]["text"]}
+            for name, _ in cancellation.CHOICES
+        }
+        if not escrow.enabled():
+            return Response({"enabled": False, "policies": policies})
+        now = timezone.now()
+        return Response({
+            "enabled": True,
+            "service_auto_accept_hours": settings_store.current("service_auto_accept_hours", now),
+            "stay_issue_window_hours": settings_store.current("stay_issue_window_hours", now),
+            "event_release_delay_hours": settings_store.current("event_release_delay_hours", now),
+            "stay_check_in_time": sales.STAY_CHECK_IN_TIME.strftime("%H:%M"),
+            "policies": policies,
+        })

@@ -7,7 +7,8 @@ shape in accounts/views.py, so the frontend can reuse that screen):
   otp.authenticator; staff keep accounts.two_factor and its own endpoints);
 * {"detail", "code": "no_channel"} (the login views answer it as a 409) — the account owes a code but has no phone
   or email a code can reach, so no ticket is handed out;
-* None — sign in at once (always, while the switches are off).
+* None — sign in at once (while the switches are off, unless a customer or owner turned on an authenticator app:
+  that is honoured whatever OTP_SIGNIN_ENFORCED says, owner ruling 2026-10-18).
 
 The mfa_token is a signed ticket: account, stage, purpose, a random nonce that binds the code to this attempt, and
 a fingerprint of the password hash (a password change kills it). It lasts TICKET_MAX_AGE seconds."""
@@ -54,8 +55,8 @@ def make_ticket(account, stage, purpose):
 def read_ticket(token, stage=None):
     """The Ticket, or None unless it is genuine, fresh, for an account that may sign in, issued under its current
     password and (when `stage` is given) at that stage. A texted/emailed-code sign-in ticket is also refused once an
-    authenticator stands in its place (staff: accounts.two_factor; customers and owners: otp.authenticator while
-    sign-in codes are on), even when it was minted before the authenticator was set up."""
+    authenticator stands in its place (staff: accounts.two_factor; customers and owners: otp.authenticator), even
+    when it was minted before the authenticator was set up."""
     if not isinstance(token, str) or not token:
         return None
     try:
@@ -75,8 +76,7 @@ def read_ticket(token, stage=None):
         if two_factor.challenge_for(account) is not None:
             return None  # a texted code never replaces the authenticator a staffer has or owes
     if (
-        data["s"] == CODE_STAGE and data["p"] == SIGN_IN and data["t"] != STAFF
-        and flags.sign_in_enforced() and authenticator.is_enabled(account)
+        data["s"] == CODE_STAGE and data["p"] == SIGN_IN and data["t"] != STAFF and authenticator.is_enabled(account)
     ):
         return None  # minted before the authenticator was turned on; it replaces the texted code from then on
     return Ticket(account=account, account_type=data["t"], stage=data["s"], purpose=data["p"], nonce=str(data.get("n", "")))
@@ -104,35 +104,41 @@ def step_response(step):
     return Response(step, status=409 if step.get("code") == NO_CHANNEL["code"] else 200)
 
 
+def _authenticator_owed(account, kind, device_token):
+    """The authenticator ticket a customer or owner owes, or None. An enabled authenticator app is asked for
+    whatever OTP_SIGNIN_ENFORCED says (owner ruling 2026-10-18); a trusted customer device skips it as it skips the
+    texted code. Staff use accounts.two_factor."""
+    if kind == STAFF or not authenticator.is_enabled(account):
+        return None
+    if kind == CUSTOMER and devices.is_trusted(account, device_token):
+        return None
+    return {"two_factor_required": True, "mfa_token": make_ticket(account, AUTHENTICATOR_STAGE, SIGN_IN)}
+
+
 def sign_in_step(account, device_token=""):
     """The second step owed after a correct password, or None to sign in at once. Staff reach this only after
     accounts.two_factor found no authenticator stage for them. Answers the no_channel body (409 via step_response)
-    when a code is owed but contacts() is empty."""
+    when a code is owed but contacts() is empty. Texted and emailed codes stay behind their switches; an enabled
+    authenticator app is honoured even with OTP_SIGNIN_ENFORCED off."""
     kind = account_type_of(account)
     if kind != STAFF and flags.sign_up_enforced() and not has_verified_contact(account):
         return _challenge_or_no_channel(account, SIGN_UP)
+    owed = _authenticator_owed(account, kind, device_token)
+    if owed is not None:
+        # The authenticator app replaces the texted or emailed code (spec §9).
+        return owed
     if not flags.sign_in_enforced():
         return None
     if kind == CUSTOMER and devices.is_trusted(account, device_token):
         return None
-    if kind != STAFF and authenticator.is_enabled(account):
-        # The authenticator app replaces the texted or emailed code (spec §9). Staff use accounts.two_factor.
-        return {"two_factor_required": True, "mfa_token": make_ticket(account, AUTHENTICATOR_STAGE, SIGN_IN)}
     return _challenge_or_no_channel(account, SIGN_IN)
 
 
 def authenticator_after_sign_up(account, device_token=""):
-    """After a correct sign-up code: the authenticator ticket when one is still owed (sign-in codes on, the account
-    has an authenticator, and this is not a trusted customer device), else None. A sign-up code never stands in for
-    the authenticator."""
-    kind = account_type_of(account)
-    if kind == STAFF or not flags.sign_in_enforced():
-        return None
-    if kind == CUSTOMER and devices.is_trusted(account, device_token):
-        return None
-    if authenticator.is_enabled(account):
-        return {"two_factor_required": True, "mfa_token": make_ticket(account, AUTHENTICATOR_STAGE, SIGN_IN)}
-    return None
+    """After a correct sign-up code: the authenticator ticket when one is still owed (the account has an
+    authenticator, whatever OTP_SIGNIN_ENFORCED says, and this is not a trusted customer device), else None. A
+    sign-up code never stands in for the authenticator."""
+    return _authenticator_owed(account, account_type_of(account), device_token)
 
 
 def _challenge_or_no_channel(account, purpose):

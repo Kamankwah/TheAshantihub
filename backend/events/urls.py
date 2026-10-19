@@ -40,6 +40,7 @@ urlpatterns = [
     path(
         "moderation/<int:pk>/reject/", views.EventRejectView.as_view(), name="event-moderation-reject"
     ),
+    path("tickets/purchases/<int:pk>/cancel/", views.TicketPurchaseCancelView.as_view(), name="ticket-purchase-cancel"),
     path("tickets/mine/", views.MyTicketsListView.as_view(), name="my-tickets"),
     path("tickets/escrow/", views.EscrowLedgerListView.as_view(), name="escrow-ledger"),
     path("tickets/escrow/summary/", views.EscrowSummaryView.as_view(), name="escrow-summary"),
