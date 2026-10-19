@@ -30,4 +30,21 @@ describe('self-hosted fonts', () => {
     expect(css).toMatch(/@fontsource\/jetbrains-mono/)
     expect(css).toMatch(/tabular-nums/)
   })
+
+  it('never names the variable families without their Variable suffix', () => {
+    // @fontsource-variable registers 'Fraunces Variable' / 'Plus Jakarta Sans Variable';
+    // a bare name silently falls through to the fallback font.
+    const bare = /(?<!\w)['"]?(Fraunces|Plus Jakarta Sans)(?! Variable)['"]?\s*,/
+    const offenders = walk(ROOT).filter((f) => {
+      if (!/\.(jsx?|tsx?|css)$/.test(f)) return false
+      return readFileSync(f, 'utf8').split('\n').some((l) => {
+        if (/^\s*(\/\/|\/?\*)/.test(l) || !/font/i.test(l)) return false
+        const m = l.match(bare)
+        if (!m) return false
+        // allowed when the bare name is the documented fallback after the Variable one
+        return !new RegExp(`${m[1]} Variable['"]?\\s*,\\s*['"]?${m[1]}`).test(l)
+      })
+    })
+    expect(offenders).toEqual([])
+  })
 })
