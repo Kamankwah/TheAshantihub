@@ -1,15 +1,21 @@
 """The delivery fee belongs to the rider once any pickup is done (Plan 7F-D Task 1; spec §6, §7): after the rider has picked
 up at least one stop, a refund of goods never returns the delivery fee. A whole refund before release settles it at once
 (the release will never run); before any pickup the customer gets the fee back and the rider nothing."""
+import threading
+import time
 from datetime import timedelta
+from decimal import Decimal
 
-from django.test import override_settings
+from django.db import connection, transaction
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
+from accounts.models import BusinessOwner, Customer
 from delivery.models import PickupStop, RiderEarning
-from ledger import posting, refunds, riders
+from ledger import escrow, posting, refunds, riders
 from ledger.models import Account, Journal, JournalLine
-from orders.models import DeliveryAssignment, Order
+from listings.models import Category, Listing, Zone
+from orders.models import DeliveryAssignment, Order, OrderItem
 
 from . import rider_helpers
 from .test_refunds import RefundBase
@@ -197,8 +203,92 @@ class RiderRefundPayTests(RefundBase):
         self.assertEqual(self.balance(Account.PLATFORM_PROMO_SUBSIDY), 0)
         self.assert_balanced()
 
+    def test_promo_order_all_items_refunded_by_shop_then_whole_refund_settles_and_pays_the_rider(self):
+        order = self.assigned(status=DeliveryAssignment.PICKED_UP, picked_up=True, price="120.00", delivery="0.00")
+        rider_helpers.waived(order, self.kofi)
+        refunds.refund_order(order, source="dispute-1", owner_ids={self.kofi.pk})     # every item, shop-scoped: nothing settles yet
+        self.assertEqual(self.rider_balances(), (0, 0))
+        self.assertIsNone(refunds.refund_order(order, source="dispute-2"))             # nothing left, but the delivery is earned
+        self.assertEqual(self.rider_balances(), (1350, 150))
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, self.kofi), -1500)
+        self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 0)
+        self.assertIsNone(refunds.refund_order(order, source="dispute-3"))             # idempotent
+        self.assertEqual(self.rider_balances(), (1350, 150))
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, self.kofi), -1500)
+        self.assertEqual(RiderEarning.objects.count(), 1)
+        self.assert_balanced()
+
     @override_settings(LEDGER_ENABLED=False)
     def test_inert_while_the_ledger_is_off(self):
         order = self.picked()
         self.assertIsNone(refunds.refund_order(order, source="dispute-1"))
         self.assertFalse(RiderEarning.objects.exists())
+
+
+@override_settings(LEDGER_ENABLED=True)
+class PickupRaceTests(TransactionTestCase):
+    """A pickup confirmed while a refund starts: the refund locks the delivery assignment row before it decides whether the
+    fee was earned, so it waits for the pickup and then sees it (the rider is paid, the customer is not given the fee)."""
+
+    serialized_rollback = True
+
+    def test_a_refund_waits_for_the_pickup_holding_the_assignment_row_then_pays_the_rider(self):
+        customer = Customer.objects.create(full_name="Ama", phone="+233200990003", password_hash="x")
+        kofi = BusinessOwner.objects.create(full_name="Kofi", login_phone="+233207990003", password_hash="x")
+        listing = Listing.objects.create(
+            business_owner=kofi, category=Category.objects.get(slug="shops"), zone=Zone.objects.get(name="Manhyia"),
+            name="Item", description="D.", contact_phone=kofi.login_phone, price_amount=Decimal("100.00"), status=Listing.PUBLISHED,
+        )
+        order = Order.objects.create(
+            customer=customer, status=Order.PAID, total_amount=Decimal("115.00"), discount_amount=Decimal("0.00"),
+            delivery_fee=Decimal("15.00"),
+        )
+        OrderItem.objects.create(order=order, listing=listing, quantity=1, unit_price=listing.price_amount, line_total=listing.price_amount)
+        escrow.record_order_payment(order)
+        swift = rider_helpers.rider()
+        rider_helpers.delivered_by(order, swift, status=DeliveryAssignment.ACCEPTED)
+        DeliveryAssignment.objects.filter(order=order).update(delivered_at=None, confirmed_at=None)
+        locked, go, errors = threading.Event(), threading.Event(), []
+
+        def pickup():                       # what the rider's pickup confirmation does: lock the row, stamp it, commit
+            try:
+                with transaction.atomic():
+                    DeliveryAssignment.objects.select_for_update().get(order=order)
+                    locked.set()
+                    go.wait(timeout=15)
+                    DeliveryAssignment.objects.filter(order=order).update(picked_up_at=timezone.now(), status=DeliveryAssignment.PICKED_UP)
+            except Exception as exc:  # reported below, never swallowed
+                errors.append(exc)
+            finally:
+                connection.close()
+
+        def refund():
+            try:
+                locked.wait(timeout=15)
+                refunds.refund_order(order, source="dispute-1")
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                connection.close()
+
+        threads = [threading.Thread(target=pickup), threading.Thread(target=refund)]
+        for thread in threads:
+            thread.start()
+        locked.wait(timeout=15)
+        waiting = False
+        deadline = time.monotonic() + 6
+        while time.monotonic() < deadline and not waiting:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_stat_clear_snapshot()")
+                cursor.execute("SELECT query FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'")
+                waiting = any("orders_deliveryassignment" in query for (query,) in cursor.fetchall())
+            time.sleep(0.05)
+        go.set()
+        for thread in threads:
+            thread.join(timeout=15)
+            self.assertFalse(thread.is_alive(), "a racing thread hung")
+        self.assertTrue(waiting, "the refund did not wait for the delivery assignment row")
+        self.assertEqual(errors, [])
+        self.assertEqual(posting.balance_of(Account.CUSTOMER_WALLET, customer), 10000)     # the fee is the rider's
+        self.assertEqual(posting.balance_of(Account.RIDER_BALANCE, swift.staff), 1350)
+        self.assertEqual(posting.balance_of(Account.RIDER_RESERVE, swift.staff), 150)

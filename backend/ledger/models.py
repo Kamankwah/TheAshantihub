@@ -222,8 +222,9 @@ class FulfilmentCheck(models.Model):
 class OrderRefund(models.Model):
     """Money given back to a customer for a paid order, always into their AshantiHub wallet (ledger.refunds). One row
     per (order, source): the source names what asked for it ("cancel", "pickup_expired", "dispute-<id>"), so the same
-    request can never refund twice. Pesewas: `amount_pesewas` is order money returned to the customer (items_pesewas +
-    delivery_pesewas − subsidy_pesewas); `processing_pesewas` is a collection charge AshantiHub gave back on its own or
+    request can never refund twice. Pesewas: `amount_pesewas` is the order money this refund settles (items_pesewas +
+    delivery_pesewas − subsidy_pesewas, plus the kept fee on a whole refund: it is inside `amount_pesewas` but not returned,
+    see `delivery_kept_pesewas`); `processing_pesewas` is a collection charge AshantiHub gave back on its own or
     a vendor's error; `delivery_kept_pesewas` is the delivery fee kept from the customer because the rider had picked up (it belongs to
     the rider and is never refunded; `wallet_pesewas` is the credit the customer got). `allocation` lists what each fee snapshot gave. `journal` is null only when nothing had to move."""
 

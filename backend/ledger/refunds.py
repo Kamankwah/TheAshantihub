@@ -83,14 +83,18 @@ def processing_paid(order):
     return to_pesewas(session.processing_fee) if session is not None else 0
 
 
-def left(order):
+def left(order, *, kept=None):
+    """What can still be refunded. `kept` is the delivery fee kept for the rider (riders.delivery_kept); a caller holding the
+    delivery assignment row's lock passes the value it read under it, otherwise it is read here (an unlocked read, fine for
+    the display and pre-check callers)."""
+    kept = riders.delivery_kept(order) if kept is None else kept
     done = OrderRefund.objects.filter(order=order).aggregate(
         customer=Sum("amount_pesewas"), delivery=Sum("delivery_pesewas"), subsidy=Sum("subsidy_pesewas"),
         processing=Sum("processing_pesewas"),
     )
     return Left(
         customer=to_pesewas(order.total_amount) - (done["customer"] or 0),
-        delivery=max(0, to_pesewas(order.delivery_fee or 0) - (done["delivery"] or 0) - riders.delivery_kept(order)),
+        delivery=max(0, to_pesewas(order.delivery_fee or 0) - (done["delivery"] or 0) - kept),
         subsidy=to_pesewas(order.discount_amount or 0) - (done["subsidy"] or 0),
         processing=processing_paid(order) - (done["processing"] or 0),
     )
@@ -131,7 +135,7 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
     coupon. Returns the OrderRefund (the existing one when this source already refunded), or None while the ledger is
     off, when the order's payment was never recorded in the ledger (paid before it was on), or when nothing is left.
     Raises RefundError, writing nothing, for an amount it cannot give."""
-    from orders.models import Order
+    from orders.models import DeliveryAssignment, Order
 
     if not escrow.enabled():
         return None
@@ -146,11 +150,18 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
             return existing
         if not Journal.objects.filter(key=escrow.pay_key(order)).exists():
             return None
-        remaining = left(order)
         snapshots = list(
             OrderFeeSnapshot.objects.select_for_update(of=("self",))
             .filter(order=order, reversed_at__isnull=True).select_related("business_owner").order_by("pk")
         )
+        # The delivery assignment row next (ledger.riders lock order), before anything reads whether a pickup was made: a
+        # pickup confirmation locks this row, so it either finished before this point or waits for the refund. The fee
+        # kept for the rider is read once, here, and passed on.
+        DeliveryAssignment.objects.select_for_update(of=("self",)).filter(order_id=order.pk).first()
+        earned = riders.delivery_earned(order)
+        kept_fee = riders.delivery_kept(order) if earned else 0
+        remaining = left(order, kept=kept_fee)
+        released = Journal.objects.filter(key=escrow.release_key(order)).exists()
         unreversed = snapshots
         if owner_ids is not None:
             wanted = set(owner_ids)
@@ -161,8 +172,12 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
         whole = owner_ids is None and (amount_pesewas is None or amount_pesewas == remaining.customer)
         if whole:
             if not (remaining.customer or remaining.delivery or remaining.subsidy or items_room or processing):
-                if not riders.delivery_earned(order):   # an earned delivery keeps its promo charge: the promo's owner pays
+                if not earned:                          # an earned delivery keeps its promo charge: the promo's owner pays
                     _free_promo(order, [], now)         # nothing left to refund, but the business must not stay charged for the promo
+                elif not released:                      # earned, never released: settle it now (the promo's owner pays the rider)
+                    rider = riders.rider_for_settle(order)
+                    posting.lock(*escrow.settle_accounts(order, rider))
+                    escrow.settle_delivery(order, now, rider=rider)
                 return None
             customer, delivery, subsidy, shares = remaining.customer, remaining.delivery, remaining.subsidy, dict(rooms)
         else:
@@ -186,13 +201,13 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
                 processing = min(processing, (2 * processing_paid(order) * customer + paid) // (2 * paid)) if paid else 0
         # The refund leaves the order with no item at all: if nothing was delivered either, the business owes no promo.
         # A delivery already earned (a pickup was made) keeps its promo charge: the promo's owner pays the rider.
-        clears_promo = not riders.delivery_earned(order) and (whole or (
+        clears_promo = not earned and (whole or (
             all(shares.get(snap.pk, 0) >= snap.base_pesewas - snap.refunded_base_pesewas for snap in unreversed)
             and not _delivery_made(order)
         ))
         refund = _post(
             order, snapshots, shares, customer=customer, delivery=delivery, subsidy=subsidy, processing=processing,
-            whole=whole, source=source, by=by, note=note, now=now,
+            whole=whole, source=source, by=by, note=note, now=now, earned=earned, kept_fee=kept_fee,
             extra_locks=escrow.waiver_return_accounts(order) if clears_promo else (),
         )
         if clears_promo:
@@ -238,13 +253,13 @@ def _free_promo(order, extra, now=None):
     reverse_for_order(order, "order_refunded")
 
 
-def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, whole, source, by, note, now, extra_locks=()):
+def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, whole, source, by, note, now, earned, kept_fee, extra_locks=()):
     released = Journal.objects.filter(key=escrow.release_key(order)).exists()
     # The delivery fee belongs to the rider once any pickup is done: a whole refund never returns it (`delivery` is already 0
     # then). Before release it is settled here, since the release will never run: the delivery assignment and rider rows are
     # locked now, after the order row and its snapshots and before any account (ledger.riders lock order).
-    kept = riders.delivery_kept(order) if whole else 0
-    settling = whole and not released and riders.delivery_earned(order)
+    kept = kept_fee if whole else 0       # read under the assignment row's lock by refund_order
+    settling = whole and not released and earned
     settle_rider = riders.rider_for_settle(order) if settling else None
     # What the customer can still be given: a coupon may have left them less than the fee kept. The rider is paid in full
     # anyway; the unfunded part comes out of the promo subsidy that would have gone back (AshantiHub bears it).

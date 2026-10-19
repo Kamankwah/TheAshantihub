@@ -105,7 +105,7 @@ class RiderWalletApiTests(TestCase):
         self.credited(1000, at=yesterday)
         taken_back = self.credited(2000, at=yesterday)
         riders.post_commission(today=timezone.localdate())
-        RiderEarning.objects.filter(pk=taken_back.pk).update(reversed_at=timezone.now())     # what riders.reverse_earning records
+        RiderEarning.objects.filter(pk=taken_back.pk).update(reversed_at=timezone.now())     # a legacy reversed row (nothing sets reversed_at any more)
         day = self.me.get(BASE + "days/").json()["results"][0]
         self.assertEqual((day["commission"], day["given_back"]), ("3.00", "2.00"))            # the day's record is never edited
 

@@ -186,8 +186,9 @@ def delivery_kept(order):
 def rider_for_settle(order):
     """The third-party rider to pay when a whole refund settles this order's delivery before release, or None (no
     pickup, AshantiHub's own rider, or one who was not third-party when they picked up). The delivery assignment row is
-    locked first (a pickup confirmed meanwhile waits for the refund, or the refund sees it), then the rider's row; call
-    inside the refund's transaction after the order row and its fee snapshots."""
+    locked first (refunds.refund_order already holds it from before it decided whether the fee was earned, so a pickup
+    confirmed meanwhile either finished before that decision or waits for the refund), then the rider's row; call inside the
+    refund's transaction after the order row and its fee snapshots."""
     if order.delivery_method != Order.DOOR_TO_DOOR:
         return None
     assignment = DeliveryAssignment.objects.select_for_update(of=("self",)).filter(order_id=order.pk).first()
