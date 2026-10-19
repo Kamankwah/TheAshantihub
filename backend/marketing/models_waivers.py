@@ -69,12 +69,12 @@ class DeliveryWaiver(models.Model):
 
 
 class WaivedFeeCharge(models.Model):
-    """The delivery fee a business covered on one order through its free-delivery promo: one row per
-    waived order, written in the checkout transaction. `owed` is a recorded charge against the business
-    that has not yet been taken or cancelled: with the ledger on it is charged to the business at release
+    """The delivery fee a promo covered on one order (paid by `funded_by`: the business, or AshantiHub): one row per
+    waived order, written in the checkout transaction. `owed` is a recorded charge against the funder
+    that has not yet been taken or cancelled: with the ledger on it is charged to the funder at release
     (ledger.escrow.charge_waiver, which leaves the row `owed` as the record of what was charged), with it off
     nothing moves; `reversed` means the order was cancelled, its payment failed or it was fully refunded, so the
-    business owes nothing for it. Rows are never deleted or edited otherwise."""
+    funder owes nothing for it. Rows are never deleted or edited otherwise."""
 
     OWED = "owed"
     REVERSED = "reversed"

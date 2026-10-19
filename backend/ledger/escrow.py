@@ -11,8 +11,8 @@ release_verified moves the held money once Support records a positive verificati
 debited, the snapshotted fee goes to platform fee income, the delivery fee to platform delivery income, and the rest to the
 vendor's Available. It is idempotent on its journal key and refuses (returns None) while a dispute or a delivery-case
 refund waiting for approval is open, and for an order no longer paid (cancelled). It pays only what refunds left (ledger.refunds):
-each snapshot's base and fee less what was refunded, and the delivery fee the order's Delivery payable still holds. A business
-that waived the delivery fee through its free-delivery promo pays it from its Available right after (charge_waiver, kind
+each snapshot's base and fee less what was refunded, and the delivery fee the order's Delivery payable still holds. The funder of a
+free-delivery promo (the business: its Available; or AshantiHub: the promo subsidy) pays the fee right after (charge_waiver, kind
 order_waiver_charge); a whole refund gives it back (return_waiver). A third-party rider who delivered the order is then
 paid what platform delivery income took for it, in the same transaction (ledger.riders.credit_delivery). A whole refund after
 the rider picked up settles the delivery the same way before release (settle_delivery): the fee belongs to the rider."""
@@ -126,8 +126,8 @@ def release_verified(order, now=None):
     (cancelled), has no positive verification, an open dispute or a delivery-case refund waiting for approval, or was already released.
 
     Refunds come first (ledger.refunds): each snapshot pays only the base and fee not yet refunded, a fully refunded one
-    (reversed) pays nothing, and the delivery fee released is what the order's Delivery payable still holds. A business
-    that waived the delivery fee through its free-delivery promo pays it from its Available right after (charge_waiver)."""
+    (reversed) pays nothing, and the delivery fee released is what the order's Delivery payable still holds. The funder of a
+    free-delivery promo (the business, or AshantiHub through the promo subsidy) pays it right after (charge_waiver)."""
     from orders.models import Order
 
     if not enabled():
@@ -264,7 +264,7 @@ def settle_delivery(order, now=None, *, rider=_UNSET):
     return riders.credit_delivery(order, rider, now)
 
 
-# --- the business's free-delivery promo (marketing.WaivedFeeCharge; spec §13 Stage 3 carry-forward) -----------------
+# --- the free-delivery promo, paid by its funder (marketing.WaivedFeeCharge; spec §13 Stage 3 carry-forward) -----------------
 
 def waiver_key(order):
     return f"order-waiver-{order.pk}"
@@ -287,7 +287,9 @@ def waiver_accounts(order):
 def _waiver_funder_account(charge):
     """The account that pays a promo-covered fee: the promo subsidy for an AshantiHub-funded promo (funded_by copied onto
     the charge at checkout), else the business's Available."""
-    if charge.funded_by == "platform":
+    from marketing.models_waivers import DeliveryWaiver
+
+    if charge.funded_by == DeliveryWaiver.FUNDER_PLATFORM:
         return posting.account_for(Account.PLATFORM_PROMO_SUBSIDY)
     return posting.account_for(Account.VENDOR_AVAILABLE, charge.business_owner)
 
@@ -314,7 +316,7 @@ def charge_waiver(order):
     """The funder of a free-delivery promo pays the fee at release (or at the whole refund that settles it): Dr the business's
     Available (which may go negative) or, for an AshantiHub-funded promo, the promo subsidy account; Cr platform delivery income. Only a charge still owed is taken (a cancel or a whole refund
     reverses it first); idempotent on the key. The customer never paid it, so no refund ever returns it to them."""
-    from marketing.models_waivers import WaivedFeeCharge
+    from marketing.models_waivers import DeliveryWaiver, WaivedFeeCharge
 
     if not enabled():
         return None
@@ -334,7 +336,7 @@ def charge_waiver(order):
 
 
 def return_waiver(order):
-    """Give a charged promo back to the business when the order is refunded whole (it owes nothing for a refunded order)."""
+    """Give a charged promo back to whoever paid it (the business, or the promo subsidy account) when the order is refunded whole."""
     if not enabled():
         return None
     line = JournalLine.objects.filter(journal__key=waiver_key(order), side=JournalLine.DEBIT).select_related("account").first()

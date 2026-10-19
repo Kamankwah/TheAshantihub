@@ -5,7 +5,7 @@ released: Support's positive verification call (ledger.verification.record -> es
 doorstep and never on a timer. In the release's own transaction, after the release journal and the business's
 free-delivery promo charge, one journal `order-rider-<order>` (kind rider_earning) moves what those two credited to
 platform delivery income on to the rider:
-    Dr platform delivery income   gross (the fee the customer paid, plus a fee the business covered with its promo)
+    Dr platform delivery income   gross (the fee the customer paid, plus a fee the promo's funder covered)
     Cr rider balance              net = gross - reserve (withdrawable at once)
     Cr rider reserve              reserve = gross x rate, half up (AshantiHub's commission, held until the end of the day)
 The rate is `rider_commission_bp` as it stood when the order was paid (spec §3.3), kept on the RiderEarning row, so the
@@ -84,7 +84,7 @@ def third_party_rider(order, *, lock=False):
 
 def rider_for_release(order):
     """The third-party rider to pay at this order's release, their row locked, or None. Only when there is something to
-    pay them: a delivery fee still held in the order's Delivery payable, or a free-delivery promo charge the business owes
+    pay them: a delivery fee still held in the order's Delivery payable, or a free-delivery promo charge its funder owes
     (so an order with neither opens no rider account). One exception: a release that then finds nothing at all to post
     (an owed promo charge on an order with no item and no fee left to release) returns before posting, having opened the
     rider's two accounts empty; they hold nothing and nothing reads them as money. Call inside the release's transaction, after the order row and its fee

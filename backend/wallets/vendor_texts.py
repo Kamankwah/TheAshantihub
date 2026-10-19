@@ -33,7 +33,7 @@ from accounts.phones import mask_phone
 from ledger import escrow, posting, settings_store
 from ledger.models import Account, Journal, JournalLine, OrderFeeSnapshot
 from ledger.money import to_pesewas
-from marketing.models_waivers import WaivedFeeCharge
+from marketing.models_waivers import DeliveryWaiver, WaivedFeeCharge
 from notifications.services import notify_business_owner
 from otp import senders, spend
 from otp.identity import contacts, ref
@@ -265,7 +265,8 @@ def paid_amounts(order):
                 totals[snap.business_owner_id] = (base + snap.base_pesewas, fee + snap.charged_pesewas)
             promos = {
                 charge.business_owner_id: to_pesewas(charge.amount)
-                for charge in WaivedFeeCharge.objects.filter(order=order, status=WaivedFeeCharge.OWED)
+                for charge in WaivedFeeCharge.objects.filter(
+                    order=order, funded_by=DeliveryWaiver.FUNDER_BUSINESS, status=WaivedFeeCharge.OWED)
             }
     except Exception as exc:  # noqa: BLE001 - a text never stops a payment
         logger.error("Paid-order texts not worked out: %s", type(exc).__name__)
