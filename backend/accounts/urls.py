@@ -82,6 +82,7 @@ urlpatterns = [
         views.BusinessOwnerProfileUpdateView.as_view(),
         name="business-owner-profile-update",
     ),
+    path("business/hours/", views.BusinessHoursView.as_view(), name="business-hours"),
     path("business-owners/me/terms/", views.TermsAcceptView.as_view(), name="business-owner-terms"),
     path("kyc/pending/", views.KYCPendingQueueView.as_view(), name="kyc-pending"),
     path("kyc/stats/", views.KYCStatsView.as_view(), name="kyc-stats"),

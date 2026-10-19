@@ -7,6 +7,7 @@ older than the stale limit, no job hold, not suspended, fewer than the maximum a
 radius of the pickup (straight-line estimate), required papers valid, not already declined or timed out
 for this order, and, once cash on delivery exists, under the cash cap. An order whose business has no
 pin cannot be auto-assigned ("pickup location missing"); a manager can still assign it by hand."""
+import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -20,6 +21,8 @@ from routing import service as routing_service
 
 from . import board, config, services
 from .models import DeliveryEvent, DeliverySettings, Offer, QueueHold, Rider, ShiftSession
+
+logger = logging.getLogger(__name__)
 
 
 def deadline_for(order, *, express=False, limits=None):
@@ -38,6 +41,8 @@ def deadline_for(order, *, express=False, limits=None):
         start = opens
     else:
         start = placed
+    if order.ready_not_before is not None and order.ready_not_before > start:
+        start = order.ready_not_before  # a vendor was closed at purchase: the promise runs from their opening
     minutes = limits.promise_express_min if express else limits.promise_standard_min
     return start + timedelta(minutes=minutes)
 
@@ -237,3 +242,14 @@ def run_engine(now=None):
             make_offer(order, rider, source=Offer.AUTO, score=best, rules=rules, now=now)
             out["offered"] += 1
     return out
+
+
+def release_deferred(now=None):
+    """How many orders held until their vendor opened are now due and still waiting for a rider, logged for the beat
+    record. It offers nothing: ``run_engine`` runs every 10 seconds and already offers due orders (board.waiting_orders
+    stops hiding them the moment ready_not_before passes), and a second pass here would race it. Idempotent: a count."""
+    now = now or timezone.now()
+    due = board.waiting_orders().filter(ready_not_before__isnull=False, ready_not_before__lte=now).count()
+    if due:
+        logger.info("%s deferred order(s) are due and waiting for a rider", due)
+    return due

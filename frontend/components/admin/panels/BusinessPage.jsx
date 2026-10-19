@@ -13,6 +13,7 @@ import LogCallSheet from "./LogCallSheet.jsx";
 import OrdersSection, { FlagForm } from "./OrdersSection.jsx";
 import OwnerHandover from "./OwnerHandover.jsx";
 import ProposeChangeForm from "./ProposeChangeForm.jsx";
+import { staffHoursText } from "./hoursSummary.js";
 import {
   FollowUpForm, HealthChip, ReassignForm, card, errorStyle, errorText, firstName, formatDateTime, formatDay,
   h2, h3, money, subscriptionText,
@@ -147,7 +148,7 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
   const details = [
     ["Sign-in phone", signInPhone], ["Business phone", phoneCell(b.business_contact_phone)], ["Email", b.email || "Not given"],
     ["Kind", b.business_kind === "service" ? "Service" : "Product"], ["Category", b.business_category?.name],
-    ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Map pin", pin], ["Opening hours", b.opening_hours],
+    ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Map pin", pin], ["Opening hours", staffHoursText(b)],
     ["Description", b.business_description], ["Registered", registered], ["Account manager", b.account_manager?.full_name || "None"],
   ];
   const actionButton = (label, onClick, { disabled = false, primary = false } = {}) => (

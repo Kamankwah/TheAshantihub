@@ -68,6 +68,10 @@ class Order(models.Model):
     # The pickup route planned at checkout (delivery.stops.plan_for_lines): businesses in collection order, road km and the
     # detour against the limit in force. Null for store pickup and for orders placed before multi-stop delivery.
     route_plan = models.JSONField(null=True, blank=True)
+    # Set at checkout when a vendor was closed: the latest next opening among the order's vendors (accounts.hours.next_open).
+    # Null means ready now. Fixed on the order, so a vendor editing their hours later never moves it. Delivery is not
+    # dispatched before this time, and the store-pickup window and the delivery promise clock both start from it.
+    ready_not_before = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-placed_at"]
