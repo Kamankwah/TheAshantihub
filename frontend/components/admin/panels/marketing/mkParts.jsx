@@ -9,7 +9,7 @@ export { figures, plural, scroll, table, td, th, timeShort, dayShort, longDay, t
 
 export const page = { display: "flex", flexDirection: "column", gap: 14 };
 export const card = { ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 10 };
-export const warnColor = "#A33A00";
+export const warnColor = D.warnInk;
 export const linkStyle = { background: "none", border: 0, padding: 0, color: D.deepGold, fontWeight: 800, fontSize: "0.78rem", cursor: "pointer", fontFamily: "inherit", textDecoration: "underline" };
 export const inputStyle = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", color: D.text, background: D.panelBg, minHeight: 36, boxSizing: "border-box" };
 export const labelStyle = { display: "flex", flexDirection: "column", gap: 4, fontSize: "0.72rem", fontWeight: 700, color: D.text };
@@ -83,7 +83,7 @@ export function ageWord(iso) {
 // ─── Moderation checklists (hero approval, promotions) ───────────────────────
 // A server-computed check: {key, label, status: pass|warn|fail, detail}. The mark is
 // a word-shaped glyph as well as a colour, so the state never rests on colour alone.
-const CHECK_MARK = { pass: ["✓", "Passed", "#00500A", "#E3F1E3"], warn: ["~", "Check", "#6A4A00", "#FBF3DC"], fail: ["!", "Failed", "#A30000", "#FDE8E8"] };
+const CHECK_MARK = { pass: ["✓", "Passed", D.okInk, D.okBg], warn: ["~", "Check", D.warnInk, D.warnBg], fail: ["!", "Failed", D.errInk, D.errBg] };
 
 export function CheckList({ checks, label = "Checks" }) {
   return (

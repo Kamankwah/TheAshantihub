@@ -1660,8 +1660,8 @@ const TRANSLATIONS = {
 // `onExit` signs the staffer out (labelled "Sign out" everywhere);
 // `onViewSite`, when given, is the browser-only "View site" that keeps the
 // session and opens the view-only marketplace.
-export function StaffDashboard({auth,onExit,onViewSite,activeTab,activeDetail,onTabChange}) {
-  return <AdminCommandCenter auth={auth} onExit={onExit} onViewSite={onViewSite} activeTab={activeTab} activeDetail={activeDetail} onTabChange={onTabChange} NotificationsSlot={StaffNotificationsSlot} />;
+export function StaffDashboard({auth,onExit,onViewSite,activeTab,activeDetail,onTabChange,theme,toggleTheme}) {
+  return <AdminCommandCenter auth={auth} onExit={onExit} onViewSite={onViewSite} activeTab={activeTab} activeDetail={activeDetail} onTabChange={onTabChange} theme={theme} toggleTheme={toggleTheme} NotificationsSlot={StaffNotificationsSlot} />;
 }
 
 // The staff header's notification bell. Lives here (not in components/admin)
@@ -3119,6 +3119,7 @@ export default function AshantiHub() {
         if(location.pathname!==path) navigate(path,{replace});
       }}
       onExit={staffSignOut}
+      theme={theme} toggleTheme={toggleTheme}
       onViewSite={isStandaloneDisplay() ? undefined : ()=>navigate("/")}/>;
   }
   if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment}/>;

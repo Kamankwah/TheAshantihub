@@ -7,7 +7,7 @@ import { D, glassCard } from "../theme.js";
 import { LastSignIn } from "./sessionParts.jsx";
 
 const ROLE_LABELS = { super_admin: "Super Admin", operations: "Operations", accountant: "Accountant", marketing: "Marketing", support: "Support", scout: "Scout", delivery_manager: "Delivery Manager", dispatch: "Dispatch" };
-const field = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", color: D.text, background: "#fff" };
+const field = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", color: D.text, background: D.panelBg };
 const labelStyle = { display: "flex", flexDirection: "column", gap: 4, fontSize: "0.72rem", fontWeight: 700, color: D.text };
 const smallBtn = (bg, color) => ({ background: bg, color, border: bg === "#fff" ? `1px solid ${D.cardBorder}` : "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" });
 
@@ -47,7 +47,7 @@ export default function MyTeamPanel({ currentStaffId, rosterOnly = false }) {
         {roles && roles.length === 0
           ? <div style={{ color: D.textDim, fontSize: "0.8rem", alignSelf: "center" }}>You can't invite anyone yet.</div>
           : <label style={labelStyle}>Role<select value={chosenRole} onChange={(e) => setInvite({ ...invite, role: e.target.value })} style={field}>{(roles || []).map((r) => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}</select></label>}
-        <button type="submit" disabled={!chosenRole} style={{ opacity: chosenRole ? 1 : 0.5, background: D.gold, color: D.text, border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 800, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Send invite</button>
+        <button type="submit" disabled={!chosenRole} style={{ opacity: chosenRole ? 1 : 0.5, background: D.gold, color: D.darkBrown, border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 800, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Send invite</button>
         <div style={{ width: "100%", color: D.textDim, fontSize: "0.72rem" }}>They get an email link to set their password. The link works for 7 days and you can resend it.</div>
       </form>}
       {message && <div style={{ color: D.green, fontSize: "0.8rem" }}>{message}</div>}

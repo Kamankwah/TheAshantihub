@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { D, glassCard } from "./theme.js";
+import { D, glassCard, tint } from "./theme.js";
 import { chromeIntentUrl, detectInstallPlatform, isStandaloneDisplay, promptInstall, useStaffPwa } from "../../lib/staffPwa.js";
 import StaffInstallLink, { staffInstallUrl } from "./StaffInstallLink.jsx";
 
@@ -30,7 +30,7 @@ const primaryButton = {
 
 function Notice({ tone, title, children }) {
   return (
-    <section style={{ background: `${tone}12`, border: `1px solid ${tone}55`, borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+    <section style={{ background: tint(tone, "12"), border: `1px solid ${tint(tone, "55")}`, borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
       <h2 style={{ margin: 0, color: D.text, fontSize: "0.98rem", fontWeight: 800 }}>{title}</h2>
       {children}
     </section>

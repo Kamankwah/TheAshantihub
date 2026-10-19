@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useDisputesQueue } from "../../../hooks/useDisputesQueue.js";
-import { D } from "../theme.js";
+import { D, tint } from "../theme.js";
 import ModerationQueueTabs, { ReviewAgainButton } from "../ModerationQueueTabs.jsx";
 
 // Dispute status → label+color, dark-surface hues (same shape as
@@ -72,7 +72,7 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
             {/* Pending holds both open and investigating — the badge is what
                 tells them apart, so it stays on that tab. */}
             {state === "pending" && (
-              <span style={{ background: `${statusMeta.color}22`, color: statusMeta.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>{statusMeta.label}</span>
+              <span style={{ background: tint(statusMeta.color, "22"), color: statusMeta.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>{statusMeta.label}</span>
             )}
           </div>
           {dispute.description && (

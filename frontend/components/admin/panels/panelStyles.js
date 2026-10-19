@@ -25,8 +25,10 @@ export const chip = (color) => {
 
 export const pill = (active) => ({ background: active ? D.text : "transparent", color: active ? D.panelBg : D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "6px 12px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" });
 
-// A white button gets a border; a filled one does not.
-export const button = (bg, color, disabled) => ({ background: bg, color, border: bg === D.panelBg ? `1px solid ${D.cardBorder}` : "none", borderRadius: 10, padding: "8px 14px", fontSize: "0.8rem", fontWeight: 800, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1, fontFamily: "inherit" });
+// A white button gets a border; a filled one does not. Text on a fixed gold/
+// amber fill stays dark brown in dark mode too (D.text turns light there).
+const GOLD_FILLS = new Set([D.gold, D.deepGold, D.amber]);
+export const button = (bg, color, disabled) => ({ background: bg, color: GOLD_FILLS.has(bg) && color === D.text ? D.darkBrown : color, border: bg === D.panelBg ? `1px solid ${D.cardBorder}` : "none", borderRadius: 10, padding: "8px 14px", fontSize: "0.8rem", fontWeight: 800, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1, fontFamily: "inherit" });
 
 export const field = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", color: D.text, background: D.panelBg, resize: "vertical" };
 

@@ -4,6 +4,8 @@ import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../mocks/server.js'
 import BusinessCommandCenter from '../components/dashboard/BusinessCommandCenter.jsx'
+import { StaffDashboard } from '../App.jsx'
+import { setStoredAuth } from '../apiClient.js'
 
 // Per-area smoke tests: render a key page with <html data-theme="dark"> and
 // assert nothing on it is a light-only inline surface or light-only text.
@@ -122,5 +124,23 @@ describe('dark mode smoke: business dashboard', () => {
     expect(toggleTheme).toHaveBeenCalled()
     expect(usesThemeTokens()).toBe(true)
     expect(lightOnlyStyles()).toEqual([])
+  })
+})
+
+describe('dark mode smoke: staff shell', () => {
+  it('the staff shell renders with theme tokens, a theme toggle and no light-only surfaces', async () => {
+    setStoredAuth({ token: 't', account_type: 'staff', id: 1, full_name: 'Akosua Support', role: 'accountant', permissions: ['messaging.manage', 'disputes.flag', 'users.view'] })
+    const auth = {
+      user: { token: 't', account_type: 'staff', id: 1, full_name: 'Akosua Support', role: 'accountant', permissions: ['messaging.manage', 'disputes.flag', 'users.view'] },
+      hasPermission: (c) => ['messaging.manage', 'disputes.flag', 'users.view'].includes(c),
+    }
+    const toggleTheme = vi.fn()
+    withClient(<StaffDashboard auth={auth} onExit={vi.fn()} theme="dark" toggleTheme={toggleTheme} />)
+    await screen.findByText(/Akwaaba, Akosua/)
+    screen.getByRole('button', { name: 'Toggle theme' }).click()
+    expect(toggleTheme).toHaveBeenCalled()
+    expect(usesThemeTokens()).toBe(true)
+    expect(lightOnlyStyles()).toEqual([])
+    setStoredAuth(null)
   })
 })

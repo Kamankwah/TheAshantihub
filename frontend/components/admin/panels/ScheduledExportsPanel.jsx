@@ -118,7 +118,7 @@ function Form({ data, initial, onDone, onCancel }) {
       {kind.personal_data && <div role="note" style={callout(D.amber)}>This export includes personal data. You will be asked for your password to save it. CSV cells that start with = + − or @ are made safe for Excel automatically.</div>}
       {error && <div role="alert" style={errorStyle}>{error}</div>}
       <div style={{ display: "flex", gap: 8 }}>
-        <button type="submit" disabled={saving || form.recipients.length === 0 || !form.name.trim()} style={button(D.text, "#FDF6E3", saving || form.recipients.length === 0 || !form.name.trim())}>Save schedule</button>
+        <button type="submit" disabled={saving || form.recipients.length === 0 || !form.name.trim()} style={button(D.text, D.pageBg, saving || form.recipients.length === 0 || !form.name.trim())}>Save schedule</button>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
       </div>
     </form>
@@ -175,7 +175,7 @@ export default function ScheduledExportsPanel() {
 
   return (
     <div style={page}>
-      <Title right={data && !editing && <button type="button" onClick={() => setEditing({ ...blank, period: data.kinds[0].presets[0]?.key || "" })} style={button(D.text, "#FDF6E3")}>New schedule</button>}>Scheduled exports</Title>
+      <Title right={data && !editing && <button type="button" onClick={() => setEditing({ ...blank, period: data.kinds[0].presets[0]?.key || "" })} style={button(D.text, D.pageBg)}>New schedule</button>}>Scheduled exports</Title>
       <div style={{ ...dim, lineHeight: 1.5 }}>Files are never attached to emails. Each run makes a signed link that works for 24 hours and only for the named person, signed in. They are told by the bell and by email. A schedule that includes personal data asks for your password when you create or change it, and every run is logged in the activity log as an export.</div>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       <Status isLoading={isLoading} isError={isError}>

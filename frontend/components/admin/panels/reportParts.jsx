@@ -58,7 +58,7 @@ function Row({ row }) {
       </div>
       {hasTarget && row.target > 0 && (
         <div role="progressbar" aria-label={`${humanise(row.label)}: ${row.value} of ${row.target}`} aria-valuemin={0} aria-valuemax={row.target} aria-valuenow={Math.min(Number(row.value), row.target)}
-          style={{ height: 6, borderRadius: 999, background: "#EADFC6", margin: "3px 0 5px", overflow: "hidden" }}>
+          style={{ height: 6, borderRadius: 999, background: D.panelBg3, margin: "3px 0 5px", overflow: "hidden" }}>
           <div style={{ width: `${ratio * 100}%`, height: "100%", background: ratio >= 1 ? D.green : D.gold }} />
         </div>
       )}
@@ -77,7 +77,7 @@ function OutcomeBars({ section }) {
         return (
           <div key={row.label} style={{ color: D.text, fontSize: "0.75rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span>{row.label}</span><span style={{ fontWeight: 700 }}>{n}</span></div>
-            <div role="img" aria-label={`${row.label}: ${n}`} style={{ height: 6, borderRadius: 999, background: "#EADFC6", overflow: "hidden" }}>
+            <div role="img" aria-label={`${row.label}: ${n}`} style={{ height: 6, borderRadius: 999, background: D.panelBg3, overflow: "hidden" }}>
               <div style={{ width: `${(n / top) * 100}%`, height: "100%", background: OUTCOME_COLOUR[row.label] || D.gold }} />
             </div>
           </div>

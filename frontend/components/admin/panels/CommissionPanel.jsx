@@ -23,11 +23,11 @@ const day = (value, opts = { day: "numeric", month: "short" }) => {
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 const STATUS_STYLE = {
-  on_hold: ["#FBF3DC", "#6A4A00"],
-  payable: ["#E3F1E3", "#00500A"],
-  in_batch: ["#E3F1E3", "#00500A"],
-  paid: ["#F1ECE4", "rgba(44,24,16,0.8)"],
-  reversed: ["#FDE8E8", "#A30000"],
+  on_hold: [D.warnBg, D.warnInk],
+  payable: [D.okBg, D.okInk],
+  in_batch: [D.okBg, D.okInk],
+  paid: [D.panelBg2, D.text],
+  reversed: [D.errBg, D.errInk],
 };
 
 export function statementRange(statement) {
@@ -73,10 +73,10 @@ function tiles(totals) {
     : [held.registrations && plural(held.registrations, "registration", "registrations"), held.bonuses && plural(held.bonuses, "bonus", "bonuses")].filter(Boolean).join(", ");
   const reasons = Object.entries(totals.reversed.reasons || {}).map(([label, n]) => `${n} ${label}`).join(", ");
   return [
-    ["On hold", "#6A4A00", held.amount, heldSub],
-    ["Approved to pay", "#00500A", totals.payable.amount, totals.payable.count ? `${plural(totals.payable.count, "line", "lines")} · payouts aren't set up yet` : "Nothing approved yet"],
+    ["On hold", D.warnInk, held.amount, heldSub],
+    ["Approved to pay", D.okInk, totals.payable.amount, totals.payable.count ? `${plural(totals.payable.count, "line", "lines")} · payouts aren't set up yet` : "Nothing approved yet"],
     ["Paid", D.textDim, totals.paid.amount, totals.paid.count ? plural(totals.paid.count, "line", "lines") : "Nothing paid out yet"],
-    ["Reversed", "#A30000", totals.reversed.amount, totals.reversed.count ? reasons || plural(totals.reversed.count, "line", "lines") : "None reversed"],
+    ["Reversed", D.errInk, totals.reversed.amount, totals.reversed.count ? reasons || plural(totals.reversed.count, "line", "lines") : "None reversed"],
   ];
 }
 
@@ -160,16 +160,16 @@ export default function CommissionPanel() {
                     <span style={{ fontWeight: 800, color: D.text, ...figures }}>{`${row.paid_months} of 3 months`}</span>
                   </div>
                   <div role="img" aria-label={`${row.paid_months} of 3 months paid`} style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 4 }}>
-                    {[1, 2, 3].map((i) => <span key={i} style={{ height: 6, borderRadius: 999, background: i <= row.paid_months ? D.green : "#EADFC6" }} />)}
+                    {[1, 2, 3].map((i) => <span key={i} style={{ height: 6, borderRadius: 999, background: i <= row.paid_months ? D.green : D.panelBg3 }} />)}
                   </div>
-                  <span style={{ fontSize: "0.75rem", color: warn ? "#A33A00" : D.textDim }}>{note}</span>
+                  <span style={{ fontSize: "0.75rem", color: warn ? D.warnInk : D.textDim }}>{note}</span>
                 </div>
               );
             })}
             {data.bonus_more > 0 && <div style={dim}>{`and ${plural(data.bonus_more, "more business", "more businesses")}`}</div>}
           </section>
 
-          <section aria-label="How commission works" style={{ background: "#F5ECD8", borderRadius: 16, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: "0.75rem", lineHeight: 1.45, color: D.text }}>
+          <section aria-label="How commission works" style={{ background: D.panelBg2, borderRadius: 16, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: "0.75rem", lineHeight: 1.45, color: D.text }}>
             <div style={{ fontSize: "0.82rem", fontWeight: 800 }}>Scouts never collect cash.</div>
             <div>Owners pay their subscription in the app; you remind them and log the call. Payments are simulated until Hubtel is connected.</div>
             <div>Amounts come from the commission policy Super Admin approved. Each line is held 90 days and reversed if the business proves fake or a duplicate.</div>

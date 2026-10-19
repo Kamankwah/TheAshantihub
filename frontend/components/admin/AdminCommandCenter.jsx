@@ -6,7 +6,8 @@ import { useRealtime } from "../../hooks/useRealtime.js";
 import { noteSignedOutReason } from "../../lib/signOutReason.js";
 import LiveUpdatesIndicator from "./shell/LiveUpdatesIndicator.jsx";
 import { useStaffBadges } from "../../hooks/useStaffBadges.js";
-import { D, ROLE_ACCENTS } from "./theme.js";
+import { D, ROLE_ACCENTS, tint } from "./theme.js";
+import ThemeToggle from "../ThemeToggle.jsx";
 import OperationsOverviewPanel from "./panels/OperationsOverviewPanel.jsx";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
 import SuperAdminOverviewPanel from "./panels/SuperAdminOverviewPanel.jsx";
@@ -198,7 +199,7 @@ export default function AdminCommandCenter(props) {
 }
 
 // `viewAs` is set only inside a step-in: `auth` is then the viewed person's.
-function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, activeDetail, onTabChange, NotificationsSlot, viewAs }) {
+function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, activeDetail, onTabChange, NotificationsSlot, viewAs, theme, toggleTheme }) {
   const { data: staffBadges } = useStaffBadges();
   const badgeFor = makeBadgeFor(staffBadges, auth.user?.role);
   // A scout's Reports item carries a neutral "Due 19:00" while today's day report is unsubmitted.
@@ -436,7 +437,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           // Landscape notch (spec §4.4): content-box so the left inset widens
           // the rail instead of squeezing its 64px of icons.
           boxSizing: "content-box", paddingLeft: "env(safe-area-inset-left, 0px)",
-          background: "rgba(253,246,227,0.95)",
+          background: tint(D.pageBg, "f2"),
           borderRight: `1px solid ${D.cardBorder}`, transition: "width 0.2s",
         }}>
           <div style={{ padding: "16px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${D.divider}` }}>
@@ -454,7 +455,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
         <StaffHeader status={<LiveUpdatesIndicator paused={live.paused} />} title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
           onExit={signOut} onViewSite={onViewSite} breakpoint={breakpoint}
           onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen}
-          actions={<>{!isPhone && (viewAs || canViewAs) ? <ViewAsSelect viewAs={viewAs} /> : null}{NotificationsSlot ? <NotificationsSlot user={auth.user} /> : null}{isPhone ? null : <InstallAppButton variant="header" />}</>}>
+          actions={<>{!isPhone && (viewAs || canViewAs) ? <ViewAsSelect viewAs={viewAs} /> : null}{NotificationsSlot ? <NotificationsSlot user={auth.user} /> : null}<ThemeToggle theme={theme} onToggle={toggleTheme} style={{ minWidth: 44, minHeight: 44 }} />{isPhone ? null : <InstallAppButton variant="header" />}</>}>
           {viewAs && <ViewAsBanner viewAs={viewAs} compact={isPhone} />}
           <OfflineBanner bleed={isPhone ? 12 : 20} />
         </StaffHeader>
@@ -630,7 +631,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <InstallAppButton variant="drawer" />
             {onViewSite && <button type="button" onClick={onViewSite} style={{ minHeight: 44, background: "transparent", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>View site</button>}
-            <button type="button" onClick={signOut} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
+            <button type="button" onClick={signOut} style={{ minHeight: 44, background: tint(D.text, "0d"), border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
           </div>
         </div>}
         <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} overviewLabel={overviewLabel(role)} noteFor={noteFor} countOnly={COUNT_ONLY_TABS[role]} />
@@ -639,7 +640,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           <div style={{ padding: "0 14px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
             <InstallAppButton variant="drawer" />
             {onViewSite && <button type="button" onClick={onViewSite} style={{ minHeight: 44, background: "transparent", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>View site</button>}
-            <button type="button" onClick={signOut} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
+            <button type="button" onClick={signOut} style={{ minHeight: 44, background: tint(D.text, "0d"), border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
           </div>
         )}
       </StaffDrawer>

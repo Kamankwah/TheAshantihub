@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMarketingCalendar } from "../../../../hooks/useMarketingCampaigns.js";
-import { D } from "../../theme.js";
+import { D, tint } from "../../theme.js";
 import { addDays, isoDay } from "../opsPeopleParts.jsx";
 import { Honest, Loading, PageHead, Section, button, dim, page } from "./mkParts.jsx";
 
@@ -8,7 +8,7 @@ import { Honest, Loading, PageHead, Section, button, dim, page } from "./mkParts
 // Messages, offers (flash sales) and banners in one month. Quiet days are the ones the sending policy
 // has no messages on; the overlaps list holds real overlaps only (same people inside the per-person limit,
 // requests that may not be approved in time).
-const KINDS = { message: ["Messages", "SMS, WhatsApp, email, in-app", "#E8E8F6"], flash_sale: ["Offers", "flash sales", "#FBF3DC"], banner: ["Banners", "home and category", D.panelBg2] };
+const KINDS = { message: ["Messages", "SMS, WhatsApp, email, in-app", tint(D.blue, "1f")], flash_sale: ["Offers", "flash sales", D.warnBg], banner: ["Banners", "home and category", D.panelBg2] };
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const CHANNEL_WORD = { sms: "SMS", whatsapp: "WhatsApp", email: "Email", inapp: "In-app" };
 
@@ -62,7 +62,7 @@ export default function CampaignCalendarPanel({ onNavigate }) {
             <span style={{ background: bg, borderRadius: 6, padding: "1px 7px", fontWeight: 800 }}>{label}</span> {hint}
           </label>
         ))}
-        <span style={{ ...dim, display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 14, height: 14, borderRadius: 4, background: "#EFE6D2", border: `1px solid ${D.cardBorder}` }} />Quiet day: no messages</span>
+        <span style={{ ...dim, display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 14, height: 14, borderRadius: 4, background: D.panelBg3, border: `1px solid ${D.cardBorder}` }} />Quiet day: no messages</span>
       </div>
       <Section id="cal-month" title={month.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}>
         <div style={{ overflowX: "auto" }}>
@@ -75,7 +75,7 @@ export default function CampaignCalendarPanel({ onNavigate }) {
               const items = byDay.get(key) || [];
               return (
                 <div key={key} role="group" aria-label={`${d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}${why ? `, quiet day: ${why}` : ""}`}
-                  style={{ minHeight: 104, boxSizing: "border-box", borderRadius: 10, padding: 6, background: why ? "#EFE6D2" : outside ? "#FDFAF2" : D.panelBg, border: key === todayKey ? `2px solid ${D.gold}` : `1px solid ${D.cardBorder}`, display: "flex", flexDirection: "column", gap: 3 }}>
+                  style={{ minHeight: 104, boxSizing: "border-box", borderRadius: 10, padding: 6, background: why ? D.panelBg3 : outside ? D.panelBg2 : D.panelBg, border: key === todayKey ? `2px solid ${D.gold}` : `1px solid ${D.cardBorder}`, display: "flex", flexDirection: "column", gap: 3 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", fontWeight: 800, color: outside ? D.textFaint : D.text }}>
                     <span>{d.getDate()}{d.getDate() === 1 ? ` ${d.toLocaleDateString("en-GB", { month: "short" })}` : ""}</span>
                     <span style={dim}>{key === todayKey ? "Today" : why ? (why === "Quiet day" ? "Quiet day" : why) : ""}</span>

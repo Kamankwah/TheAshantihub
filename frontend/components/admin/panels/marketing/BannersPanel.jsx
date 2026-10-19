@@ -10,7 +10,7 @@ import { Honest, Loading, PageHead, Section, button, chip, dim, errorStyle, figu
 // live only once Super Admin approves it (a Super Admin's own banner applies at once). Views and
 // clicks are this site's own first-party counters and began at zero.
 const STATE_WORD = { draft: "Draft", waiting: "Waiting for Super Admin", approved: "Approved", rejected: "Returned", taken_down: "Taken down" };
-const STATE_COLOR = { draft: D.textDim, waiting: D.amber, approved: D.green, rejected: "#A33A00", taken_down: D.textDim };
+const STATE_COLOR = { draft: D.textDim, waiting: D.amber, approved: D.green, rejected: D.warnInk, taken_down: D.textDim };
 const PHASE_WORD = { live: "Live", scheduled: "Scheduled", ended: "Ended" };
 
 const day = (iso) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
@@ -235,7 +235,7 @@ export default function BannersPanel({ auth }) {
                 {data.banners.map((b) => (
                   <tr key={b.id}>
                     <td style={td}>{b.slot_label}{b.category ? ` · ${b.category.label}` : ""}</td>
-                    <td style={td}><div style={{ fontWeight: 700 }}>{b.title}</div>{b.message && <div style={dim}>{b.message}</div>}{b.countdown_ends_at && <div style={dim}>Countdown to {day(b.countdown_ends_at)}</div>}{b.sponsored && <div style={dim}>Sponsored</div>}{b.state === "rejected" && b.return_note && <div style={{ ...dim, color: "#A33A00" }}>Returned: {b.return_note}</div>}</td>
+                    <td style={td}><div style={{ fontWeight: 700 }}>{b.title}</div>{b.message && <div style={dim}>{b.message}</div>}{b.countdown_ends_at && <div style={dim}>Countdown to {day(b.countdown_ends_at)}</div>}{b.sponsored && <div style={dim}>Sponsored</div>}{b.state === "rejected" && b.return_note && <div style={{ ...dim, color: D.warnInk }}>Returned: {b.return_note}</div>}</td>
                     <td style={td}><div>{when(b)}</div>{b.phase && <span style={chip(b.phase === "live" ? D.green : D.textDim)}>{PHASE_WORD[b.phase]}</span>}</td>
                     <td style={td}><span style={chip(STATE_COLOR[b.state])}>{STATE_WORD[b.state]}</span>{b.approved_by && <div style={dim}>{b.approved_by}</div>}</td>
                     <td style={{ ...td, ...figures }}>{b.views.toLocaleString("en-GB")}</td>

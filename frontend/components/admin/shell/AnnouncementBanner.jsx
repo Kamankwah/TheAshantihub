@@ -27,7 +27,7 @@ export default function AnnouncementBanner() {
   return (
     <section aria-label="Announcements" style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
       {data.map((item) => (
-        <article key={item.id} role="status" style={{ background: "#FFF6DB", border: `1px solid ${D.gold}`, borderRadius: 12, padding: "10px 14px", display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <article key={item.id} role="status" style={{ background: D.warnBg, border: `1px solid ${D.gold}`, borderRadius: 12, padding: "10px 14px", display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 200, display: "flex", flexDirection: "column", gap: 2 }}>
             <span style={{ color: D.textDim, fontSize: "0.68rem", fontWeight: 800 }}>{`📣 From ${item.from}`}</span>
             <strong style={{ color: D.text, fontSize: "0.88rem" }}>{item.title}</strong>

@@ -79,15 +79,15 @@ export default function LeaderboardPanel() {
                 const { text, tag } = rowLine(row);
                 return (
                   <li key={row.id} aria-current={row.is_me ? "true" : undefined}
-                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 8px", margin: "0 -8px", borderRadius: 10, background: row.is_me ? "#F5ECD8" : "transparent", borderTop: `1px solid ${D.divider}` }}>
-                    <span aria-label={`Rank ${row.rank}`} style={{ width: 26, height: 26, flex: "none", borderRadius: 999, background: "#F5ECD8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", fontWeight: 800, color: D.text, ...figures }}>{row.rank}</span>
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 8px", margin: "0 -8px", borderRadius: 10, background: row.is_me ? D.panelBg2 : "transparent", borderTop: `1px solid ${D.divider}` }}>
+                    <span aria-label={`Rank ${row.rank}`} style={{ width: 26, height: 26, flex: "none", borderRadius: 999, background: D.panelBg2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", fontWeight: 800, color: D.text, ...figures }}>{row.rank}</span>
                     <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
                       <span style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
                         <span style={{ fontSize: "0.88rem", fontWeight: row.is_me ? 800 : 700, color: D.text }}>{row.is_me ? `${row.name} (you)` : row.name}</span>
                         <span style={{ fontSize: "0.95rem", fontWeight: 800, color: D.text, ...figures }}>{row.activations}</span>
                       </span>
                       <span role="progressbar" aria-label={`${row.name} activations`} aria-valuemin={0} aria-valuemax={top} aria-valuenow={row.activations}
-                        style={{ height: 6, borderRadius: 999, background: "#EADFC6", overflow: "hidden", display: "block" }}>
+                        style={{ height: 6, borderRadius: 999, background: D.panelBg3, overflow: "hidden", display: "block" }}>
                         <span style={{ display: "block", height: 6, width: `${Math.round((row.activations / top) * 100)}%`, background: D.text, borderRadius: 999 }} />
                       </span>
                       {(text || tag) && (
@@ -104,7 +104,7 @@ export default function LeaderboardPanel() {
           </section>
 
           {data.most_improved && (
-            <section aria-labelledby="lb-mi" style={{ background: "#E3F1E3", borderRadius: 16, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 2, color: "#00400A" }}>
+            <section aria-labelledby="lb-mi" style={{ background: D.okBg, borderRadius: 16, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 2, color: D.okInk }}>
               <h3 id="lb-mi" style={{ margin: 0, fontSize: "0.95rem", fontWeight: 800 }}>{`Most improved: ${data.most_improved.name}`}</h3>
               <span style={{ fontSize: "0.82rem", lineHeight: 1.45 }}>
                 {`${plural(data.most_improved.now, "activation", "activations")} by ${longDay(data.most_improved.as_of)}, up from ${data.most_improved.then} at the same point in ${monthName(data.most_improved.then_month)}. Well done, ${firstName(data.most_improved.name)}.`}

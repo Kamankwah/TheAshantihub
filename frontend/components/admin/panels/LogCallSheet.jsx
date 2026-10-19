@@ -46,10 +46,10 @@ function Pills({ label, value, options, onChange, allowClear = false }) {
 }
 
 // Segmented control as drawn on the canvas: a cream track, the chosen segment dark.
-const segTrack = { background: "#F5ECD8", borderRadius: 12, padding: 3, gap: 3 };
+const segTrack = { background: D.panelBg2, borderRadius: 12, padding: 3, gap: 3 };
 const segStyle = (on, minHeight) => ({
   minHeight, padding: "0 12px", border: 0, borderRadius: 9, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: "0.82rem",
-  background: on ? D.text : "transparent", color: on ? "#FDF6E3" : D.text,
+  background: on ? D.text : "transparent", color: on ? D.pageBg : D.text,
 });
 function Segmented({ label, value, options, onChange, allowClear = false, inline = false, minHeight = 42 }) {
   const group = (

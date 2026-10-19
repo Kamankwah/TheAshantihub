@@ -20,7 +20,7 @@ import KpiCard from "../../dashboard/charts/KpiCard.jsx";
 // workload is what the per-status tiles show.
 
 const openBtn = {
-  minHeight: 44, border: "none", borderRadius: 20, padding: "0 18px", background: D.gold, color: D.text,
+  minHeight: 44, border: "none", borderRadius: 20, padding: "0 18px", background: D.gold, color: D.darkBrown,
   fontSize: "0.8rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
 };
 const note = { color: D.textDim, fontSize: "0.8rem" };

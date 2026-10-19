@@ -123,7 +123,7 @@ export default function RolesPermissionsPanel() {
                         const checked = stateOf(r.name, p.codename);
                         const changed = key(r.name, p.codename) in pending;
                         return (
-                          <td key={r.name} style={{ textAlign: "center", padding: 4, background: changed ? "#FBF3DC" : "transparent" }}>
+                          <td key={r.name} style={{ textAlign: "center", padding: 4, background: changed ? D.warnBg : "transparent" }}>
                             <input type="checkbox" checked={checked} disabled={Boolean(lockedWhy) || r.locked} title={lockedWhy || undefined}
                               aria-label={`${r.label}: ${p.description}${changed ? (checked ? " (being added)" : " (being removed)") : ""}`}
                               onChange={() => toggle(r.name, p.codename)} />

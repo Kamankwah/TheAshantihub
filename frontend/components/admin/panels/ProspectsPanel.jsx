@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useProspects } from "../../../hooks/useProspects.js";
 import { isBeforeToday, shortDay } from "../../../lib/followUp.js";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, tint } from "../theme.js";
 import LogCallSheet from "./LogCallSheet.jsx";
 import ProspectSheet from "./ProspectSheet.jsx";
 import { button, dim, pill } from "./panelStyles.js";
@@ -11,7 +11,7 @@ import { errorStyle, eyebrow } from "./portfolioParts.jsx";
 // The scout's pipeline of businesses met but not registered yet.
 const FILTERS = [["all", "All"], ["new", "New"], ["interested", "Interested"], ["follow_up", "Follow up"], ["not_interested", "Not interested"]];
 const STATUS_CHIP = {
-  new: ["#E8EAF6", "#000060"], interested: ["#E3F1E3", "#00500A"], follow_up: ["#FFF4E5", "#6B2E07"], not_interested: ["#F1ECE4", "rgba(44,24,16,0.78)"],
+  new: [tint(D.blue, "22"), D.blue], interested: [D.okBg, D.okInk], follow_up: [D.warnBg, D.warnInk], not_interested: [D.panelBg2, D.text],
 };
 const figures = { fontVariantNumeric: "tabular-nums" };
 
@@ -84,14 +84,14 @@ export default function ProspectsPanel({ onRegister }) {
             <div style={dim}>{[p.area || "No area set", p.last_visit_at ? `last visit ${shortDay(p.last_visit_at)}` : "no visit yet"].join(" · ")}</div>
             {p.note && <div style={{ fontSize: "0.82rem", color: D.text, lineHeight: 1.4 }}>{p.note}</div>}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontSize: "0.8rem", fontWeight: 700, color: next.overdue ? "#A33A00" : next.text.startsWith("Next") ? D.text : D.textDim, ...figures }}>{next.text}</span>
+              <span style={{ fontSize: "0.8rem", fontWeight: 700, color: next.overdue ? D.warnInk : next.text.startsWith("Next") ? D.text : D.textDim, ...figures }}>{next.text}</span>
               {open && (
                 <span style={{ display: "inline-flex", gap: 8 }}>
                   <a href={`tel:${p.phone}`} aria-label={`Call ${p.name}`} onClick={() => { setNotice(null); setSheet({ type: "call", prospect: p }); }}
                     style={{ ...button(D.panelBg, D.text), minHeight: 44, minWidth: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none", boxSizing: "border-box" }}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z" /></svg>
                   </a>
-                  <button type="button" onClick={() => onRegister?.(p)} style={{ ...button("#FDF6E3", D.text), border: "1px solid #2C181033", minHeight: 44 }}>Register</button>
+                  <button type="button" onClick={() => onRegister?.(p)} style={{ ...button(D.pageBg, D.text), border: `1px solid ${D.divider}`, minHeight: 44 }}>Register</button>
                 </span>
               )}
             </div>
