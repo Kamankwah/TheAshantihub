@@ -486,7 +486,9 @@ class HeroMediaModerationSerializer(serializers.ModelSerializer):
     mirrors ModerationListingSerializer's field selection.
     """
 
-    business_owner_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+    business_owner_name = serializers.CharField(source="business_owner.full_name", read_only=True, default=None)
+    created_by_staff_name = serializers.CharField(source="created_by_staff.full_name", read_only=True, default=None)
+    youtube_id = serializers.CharField(read_only=True)
     # Approver attribution (staff moderation-queue restructuring) — backs the
     # Approved/Rejected tabs' "who actioned this" line.
     reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
@@ -498,6 +500,8 @@ class HeroMediaModerationSerializer(serializers.ModelSerializer):
             "id", "business_owner", "business_owner_name", "media", "media_type", "caption",
             "status", "rejection_reason", "submitted_at", "approved_at", "expires_at",
             "extended_days", "reviewed_by_name", "reviewed_by_role", "reviewed_at",
+            "title", "video_file", "youtube_url", "youtube_id", "link_path", "starts_at", "ends_at",
+            "created_by_staff_name",
         ]
 
 
@@ -532,9 +536,15 @@ class HeroMediaStaffSerializer(HeroMediaModerationSerializer):
 
 
 class HeroActiveSerializer(serializers.ModelSerializer):
-    """Public shape for the live hero slider — GET /api/hero/active/."""
+    """Public shape for the live hero slider — GET /api/hero/active/. The first block is the
+    slide itself; the second is what the older slider reads (`media`, the CTA fields, dates) and
+    stays so it keeps working. No phone, email or owner id is ever exposed."""
 
-    business_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+    image = serializers.SerializerMethodField()
+    video_url = serializers.SerializerMethodField()
+    youtube_id = serializers.CharField(read_only=True, default=None)
+    listing_id = serializers.IntegerField(read_only=True, default=None)
+    business_name = serializers.CharField(source="business_owner.full_name", read_only=True, default=None)
     # The listing behind this hero slide, so the slider's Buy Now / Engage
     # Service CTA can route to the cart (product) or the listing (service).
     listing_kind = serializers.CharField(source="listing.category.kind", read_only=True, default=None)
@@ -545,9 +555,65 @@ class HeroActiveSerializer(serializers.ModelSerializer):
     class Meta:
         model = HeroMediaSubmission
         fields = [
-            "id", "media", "media_type", "caption", "business_name", "approved_at", "expires_at",
-            "listing", "listing_kind", "price_amount",
+            "id", "media_type", "image", "video_url", "youtube_id", "title", "caption", "link_path", "listing_id",
+            "media", "business_name", "approved_at", "expires_at", "listing", "listing_kind", "price_amount",
         ]
+
+    def _url(self, field):
+        if not field:
+            return None
+        request = self.context.get("request")
+        return request.build_absolute_uri(field.url) if request else field.url
+
+    def get_image(self, obj):
+        return self._url(obj.media)
+
+    def get_video_url(self, obj):
+        return self._url(obj.video_file)
+
+
+class HeroSlideInputSerializer(serializers.Serializer):
+    """Input for a new slide (business submission and staff-made): multipart, validated through
+    listings.hero_rules. The same rules apply to both."""
+
+    media_type = serializers.ChoiceField(choices=["image", "video"], default="image")
+    media = serializers.FileField(required=False, allow_null=True)
+    video_file = serializers.FileField(required=False, allow_null=True)
+    youtube_url = serializers.CharField(required=False, allow_blank=True, max_length=300)
+    title = serializers.CharField(required=False, allow_blank=True, max_length=140)
+    caption = serializers.CharField(required=False, allow_blank=True, max_length=140)
+    starts_at = serializers.DateTimeField()
+    ends_at = serializers.DateTimeField()
+    link_path = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    listing = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate(self, data):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from . import hero_rules
+        from .moderation_checks import CONTACT_DETAILS_MESSAGE, contact_details_in
+
+        def fail(field, exc):
+            raise serializers.ValidationError({field: exc.messages[0]})
+
+        try:
+            hero_rules.validate_window(data["starts_at"], data["ends_at"])
+        except DjangoValidationError as exc:
+            fail("ends_at", exc)
+        try:
+            data.update(hero_rules.validate_media(
+                data["media_type"], data.get("media"), data.get("video_file"), (data.get("youtube_url") or "").strip(),
+            ))
+        except DjangoValidationError as exc:
+            fail("media" if data["media_type"] == "image" else "video_file", exc)
+        try:
+            data["link_path"] = hero_rules.clean_link_path(data.get("link_path"))
+        except DjangoValidationError as exc:
+            fail("link_path", exc)
+        for field in ("title", "caption"):
+            if contact_details_in(data.get(field)):
+                raise serializers.ValidationError({field: CONTACT_DETAILS_MESSAGE})
+        return data
 
 
 class HeroSubmitSerializer(serializers.Serializer):

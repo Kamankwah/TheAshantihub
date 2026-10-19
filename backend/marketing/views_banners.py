@@ -31,10 +31,13 @@ def _err(exc):
 class BannerInput(serializers.ModelSerializer):
     category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), allow_null=True, required=False)
     ends_at = serializers.DateTimeField(allow_null=True, required=False)
+    countdown_ends_at = serializers.DateTimeField(allow_null=True, required=False)
 
     class Meta:
         model = Banner
-        fields = ["slot", "category", "title", "alt_text", "image", "link_path", "sponsored", "internal_note", "starts_at", "ends_at"]
+        fields = ["slot", "category", "title", "alt_text", "image", "message", "countdown_ends_at", "link_path", "sponsored", "internal_note", "starts_at", "ends_at"]
+        # A flash banner has no photo to describe; validate() fills the alt text for it.
+        extra_kwargs = {"alt_text": {"required": False, "allow_blank": True}, "image": {"required": False}}
 
     def validate_image(self, value):
         if value.size > banners.MAX_IMAGE_BYTES:
@@ -45,8 +48,12 @@ class BannerInput(serializers.ModelSerializer):
         try:
             if "title" in data:
                 data["title"] = banners.clean_text(data["title"], "The title", 140)
-            if "alt_text" in data:
-                data["alt_text"] = banners.clean_text(data["alt_text"], "The alt text", 200)
+            flash = data.get("slot", getattr(self.instance, "slot", None)) == Banner.FLASH
+            if flash:
+                data["message"] = banners.clean_text(data["message"] if "message" in data else getattr(self.instance, "message", ""), "The message", 200)
+                data["alt_text"] = data.get("title") or (self.instance.title if self.instance else "")
+            elif "alt_text" in data or self.instance is None:
+                data["alt_text"] = banners.clean_text(data.get("alt_text"), "The alt text", 200)
             if "link_path" in data:
                 data["link_path"] = banners.clean_link(data["link_path"])
         except banners.BannerError as exc:
@@ -59,6 +66,12 @@ class BannerInput(serializers.ModelSerializer):
             data["category"] = None
         starts = data.get("starts_at", getattr(self.instance, "starts_at", None))
         ends = data["ends_at"] if "ends_at" in data else getattr(self.instance, "ends_at", None)
+        if slot != Banner.FLASH:
+            data["message"], data["countdown_ends_at"] = "", None
+        else:
+            countdown = data["countdown_ends_at"] if "countdown_ends_at" in data else getattr(self.instance, "countdown_ends_at", None)
+            if countdown is not None and starts is not None and countdown <= starts:
+                raise serializers.ValidationError({"detail": "The countdown must end after the banner starts."})
         try:
             banners.check_window(starts, ends)
         except banners.BannerError as exc:
@@ -94,7 +107,7 @@ class BannerListCreateView(APIView):
         serializer = BannerInput(data=request.data)
         if not serializer.is_valid():
             return Response({"detail": _first_error(serializer.errors), "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
-        if "image" not in serializer.validated_data:
+        if "image" not in serializer.validated_data and serializer.validated_data.get("slot") != Banner.FLASH:
             return Response({"detail": "Add the banner photo."}, status=status.HTTP_400_BAD_REQUEST)
         banner = serializer.save(created_by=request.user)
         return Response(banners.staff_row(banner, request), status=status.HTTP_201_CREATED)
@@ -121,7 +134,8 @@ class BannerDetailView(APIView):
 
 
 class BannerActionView(APIView):
-    """POST site-banners/<id>/<action>/ with action = submit | withdraw | take-down | reschedule."""
+    """POST site-banners/<id>/<action>/ with action = submit | withdraw | take-down | reschedule | publish
+    (publish: flash banners only, straight to live, no Super Admin approval)."""
     action = ""
 
     def get_permissions(self):
@@ -133,6 +147,8 @@ class BannerActionView(APIView):
                 banner = banners.submit(pk, request.user, request)
             elif self.action == "withdraw":
                 banner = banners.withdraw(pk, request.user, request)
+            elif self.action == "publish":
+                banner = banners.publish_direct(pk, request.user)
             elif self.action == "take-down":
                 banner = banners.take_down(pk, request.user)
             else:
@@ -153,7 +169,7 @@ class BannerActionView(APIView):
 
 # ─── Public: read and count-only beacons ────────────────────────────────────
 class PublicBannersView(APIView):
-    """GET banners/?slot=home_hero|home_strip|category_top|events_top[&category=<slug>] — live, approved banners only.
+    """GET banners/?slot=home_hero|home_strip|category_top|events_top|flash[&category=<slug>] — live, approved banners only.
     No staff names, counters or notes. Never writes."""
     permission_classes = [AllowAny]
     authentication_classes = []

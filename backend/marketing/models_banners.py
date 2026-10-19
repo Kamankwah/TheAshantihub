@@ -20,11 +20,14 @@ class Banner(models.Model):
     HOME_STRIP = "home_strip"
     CATEGORY_TOP = "category_top"
     EVENTS_TOP = "events_top"
+    # A text strip (promotions, countdowns) that Marketing publishes directly.
+    FLASH = "flash"
     SLOT_CHOICES = [
         (HOME_HERO, "Home page, hero"),
         (HOME_STRIP, "Home page, middle strip"),
         (CATEGORY_TOP, "Category page, top"),
         (EVENTS_TOP, "Events page, top"),
+        (FLASH, "Flash banner, all pages"),
     ]
 
     DRAFT = "draft"
@@ -44,7 +47,11 @@ class Banner(models.Model):
     category = models.ForeignKey("listings.Category", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
     title = models.CharField(max_length=140)
     alt_text = models.CharField(max_length=200)
-    image = models.ImageField(upload_to="marketing/banners/", validators=[validate_image_content_type])
+    # A flash banner is words and a countdown, so it needs no photo.
+    image = models.ImageField(upload_to="marketing/banners/", validators=[validate_image_content_type], blank=True)
+    # Flash only: the line shown in the strip, and the moment its countdown runs to (optional).
+    message = models.CharField(max_length=200, blank=True)
+    countdown_ends_at = models.DateTimeField(null=True, blank=True)
     # An internal path on this site ("/events"), never a full URL, phone or WhatsApp link.
     link_path = models.CharField(max_length=200, blank=True)
     sponsored = models.BooleanField(default=False)
