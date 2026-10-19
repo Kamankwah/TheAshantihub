@@ -134,7 +134,10 @@ class ConversationListCreateView(generics.ListCreateAPIView):
             conversation = services.start_conversation(
                 subject=data["subject"],
                 source="guest_chat" if "guest_token" in scope and data["source"] == "app" else data["source"],
-                **_about_links(data, request),
+                # Chat assistant: Support-only, never attached to a business, listing or order.
+                **({} if data["source"] == "chatbot" else _about_links(data, request)),
+                contact_name=data["contact_name"], contact_email=data["contact_email"],
+                contact_phone=data["contact_phone"],
                 **scope,
             )
             Message.objects.create(
