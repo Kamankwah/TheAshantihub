@@ -29,6 +29,7 @@ from .moderation_checks import (
     open_fraud_flag,
     open_fraud_flags,
 )
+from .category_tree import build_tree
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
 from .permissions import IsHeroMediaOwner, IsListingOwner, IsListingPhotoOwner
 from .serializers import (
@@ -50,6 +51,7 @@ from .serializers import (
     ZoneSerializer,
 )
 from .visibility import hidden_business_q, sold_out_q
+from .visits import record_visit
 
 
 def _with_rating_annotations(queryset):
@@ -118,6 +120,32 @@ class CategoryListView(generics.ListCreateAPIView):
         if self.request.method == "POST":
             return [HasRolePermission("categories.manage")]
         return [AllowAny()]
+
+
+class CategoryTreeView(APIView):
+    """GET categories/tree/: public. The shopper view lists only nodes with a live listing or event in them or below
+    them. ?full=1 is the whole tree for a business creating a listing, and needs a signed-in business owner or staff."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from accounts.models import StaffUser
+
+        full = request.query_params.get("full") in ("1", "true")
+        if full and not isinstance(request.user, (BusinessOwner, StaffUser)):
+            return Response({"detail": "The full category tree is for businesses and staff."}, status=403)
+        return Response(build_tree(full=full))
+
+
+class CategoryVisitView(APIView):
+    """POST categories/<id>/visit/: public beacon, one visit counted per call, answers 204."""
+
+    permission_classes = [AllowAny]
+    throttle_scope = "category_visit"
+
+    def post(self, request, pk):
+        record_visit(generics.get_object_or_404(Category, pk=pk))
+        return Response(status=204)
 
 
 class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):

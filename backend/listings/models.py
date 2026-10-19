@@ -29,9 +29,30 @@ class Category(models.Model):
     # RateCard.max_food_shops food places and collects them last (spec 2026-10-14). Set on the "food" and "beverages"
     # categories by migration 0020; `kind` stays as it was.
     is_food = models.BooleanField(default=False)
+    # The shopper department tree (Plan M1). A product department is a top-level product category
+    # (`is_department`); its children are sub-categories, and the product categories that pre-date the tree
+    # sit under the department they were mapped to (listings migration 0023). Service, stay and event categories
+    # stay top-level. `sort_order` is the seed order within a parent.
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="children")
+    sort_order = models.PositiveIntegerField(default=0)
+
+    @property
+    def is_department(self):
+        return self.parent_id is None and self.kind == self.PRODUCT
 
     def __str__(self):
         return self.label
+
+
+class CategoryVisit(models.Model):
+    """How many times shoppers opened a category on one day (Accra); feeds listings.visits.most_visited."""
+
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="visits")
+    day = models.DateField()
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["category", "day"], name="uniq_category_visit_day")]
 
 
 class Zone(models.Model):
