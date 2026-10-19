@@ -414,6 +414,15 @@ class PortfolioBusinessDetailView(APIView):
         return Response(business_detail(row, request))
 
 
+WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+
+def _first_error(errors):
+    while isinstance(errors, (dict, list)) and errors:
+        errors = next(iter(errors.values())) if isinstance(errors, dict) else errors[0]
+    return str(errors)
+
+
 class BusinessHoursStaffView(APIView):
     """PUT /api/portfolio/businesses/<pk>/hours/ {days: [...]} — staff enter a business's weekly opening
     hours, under the same rules as the owner's own endpoint. Only the account manager or a portfolio.manage
@@ -444,15 +453,6 @@ class BusinessHoursStaffView(APIView):
                 message = f"{WEEKDAY_NAMES[exc.weekday]}: {message}"
             return Response({"detail": message, "weekday": exc.weekday}, status=400)
         return Response({"days": after, "has_hours": True})
-
-
-WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-
-
-def _first_error(errors):
-    while isinstance(errors, (dict, list)) and errors:
-        errors = next(iter(errors.values())) if isinstance(errors, dict) else errors[0]
-    return str(errors)
 
 
 class BusinessOrdersView(APIView):

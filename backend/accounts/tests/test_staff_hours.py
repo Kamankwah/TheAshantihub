@@ -91,13 +91,22 @@ class StaffHoursTests(TestCase):
         self.as_(self.lead)  # portfolio.manage
         self.assertEqual(self.client.put(self.url, {"days": week()}, format="json").status_code, 200)
 
-    def test_owner_endpoint_cannot_edit_another_business(self):
+    def test_owner_endpoint_edits_only_the_signed_in_owner_and_owner_token_is_refused_on_the_staff_url(self):
         other = make_owner(phone="+233201110098", business_name="Other shop")
         response = client_for(other).put("/api/accounts/business/hours/", {"days": week()}, format="json")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(hours.has_hours(other))
         self.assertFalse(hours.has_hours(self.owner))
         self.assertEqual(BusinessHours.objects.filter(business_owner=self.owner).count(), 0)
+        # The owner token is refused on the staff endpoint, for another business and for their own.
+        owner_client = client_for(other)
+        for target in (self.owner.pk, other.pk):
+            with self.subTest(target=target):
+                before = BusinessHours.objects.filter(business_owner=target).count()
+                refused = owner_client.put(f"/api/portfolio/businesses/{target}/hours/", {"days": week(d0={"opens": "11:00"})}, format="json")
+                self.assertIn(refused.status_code, (401, 403))
+                self.assertEqual(BusinessHours.objects.filter(business_owner=target).count(), before)
+        self.assertEqual(BusinessHours.objects.get(business_owner=other, weekday=0).opens.strftime("%H:%M"), "08:00")
 
     def test_list_exposes_has_hours_and_filters_businesses_without_hours(self):
         with_hours = scout_owner(self.scout, phone="+233241230000")
