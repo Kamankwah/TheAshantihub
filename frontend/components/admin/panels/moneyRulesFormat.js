@@ -33,6 +33,17 @@ export function fromInput(key, text) {
   return /^\d+$/.test(typed) ? Number(typed) : NaN;
 }
 
+// The server labels carry their raw unit ("(pesewas)", "(basis points; 1000 = 10%)"); the page shows GH₵ and %, so drop it.
+export const plainLabel = (label) => label.replace(/\s*\((?:[^)]*\b)?(?:pesewas|basis points)\b[^)]*\)/i, "");
+
+// A message for a typed value outside what the server allows, in the units the person typed; null when it is fine.
+export function rangeError(setting, value) {
+  if (value === null || value === undefined) return null;
+  const { minimum: low, maximum: high } = setting;
+  if ((low == null || value >= low) && (high == null || value <= high)) return null;
+  return `Must be between ${showValue(setting.key, low ?? 0)} and ${showValue(setting.key, high)}.`;
+}
+
 export const GROUPS = [
   ["Fees", ["fee_cap_pesewas"]],
   ["When money is released", ["verification_overdue_hours", "pickup_window_hours", "service_auto_accept_hours", "stay_issue_window_hours", "event_release_delay_hours"]],

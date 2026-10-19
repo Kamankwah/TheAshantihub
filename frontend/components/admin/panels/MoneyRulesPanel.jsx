@@ -5,7 +5,7 @@ import { useFeeRules, useMoneySettings } from "../../../hooks/useMoneyRules.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
 import MoneyRulesFees from "./MoneyRulesFees.jsx";
-import { fromInput, groupSettings, showValue, toInput, unitOf } from "./moneyRulesFormat.js";
+import { fromInput, groupSettings, plainLabel, rangeError, showValue, toInput, unitOf } from "./moneyRulesFormat.js";
 import { button, callout, chip, dim, field } from "./panelStyles.js";
 import { card, errorStyle, h2, h3 } from "./portfolioParts.jsx";
 
@@ -29,6 +29,8 @@ function SettingRow({ setting, pending, onSaved }) {
     const value = fromInput(setting.key, text);
     if (Number.isNaN(value)) { setError(unit === "ghs" || unit === "percent" ? "Enter a number." : "Enter a whole number."); return; }
     if (value === null && !setting.nullable) { setError("Enter a value."); return; }
+    const outOfRange = rangeError(setting, value);
+    if (outOfRange) { setError(outOfRange); return; }
     setBusy(true);
     try {
       const result = await apiPost("/api/ledger/settings/", { key: setting.key, value });
@@ -44,7 +46,7 @@ function SettingRow({ setting, pending, onSaved }) {
   return (
     <div data-setting={setting.key} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 0", borderTop: `1px solid ${D.divider}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ fontSize: "0.8rem", fontWeight: 700, color: D.text, flex: "1 1 260px" }}>{setting.label}</div>
+        <div style={{ fontSize: "0.8rem", fontWeight: 700, color: D.text, flex: "1 1 260px" }}>{plainLabel(setting.label)}</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <strong style={{ fontSize: "0.85rem" }}>{showValue(setting.key, setting.value)}</strong>
           {setting.is_default && <span style={chip(D.textDim)}>Built-in default</span>}
@@ -60,7 +62,7 @@ function SettingRow({ setting, pending, onSaved }) {
       ))}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <input
-          inputMode="decimal" aria-label={setting.label} value={text} placeholder={setting.nullable ? "No limit" : ""}
+          inputMode="decimal" aria-label={plainLabel(setting.label)} value={text} placeholder={setting.nullable ? "No limit" : ""}
           onChange={(e) => { setText(e.target.value); setNotice(""); }} style={{ ...field, width: 150 }}
         />
         {UNIT_WORDS[unit] && <span style={dim}>{UNIT_WORDS[unit]}</span>}

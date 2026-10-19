@@ -16,15 +16,19 @@ def seed(apps, schema_editor):
     Band = apps.get_model("ledger", "FeeBand")
     start = datetime.now(timezone.utc)
     for category, bands in LADDERS.items():
+        # A category that already has a ladder newer than the original (approved by someone, or seeded by an earlier
+        # run) is left alone: this seed only fills the gap where only the original product-shaped ladder exists.
+        if RuleSet.objects.filter(category=category, effective_from__gt=SEEDED_BEFORE).exists():
+            continue
         rule_set = RuleSet.objects.create(category=category, effective_from=start)
         for lower, upper, percent in bands:
             Band.objects.create(rule_set=rule_set, lower_pesewas=lower, upper_pesewas=upper, percent_bp=percent)
 
 
 def unseed(apps, schema_editor):
-    apps.get_model("ledger", "FeeRuleSet").objects.filter(
-        category__in=list(LADDERS), approval_id__isnull=True, created_by__isnull=True, effective_from__gt=SEEDED_BEFORE,
-    ).delete()
+    # Deliberately nothing: once a sale is charged on a seeded ladder its fee snapshot points at that rule set
+    # (PROTECT), so deleting it would fail; leaving the rows is harmless.
+    pass
 
 
 class Migration(migrations.Migration):

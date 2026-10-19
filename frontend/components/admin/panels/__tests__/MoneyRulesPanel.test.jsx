@@ -182,3 +182,28 @@ describe('MoneyRulesPanel fee tiers', () => {
     expect(within(events).getByText(/Waiting for approval, proposed by Kofi Mensah/)).toBeInTheDocument()
   })
 })
+
+describe('MoneyRulesPanel units', () => {
+  const REAL = { settings: [
+    setting('withdrawal_daily_limit_pesewas', 'Most a person may withdraw in one day, per account (pesewas)', 1000000, { minimum: 100, maximum: 10 ** 10 }),
+    setting('rider_commission_bp', 'Third-party rider commission (basis points; 1000 = 10%)', 1000, { maximum: 10000 }),
+  ], pending: [], history: [] }
+
+  it('never labels a cedi or percent box with the server\'s raw unit', async () => {
+    renderPanel({ settings: REAL })
+    expect(await screen.findByLabelText('Most a person may withdraw in one day, per account')).toHaveValue('10000.00')
+    expect(screen.getByLabelText('Third-party rider commission')).toHaveValue('10')
+    expect(screen.queryByText(/pesewas|basis points/)).toBeNull()
+  })
+
+  it('refuses an amount outside the allowed range, in cedis, without sending it', async () => {
+    let called = false
+    server.use(http.post(`${API}/api/ledger/settings/`, () => { called = true; return HttpResponse.json({}, { status: 201 }) }))
+    renderPanel({ settings: REAL })
+    const input = await screen.findByLabelText('Most a person may withdraw in one day, per account')
+    fireEvent.change(input, { target: { value: '200000000' } })
+    fireEvent.click(within(input.closest('[data-setting]')).getByRole('button', { name: 'Save' }))
+    expect(await within(input.closest('[data-setting]')).findByRole('alert')).toHaveTextContent('between GH₵ 1.00 and GH₵ 100,000,000.00')
+    expect(called).toBe(false)
+  })
+})

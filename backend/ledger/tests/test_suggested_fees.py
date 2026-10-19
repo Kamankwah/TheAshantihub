@@ -1,7 +1,11 @@
+import importlib
+
+from django.apps import apps
 from django.test import TestCase
 from django.utils import timezone
 
 from ledger import fees
+from ledger.models import FeeRuleSet
 
 
 class SuggestedFeeTiersTests(TestCase):
@@ -30,3 +34,21 @@ class SuggestedFeeTiersTests(TestCase):
             bands = [{"lower": b.lower_pesewas, "upper": b.upper_pesewas, "percent_bp": b.percent_bp, "flat": b.flat_pesewas}
                      for b in rule_set.bands.all()]
             fees.validate_bands(bands)
+
+
+class SeedMigrationSafetyTests(TestCase):
+    """The seed must never replace a ladder someone already approved, and running it again adds nothing."""
+
+    seed = staticmethod(importlib.import_module("ledger.migrations.0009_suggested_service_event_fees").seed)
+
+    def test_an_approved_ladder_is_not_replaced(self):
+        approved = FeeRuleSet.objects.create(category="service", effective_from=timezone.now(), approval_id=5)
+        before = FeeRuleSet.objects.filter(category="service").count()
+        self.seed(apps, None)
+        self.assertEqual(FeeRuleSet.objects.filter(category="service").count(), before)
+        self.assertEqual(fees.rule_set_in_force("service"), approved)
+
+    def test_running_the_seed_again_adds_nothing(self):
+        before = FeeRuleSet.objects.count()
+        self.seed(apps, None)
+        self.assertEqual(FeeRuleSet.objects.count(), before)
