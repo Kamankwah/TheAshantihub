@@ -650,6 +650,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (ย
   refunds), the ledger refuses the posting and with it the whole refund. Either allow the commission-income account
   to go negative for that one posting (`allow_negative`, as the rider's balance does), or gate the refund and tell
   Support. Not built.
+  **OPEN owner question (found in final review, 2026-10-18):** before release, Delivery payable holds only the fee the customer paid; a delivery fee covered by the free-delivery promo is taken from the business only at release, so on a pre-release refund after pickup the rider gets nothing (`backend/ledger/riders.py` `refund_trip` returns None when `delivery_pesewas == 0`). With delivery fees off by default ((xcvii)) this is the common case today. Who funds rider pay for a promo-covered fee on a refund: the business, AshantiHub, or nobody? Not built; decision needed.
 - (xciv) **A rider switched back to AshantiHub's own can still owe money later.** The switch is refused while money is
   open, but a whole refund after release of an older third-party delivery still reverses its earning (it works on the
   earning, not on the current flag), leaving a negative balance on a closed wallet with no way to recover it in the app
@@ -1026,7 +1027,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (ยง
 - (lxxxviii) **DECIDED 2026-10-18:** the digest loop is batched (`digest_batch_size`, default 200) with a time budget (`digest_time_budget_seconds`, default 600), resuming from a cursor, and a catch-up job at 10:00 Accra sends a missed 07:00 run (which also resolves (lxxxix)); suspended businesses are skipped. Built by plan 7D Task 4 (settings in plan 7A Task 1). Original text, superseded: **Owner question: the digest loop has no cap or time budget.** `queue_digests` visits every opted-in business in
   one run, one at a time; at a large number of opted-in businesses the 07:00 run could take long. Decide a batch size or
   a time budget before switch-on.
-- (lxxxix) **A missed 07:00 run is not caught up.** The job digests "yesterday" only; if the worker or beat is down at
+- (lxxxix) **DECIDED 2026-10-18:** digest batching, a time budget and a catch-up of a missed run (built by plan 7D Task 4, with (lxxxviii)). Original text, superseded: **A missed 07:00 run is not caught up.** The job digests "yesterday" only; if the worker or beat is down at
   07:00 that day's digest is never sent (a manual `queue_digests(day)` can send it).
 - (xc) **A dedicated `texts` Celery queue and worker before real SMS goes live.** Business texts share the default
   queue with other jobs; a slow provider can hold a worker for up to the send budget (75 s) per run. A circuit breaker
