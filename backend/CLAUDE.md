@@ -139,7 +139,7 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   (`accounts.kyc.is_kyc_submitter` - extend it, never copy it) decides its KYC through either
   door, Super Admin included (403, `kyc.OWN_REGISTRATION`), or records its Ghana Post address
   decision: the registrar, the current account manager, the maker of any
-  `business.kyc`/`business.update` request for it, any staff member who edited the owner's details
+  `business.kyc`/`business.update`/`business.detail_change` request for it (`kyc.SUBMITTER_KINDS`), any staff member who edited the owner's details
   directly (`PATCH business-owners/{id}/` records `business_owner.details_changed` with only the
   changed fields, payout numbers and TIN masked by `accounts.serializers.owner_details_change`; a
   PATCH that changes nothing records nothing), and a field scout who corrected the address (one

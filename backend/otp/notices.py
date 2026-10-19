@@ -2,7 +2,9 @@
 
 * account_locked(): the moment wrong codes (texted, emailed or from an authenticator app) lock the account -
   otp.service.note_failure() answers True for exactly that wrong code;
-* recovery_code_used(): an authenticator recovery code signed someone in (otp.views).
+* recovery_code_used(): an authenticator recovery code signed someone in (otp.views);
+* contact_changed(): a business's approved detail change replaced its sign-in phone or email (plan 7F-C Task 8) -
+  this one goes to the OLD phone or email only, so whoever held it hears of the change.
 
 Each goes to every phone and email the account has (otp.identity.contacts) through otp.senders and is recorded as
 an OtpEvent (SENT or SEND_FAILED, `note` LOCKED_NOTE / RECOVERY_CODE_NOTE), so it counts towards the hourly send
@@ -18,8 +20,8 @@ from datetime import timedelta
 from django.utils import timezone
 
 from . import audit, senders, spend
-from .identity import contacts, ref
-from .models import SIGN_IN, SMS, OtpEvent
+from .identity import _email, _phone, contacts, ref
+from .models import EMAIL, SIGN_IN, SMS, OtpEvent
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +38,14 @@ RECOVERY_CODE_TEXT = (
     "A recovery code was used to sign in to your AshantiHub account. "
     "If this wasn't you, change your password and contact Support."
 )
+CONTACT_CHANGED_TEXT = {
+    SMS: "The sign-in phone of your AshantiHub business account was changed to another number. "
+         "If you did not ask for this, contact AshantiHub Support.",
+    EMAIL: "The sign-in email of your AshantiHub business account was changed to another address. "
+           "If you did not ask for this, contact AshantiHub Support.",
+}
 LOCKED_NOTE = "notice: locked"
+CONTACT_CHANGED_NOTE = "notice: contact changed"
 DAILY_LOCKED_NOTE = "notice: locked until tomorrow"
 RECOVERY_CODE_NOTE = "notice: recovery code used"
 LOCK_NOTICE_GAP = timedelta(hours=1)
@@ -45,13 +54,17 @@ SEND_KINDS = (OtpEvent.SENT, OtpEvent.SEND_FAILED)
 
 def _send(account, *, text, note, purpose, now):
     for channel, destination in contacts(account).items():
-        delivery = senders.deliver(channel, destination, SUBJECT, text)
-        audit.log(
-            OtpEvent.SENT if delivery.ok else OtpEvent.SEND_FAILED, account=account, purpose=purpose, channel=channel,
-            destination=destination, provider=delivery.provider, note=note, now=now,
-        )
-        if delivery.ok and channel == SMS:
-            spend.check_quietly(now)
+        _send_one(account, channel, destination, text=text, note=note, purpose=purpose, now=now)
+
+
+def _send_one(account, channel, destination, *, text, note, purpose, now):
+    delivery = senders.deliver(channel, destination, SUBJECT, text)
+    audit.log(
+        OtpEvent.SENT if delivery.ok else OtpEvent.SEND_FAILED, account=account, purpose=purpose, channel=channel,
+        destination=destination, provider=delivery.provider, note=note, now=now,
+    )
+    if delivery.ok and channel == SMS:
+        spend.check_quietly(now)
 
 
 def account_locked(account, *, purpose="", now=None, until_tomorrow=False):
@@ -79,3 +92,17 @@ def recovery_code_used(account, *, now=None):
         _send(account, text=RECOVERY_CODE_TEXT, note=RECOVERY_CODE_NOTE, purpose=SIGN_IN, now=now or timezone.now())
     except Exception as exc:  # noqa: BLE001
         logger.warning("OTP recovery-code notice not sent: %s", type(exc).__name__)
+
+
+def contact_changed(account, channel, old_destination, *, now=None):
+    """Tell the OLD phone (channel SMS) or email (EMAIL) of an account that it is no longer the sign-in contact. The
+    raw contact is used only to deliver and in the OTP audit row, as for every other send; nothing is logged."""
+    try:
+        destination = _phone(old_destination) if channel == SMS else _email(old_destination)
+        if destination and channel in CONTACT_CHANGED_TEXT:
+            _send_one(
+                account, channel, destination, text=CONTACT_CHANGED_TEXT[channel], note=CONTACT_CHANGED_NOTE,
+                purpose=SIGN_IN, now=now or timezone.now(),
+            )
+    except Exception as exc:  # noqa: BLE001 - a notice never changes the approved change
+        logger.warning("Contact-changed notice not sent: %s", type(exc).__name__)

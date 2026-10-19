@@ -9,6 +9,7 @@ step-up code the view asks for is always required while the ledger is on.
 The request row keeps the new value unmasked, because applying needs it. It never goes into a log line, a notice, an
 approval title or an activity body: those carry the field name and `shown()` (contacts masked) only. A business cannot
 verify its own request: nothing here moves a request past `requested` except withdrawing it."""
+import hmac
 import re
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -268,8 +269,11 @@ def _close_visit_tasks(change, *, cancelled):
     reassigned), done when the scout recorded the outcome."""
     from staff_tasks.models import Task
 
-    status = Task.CANCELLED if cancelled else Task.DONE
-    return _visit_tasks(change).update(status=status, done_at=timezone.now())
+    # staff_tasks has no close service: this follows its own close door (staff_tasks.views._TaskStatusView), which
+    # stamps done_at only on a task marked done.
+    if cancelled:
+        return _visit_tasks(change).update(status=Task.CANCELLED, done_at=None)
+    return _visit_tasks(change).update(status=Task.DONE, done_at=timezone.now())
 
 
 def _locked(request_id):
@@ -354,14 +358,15 @@ def _note(value):
 
 
 def _verifying_visit(change, scout):
-    """The scout's visit for this request that proves they were there: done or still open (never abandoned), and
-    measured inside the radius of the business pin. 409 no_visit / outside_radius / no_pin otherwise."""
+    """The scout's visit for this request that proves they were there: done or still open (never abandoned), made
+    since this assignment (a scout reassigned away and back cannot reuse a visit from the first time), and measured
+    inside the radius of the business pin. 409 no_visit / outside_radius / no_pin otherwise."""
     from field.models import VisitCheckIn
 
     visits = list(
         VisitCheckIn.objects.filter(
             change_request=change, scout=scout, purpose=VisitCheckIn.CHANGE_VERIFICATION,
-            status__in=(VisitCheckIn.DONE, VisitCheckIn.OPEN),
+            status__in=(VisitCheckIn.DONE, VisitCheckIn.OPEN), checked_in_at__gte=change.assigned_at,
         ).order_by("-checked_in_at", "-id")
     )
     if not visits:
@@ -490,8 +495,9 @@ def staff_row(change):
 
 
 def scout_row(change):
-    """What the assigned scout sees: the field and the new value in full (they verify it on the ground with the owner),
-    the current value masked, and where the business is."""
+    """What the assigned scout sees: the field and the new value in full only while the visit is waiting (they verify it
+    on the ground with the owner; masked once they have recorded the outcome), the current value masked, and where the
+    business is."""
     from field.services import business_pin
 
     owner = change.business_owner
@@ -507,7 +513,7 @@ def scout_row(change):
         "field": change.field,
         "field_label": change.get_field_display(),
         "current_value": shown(change.field, getattr(owner, change.field)),
-        "new_value": change.new_value,
+        "new_value": change.new_value if change.status == Request.ASSIGNED else shown(change.field, change.new_value),
         "reason": change.reason,
         "status": change.status,
         "status_label": change.get_status_display(),
@@ -516,3 +522,191 @@ def scout_row(change):
         "verified_at": change.verified_at,
         "can_verify": change.status == Request.ASSIGNED,
     }
+
+
+# ── The approval: two people with the password (plan 7F-C Task 8; kind registered by portfolio.approval_kinds) ────────
+#
+# Payload {change_request_id, business_owner_id, field, new_value}; the target is the owner. The maker is the verifying
+# scout (submit_for_approval), so the engine never lets them decide it; apply also refuses anyone who verified the
+# change on site (the assigned scout or the visit's scout) should they be among the deciders. Lock order inside the
+# decision: the approval row, the target advisory lock (approvals.services), the owner row, then the request row (the
+# same owner-then-request order request_change uses); record() last.
+
+APPLIED_TITLE = "Your {label} was changed"
+NOT_APPROVED_TITLE = "Your {label} change was not approved"
+NOT_APPROVED_BODY = "Nothing changed. You can file a new request if you still need the change."
+NOT_WAITING_FOR_APPROVAL = "This change request is no longer waiting for approval."
+NOT_RECOGNISED = "That change is not recognised."
+STALE = "This detail changed since the request was approved on site. Reject this one; the business can ask again."
+VERIFIER_DECIDES = "You verified this change on site, so someone else approves it."
+
+
+def _refused(message, code, status_code=409):
+    from approvals.services import ApprovalError
+
+    error = ApprovalError(message)
+    error.code, error.status_code = code, status_code
+    return error
+
+
+def _approval_owner(approval, *, lock=False):
+    payload = approval.payload if isinstance(approval.payload, dict) else {}
+    if payload.get("field") not in PROTECTED_FIELDS or str(payload.get("business_owner_id")) != str(approval.target_id):
+        raise _refused(NOT_RECOGNISED, "bad_payload", 400)
+    rows = BusinessOwner.objects.select_for_update() if lock else BusinessOwner.objects
+    return rows.get(pk=payload["business_owner_id"])  # DoesNotExist: the engine answers "stale"
+
+
+def _digest(owner, field):
+    from wallets.holder_details import digest
+
+    return digest(owner, field)
+
+
+def approval_state(approval):
+    """The owner's current value as the inbox may show it, and a keyed digest of the raw one: two phones or emails can
+    mask alike, so the stale check compares the digest (wallets.holder_details does the same)."""
+    owner = _approval_owner(approval)
+    field = approval.payload["field"]
+    return {"value": shown(field, getattr(owner, field)), "digest": _digest(owner, field)}
+
+
+def _check(approval, owner, *, lock=False):
+    """The request this approval decides, still verified and still pointing at this approval, and the value re-cleaned
+    with the detailed staff-side reasons: another business, staff member or customer recovery contact may have taken
+    it since (two live requests can name the same value). Raises ApprovalError with a code."""
+    payload = approval.payload
+    rows = Request.objects.select_for_update() if lock else Request.objects
+    change = rows.filter(pk=payload.get("change_request_id"), business_owner_id=owner.pk).first()
+    if change is None or change.field != payload["field"] or change.new_value != payload.get("new_value"):
+        raise _refused(NOT_RECOGNISED, "bad_payload", 400)
+    if change.status != Request.VERIFIED or (change.approval_id is not None and change.approval_id != approval.pk):
+        raise _refused(NOT_WAITING_FOR_APPROVAL, "not_waiting")
+    try:
+        new_value = clean(owner, change.field, change.new_value, detailed=True)
+    except DetailChangeError as exc:
+        raise _refused(exc.message, exc.code, 400 if exc.code in ("invalid", "invalid_field") else 409)
+    return change, new_value
+
+
+def approval_validate(approval):
+    _check(approval, _approval_owner(approval))
+
+
+def _verifiers(change):
+    people = {change.assigned_scout_id}
+    if change.visit_id:
+        people.add(change.visit.scout_id)
+    return {pk for pk in people if pk}
+
+
+def approval_apply(approval):
+    """Write the new value, restart the payout cooling period, close the request as approved, show the owner the change
+    (an AppliedChange row and a notice), tell the old phone or email, and record business.detail_changed last."""
+    from otp import notices
+    from otp.models import EMAIL, SMS
+    from wallets.holder_details import restart_cooling
+
+    from .models import AppliedChange
+
+    owner = _approval_owner(approval, lock=True)
+    change, new_value = _check(approval, owner, lock=True)  # again, on the locked rows
+    deciders = {decision.staff_id for decision in approval.decisions.all()} | {approval.decided_by_id}
+    if deciders & (_verifiers(change) | {approval.maker_id}):
+        raise _refused(VERIFIER_DECIDES, "verified_it", 403)
+    field = change.field
+    if not hmac.compare_digest(str((approval.before or {}).get("digest") or ""), _digest(owner, field)):
+        raise _refused(STALE, "stale")
+    before = getattr(owner, field)
+    setattr(owner, field, new_value)
+    owner.save(update_fields=[field])
+    now = timezone.now()
+    cooling = restart_cooling(owner, now)  # every live payout destination waits payout_cooling_hours again
+    change.status, change.decided_at = Request.APPROVED, now
+    change.save(update_fields=["status", "decided_at"])
+    label = LABELS[field]
+    # The owner asked for it, so there is nothing to undo ("This wasn't me" is for a scout's change): undo_until is the
+    # moment it applied, and the row is there so the change is never a surprise.
+    AppliedChange.objects.create(
+        approval=approval, business_owner=owner, kind=APPROVAL_KIND, summary=f"Changed your {label}",
+        applied_at=now, undo_until=now, result={"request_id": change.pk, "field": field},
+    )
+    body = "AshantiHub approved the change you asked for."
+    if cooling:
+        body += " Your payout accounts wait the cooling period again before they can receive money."
+    notify_business_owner(
+        owner, "detail_change_approved", APPLIED_TITLE.format(label=label), body=body, link="detail-changes",
+        icon="🪪",
+    )
+    channel = {"login_phone": SMS, "email": EMAIL}.get(field)
+    if channel and before:
+        # After commit, so the old contact never hears of a change that rolled back; the raw value stays in this
+        # closure and the delivery path only.
+        transaction.on_commit(lambda: notices.contact_changed(owner, channel, before, now=now))
+    # Last: record() holds the activity chain lock until commit.
+    record(
+        approval.decided_by or approval.maker, "business.detail_changed", target=owner,
+        summary=f"Changed the business's {label} after an on-site check and two people's approval",
+        before={field: shown(field, before)},
+        after={field: shown(field, new_value), "request_id": change.pk, "approval_id": approval.pk,
+               "proposed_by": approval.maker_id, "destinations_cooling": cooling},
+    )
+
+
+def approval_closed(approval):
+    """The approval was rejected (returned) or the maker cancelled it: the request ends as rejected and the business is
+    told. There is nothing for the scout to fix and send again (a verified request cannot be re-verified), so no
+    returned task is made; the business files a new request if it still needs the change."""
+    change = (
+        Request.objects.select_for_update().select_related("business_owner")
+        .filter(approval_id=approval.pk, status=Request.VERIFIED).first()
+    )
+    if change is None:
+        return
+    change.status, change.decided_at = Request.REJECTED, timezone.now()
+    change.save(update_fields=["status", "decided_at"])
+    notify_business_owner(
+        change.business_owner, "detail_change_rejected", NOT_APPROVED_TITLE.format(label=LABELS[change.field]),
+        body=NOT_APPROVED_BODY, link="detail-changes", icon="🪪",
+    )
+
+
+def approval_diff(approval):
+    payload = approval.payload if isinstance(approval.payload, dict) else {}
+    field = payload.get("field")
+    if field not in PROTECTED_FIELDS:
+        return []
+    owner = BusinessOwner.objects.filter(pk=payload.get("business_owner_id")).first()
+    from approvals.models import ApprovalRequest
+
+    if approval.status == ApprovalRequest.PENDING and owner is not None:
+        before = shown(field, getattr(owner, field))
+    else:
+        before = (approval.before or {}).get("value")
+    return [{"field": f"Owner's {LABELS[field]}", "before": before, "after": shown(field, payload.get("new_value"))}]
+
+
+def approval_consequences(approval):
+    field = (approval.payload or {}).get("field")
+    label = LABELS.get(field, "detail")
+    lines = [
+        f"Changes the owner's {label} to the value a scout verified with the owner on site.",
+        "The business's payout accounts cannot receive money again until the cooling period (payout_cooling_hours) "
+        "has passed.",
+        "The new value is checked again when you approve.",
+    ]
+    if field in ("login_phone", "email"):
+        lines.insert(1, f"The business signs in with the new {label}; the old one is told of the change.")
+    return lines
+
+
+def approval_public_payload(approval):
+    payload = dict(approval.payload)
+    payload["new_value"] = shown(payload.get("field"), payload.get("new_value"))
+    return payload
+
+
+def approval_chain(approval):
+    from approvals.models import ApprovalRequest
+
+    return [(ApprovalRequest.POOL, None), (ApprovalRequest.SUPER_ADMIN, None)]

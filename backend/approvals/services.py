@@ -255,14 +255,25 @@ def _apply_failed(crash):
 def _after_rejected(approval):
     """The kind's on_rejected hook (e.g. a follow-up task for the maker). A
     failing hook is logged and never blocks the decision."""
+    _run_hook(approval, "on_rejected")
+
+
+def _after_cancelled(approval):
+    """The kind's on_cancelled hook (e.g. close the record that waited on the
+    approval). A failing hook is logged and never blocks the cancel."""
+    _run_hook(approval, "on_cancelled")
+
+
+def _run_hook(approval, name):
     kind = get_kind(approval.kind)
-    if kind is None or kind.on_rejected is None:
+    hook = getattr(kind, name, None) if kind is not None else None
+    if hook is None:
         return
     try:
         with transaction.atomic():
-            kind.on_rejected(approval)
+            hook(approval)
     except Exception:
-        logger.exception("on_rejected hook failed for approval %s", approval.pk)
+        logger.exception("%s hook failed for approval %s", name, approval.pk)
 
 
 def _link(approval):
@@ -505,6 +516,7 @@ def cancel(approval_id, staff, http_request=None):
         approval.decided_by = staff
         approval.decided_at = timezone.now()
         approval.save(update_fields=["status", "decided_by", "decided_at"])
+        _after_cancelled(approval)
         record(staff, "approval.cancelled", target=approval, request=http_request)
     return approval
 

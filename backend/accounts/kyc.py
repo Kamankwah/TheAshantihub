@@ -26,6 +26,9 @@ KYC_KIND = "business.kyc"
 TARGET_TYPE = "accounts.businessowner"
 # A staff member's direct edit to an owner's details (StaffBusinessOwnerDetailView).
 DETAILS_CHANGED = "business_owner.details_changed"
+# Approval kinds whose maker put this business's details forward: KYC, a scout's details change, and the scout who
+# verified the business's own name/contact change on site (portfolio.detail_changes, plan 7F-C Task 8).
+SUBMITTER_KINDS = (KYC_KIND, "business.update", "business.detail_change")
 QUEUE_APPROVE_NOTE = "Approved in the KYC queue."
 ALREADY_DECIDED = "This business has already been decided."
 SELF_DEALING_HOLD = "Decide the self-dealing case in Fraud cases first."
@@ -51,7 +54,8 @@ def self_dealing_open(owner):
 def is_kyc_submitter(owner, staff):
     """True for anyone who put this business's KYC evidence, address or
     details forward: its registrar, its current account manager, the maker of
-    any business.kyc or business.update request for it (any status), the field
+    any business.kyc, business.update or business.detail_change request for it
+    (any status: the last is the scout who verified a change on site), the field
     scout who corrected its Ghana Post address (their ScoutAssignment report
     marks the address wrong and gives the correction - one who only confirmed
     it, or marked it wrong without a correction, is not), and any staff member who
@@ -60,7 +64,7 @@ def is_kyc_submitter(owner, staff):
     if owner.registered_by_id == staff.pk or owner.account_manager_id == staff.pk:
         return True
     if ApprovalRequest.objects.filter(
-        kind__in=(KYC_KIND, "business.update"), target_type=TARGET_TYPE, target_id=str(owner.pk), maker=staff,
+        kind__in=SUBMITTER_KINDS, target_type=TARGET_TYPE, target_id=str(owner.pk), maker=staff,
     ).exists():
         return True
     if ScoutAssignment.objects.filter(
