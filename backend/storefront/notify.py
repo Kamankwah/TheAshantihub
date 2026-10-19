@@ -5,6 +5,7 @@ import logging
 import secrets
 import time
 from datetime import timedelta
+from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 NOTIFY_BATCH = 100
 LEASE = timedelta(minutes=10)
+DEFAULT_SITE_HOST = "theashantihub.com"
 
 
 def stop_link(token):
@@ -98,8 +100,22 @@ def opt_out(token):
                 or NotifyRequest.objects.filter(token=token).exists())
 
 
-def sms_body(token):
-    return f"AshantiHub marketplace is now open! Shop now. Stop texts: {stop_link(token)}"
+def site_host():
+    """The bare host of FRONTEND_BASE_URL for the text; an unset or unusable value (no dotted host, e.g. the
+    localhost dev default) falls back to DEFAULT_SITE_HOST so the text never carries a broken link."""
+    raw = str(getattr(settings, "FRONTEND_BASE_URL", "") or "").strip()
+    try:
+        host = urlsplit(raw if "//" in raw else f"//{raw}").hostname or ""
+    except ValueError:
+        host = ""
+    if "." not in host or not host.isascii() or " " in host:
+        return DEFAULT_SITE_HOST
+    return host
+
+
+def sms_body(token=None):
+    # One GSM-7 segment, no emoji. No stop link: the email carries it and a reply STOP is handled by the carrier.
+    return f"AshantiHub is open! Shop now: {site_host()}"
 
 
 def email_parts(token):
