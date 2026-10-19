@@ -17,6 +17,9 @@ export default function StaffHoursSection({ businessId, days, canEdit, onSaved, 
   const [saved, setSaved] = useState(null); // the week as the server returned it
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  // A fresher week from the server (a refetch hands in a new `days`) replaces the one we just saved.
+  const [seenDays, setSeenDays] = useState(days);
+  if (seenDays !== days) { setSeenDays(days); setSaved(null); }
   const shown = saved ?? days ?? [];
   const has = shown.length > 0;
 
@@ -29,6 +32,7 @@ export default function StaffHoursSection({ businessId, days, canEdit, onSaved, 
       setEditing(false);
       queryClient.invalidateQueries({ queryKey: ["portfolio"] });
       queryClient.invalidateQueries({ queryKey: ["portfolio-business"] });
+      queryClient.invalidateQueries({ queryKey: ["sa-businesses"] });
       onSaved?.();
     } catch (err) {
       setError(apiErrorMessage(err, "Couldn't save the hours. Try again."));

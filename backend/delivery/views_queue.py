@@ -145,8 +145,10 @@ class ScheduledPagination(PageNumberPagination):
 
 
 class ScheduledView(ManageView):
-    """GET scheduled/ — readable by delivery.manage or orders.manage_delivery (the delivery-management panel's
-    permission); sending early (SendEarlyView) stays delivery.manage only. Paginated ({count, next, previous, results}) paid orders held until their vendors open, soonest
+    """GET scheduled/ — readable by delivery.manage or orders.manage_delivery (the delivery-management
+    panel's permission); sending early (SendEarlyView) stays delivery.manage only.
+
+    Paginated ({count, next, previous, results}) paid orders held until their vendors open, soonest
     opening first. The same queryset as the queue's scheduled_count (board.scheduled_orders)."""
 
     def get_permissions(self):
