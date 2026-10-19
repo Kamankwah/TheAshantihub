@@ -41,6 +41,12 @@ class CheckinNoticeTests(BookingBase):
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.owner), pending)
         self.assertEqual(sales.release_due(timezone.now()), 0)  # nor does the clock release it early
 
+    def test_scan_of_ledger_sale_ticket_unchanged(self):
+        self.scan(self.tickets[0])
+        self.assertEqual(self.tickets[0].escrow_status, Ticket.HELD)
+        self.assertIsNotNone(self.tickets[0].delivered_at)
+        self.assertEqual(TicketScanNotice.objects.count(), 1)
+
     def test_scan_queues_one_notice(self):
         self.scan(self.tickets[0])
         notice = TicketScanNotice.objects.get()

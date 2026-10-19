@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction as db_transaction
-from django.db.models import Avg, Count, Q, Sum
+from django.db.models import Avg, Count, Exists, OuterRef, Q, Sum
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import filters, generics
@@ -1057,6 +1057,11 @@ def _checkin_serializer_for(user):
 LEDGER_RELEASES = "With the ledger on, this ticket's money is released by Support's call to the customer."
 
 
+def _in_ledger_exists():
+    """A BookingSale exists for the ticket's purchase transaction (the money is in the ledger)."""
+    return Exists(BookingSale.objects.filter(session__transaction_id=OuterRef("transaction_id")))
+
+
 def _ledger_sale(ticket):
     """The ledger's booking sale this ticket was bought in (ledger Plan 1b), or None: the ledger is off, the purchase
     was made before it was on, or the event's organiser is a customer. Only a ticket in a sale has its money in the
@@ -1093,13 +1098,13 @@ class EventCheckinListView(generics.ListAPIView):
 class EventCheckinView(APIView):
     """POST /api/events/{id}/tickets/checkin/ — organizer/staff scans or
     keys in a ticket's `code` to admit the holder. This is the normal,
-    non-exceptional path by which escrow is released when the ledger holds no
-    money for the ticket: a held, undelivered, non-refunded ticket with no
-    ledger sale is marked delivered and auto-released in the same write
-    (escrow_released_by_staff stays null, distinguishing an auto-release from
-    a manual EscrowReleaseView override). A ticket in a ledger sale is only
-    marked delivered (evidence) and the buyer is told once (events.scan_notice);
-    the money releases on the clock (ledger.sales.release_due), never on a scan.
+    admission path. A scan is evidence only and never changes escrow_status: it
+    records delivered_at and the scanning staff member, and a ticket in a ledger
+    sale tells the buyer once (events.scan_notice); that money releases on the
+    clock (ledger.sales.release_due). A ticket outside the ledger (bought before
+    it was on, or with it off) stays held after a scan and is released by
+    Accounting's manual door (EscrowReleaseView); find them with
+    `?state=unreleased_legacy` (Plan 7F-C, R5).
     """
 
     permission_classes = [IsAuthenticated, IsEventOwnerOrCanApproveEvents]
@@ -1126,13 +1131,8 @@ class EventCheckinView(APIView):
             ticket.delivered_by_staff = request.user if isinstance(request.user, StaffUser) else None
             update_fields = ["delivered_at", "delivered_by_staff"]
 
-            # With the ledger on, a ticket bought in a booking sale is released by the clock (ledger.sales.release_at), not by the scan.
+            # A scan never releases money (R5): a ledger sale releases on the clock, any other ticket by Accounting's hand.
             sale = _ledger_sale(ticket)
-            if ticket.escrow_status == Ticket.HELD and sale is None:
-                ticket.escrow_status = Ticket.RELEASED
-                ticket.escrow_released_at = timezone.now()
-                update_fields += ["escrow_status", "escrow_released_at"]
-
             ticket.save(update_fields=update_fields)
             scan_notice.send(ticket, sale)
         return Response(_checkin_serializer_for(request.user)(ticket).data)
@@ -1152,7 +1152,9 @@ class EscrowLedgerListView(generics.ListAPIView):
         return [HasRolePermission("escrow.view")]
 
     def get_queryset(self):
-        return Ticket.objects.select_related("ticket_type__event", "purchased_by", "escrow_released_by_staff", "refunded_by_staff").order_by("-created_at")
+        return Ticket.objects.select_related(
+            "ticket_type__event", "purchased_by", "escrow_released_by_staff", "refunded_by_staff"
+        ).annotate(in_ledger=_in_ledger_exists()).order_by("-created_at")
 
     def filter_queryset(self, queryset):
         status_param = self.request.query_params.get("status")
@@ -1172,6 +1174,9 @@ class EscrowLedgerListView(generics.ListAPIView):
                 escrow_status=Ticket.HELD, refunded_at__isnull=True, delivered_at__isnull=True,
                 ticket_type__event__event_date__lt=timezone.now(),
             )
+        elif state == "unreleased_legacy":
+            # Held and outside the ledger: only Accounting's manual release moves it (R5).
+            queryset = queryset.filter(escrow_status=Ticket.HELD, refunded_at__isnull=True, in_ledger=False)
         elif state in (Ticket.HELD, Ticket.RELEASED):
             queryset = queryset.filter(escrow_status=state, refunded_at__isnull=True)
         query = (self.request.query_params.get("q") or "").strip()[:80]
@@ -1201,6 +1206,9 @@ class EscrowSummaryView(APIView):
             late=Sum("price", filter=held & Q(delivered_at__isnull=True, ticket_type__event__event_date__lt=timezone.now())),
             late_n=Count("id", filter=held & Q(delivered_at__isnull=True, ticket_type__event__event_date__lt=timezone.now())),
         )
+        legacy = Ticket.objects.annotate(in_ledger=_in_ledger_exists()).filter(
+            escrow_status=Ticket.HELD, refunded_at__isnull=True, in_ledger=False,
+        ).aggregate(amount=Sum("price"), n=Count("id"))
         money = lambda value: f"{(value or zero):.2f}"
         return Response({
             "simulated": settings.PAYMENTS_PROVIDER == "simulated",
@@ -1208,9 +1216,10 @@ class EscrowSummaryView(APIView):
             "released": {"amount": money(totals["released"]), "count": totals["released_n"]},
             "refunded": {"amount": money(totals["refunded"]), "count": totals["refunded_n"]},
             "held_after_event": {"amount": money(totals["late"]), "count": totals["late_n"]},
+            "legacy_held": {"amount": money(legacy["amount"]), "count": legacy["n"]},
             "not_recorded": [
                 {"name": "Orders and bookings", "why": "Order and booking money is not held in escrow yet, so none is listed here."},
-                {"name": "Release timers", "why": "No release-after-delivery rule is built; a ticket is released at check-in or by staff."},
+                {"name": "Release timers", "why": "No release-after-delivery rule is built; a ticket outside the ledger is released only by Accounting; a door scan never releases."},
             ],
         })
 
@@ -1224,7 +1233,9 @@ def _required_note(value):
 class EscrowReleaseView(APIView):
     """POST /api/events/tickets/{ticket_id}/escrow/release/ — staff
     `escrow.release` manually releases a held ticket's payment before/
-    without a normal check-in (exception path — e.g. a physical-delivery
+    without a normal check-in. A door scan is evidence only and never releases,
+    so this is also the one way out for a ticket outside the ledger (Plan 7F-C,
+    R5) (exception path — e.g. a physical-delivery
     ticket where check-in doesn't apply). Body may carry an optional
     `note` recorded as escrow_override_note. A ticket in a ledger booking sale
     answers 409 {"code": "ledger_on"}: Support's call releases it.

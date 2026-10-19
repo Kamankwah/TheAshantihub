@@ -430,11 +430,21 @@ class TicketEscrowLedgerSerializer(serializers.ModelSerializer):
         source="refunded_by_staff.full_name", read_only=True, default=None
     )
     event_date = serializers.DateTimeField(source="ticket_type.event.event_date", read_only=True)
+    in_ledger = serializers.SerializerMethodField()
+
+    def get_in_ledger(self, obj):
+        """True when a ledger booking sale holds this ticket's money; False means only Accounting's manual release moves it."""
+        annotated = getattr(obj, "in_ledger", None)
+        if annotated is not None:
+            return bool(annotated)
+        from ledger.models import BookingSale
+
+        return BookingSale.objects.filter(session__transaction_id=obj.transaction_id).exists()
 
     class Meta:
         model = Ticket
         fields = [
-            "id", "code", "price", "escrow_status", "escrow_held_at", "escrow_released_at",
+            "id", "code", "price", "in_ledger", "escrow_status", "escrow_held_at", "escrow_released_at",
             "escrow_override_note", "delivered_at", "refunded_at", "refund_reason",
             "event_name", "event_date", "ticket_type_name", "purchased_by_name",
             "released_by_staff_name", "refunded_by_staff_name",
