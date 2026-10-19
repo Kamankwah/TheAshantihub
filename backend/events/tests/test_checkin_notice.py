@@ -53,6 +53,16 @@ class CheckinNoticeTests(BookingBase):
         for phone in (self.owner.login_phone, self.customer.phone):
             self.assertNotIn(phone, notice.body)
 
+    def test_digits_in_event_name_cannot_leak_a_number(self):
+        class Named:
+            class ticket_type:
+                class event:
+                    name = "Call 0241234567 Night"
+
+        body = scan_notice.body_for(Named, timezone.now(), timezone.now())
+        self.assertNotIn("0241234567", body)
+        self.assertIn("567", body)
+
     def test_rescan_no_second_notice(self):
         self.scan(self.tickets[0])
         self.scan(self.tickets[0], expect=400)

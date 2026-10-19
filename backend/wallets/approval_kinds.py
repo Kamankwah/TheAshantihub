@@ -1,7 +1,7 @@
 """wallets.withdrawal_resolution (wallet rulings 7C, Task 4; spec §13 (xxxv), (xxxvi)): ending a stuck withdrawal by hand
 takes two people. A holder of wallets.manage proposes "failed" (return the money) or "paid" (it reached the destination)
-with evidence (a provider reference, a statement note: 10+ characters); another holder of wallets.manage, then a Super
-Admin, approves with the password again. Nobody ends one alone: the kind is two_people, so not even a Super Admin's own
+with evidence (a provider reference, a statement note: 10+ characters); another holder of wallets.manage (or a Super
+Admin) approves with the password again; a request nobody answers moves up to a Super Admin. Nobody ends one alone: the kind is two_people, so not even a Super Admin's own
 request applies at once, the maker never approves their own, and a staff member who is the withdrawal's holder (a
 third-party rider) never takes part. Every hand resolution therefore ends as the provider confirmed it, or as an
 approved evidence request.
@@ -241,5 +241,5 @@ WITHDRAWAL_RESOLUTION = ApprovalKind(
     key=KEY, label="Resolve a stuck withdrawal", pool_permission=MANAGE, current_state=current_state, apply=apply,
     response_hours=4, resolve_approver=chain, render_diff=render_diff, validate=validate, consequences=consequences,
     requires_sudo=True, amount_of=amount_of, two_people=True,
-    chain_note="Another holder of wallets.manage, then a Super Admin; never the person who asked",
+    chain_note="One approval from another holder of wallets.manage, or a Super Admin (it moves to a Super Admin if unanswered); never the person who asked",
 )

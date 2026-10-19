@@ -1017,7 +1017,7 @@ class EventCheckinView(APIView):
             ticket.delivered_by_staff = request.user if isinstance(request.user, StaffUser) else None
             update_fields = ["delivered_at", "delivered_by_staff"]
 
-            # With the ledger on, a ticket bought in a booking sale is released by Support's call, not by the scan.
+            # With the ledger on, a ticket bought in a booking sale is released by the clock (ledger.sales.release_at), not by the scan.
             sale = _ledger_sale(ticket)
             if ticket.escrow_status == Ticket.HELD and sale is None:
                 ticket.escrow_status = Ticket.RELEASED

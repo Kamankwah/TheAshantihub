@@ -14,6 +14,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from otp import senders
+from wallets.approval_kinds import mask_numbers
 from otp.identity import contacts
 
 from .models import TicketScanNotice
@@ -35,7 +36,7 @@ def _plain(text):
 
 def body_for(ticket, scanned_at, release_at):
     """Never carries a phone number: the event's name is cleaned to plain characters and cut."""
-    event = _plain(ticket.ticket_type.event.name)[:MAX_EVENT_NAME] or "the event"
+    event = mask_numbers(_plain(ticket.ticket_type.event.name))[:MAX_EVENT_NAME] or "the event"
     at = scanned_at.astimezone(dt_timezone.utc)
     by = release_at.astimezone(dt_timezone.utc)
     return (

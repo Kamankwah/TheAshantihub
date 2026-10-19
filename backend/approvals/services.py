@@ -320,7 +320,7 @@ def _submit(maker, kind, now, title, payload, target_type, target_id, target_lab
         # staged requests carry the second-approval requirement. This is the canvas rule
         # ("a Super Admin's own changes apply at once and are recorded"), decided on purpose:
         # the co-signer constrains requests staged by others, not a Super Admin's own. Also
-        # note no ApprovalKind defines amount_of yet, so the co-sign threshold is dormant.
+        # note wallets.withdrawal_resolution defines amount_of, so the co-sign threshold is live for it (above GHS 20,000).
         approval.required_approvals = 1 if direct else rules.required_approvals_for(approval.amount)
         if direct:
             if kind.validate is not None:

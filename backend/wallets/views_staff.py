@@ -158,7 +158,7 @@ class StaffWithdrawalResolveView(APIView):
     """POST staff/withdrawals/<id>/resolve/ {outcome: "failed" | "paid", evidence} — ask for a stuck withdrawal (sent 30+
     minutes ago with no answer, or held and never sent for 10+ minutes) to be ended by hand. wallets.manage and the
     password again. It never ends it: it submits a wallets.withdrawal_resolution request (wallets/approval_kinds.py)
-    that another holder of wallets.manage, then a Super Admin, approves with the password again; a Super Admin's own
+    that another holder of wallets.manage (or a Super Admin) approves with the password again; a Super Admin's own
     request waits for someone else too. Answers 201 {approval_id, status, withdrawal}.
 
     Evidence (a provider reference, what the provider's statement shows) is mandatory, 10+ characters (400

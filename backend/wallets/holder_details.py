@@ -1,7 +1,7 @@
 """wallets.holder_details_edit (wallet rulings 7C, Task 5; spec §13 (xxxiv)): while the ledger is on, staff cannot change
 what a payout is matched against, or where a holder's codes go, alone. The staff doors (PATCH accounts/customers/<id>/ and
 business-owners/<id>/) no longer write a changed name or contact: they submit this request, which another holder of
-users.manage, then a Super Admin, approves with the password again. It is a two_people kind, so not even a Super Admin's
+users.manage (or a Super Admin) approves with the password again; a request nobody answers moves up to a Super Admin. It is a two_people kind, so not even a Super Admin's
 own request applies at once.
 
 Payload {holder_type, holder_id, field, attribute, new_value}: `field` is "payout_name" (the name a destination's account
@@ -230,5 +230,5 @@ HOLDER_DETAILS_EDIT = ApprovalKind(
     key=KEY, label="Change a holder's payout name or contact", pool_permission=MANAGE, current_state=current_state,
     apply=apply, response_hours=24, resolve_approver=chain, render_diff=render_diff, validate=validate,
     consequences=consequences, public_payload=public_payload, requires_sudo=True, two_people=True,
-    chain_note="Another holder of users.manage, then a Super Admin; never the person who asked",
+    chain_note="One approval from another holder of users.manage, or a Super Admin (it moves to a Super Admin if unanswered); never the person who asked",
 )
