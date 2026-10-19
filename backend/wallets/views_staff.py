@@ -226,20 +226,23 @@ class StaffWithdrawalResolveView(APIView):
             resolution.check(found, outcome, answer)
         except resolution.Refused as exc:
             return refused(exc)
-        if ApprovalRequest.objects.filter(
-            kind=resolution.KEY, target_type=Withdrawal._meta.label_lower, target_id=str(found.pk), status=ApprovalRequest.PENDING,
-        ).exists():
-            return Response(
-                {"detail": "A request to resolve this withdrawal is already waiting for approval.", "code": "resolution_pending"},
-                status=status.HTTP_409_CONFLICT,
-            )
         try:
-            approval = approvals.submit(
-                request.user, resolution.KEY,
-                title=f"Withdrawal {found.reference}: settle as {outcome} (GH₵ {money(found.amount_pesewas)})",
-                payload={"withdrawal_id": found.pk, "outcome": outcome, "evidence": evidence},
-                target=found, maker_note=evidence, request=request,
-            )
+            with transaction.atomic():
+                Withdrawal.objects.select_for_update().get(pk=found.pk)  # two requests queue here; the second sees the first
+                if ApprovalRequest.objects.filter(
+                    kind=resolution.KEY, target_type=Withdrawal._meta.label_lower, target_id=str(found.pk),
+                    status=ApprovalRequest.PENDING,
+                ).exists():
+                    return Response(
+                        {"detail": "A request to resolve this withdrawal is already waiting for approval.", "code": "resolution_pending"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                approval = approvals.submit(
+                    request.user, resolution.KEY,
+                    title=f"Withdrawal {found.reference}: settle as {outcome} (GH₵ {money(found.amount_pesewas)})",
+                    payload={"withdrawal_id": found.pk, "outcome": outcome, "evidence": evidence},
+                    target=found, maker_note=evidence, request=request,
+                )
         except approvals.ApprovalError as exc:
             return refused(exc)
         found.refresh_from_db()

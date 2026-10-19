@@ -69,6 +69,12 @@ class CheckinNoticeTests(BookingBase):
         self.assertNotIn("0241234567", body)
         self.assertIn("567", body)
 
+    def test_the_times_in_the_notice_are_labelled_utc(self):
+        self.scan(self.tickets[0])
+        body = TicketScanNotice.objects.get().body
+        self.assertRegex(body, r"was scanned at \d{2} \w{3} \d{4} \d{2}:\d{2} UTC\.")
+        self.assertRegex(body, r"before \d{2} \w{3} \d{4} \d{2}:\d{2} UTC\.$")
+
     def test_rescan_no_second_notice(self):
         self.scan(self.tickets[0])
         self.scan(self.tickets[0], expect=400)

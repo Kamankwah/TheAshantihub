@@ -1,10 +1,12 @@
 """Link-free notices that tell an account holder about their sign-in security (final review F4).
 
 * account_locked(): the moment wrong codes (texted, emailed or from an authenticator app) lock the account -
-  otp.service.note_failure() answers True for exactly that wrong code;
+  otp.service.note_failure() answers WINDOW_LOCK or DAILY_LOCK for exactly that wrong code;
 * recovery_code_used(): an authenticator recovery code signed someone in (otp.views);
 * contact_changed(): a business's approved detail change replaced its sign-in phone or email (plan 7F-C Task 8) -
-  this one goes to the OLD phone or email only, so whoever held it hears of the change.
+  this one goes to the OLD phone or email only, so whoever held it hears of the change;
+* staff_changed_contact(): staff changed a customer's or owner's phone or email through the two-person approval
+  (wallets.holder_details), told to the OLD contact only;
 
 Each goes to every phone and email the account has (otp.identity.contacts) through otp.senders and is recorded as
 an OtpEvent (SENT or SEND_FAILED, `note` LOCKED_NOTE / RECOVERY_CODE_NOTE), so it counts towards the hourly send
@@ -46,6 +48,7 @@ CONTACT_CHANGED_TEXT = {
 }
 LOCKED_NOTE = "notice: locked"
 CONTACT_CHANGED_NOTE = "notice: contact changed"
+STAFF_CHANGED_NOTE = "notice: contact changed by staff"
 DAILY_LOCKED_NOTE = "notice: locked until tomorrow"
 RECOVERY_CODE_NOTE = "notice: recovery code used"
 LOCK_NOTICE_GAP = timedelta(hours=1)
@@ -92,6 +95,20 @@ def recovery_code_used(account, *, now=None):
         _send(account, text=RECOVERY_CODE_TEXT, note=RECOVERY_CODE_NOTE, purpose=SIGN_IN, now=now or timezone.now())
     except Exception as exc:  # noqa: BLE001
         logger.warning("OTP recovery-code notice not sent: %s", type(exc).__name__)
+
+
+def staff_changed_contact(account, channel, old_destination, text, *, now=None):
+    """Tell the OLD phone (SMS) or email (EMAIL) that staff changed the account's contact (wallets.holder_details). Same
+    handling as contact_changed: the raw contact is used only to deliver and in the OTP audit row; nothing is logged."""
+    try:
+        destination = _phone(old_destination) if channel == SMS else _email(old_destination)
+        if destination:
+            _send_one(
+                account, channel, destination, text=text, note=STAFF_CHANGED_NOTE, purpose=SIGN_IN,
+                now=now or timezone.now(),
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Staff-changed-contact notice not sent: %s", type(exc).__name__)
 
 
 def contact_changed(account, channel, old_destination, *, now=None):

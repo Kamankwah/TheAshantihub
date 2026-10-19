@@ -82,6 +82,29 @@ class WithdrawalResolutionTests(TestCase):
     def paid_journals(self, withdrawal):
         return Journal.objects.filter(key=f"withdrawal-paid-{withdrawal.reference}").count()
 
+    def test_the_rules_screen_words_the_chain_with_the_cosign_setting_key(self):
+        response = self.client_for(self.boss).get("/api/approvals/rules/")
+        self.assertEqual(response.status_code, 200, response.content)
+        text = response.content.decode()
+        self.assertIn("one approval from another holder of wallets.manage, or a super admin", text.lower())
+        self.assertIn("two approvals above the co-sign limit", text)
+        self.assertIn("cosign_threshold", text)
+
+    def test_the_resolve_door_locks_the_withdrawal_before_the_duplicate_check(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        withdrawal = self.sent()
+        with provider_not_wired(), CaptureQueriesContext(connection) as queries:
+            self.assertEqual(self.propose(withdrawal).status_code, 201)
+        sql = [query["sql"] for query in queries]
+        lock = next(i for i, text in enumerate(sql) if "FOR UPDATE" in text and "wallets_withdrawal" in text and i > 0)
+        pending = next(i for i, text in enumerate(sql) if "approvals_approvalrequest" in text and "SELECT" in text and i > lock - 1)
+        self.assertLessEqual(lock, pending)
+        with provider_not_wired():
+            again = self.propose(withdrawal, staff=self.yaw)
+        self.assertEqual((again.status_code, again.json()["code"]), (409, "resolution_pending"))
+
     def test_proposer_cannot_approve_own(self):
         withdrawal = self.sent()
         with provider_not_wired():

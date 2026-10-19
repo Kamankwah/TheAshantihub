@@ -1,9 +1,14 @@
 """Staff edits of a holder's payout name or contact need a second person (wallet rulings 7C, Task 5; spec §13 (xxxiv)):
 the staff PATCH doors submit wallets.holder_details_edit instead of writing while the ledger is on; approving writes the
 change, restarts the payout cooling period and logs it masked. Review Focus: no raw number in the log; ledger off is as before."""
+import hmac
 from datetime import timedelta
+from unittest import mock
 
 from django.core.cache import cache
+from django.db import transaction
+from django.test.utils import CaptureQueriesContext
+from django.db import connection
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -13,6 +18,8 @@ from accounts.testing import make_staff, staff_token
 from activity.models import ActivityEvent
 from approvals.models import ApprovalRequest
 from ledger import settings_store
+from notifications.models import Notification
+from otp import senders
 from wallets import holder_details
 from wallets.models import PayoutDestination
 
@@ -167,6 +174,72 @@ class StaffDestinationEditTests(TestCase):
         self.assertGreaterEqual(self.approve(approval_id).status_code, 400)
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.phone, "+233245554567")
+
+    def test_apply_compares_the_digest_in_constant_time(self):
+        approval_id = self.patch({"full_name": "Ama Kyei Owusu"}).json()["approval_id"]
+        with mock.patch.object(holder_details.hmac, "compare_digest", wraps=hmac.compare_digest) as compare:
+            self.assertEqual(self.approve(approval_id).status_code, 200)
+        self.assertTrue(compare.called)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.full_name, "Ama Kyei Owusu")
+
+    def test_ask_locks_the_holder_row_before_checking_for_a_pending_request(self):
+        with transaction.atomic(), CaptureQueriesContext(connection) as queries:
+            holder_details.ask(self.kofi, self.customer, "phone", NEW_PHONE)
+        sql = [query["sql"] for query in queries]
+        lock = next(i for i, text in enumerate(sql) if "FOR UPDATE" in text and "accounts_customer" in text)
+        check = next(i for i, text in enumerate(sql) if "approvals_approvalrequest" in text and "SELECT" in text)
+        self.assertLess(lock, check)
+        with self.assertRaises(holder_details.Refused) as second:
+            holder_details.ask(self.yaw, self.customer, "phone", "+233200000001")
+        self.assertEqual(second.exception.code, "change_pending")
+
+    @override_settings(OTP_SMS_PROVIDER="locmem")
+    def test_holder_told_of_staff_change(self):
+        senders.sms_outbox.clear()
+        approval_id = self.patch({"full_name": "Ama Kyei Owusu"}).json()["approval_id"]
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.approve(approval_id).status_code, 200)
+        told = Notification.objects.filter(customer=self.customer)
+        self.assertEqual(told.count(), 1)
+        self.assertIn("payout name on AshantiHub was changed by our staff", told.get().body)
+        self.assertEqual(len(senders.sms_outbox), 0)  # a name change texts nobody
+
+    @override_settings(OTP_SMS_PROVIDER="locmem")
+    def test_old_contact_receives_notice_once(self):
+        senders.sms_outbox.clear()
+        approval_id = self.patch({"phone": NEW_PHONE}).json()["approval_id"]
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.approve(approval_id).status_code, 200)
+        texts = [text for text in senders.sms_outbox if "changed by our staff" in text.body]
+        self.assertEqual(len(texts), 1)
+        self.assertIn("233241234567", texts[0].to.replace("+", ""))
+        self.assertIn("Your phone on AshantiHub was changed by our staff", texts[0].body)
+        self.assertNotIn("549998877", texts[0].body)
+        self.assertEqual(Notification.objects.filter(customer=self.customer).count(), 1)
+
+    @override_settings(OTP_SMS_PROVIDER="locmem")
+    def test_a_rolled_back_apply_sends_nothing(self):
+        senders.sms_outbox.clear()
+        approval_id = self.patch({"phone": NEW_PHONE}).json()["approval_id"]
+        approval = ApprovalRequest.objects.get(pk=approval_id)
+        approval.before = {"digest": holder_details.digest(self.customer, "phone")}
+        with self.captureOnCommitCallbacks(execute=True) as callbacks:
+            try:
+                with transaction.atomic():
+                    holder_details.apply(approval)
+                    raise RuntimeError("roll back")
+            except RuntimeError:
+                pass
+        self.assertEqual(callbacks, [])
+        self.assertEqual(len(senders.sms_outbox), 0)
+        self.assertEqual(Notification.objects.filter(customer=self.customer).count(), 0)
+
+    def test_a_patch_without_a_protected_field_records_one_activity_event(self):
+        response = self.patch({"address": "9 New Road"})
+        self.assertEqual(response.status_code, 200, response.content)
+        events = ActivityEvent.objects.all()
+        self.assertEqual(events.count(), 1, list(events.values_list("verb", flat=True)))
 
     def test_holder_own_edit_unchanged(self):
         from .helpers import Holder

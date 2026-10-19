@@ -172,7 +172,7 @@ def note_failure(account, *, purpose, channel, request=None, now=None):
     now = now or timezone.now()
     audit.log(OtpEvent.FAILED, account=account, purpose=purpose, channel=channel, request=request, now=now)
     cap = daily_cap(now)
-    if daily_failures(account, now) == cap:
+    if daily_failures(account, now) >= cap:  # >=, so a cap lowered mid-day locks the very next wrong code
         audit.log(
             OtpEvent.LOCKED, account=account, purpose=purpose, channel=channel, request=request, now=now,
             note=f"{cap} wrong codes today: locked until tomorrow",

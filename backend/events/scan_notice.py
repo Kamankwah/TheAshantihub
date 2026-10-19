@@ -5,7 +5,9 @@ buyer who did not go can reach Support before the automatic release (`ledger.sal
 TicketScanNotice (unique key `ticket-scan-<pk>`, written in the caller's transaction, in a savepoint, never raising) and
 delivers it after the commit through otp.senders (SMS and email, whichever the buyer has), plus the in-app copy. Only a
 ticket bought in a ledger sale gets one, so it is inert while the ledger is off. The text names the event and two times
-and holds no phone number or other person's details."""
+and holds no phone number or other person's details. Times are UTC (Accra time is UTC all year). The release time is
+worked out when the notice is sent; if the organiser edits the event date after the scan, the buyer is not told again
+(the notice is once per ticket, unique key above)."""
 import logging
 import string
 from datetime import timezone as dt_timezone
@@ -40,8 +42,8 @@ def body_for(ticket, scanned_at, release_at):
     at = scanned_at.astimezone(dt_timezone.utc)
     by = release_at.astimezone(dt_timezone.utc)
     return (
-        f"Your ticket for {event} was scanned at {at:%d %b %Y %H:%M}. If this was not you, contact AshantiHub Support "
-        f"before {by:%d %b %Y %H:%M}."
+        f"Your ticket for {event} was scanned at {at:%d %b %Y %H:%M} UTC. If this was not you, contact AshantiHub Support "
+        f"before {by:%d %b %Y %H:%M} UTC."
     )
 
 

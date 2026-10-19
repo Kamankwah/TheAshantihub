@@ -75,6 +75,11 @@ class ScoutCannotEditIdentityTests(ChangeTestBase):
         self.as_staff(self.lead)
         response = self.client.post(f"/api/approvals/{approval.pk}/approve/", {}, format="json")
         self.assertEqual((response.status_code, response.json()["detail"]), (400, proposals.NEEDS_OWN_REQUEST))
+        message = response.json()["detail"]  # the approval stays pending, so it must not claim to be cancelled
+        self.assertIn("cannot be approved", message)
+        self.assertIn("Reject it", message)
+        self.assertNotIn("Cancelled", message)
+        self.assertNotIn("233245550101", message)
         self.owner.refresh_from_db()
         self.assertEqual(self.owner.login_phone, "+233244100200")
         self.assertEqual(BusinessOwnerProfile.objects.get(business_owner=self.owner).business_name, "Abena Kente House")

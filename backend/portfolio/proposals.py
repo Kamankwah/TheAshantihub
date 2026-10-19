@@ -118,7 +118,7 @@ PROTECTED_MESSAGE = (
     "Name and contact are changed by the business itself and checked by a scout visit. "
     "Ask the owner to request it in their dashboard."
 )
-NEEDS_OWN_REQUEST = "Cancelled: this change now needs the business's own request."
+NEEDS_OWN_REQUEST = "This change cannot be approved: name and contact now need the business's own request. Reject it."
 NOT_EDITABLE = "This detail can't be changed here."
 NO_FIELDS = "Choose at least one detail to change."
 NOTHING_CHANGED = "Nothing changed — these are already the business's details."

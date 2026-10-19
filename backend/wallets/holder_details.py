@@ -12,8 +12,11 @@ activity event with contacts masked. A holder's own edits are untouched (they ha
 the ledger off the doors write directly, as before. The new value is validated by the same serializer the direct edit
 used, at request and again at approval; an unchanged value is refused (400 no_change). The request payload keeps the new
 value unmasked, because applying needs it; the request title, notes, diff and activity event never do."""
+import hmac
+import logging
 from datetime import timedelta
 
+from django.db import transaction
 from django.utils import timezone
 from django.utils.crypto import salted_hmac
 
@@ -24,10 +27,14 @@ from activity.services import record
 from approvals.models import ApprovalRequest
 from approvals.registry import ApprovalKind
 from ledger import escrow, settings_store
+from otp import notices
 from otp.identity import ACCOUNT_MODELS, ref
+from otp.models import EMAIL, SMS
 
 from .approval_kinds import Refused
 from .models import PayoutDestination
+
+logger = logging.getLogger(__name__)
 
 KEY = "wallets.holder_details_edit"
 MANAGE = "users.manage"
@@ -99,16 +106,19 @@ def ask(maker, holder, column, value, request=None):
     new_value = clean(holder, column, value)
     if (getattr(holder, column) or "") == (new_value or ""):
         raise Refused("That is already the current value.", "no_change", status_code=400)
-    if pending(holder, column):
-        raise Refused(
-            f"A change to this {LABELS[field]} is already waiting for approval.", "change_pending", status_code=409,
+    with transaction.atomic():
+        # The holder row is the lock: two requests for the same column queue here, so the second sees the first.
+        type(holder).objects.select_for_update().get(pk=holder.pk)
+        if pending(holder, column):
+            raise Refused(
+                f"A change to this {LABELS[field]} is already waiting for approval.", "change_pending", status_code=409,
+            )
+        holder_type, holder_id = ref(holder)
+        return approvals.submit(
+            maker, KEY, title=f"Change the {LABELS[field]} of {holder_type.replace('_', ' ')} #{holder_id}",
+            payload={"holder_type": holder_type, "holder_id": holder_id, "field": field, "attribute": column, "new_value": new_value},
+            target=holder, request=request,
         )
-    holder_type, holder_id = ref(holder)
-    return approvals.submit(
-        maker, KEY, title=f"Change the {LABELS[field]} of {holder_type.replace('_', ' ')} #{holder_id}",
-        payload={"holder_type": holder_type, "holder_id": holder_id, "field": field, "attribute": column, "new_value": new_value},
-        target=holder, request=request,
-    )
 
 
 def divert(maker, holder, validated, request=None):
@@ -174,7 +184,7 @@ def apply(request):
     if isinstance(holder, StaffUser) and any(person is not None and person.pk == holder.pk for person in people):
         raise Refused("You cannot change your own staff name. Ask another member of staff.", "own_details", status_code=403)
     column, new_value = _check(request, holder)  # again, on the locked row
-    if (request.before or {}).get("digest") != digest(holder, column):  # the holder changed it since the request was made
+    if not hmac.compare_digest(str((request.before or {}).get("digest") or ""), digest(holder, column)):  # the holder changed it since the request was made
         raise Refused("This changed since it was requested. Ask for a fresh request.", "stale", status_code=409)
     before = getattr(holder, column)
     setattr(holder, column, new_value)
@@ -183,6 +193,8 @@ def apply(request):
     restarted = restart_cooling(holder, now)
     field = request.payload["field"]
     decider = request.decided_by or request.maker
+    if not isinstance(holder, StaffUser):
+        transaction.on_commit(lambda: tell_holder(holder, column, before), robust=True)
     # Last: record() holds the activity chain lock until commit.
     record(
         decider, "wallets.holder_details_changed", target=holder,
@@ -192,6 +204,29 @@ def apply(request):
         after={column: shown(column, new_value), "approval_id": request.pk, "proposed_by": request.maker_id,
                "destinations_cooling": restarted},
     )
+
+
+# What the holder is told when staff change a detail (after the commit, never raising).
+TOLD_LABELS = {"full_name": "payout name", "phone": "phone", "login_phone": "phone", "email": "email"}
+TOLD_TEXT = "Your {label} on AshantiHub was changed by our staff. If this was not expected, contact Support."
+
+
+def tell_holder(holder, column, old_value):
+    """After the commit: an in-app notice to the holder and, for a phone or email, one message to the OLD contact (the
+    new one is not told: it is the one staff just set). Best-effort; only an error's type is logged, no number."""
+    label = TOLD_LABELS.get(column)
+    if label is None or isinstance(holder, StaffUser):
+        return
+    text = TOLD_TEXT.format(label=label)
+    try:
+        from notifications.services import notify_business_owner, notify_customer
+
+        notify = notify_customer if isinstance(holder, Customer) else notify_business_owner
+        notify(holder, "security", "Your details were changed", body=text, link="/my-account", icon="🔒")
+    except Exception as exc:  # noqa: BLE001 - a notice never changes the approved change
+        logger.warning("Holder-details notice not saved: %s", type(exc).__name__)
+    if column in ("phone", "login_phone", "email") and old_value:
+        notices.staff_changed_contact(holder, EMAIL if column == "email" else SMS, old_value, text)
 
 
 def render_diff(request):
