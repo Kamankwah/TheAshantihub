@@ -95,7 +95,7 @@ class PublicListingSerializer(serializers.ModelSerializer):
             "id", "name", "description", "category", "zone", "price_amount", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "created_at",
             "is_promoted", "specs", "service_duration", "avg_rating", "review_count",
-            "business_owner", *LISTING_DECISION_FIELDS,
+            "business_owner", *LISTING_DECISION_FIELDS, "cancellation_policy",
         ]
         # This serializer only ever backs read-only views (list/detail/
         # related), but mark the decision fields read-only explicitly anyway
@@ -215,7 +215,7 @@ class OwnerListingManageSerializer(serializers.ModelSerializer):
         model = Listing
         fields = [
             "id", "price_amount", "price_unit", "tag", "contact_phone",
-            "specs", "service_duration", *LISTING_DECISION_FIELDS, "barcode",
+            "specs", "service_duration", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
         ]
 
     def validate_barcode(self, value):
@@ -360,7 +360,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
         fields = [
             "id", "category", "zone", "name", "description", "price_amount", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "specs",
-            "service_duration", "units_total", *LISTING_DECISION_FIELDS, "barcode",
+            "service_duration", "units_total", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
             "status", "rejection_reason", "created_at", "updated_at",
         ]
         read_only_fields = ["status", "rejection_reason", "created_at", "updated_at"]

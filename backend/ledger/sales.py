@@ -28,7 +28,7 @@ from django.db import transaction
 from django.db.models import Exists, OuterRef, Q, Sum
 from django.utils import timezone
 
-from . import escrow, fees, posting, settings_store
+from . import cancellation, escrow, fees, posting, settings_store
 from .models import Account, BookingRefund, BookingSale, FeeRuleSet, FulfilmentCheck, Journal
 from .money import from_pesewas, to_pesewas
 from .refunds import RefundError, _check_amount, fee_share
@@ -63,6 +63,15 @@ def price_of(kind, subject, session):
     if amount is None:
         raise posting.PostingError(f"Booking payment {session.reference} has no price to record")
     return to_pesewas(amount)
+
+
+def policy_of(kind, subject):
+    """The cancellation policy a booking is being paid under, as stored on the sale (Plan 7E): the listing's for a service
+    or stay; for tickets none, unless the organiser offers refunds until some days before the event."""
+    if kind == BookingSale.TICKETS:
+        days = subject.refund_until_days_before
+        return cancellation.snapshot(cancellation.NONE) if days is None else cancellation.until_days_before(days)
+    return cancellation.snapshot(subject.listing.cancellation_policy)
 
 
 def record_payment(session, kind, subject, business_owner, *, at=None):
@@ -100,7 +109,8 @@ def record_payment(session, kind, subject, business_owner, *, at=None):
         sale = BookingSale.objects.create(
             kind=kind, session=session, customer=session.customer, business_owner=business_owner,
             category=category, rule_set_id=quote.rule_set_id, base_pesewas=base, computed_pesewas=quote.computed,
-            charged_pesewas=quote.charged, cap_pesewas=cap, paid_at=at, **{SUBJECT[kind]: subject},
+            charged_pesewas=quote.charged, cap_pesewas=cap, paid_at=at, policy_snapshot=policy_of(kind, subject),
+            **{SUBJECT[kind]: subject},
         )
         posting.post(
             key=pay_key(session), kind="booking_payment", lines=[posting.debit(source, base), posting.credit(pending, base)],
@@ -615,6 +625,7 @@ class CancelError(Exception):
         self.status_code = status_code
 
 
+CUSTOMER_SOURCE = "cancel-customer"
 ALREADY_HANDED_OVER = {
     BookingSale.SERVICE: "The business has already marked this service done. Open a dispute instead.",
     BookingSale.STAY: "The guest has already checked in. Open a dispute instead.",
@@ -641,6 +652,67 @@ def cancel(sale, staff, reason, now=None):
         for ticket in cancelling:  # the same REFUNDED billing.Transaction row the Accountant's per-ticket refund writes
             _ticket_refund_row(ticket)
         return given
+
+
+def _policy_start(sale):
+    """When the booking starts, for its cancellation policy: the stay's check-in time, the event's date; None for a
+    service, which has no scheduled time."""
+    if sale.kind == BookingSale.STAY:
+        return datetime.combine(sale.booking.check_in, STAY_CHECK_IN_TIME, tzinfo=dt_timezone.utc)
+    if sale.kind == BookingSale.TICKETS:
+        return sale.event.event_date
+    return None
+
+
+def cancel_by_customer(sale, now=None):
+    """The customer cancels their own paid booking under the policy it was paid under (Plan 7E): they get back
+    `refund_share` of what is left of the price (the cut-off instant itself counts for them) plus the platform fee's
+    proportional share, through `refund`, and the booking is cancelled even when the host keeps a part. Raises
+    CancelError (409), changing nothing, for a sale paid before policies existed (only Support cancels it), one already
+    cancelled or refunded in full, released, handed over or past its release milestone (that is a dispute, not a cancel),
+    with a dispute open, or when the policy gives nothing back now. Returns the BookingRefund."""
+    now = now or timezone.now()
+    with transaction.atomic():
+        sale = lock(sale)
+        if sale.policy_snapshot is None:
+            raise CancelError("This booking can only be cancelled by AshantiHub Support. Use Contact Support.")
+        if sale.reversed_at is not None or BookingRefund.objects.filter(sale=sale, source=CUSTOMER_SOURCE).exists():
+            raise CancelError("This booking was already cancelled.")
+        due = release_at(sale, now)
+        if sale.released_at is not None or handed_over_at(sale, now) is not None or (due is not None and due <= now):
+            raise CancelError(ALREADY_HANDED_OVER[sale.kind])
+        if has_open_dispute(sale):
+            raise CancelError("A problem is open on this booking. Support will settle it first.")
+        share = cancellation.refund_share(sale.policy_snapshot, _policy_start(sale), now)
+        room = sale.base_pesewas - sale.refunded_base_pesewas
+        amount = room * share // cancellation.WHOLE if share < cancellation.WHOLE else room
+        if share == 0 or amount <= 0:
+            raise CancelError(f"Under this booking's cancellation policy nothing can be refunded now. {sale.policy_snapshot.get('text', '')}".strip())
+        cancelling = list(tickets_of(sale).filter(refunded_at__isnull=True, delivered_at__isnull=True).select_related("ticket_type__event", "purchased_by"))
+        note = "Cancelled by the customer"
+        given = refund(sale, None if amount == room else amount, source=CUSTOMER_SOURCE, note=note, now=now)
+        if not given.whole:  # the host keeps a share, but the booking itself is over
+            _cancel_if_not_handed_over(sale, None, note, now)
+        for ticket in cancelling:
+            _ticket_refund_row(ticket)
+        return given
+
+
+def tell_cancelled(sale, given):
+    """Tell the customer how much went back to their wallet, and the business that it was cancelled."""
+    from notifications.services import notify_business_owner, notify_customer
+
+    what = description(sale)
+    back = from_pesewas(given.amount_pesewas)
+    notify_customer(
+        sale.customer, "booking", "Your booking was cancelled",
+        body=f"You cancelled your booking ({what}). GH₵ {back} went back to your AshantiHub wallet.",
+        link="/my-account", icon="🧾",
+    )
+    notify_business_owner(
+        sale.business_owner, "booking", "Booking cancelled",
+        body=f"A customer cancelled a booking ({what}) before it took place.", link="/business-dashboard", icon="⚠️",
+    )
 
 
 def _ticket_refund_row(ticket):

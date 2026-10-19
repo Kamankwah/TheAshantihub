@@ -162,10 +162,16 @@ class BookingCancelView(APIView):
                 return Response({"detail": "This booking can no longer be cancelled."}, status=400)
             sale = BookingSale.objects.filter(booking=booking).first() if escrow.enabled() else None
             if sale is not None:
-                refund = sales.refund(sale, source="cancel", note="Cancelled by the customer before check-in")
-            booking.status = Booking.CANCELLED
-            booking.cancelled_at = timezone.now()
-            booking.save(update_fields=["status", "cancelled_at"])
+                # A paid stay follows the cancellation policy it was paid under; a refusal rolls nothing back (no writes).
+                try:
+                    refund = sales.cancel_by_customer(sale)
+                except sales.CancelError as exc:
+                    return Response({"detail": exc.message}, status=exc.status_code)
+                booking.refresh_from_db()
+            else:
+                booking.status = Booking.CANCELLED
+                booking.cancelled_at = timezone.now()
+                booking.save(update_fields=["status", "cancelled_at"])
         notify_business_owner(
             booking.business_owner, "booking", "Booking cancelled",
             body=f"A booking for “{booking.listing.name}” was cancelled.",

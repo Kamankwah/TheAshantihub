@@ -105,6 +105,10 @@ class Event(models.Model):
         validators=[MinValueValidator(7), MaxValueValidator(90)]
     )
 
+    # Tickets are not refundable after purchase unless the organiser says so: refund in full until this many days before
+    # the event (ledger.cancellation, Plan 7E). Null: no refunds, except for a cancelled event.
+    refund_until_days_before = models.PositiveSmallIntegerField(null=True, blank=True)
+
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
 

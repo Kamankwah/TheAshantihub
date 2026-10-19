@@ -282,6 +282,9 @@ class BookingSale(models.Model):
     phone_confirmed_at = models.DateTimeField(null=True, blank=True)
     # The customer accepted the delivered service in the app (Plan 7E): money releases at once instead of waiting.
     customer_accepted_at = models.DateTimeField(null=True, blank=True)
+    # The cancellation policy this was paid under (ledger.cancellation.snapshot); null on a sale paid before policies
+    # existed, which only Support can cancel.
+    policy_snapshot = models.JSONField(null=True, blank=True)
     outcome = models.CharField(max_length=14, choices=FulfilmentCheck.OUTCOME_CHOICES, blank=True, default="")
     outcome_note = models.CharField(max_length=500, blank=True, default="")
     outcome_at = models.DateTimeField(null=True, blank=True)

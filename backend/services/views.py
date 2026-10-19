@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 
 from accounts.views import IsBusinessOwner, IsCustomer
 from ledger import posting, sales
+from ledger.money import from_pesewas
 from notifications.services import notify_business_owner, notify_customer, notify_staff_role
 from payments import booking_pay
 from payments.models import CheckoutSession
@@ -229,6 +230,25 @@ def _sale_of(request, pk):
     if sale is None:
         return None
     return sale
+
+
+class ServiceRequestCancelView(APIView):
+    """POST /api/services/requests/{id}/cancel/ — the customer cancels a paid service the business has not marked done.
+    A service has no scheduled start, so it goes back whole; once done it is accept or report a problem (409). A sale
+    paid before cancellation policies existed is cancelled by Support only (409)."""
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def post(self, request, pk):
+        sale = _sale_of(request, pk)
+        if sale is None:
+            return Response({"detail": "This service was not paid through the wallet system."}, status=409)
+        try:
+            given = sales.cancel_by_customer(sale)
+        except sales.CancelError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        sales.tell_cancelled(sale, given)
+        return Response({"cancelled": True, "wallet_refund": str(from_pesewas(given.amount_pesewas))})
 
 
 class ServiceRequestAcceptView(APIView):
