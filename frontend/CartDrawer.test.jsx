@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
@@ -521,6 +521,17 @@ describe('CartDrawer and the after-hours delivery notice', () => {
   const preview = (body) => http.get('http://localhost:8000/api/orders/delivery-preview/', () => HttpResponse.json(body))
   // 2026-10-20 is a Tuesday; Accra is UTC+0, so 08:00Z reads "Tue 08:00".
   const DEFERRED = { delivery_from: '2026-10-20T08:00:00Z', delivered_from: '2026-10-20T08:00:00Z', deferred: true }
+  // A preview handler that tells the test when the request arrived, so absence is asserted after the answer was served.
+  const watchedPreview = (body, status = 200) => {
+    let seen
+    const hit = new Promise((resolve) => { seen = resolve })
+    const handler = http.get('http://localhost:8000/api/orders/delivery-preview/', () => { seen(); return HttpResponse.json(body, { status }) })
+    const settled = async () => {
+      await hit
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)) }) // let the served response reach the component
+    }
+    return { handler, settled }
+  }
   const openDoorToDoor = async () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Checkout →' }))
     fireEvent.click(screen.getByText('🚚 Door-to-door'))
@@ -543,9 +554,11 @@ describe('CartDrawer and the after-hours delivery notice', () => {
   })
 
   it('shows no notice when the shop is open', async () => {
-    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), preview({ delivery_from: null, delivered_from: null, deferred: false, source: null }))
+    const open = watchedPreview({ delivery_from: null, delivered_from: null, deferred: false, source: null })
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), open.handler)
     renderDrawer()
     await openDoorToDoor()
+    await open.settled()
     expect(screen.queryByTestId('cart-after-hours')).not.toBeInTheDocument()
   })
 
@@ -557,10 +570,11 @@ describe('CartDrawer and the after-hours delivery notice', () => {
     fireEvent.click(screen.getByText('🚚 Door-to-door'))
     expect(await screen.findByTestId('cart-after-hours')).toBeInTheDocument()
     unmount()
-    server.use(http.get('http://localhost:8000/api/orders/delivery-preview/', () => HttpResponse.json({ detail: 'x' }, { status: 500 })))
+    const failing = watchedPreview({ detail: 'x' }, 500)
+    server.use(failing.handler)
     renderDrawer()
     await openDoorToDoor()
-    await new Promise((r) => setTimeout(r, 50))
+    await failing.settled()
     expect(screen.queryByTestId('cart-after-hours')).not.toBeInTheDocument()
   })
 })

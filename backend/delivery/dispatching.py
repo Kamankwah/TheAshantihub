@@ -7,6 +7,7 @@ older than the stale limit, no job hold, not suspended, fewer than the maximum a
 radius of the pickup (straight-line estimate), required papers valid, not already declined or timed out
 for this order, and, once cash on delivery exists, under the cash cap. An order whose business has no
 pin cannot be auto-assigned ("pickup location missing"); a manager can still assign it by hand."""
+import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -20,6 +21,8 @@ from routing import service as routing_service
 
 from . import board, config, services
 from .models import DeliveryEvent, DeliverySettings, Offer, QueueHold, Rider, ShiftSession
+
+logger = logging.getLogger(__name__)
 
 
 def deadline_for(order, *, express=False, limits=None):
@@ -242,11 +245,11 @@ def run_engine(now=None):
 
 
 def release_deferred(now=None):
-    """Orders held until their vendor opened whose time has now come and that nobody has picked up: run the normal
-    dispatch pass once (offers, or force-assign when time is short). Idempotent: orders with a live offer or a rider
-    are skipped by the pass itself, and an already-released order simply no longer qualifies. Returns how many were due."""
+    """How many orders held until their vendor opened are now due and still waiting for a rider, logged for the beat
+    record. It offers nothing: ``run_engine`` runs every 10 seconds and already offers due orders (board.waiting_orders
+    stops hiding them the moment ready_not_before passes), and a second pass here would race it. Idempotent: a count."""
     now = now or timezone.now()
-    due = board.waiting_orders().filter(ready_not_before__isnull=False, ready_not_before__lte=now).exclude(offers__status=Offer.OFFERED).count()
+    due = board.waiting_orders().filter(ready_not_before__isnull=False, ready_not_before__lte=now).count()
     if due:
-        run_engine(now)
+        logger.info("%s deferred order(s) are due and waiting for a rider", due)
     return due

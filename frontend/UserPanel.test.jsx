@@ -322,8 +322,18 @@ describe('UserPanel', () => {
       expect(screen.getByTestId('order-scheduled-start')).toHaveTextContent(/Delivery scheduled to start \w{3} 08:00/)
     })
 
-    it('shows nothing once the time has passed, when unset, or once delivered', async () => {
+    it('shows nothing once the time has passed', async () => {
       await show(order({ ready_not_before: '2020-10-20T08:00:00Z' }))
+      expect(screen.queryByTestId('order-scheduled-start')).not.toBeInTheDocument()
+    })
+
+    it('shows nothing when ready_not_before is unset', async () => {
+      await show(order({ ready_not_before: null }))
+      expect(screen.queryByTestId('order-scheduled-start')).not.toBeInTheDocument()
+    })
+
+    it('shows nothing for an order that is not paid yet', async () => {
+      await show(order({ status: 'pending', ready_not_before: '2099-10-20T08:00:00Z' }))
       expect(screen.queryByTestId('order-scheduled-start')).not.toBeInTheDocument()
     })
 

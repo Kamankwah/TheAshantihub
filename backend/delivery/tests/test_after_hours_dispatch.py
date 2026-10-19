@@ -31,12 +31,33 @@ class DeferredDispatchTests(EngineCase):
         self.switch(True)
         order = self.deferred()
         later = timezone.now() + timedelta(minutes=61)
+        self.assertEqual(dispatching.run_engine()["offered"], 0)  # held now
         with mock.patch("django.utils.timezone.now", return_value=later):
             self.assertIn(order, board.waiting_orders())
-            self.assertEqual(dispatching.release_deferred(), 1)
+            self.assertEqual(dispatching.run_engine(later)["offered"], 1)  # the 10-second engine picks the due order
             self.assertEqual(Offer.objects.filter(order=order, status=Offer.OFFERED).count(), 1)
-            self.assertEqual(dispatching.release_deferred(), 0)  # idempotent: a live offer is not offered again
-            self.assertEqual(Offer.objects.filter(order=order).count(), 1)
+
+    def test_release_deferred_only_counts_and_never_offers(self):
+        self.on_shift(self.rider, age=-3700)
+        self.switch(True)
+        order = self.deferred()
+        later = timezone.now() + timedelta(minutes=61)
+        with mock.patch("django.utils.timezone.now", return_value=later):
+            self.assertEqual(dispatching.release_deferred(), 1)
+            self.assertFalse(Offer.objects.filter(order=order).exists())  # no second engine pass, no offers
+            self.assertEqual(dispatching.release_deferred(), 1)  # idempotent: a count, nothing changes
+
+    def test_waiting_minutes_count_from_opening(self):
+        order = self.make_order(ready_not_before=timezone.now() - timedelta(minutes=10))
+        from orders.models import Order
+        Order.objects.filter(pk=order.pk).update(placed_at=timezone.now() - timedelta(hours=12))
+        order.refresh_from_db()
+        now = timezone.now()
+        self.assertEqual(board.queue_row(order, now)["waiting_minutes"], 10)
+        plain = self.make_order()
+        Order.objects.filter(pk=plain.pk).update(placed_at=now - timedelta(minutes=30))
+        plain.refresh_from_db()
+        self.assertEqual(board.queue_row(plain, now)["waiting_minutes"], 30)
 
     def test_deadline_promise_starts_at_opening(self):
         order = self.deferred(minutes=600)

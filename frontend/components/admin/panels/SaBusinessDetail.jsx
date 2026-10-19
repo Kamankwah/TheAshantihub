@@ -12,6 +12,7 @@ import SuspendSheet from "./SuspendSheet.jsx";
 import { button, callout, chip, dim, field } from "./panelStyles.js";
 import { Chip, KpiStrip, SimulatedBanner, col, dateTime, figures, tableStyle, td, th } from "./marketplaceParts.jsx";
 import { HealthChip, ReassignForm, card, errorStyle, formatDay, h2, h3, labelStyle, money, subscriptionText } from "./portfolioParts.jsx";
+import { staffHoursText } from "./hoursSummary.js";
 
 // Super Admin > Business detail (screen 17): one page for one business. KYC,
 // scout history, subscription, listings, orders, disputes, calls and activity
@@ -129,7 +130,7 @@ export default function SaBusinessDetail({ businessId, auth, onBack }) {
     ["Owner", b.owner_name],
     ["Sign-in phone", <span key="p">{fullPhone || b.login_phone}{!fullPhone && b.login_phone && <button type="button" onClick={revealPhone} style={{ ...button(D.panelBg, D.text), marginLeft: 8, padding: "2px 8px" }}>Show full number (recorded)</button>}</span>],
     ["Email", b.email || "Not given"], ["Kind", b.business_kind === "service" ? "Service" : "Product"], ["Category", b.business_category?.name],
-    ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Opening hours", b.opening_hours], ["Description", b.business_description],
+    ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Opening hours", staffHoursText(b)], ["Description", b.business_description],
     ["On AshantiHub since", formatDay(b.created_at)],
   ];
 

@@ -26,7 +26,7 @@ def run_engine():
 
 @shared_task
 def release_deferred_orders():
-    """Every 5 minutes: orders held until their vendor opened that are now due get the dispatch they would normally get."""
+    """Every 5 minutes: count (and log) held orders now due. The 10-second engine does the actual offering."""
     from . import dispatching
 
     return dispatching.release_deferred()

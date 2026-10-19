@@ -95,7 +95,7 @@ def queue_row(order, now, zones=None):
     info = services.dispatch_info(order)
     point = (info["lat"], info["lng"], info["name"], info["count"])
     return {
-        "order_id": order.pk, "placed_at": order.placed_at, "waiting_minutes": int((now - order.placed_at).total_seconds() // 60),
+        "order_id": order.pk, "placed_at": order.placed_at, "waiting_minutes": max(0, int((now - (max(order.placed_at, order.ready_not_before) if order.ready_not_before else order.placed_at)).total_seconds() // 60)),
         "route": _route(order, point=point), "zone": zone.name if zone else None, "unzoned": zone is None,
         "deadline_at": assignment.deadline_at if assignment else None,
         "returned": bool(assignment and assignment.status == DeliveryAssignment.FAILED),
