@@ -13,7 +13,7 @@ from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
-from django.db.models import F
+from django.db.models import Case, F, When
 from django.db.models.functions import Coalesce, Least
 from django.utils import timezone
 
@@ -28,25 +28,34 @@ def dec(value):
     return Decimal(str(value)).quantize(CENTS)
 
 
+def sale_allowed(listing_or_category):
+    """Only goods and food carry a sale price: a service or stay is charged `price_amount` by the booking flow, so a
+    sale price there would show a price the customer does not pay."""
+    from cart import guard
+
+    category = getattr(listing_or_category, "category", listing_or_category)
+    return guard.kind_of_category(category) in guard.DELIVERABLE
+
+
 def effective_price_expr(prefix=""):
-    """The sale price when it is a real discount, otherwise the regular price, in the database. `prefix` is the path
-    to the Listing ending "__" (e.g. "offers__"), or ""."""
+    """The sale price when it is a real discount on goods or food, otherwise the regular price, in the database.
+    `prefix` is the path to the Listing ending "__" (e.g. "offers__"), or ""."""
+    from cart.guard import deliverable_q
+
     price, sale = F(f"{prefix}price_amount"), F(f"{prefix}sale_price")
-    return Least(Coalesce(sale, price), price)
+    return Case(When(deliverable_q(prefix), then=Least(Coalesce(sale, price), price)), default=price)
 
 
 def effective_price(listing):
-    price, sale = dec(listing.price_amount), dec(listing.sale_price)
-    if price is None:
-        return None
-    if sale is None:
-        return price
-    return min(sale, price)
+    price = dec(listing.price_amount)
+    if price is not None and is_discounted(listing):
+        return min(dec(listing.sale_price), price)
+    return price
 
 
 def is_discounted(listing):
     price, sale = dec(listing.price_amount), dec(listing.sale_price)
-    return price is not None and sale is not None and sale < price
+    return price is not None and sale is not None and sale < price and sale_allowed(listing)
 
 
 def record_price(listing, now=None):

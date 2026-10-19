@@ -50,6 +50,7 @@ from .serializers import (
     PublicListingSerializer,
     ZoneSerializer,
 )
+from .pricing import effective_price_expr
 from .visibility import hidden_business_q, sold_out_q
 from .visits import record_visit
 
@@ -360,13 +361,14 @@ class PublicListingListView(generics.ListAPIView):
         if zone_name:
             queryset = queryset.filter(zone__name=zone_name)
 
+        queryset = queryset.annotate(price_effective=effective_price_expr())
         min_price = self.request.query_params.get("min_price")
         if min_price:
-            queryset = queryset.filter(price_amount__gte=min_price)
+            queryset = queryset.filter(price_effective__gte=min_price)
 
         max_price = self.request.query_params.get("max_price")
         if max_price:
-            queryset = queryset.filter(price_amount__lte=max_price)
+            queryset = queryset.filter(price_effective__lte=max_price)
 
         kind = self.request.query_params.get("kind")
         if kind:
@@ -450,6 +452,10 @@ class PublicListingListView(generics.ListAPIView):
         # query param's effect.
         queryset = super().filter_queryset(queryset)
         existing_order = queryset.query.order_by or ("-created_at",)
+        # Price ordering and filters use the price the customer pays (sale price while a real discount).
+        existing_order = tuple(
+            {"price_amount": "price_effective", "-price_amount": "-price_effective"}.get(term, term) for term in existing_order
+        )
         if self._cart_guard() is not None:
             return queryset.order_by("cart_tier", F("cart_km").asc(nulls_last=True), "-is_promoted", *existing_order)
         return queryset.order_by("-is_promoted", *existing_order)

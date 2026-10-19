@@ -27,10 +27,14 @@ def deals(limit=DEFAULT_LIMIT, request=None):
         .order_by("-created_at", "-pk")[:limit]
     )
     listings = list(queryset)
-    started = dict(
-        ListingPriceHistory.objects.filter(listing_id__in=[item.pk for item in listings], ended_at__isnull=True)
-        .values_list("listing_id", "started_at")
-    )
+    price_of = {item.pk: pricing.dec(item.price_amount) for item in listings}
+    started = {
+        listing_id: started_at
+        for listing_id, price, started_at in ListingPriceHistory.objects
+        .filter(listing_id__in=list(price_of), ended_at__isnull=True).order_by("started_at")
+        .values_list("listing_id", "price", "started_at")
+        if price == price_of[listing_id]
+    }
     now = timezone.now()
     rows = []
     for item in listings:

@@ -247,3 +247,66 @@ class OffersPriceTests(DealsBase):
         dear = self.listing("Dear", price_amount="50.00", catalogue_product=product)
         cheap_sale = self.listing("Sale", price_amount="60.00", sale_price="40.00", catalogue_product=product)
         self.assertEqual([o.pk for o in live_offers(product.pk)], [cheap_sale.pk, dear.pk])
+
+
+class FixRoundTests(DealsBase):
+    def stay(self, **extra):
+        cat = Category.objects.get(slug="hotels")
+        return self.listing("Room", category=cat, **extra)
+
+    def test_sale_price_rejected_on_a_stay_both_endpoints(self):
+        stay = self.stay(status=Listing.DRAFT)
+        self.owner_auth()
+        response = self.client.patch(f"/api/listings/mine/{stay.pk}/", {"sale_price": "50.00"}, format="json")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("sale_price", response.json())
+        published = self.stay()
+        response = self.client.patch(f"/api/listings/mine/{published.pk}/manage/", {"sale_price": "50.00"}, format="json")
+        self.assertEqual(response.status_code, 400, response.content)
+
+    def test_stay_with_stored_sale_price_charges_and_shows_regular_price(self):
+        stay = self.stay(sale_price="50.00")
+        self.age_history(stay, 30)
+        stay = Listing.objects.get(pk=stay.pk)
+        self.assertEqual(stay.effective_price, Decimal("100.00"))
+        body = self.client.get(f"/api/listings/{stay.pk}/").json()
+        self.assertIsNone(body["sale_price"])
+        self.assertIsNone(body["was_price"])
+        self.assertEqual(body["effective_price"], "100.00")
+
+    def test_feed_was_price_matches_the_current_price_row(self):
+        listing = self.listing(sale_price="80.00")
+        self.age_history(listing, 30)
+        listing.price_amount = Decimal("150.00")
+        listing.save()
+        row = self.client.get(DEALS).json()[0]
+        self.assertIsNone(row["was_price"])
+        self.assertIsNone(pricing.was_price(Listing.objects.get(pk=listing.pk)))
+
+    def test_lowering_price_to_the_sale_price_clears_the_sale(self):
+        listing = self.listing(sale_price="80.00")
+        self.owner_auth()
+        response = self.client.patch(f"/api/listings/mine/{listing.pk}/manage/", {"price_amount": "80.00"}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        listing.refresh_from_db()
+        self.assertIsNone(listing.sale_price)
+        # a valid sale sent together with the new price is kept
+        response = self.client.patch(
+            f"/api/listings/mine/{listing.pk}/manage/", {"price_amount": "60.00", "sale_price": "50.00"}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        listing.refresh_from_db()
+        self.assertEqual(listing.sale_price, Decimal("50.00"))
+        # raising the price above the sale leaves the sale alone
+        self.client.patch(f"/api/listings/mine/{listing.pk}/manage/", {"price_amount": "90.00"}, format="json")
+        listing.refresh_from_db()
+        self.assertEqual(listing.sale_price, Decimal("50.00"))
+
+    def test_public_list_price_filter_and_ordering_use_the_sale_price(self):
+        cheap_on_sale = self.listing("OnSale", price_amount="100.00", sale_price="30.00")
+        mid = self.listing("Mid", price_amount="50.00")
+        base = "/api/listings/?category=zz-deals"
+        ids = lambda q: [r["id"] for r in self.client.get(base + q).json()["results"]]
+        self.assertEqual(ids("&max_price=40"), [cheap_on_sale.pk])
+        self.assertEqual(ids("&min_price=40"), [mid.pk])
+        self.assertEqual(ids("&ordering=price_amount"), [cheap_on_sale.pk, mid.pk])
+        self.assertEqual(ids("&ordering=-price_amount"), [mid.pk, cheap_on_sale.pk])

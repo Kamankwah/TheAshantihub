@@ -204,6 +204,7 @@ def clean_listing_barcode(value, instance=None, category=None):
     return key
 
 
+SALE_NOT_GOODS_MESSAGE = "Only goods and food can have a sale price. Services and stays are charged their regular price."
 SALE_PRICE_MESSAGE = "A sale price must be above 0 and below the regular price."
 
 
@@ -212,7 +213,16 @@ def validate_sale_price(data, instance=None):
     goes live at once: this is the only check, there is no approval."""
     sale = data.get("sale_price")
     if sale is None:
+        # Lowering the price to or under a stored sale price would leave an inert sale that revives when the price is
+        # raised again: end it now. An explicit null already ends it.
+        stored = getattr(instance, "sale_price", None)
+        incoming = data.get("price_amount")
+        if "sale_price" not in data and stored is not None and incoming is not None and incoming <= stored:
+            data["sale_price"] = None
         return data
+    category = data.get("category") or getattr(instance, "category", None)
+    if category is not None and not pricing.sale_allowed(category):
+        raise serializers.ValidationError({"sale_price": SALE_NOT_GOODS_MESSAGE})
     price = data["price_amount"] if "price_amount" in data else getattr(instance, "price_amount", None)
     if price is None or not (0 < sale < price):
         raise serializers.ValidationError({"sale_price": SALE_PRICE_MESSAGE})
