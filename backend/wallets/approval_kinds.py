@@ -195,6 +195,7 @@ def apply(request):
         raise Refused(
             "A payout report for this withdrawal needs a person to review it first. Nothing was changed.", "amount_case_open",
         )
+    from .withdrawals import event_amount  # here, not at the top: withdrawals imports this module's siblings
     decider = request.decided_by or request.maker
     verb, said = ("wallets.withdrawal_failed", "failed, GH₵ {} returned") if outcome == FAILED else ("wallets.withdrawal_paid", "settled as paid, GH₵ {}")
     # Last: record() holds the activity chain lock until commit. No account number, ever; the evidence stays here.
@@ -203,7 +204,7 @@ def apply(request):
         summary=f"Withdrawal {withdrawal.reference} {said.format(money(withdrawal.amount_pesewas))} by two people"
                 + (" (the provider confirmed it)" if final(answer) else " on evidence"),
         before={"status": before},
-        after={"status": withdrawal.status, "evidence": evidence[:300], "approval_id": request.pk,
+        after={"status": withdrawal.status, **event_amount(withdrawal), "evidence": evidence[:300], "approval_id": request.pk,
                "proposed_by": request.maker_id, "provider_confirmed": final(answer)},
     )
 

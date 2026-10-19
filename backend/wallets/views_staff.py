@@ -209,56 +209,29 @@ class StaffWithdrawalResolveView(APIView):
                     record(
                         request.user, "wallets.withdrawal_checked", target=settled,
                         summary=f"Withdrawal {settled.reference} checked with the provider by staff; its answer settled it as {settled.status}",
-                        before={"status": found.status}, after={"status": settled.status}, request=request,
+                        before={"status": found.status}, after={"status": settled.status, **withdrawals.event_amount(settled)},
+                        request=request,
                     )
                 return Response(
                     {"detail": "The provider has answered for this withdrawal, so its answer settled it.",
                      "code": "provider_answered", "status": settled.status},
                     status=status.HTTP_409_CONFLICT,
                 )
-            if answer is not None:
-                settled = payouts.apply_result(
-                    found.reference, answer.status, provider_reference=answer.provider_reference,
-                    amount_pesewas=answer.amount_pesewas,
-                )
-                if settled is not None and settled.status in Withdrawal.FINAL:
-                    # Last: record() holds the activity chain lock until commit. The reference only, no number or staff text.
-                    with transaction.atomic():
-                        record(
-                            request.user, "wallets.withdrawal_checked", target=settled,
-                            summary=f"Withdrawal {settled.reference} checked with the provider by staff; its answer settled it as {settled.status}",
-                            before={"status": found.status}, after={"status": settled.status, **withdrawals.event_amount(settled)},
-                            request=request,
-                        )
-                    return Response(
-                        {"detail": "The provider has answered for this withdrawal, so its answer settled it.",
-                         "code": "provider_answered", "status": settled.status},
-                        status=status.HTTP_409_CONFLICT,
-                    )
-        case_open = Response(
-            {"detail": "A payout report for this withdrawal needs a person to review it first. Resolve that case, then try again.",
-             "code": "amount_case_open"},
-            status=status.HTTP_409_CONFLICT,
-        )
-        with transaction.atomic():
-            withdrawal = get_object_or_404(Withdrawal.objects.select_for_update(), pk=pk)
-            if own_withdrawal(request.user, withdrawal):
-                return own_withdrawal_response()
-            if not payouts.stuck(withdrawal):
-                return not_stuck_response()
-            if amount_case_open(withdrawal):  # inside the lock: a case the poll opened a moment ago is not missed
-                return case_open
-            before = withdrawal.status
-            payouts.close(withdrawal, Withdrawal.FAILED, STAFF_FAILED_REASON, timezone.now())
-            if withdrawal.status == Withdrawal.PROCESSING:  # close refused (a case opened); never claim it failed
-                return case_open
-            # Last: record() holds the activity chain lock until commit. No account number, ever; the staff reason is
-            # kept here and never shown to the holder.
-            record(
-                request.user, "wallets.withdrawal_failed", target=withdrawal,
-                summary=f"Withdrawal {withdrawal.reference} failed by staff; GH₵ {money(withdrawal.amount_pesewas)} returned",
-                before={"status": before}, after={"status": withdrawal.status, **withdrawals.event_amount(withdrawal), "reason": mask_numbers(reason)[:300]},
-                request=request,
+            found.refresh_from_db()
+            try:
+                resolution.gate(found)  # its report opened an amount case: staff review that first
+            except resolution.Refused as exc:
+                return refused(exc)
+        try:
+            resolution.check(found, outcome, answer)
+        except resolution.Refused as exc:
+            return refused(exc)
+        if ApprovalRequest.objects.filter(
+            kind=resolution.KEY, target_type=Withdrawal._meta.label_lower, target_id=str(found.pk), status=ApprovalRequest.PENDING,
+        ).exists():
+            return Response(
+                {"detail": "A request to resolve this withdrawal is already waiting for approval.", "code": "resolution_pending"},
+                status=status.HTTP_409_CONFLICT,
             )
         try:
             approval = approvals.submit(
