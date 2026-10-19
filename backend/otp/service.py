@@ -5,7 +5,10 @@ phone/email, 20 per phone/email from every account together (so an account regis
 cannot use up their allowance, yet nobody can be flooded), 10 per account and 60 per IP. Failed sends count too. A
 send that fails never kills the code already delivered and never starts the 60-second wait. An account is locked for
 both sending and checking while 5 or more of its wrong codes fall inside the last 15 minutes; when sending, the
-lock and the hourly limits answer the same words, so nobody can tell them apart.
+lock and the hourly limits answer the same words, so nobody can tell them apart. On top of that sliding lock, an
+account whose wrong codes since Accra midnight reach the governed daily cap (ledger.settings_store
+"otp_daily_failure_cap", default 20) stays locked until the next Accra day, so someone holding the password cannot keep
+guessing a few codes every 15 minutes all day. A staff-assisted recovery (OtpEvent.RECOVERED) restarts both counts.
 
 Guesses are serialised per account (guessing()): the lock check, the comparison and the FAILED row happen one
 guess at a time under a Postgres advisory lock, in a short transaction that commits the FAILED row before the
@@ -26,6 +29,7 @@ from django.utils import timezone
 from django.utils.crypto import salted_hmac
 
 from activity.services import client_ip
+from ledger import settings_store
 
 from . import audit, notices, senders, spend
 from .identity import contacts, ref
@@ -102,21 +106,43 @@ def message_for(code, purpose):
     )
 
 
-def failures(account, now=None):
-    """Wrong codes (texted, emailed or from an authenticator app) inside the lock window, counting only those
-    after the latest staff-assisted recovery (otp.approval_kinds)."""
+def _failed_since(account, start):
+    """Wrong codes (texted, emailed or from an authenticator app) at or after `start`, counting only those after the
+    latest staff-assisted recovery (otp.approval_kinds)."""
     account_type, account_id = ref(account)
-    now = now or timezone.now()
     mine = OtpEvent.objects.filter(account_type=account_type, account_id=account_id)
-    rows = mine.filter(kind=OtpEvent.FAILED, at__gte=now - LOCK_WINDOW)
+    rows = mine.filter(kind=OtpEvent.FAILED, at__gte=start)
     recovered = mine.filter(kind=OtpEvent.RECOVERED).order_by("-at").values_list("at", flat=True).first()
     if recovered is not None:
         rows = rows.filter(at__gt=recovered)
     return rows.count()
 
 
+def failures(account, now=None):
+    """Wrong codes inside the 15-minute lock window, since the latest staff-assisted recovery."""
+    now = now or timezone.now()
+    return _failed_since(account, now - LOCK_WINDOW)
+
+
+def accra_midnight(now):
+    """The start of `now`'s day in AshantiHub's time zone (settings.TIME_ZONE, Africa/Accra)."""
+    return timezone.localtime(now).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def daily_failures(account, now=None):
+    """Wrong codes since Accra midnight, since the latest staff-assisted recovery."""
+    now = now or timezone.now()
+    return _failed_since(account, accra_midnight(now))
+
+
+def daily_cap(now=None):
+    return settings_store.current("otp_daily_failure_cap", at=now)
+
+
 def is_locked(account, now=None):
-    return failures(account, now) >= LOCK_LIMIT
+    """Locked by the sliding 15-minute window, or until the next Accra day once the daily cap is reached."""
+    now = now or timezone.now()
+    return failures(account, now) >= LOCK_LIMIT or daily_failures(account, now) >= daily_cap(now)
 
 
 @contextmanager
@@ -132,19 +158,33 @@ def guessing(account):
         yield
 
 
+# What note_failure() answers: no lock started, the 15-minute lock started, or the daily cap was reached.
+NOT_LOCKED = ""
+WINDOW_LOCK = "window"
+DAILY_LOCK = "daily"
+
+
 def note_failure(account, *, purpose, channel, request=None, now=None):
-    """Count one wrong code towards the account's lock (call inside guessing()). Logs the lock the moment it starts
-    and answers True for exactly that wrong code, so the caller tells the holder (otp.notices.account_locked) once
-    the guess has committed."""
+    """Count one wrong code towards the account's locks (call inside guessing()). Logs a lock the moment it starts and
+    answers WINDOW_LOCK or DAILY_LOCK (both truthy) for exactly that wrong code, so the caller tells the holder
+    (otp.notices.account_locked, with until_tomorrow for DAILY_LOCK) once the guess has committed; else NOT_LOCKED.
+    Reaching the daily cap wins over the window lock when one wrong code does both."""
     now = now or timezone.now()
     audit.log(OtpEvent.FAILED, account=account, purpose=purpose, channel=channel, request=request, now=now)
+    cap = daily_cap(now)
+    if daily_failures(account, now) == cap:
+        audit.log(
+            OtpEvent.LOCKED, account=account, purpose=purpose, channel=channel, request=request, now=now,
+            note=f"{cap} wrong codes today: locked until tomorrow",
+        )
+        return DAILY_LOCK
     if failures(account, now) == LOCK_LIMIT:
         audit.log(
             OtpEvent.LOCKED, account=account, purpose=purpose, channel=channel, request=request, now=now,
             note=f"{LOCK_LIMIT} wrong codes in {int(LOCK_WINDOW.total_seconds() // 60)} minutes",
         )
-        return True
-    return False
+        return WINDOW_LOCK
+    return NOT_LOCKED
 
 
 def _ip(request):
@@ -241,7 +281,7 @@ def verify(account, purpose, raw_code, *, action="", ticket="", request=None, no
         challenge, refusal, locked_now = _check(account, purpose, raw_code, action, ticket, request, now)
     # The guess has committed (the FAILED row is kept); only now tell the holder and refuse.
     if locked_now:
-        notices.account_locked(account, purpose=purpose, now=now)
+        notices.account_locked(account, purpose=purpose, now=now, until_tomorrow=locked_now == DAILY_LOCK)
     if refusal is not None:
         raise refusal
     return challenge
