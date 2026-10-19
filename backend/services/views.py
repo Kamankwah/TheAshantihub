@@ -9,8 +9,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.views import IsBusinessOwner, IsCustomer
-from ledger import posting
-from notifications.services import notify_business_owner, notify_customer
+from ledger import posting, sales
+from ledger.money import from_pesewas
+from notifications.services import notify_business_owner, notify_customer, notify_staff_role
 from payments import booking_pay
 from payments.models import CheckoutSession
 
@@ -220,3 +221,70 @@ class ServiceRequestCompleteView(APIView):
             link="/my-account", icon="🎉",
         )
         return Response(ServiceRequestSerializer(sr).data)
+
+
+def _sale_of(request, pk):
+    """The ledger sale of the customer's own service request, or a 404 when it was not paid through the ledger."""
+    sr = generics.get_object_or_404(ServiceRequest, pk=pk, customer=request.user)
+    sale = getattr(sr, "sale", None)
+    if sale is None:
+        return None
+    return sale
+
+
+class ServiceRequestCancelView(APIView):
+    """POST /api/services/requests/{id}/cancel/ — the customer cancels a paid service the business has not marked done.
+    A service has no scheduled start, so it goes back whole; once done it is accept or report a problem (409). A sale
+    paid before cancellation policies existed is cancelled by Support only (409)."""
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def post(self, request, pk):
+        sale = _sale_of(request, pk)
+        if sale is None:
+            return Response({"detail": "This service was not paid through the wallet system."}, status=409)
+        try:
+            given = sales.cancel_by_customer(sale)
+        except sales.CancelError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        sales.tell_cancelled(sale, given)
+        return Response({"cancelled": True, "wallet_refund": str(from_pesewas(given.amount_pesewas))})
+
+
+class ServiceRequestAcceptView(APIView):
+    """POST /api/services/requests/{id}/accept/ — the customer accepts the finished service; the business is paid at
+    once (ledger Plan 7E). 409 before it is marked done, once settled, or while a problem is open."""
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def post(self, request, pk):
+        sale = _sale_of(request, pk)
+        if sale is None:
+            return Response({"detail": "This service was not paid through the wallet system."}, status=409)
+        try:
+            sales.accept(sale, request.user)
+        except sales.AcceptError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return Response({"released": True})
+
+
+class ServiceRequestReportProblemView(APIView):
+    """POST /api/services/requests/{id}/report-problem/ {reason} — the customer reports a problem; the automatic release
+    stops and Support is told (ledger Plan 7E)."""
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def post(self, request, pk):
+        sale = _sale_of(request, pk)
+        if sale is None:
+            return Response({"detail": "This service was not paid through the wallet system."}, status=409)
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            sale = sales.report_problem(sale, request.user, data.get("reason"))
+        except sales.AcceptError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        notify_staff_role(
+            "orders.verify", "booking_problem", "A customer reported a problem",
+            body=f"{sale.label().capitalize()} — dispute #{sale.dispute_id}.", link="/staff", icon="⚠️",
+        )
+        return Response({"dispute_id": sale.dispute_id}, status=201)

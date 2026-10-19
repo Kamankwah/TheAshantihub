@@ -9,7 +9,9 @@ an OtpEvent (SENT or SEND_FAILED, `note` LOCKED_NOTE / RECOVERY_CODE_NOTE), so i
 limits like any other message to that phone or email. Best-effort: nothing here ever raises and only an error's
 type is logged. A notice never holds a code, a token or a link. However often the sliding lock re-engages, a lock
 notice goes at most once an hour per account, so someone who holds the password cannot use wrong codes to flood
-the holder (about one more wrong code fits every few minutes once the first ones leave the 15-minute window)."""
+the holder (about one more wrong code fits every few minutes once the first ones leave the 15-minute window). The
+daily cap (otp.service.daily_failures) is different: it is reached at most once a day per recovery, so its notice
+(until_tomorrow, DAILY_LOCKED_NOTE) always goes, even inside that hour."""
 import logging
 from datetime import timedelta
 
@@ -26,11 +28,16 @@ LOCKED_TEXT = (
     "Someone entered wrong sign-in codes for your AshantiHub account several times. "
     "If this wasn't you, change your password and contact Support."
 )
+DAILY_LOCKED_TEXT = (
+    "Someone entered too many wrong sign-in codes for your AshantiHub account today, so it is locked until tomorrow. "
+    "If this wasn't you, change your password and contact Support."
+)
 RECOVERY_CODE_TEXT = (
     "A recovery code was used to sign in to your AshantiHub account. "
     "If this wasn't you, change your password and contact Support."
 )
 LOCKED_NOTE = "notice: locked"
+DAILY_LOCKED_NOTE = "notice: locked until tomorrow"
 RECOVERY_CODE_NOTE = "notice: recovery code used"
 LOCK_NOTICE_GAP = timedelta(hours=1)
 SEND_KINDS = (OtpEvent.SENT, OtpEvent.SEND_FAILED)
@@ -47,10 +54,14 @@ def _send(account, *, text, note, purpose, now):
             spend.check_quietly(now)
 
 
-def account_locked(account, *, purpose="", now=None):
-    """Tell the holder that wrong codes just locked the account (at most once an hour)."""
+def account_locked(account, *, purpose="", now=None, until_tomorrow=False):
+    """Tell the holder that wrong codes just locked the account: the 15-minute lock at most once an hour, the daily
+    cap (until_tomorrow) each time it is reached."""
     try:
         now = now or timezone.now()
+        if until_tomorrow:
+            _send(account, text=DAILY_LOCKED_TEXT, note=DAILY_LOCKED_NOTE, purpose=purpose, now=now)
+            return
         account_type, account_id = ref(account)
         told = OtpEvent.objects.filter(
             account_type=account_type, account_id=account_id, kind__in=SEND_KINDS, note=LOCKED_NOTE,

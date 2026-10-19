@@ -41,7 +41,7 @@ class BookingQueueApiTests(BookingBase):
         BookingSale.objects.filter(pk=cleaned.pk).update(paid_at=timezone.now() - timedelta(days=5))
         stay = self.paid_stay(nights=1)
         Booking.objects.filter(pk=stay.booking_id).update(status=Booking.CHECKED_IN, checked_in_at=timezone.now())
-        self.as_staff(self.support)
+        self.as_staff(self.support, sudo=True)
         body = self.client.get(QUEUE).json()
         self.assertEqual(body["count"], 2)
         first, second = body["results"]
@@ -56,7 +56,7 @@ class BookingQueueApiTests(BookingBase):
     def test_recording_the_call_through_the_api_releases_and_empties_the_queue(self):
         sale = self.paid_service()
         self.done(sale)
-        self.as_staff(self.support)
+        self.as_staff(self.support, sudo=True)
         response = self.verify(sale, outcome="matches", customer_confirmed_by_phone=True)
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json(), {"sale": sale.pk, "outcome": "matches", "dispute_id": None, "released": True})
@@ -64,7 +64,7 @@ class BookingQueueApiTests(BookingBase):
 
     def test_a_mismatch_answers_its_dispute_and_refusals_answer_their_status(self):
         sale = self.paid_service()
-        self.as_staff(self.support)
+        self.as_staff(self.support, sudo=True)
         response = self.verify(sale, outcome="matches")
         self.assertEqual((response.status_code, response.json()["detail"]), (409, "The business has not marked this service done yet."))
         self.done(sale)
@@ -82,14 +82,14 @@ class BookingQueueApiTests(BookingBase):
 
     @override_settings(LEDGER_ENABLED=False)
     def test_review_focus_with_the_ledger_off_the_booking_screens_say_so(self):
-        self.as_staff(self.support)
+        self.as_staff(self.support, sudo=True)
         response = self.client.get(QUEUE)
         self.assertEqual((response.status_code, response.json()["code"]), (409, "ledger_off"))
         self.assertEqual(self.client.post("/api/ledger/bookings/1/verification/", {}, format="json").json()["code"], "ledger_off")
 
     def test_the_ledger_off_inside_the_call_answers_ledger_off_by_code_not_by_message(self):
         sale = self.paid_service()
-        self.as_staff(self.support)
+        self.as_staff(self.support, sudo=True)
         with mock.patch("ledger.escrow.enabled", side_effect=[True, False]):      # the view's pre-check, then record_verification
             response = self.verify(sale, outcome="unreachable")
         self.assertEqual((response.status_code, response.json()["code"]), (409, "ledger_off"))
@@ -104,7 +104,7 @@ class BookingQueueApiTests(BookingBase):
             self.done(self.paid_service("10.00"))
         tickets = self.paid_tickets(quantity=2)
         Event.objects.filter(pk=self.event.pk).update(event_date=timezone.now() - timedelta(hours=1))
-        self.as_staff(self.support)
+        self.as_staff(self.support, sudo=True)
         first = self.client.get(QUEUE).json()
         self.assertEqual((first["count"], len(first["results"]), bool(first["next"])), (22, 20, True))
         second = self.client.get(QUEUE, {"page": 2}).json()
@@ -117,7 +117,7 @@ class BookingQueueApiTests(BookingBase):
         self.assertEqual((row["kind"], row["amount"], row["what"].split(" for ")[0]), ("tickets", "100.00", "2 tickets"))
 
     def test_an_unknown_sale_is_a_404_and_the_accountant_and_anonymous_are_refused(self):
-        self.as_staff(self.support)
+        self.as_staff(self.support, sudo=True)
         self.assertEqual(self.verify(BookingSale(pk=999999), outcome="unreachable").status_code, 404)
         sale = self.paid_service()
         self.as_staff(make_staff("accountant", "kofi-q@example.com"))
@@ -135,7 +135,7 @@ class BookingQueueApiTests(BookingBase):
         self.done(overdue, at=timezone.now() - timedelta(hours=100))
         recent = self.paid_service("120.00")
         self.done(recent, at=timezone.now() - timedelta(hours=5))
-        self.as_staff(self.support)
+        self.as_staff(self.support, sudo=True)
         rows = self.client.get(QUEUE).json()["results"]
         self.assertEqual([row["sale_id"] for row in rows], [overdue.pk, recent.pk, stay.pk])
         self.assertEqual([row["overdue"] for row in rows], [True, False, False])

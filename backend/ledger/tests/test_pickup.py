@@ -23,8 +23,8 @@ class PickupBase(OrderPaymentBase):
         self.support = make_staff("support", "esi@example.com")
         self.accountant = make_staff("accountant", "kofi@example.com")
 
-    def as_staff(self, staff):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff)}")
+    def as_staff(self, staff, sudo=True):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff, sudo=sudo)}")
 
     def pickup_order(self):
         self.kofi = self.owner("Kofi")

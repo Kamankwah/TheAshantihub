@@ -13,7 +13,13 @@ end-of-day posting needs no true-up. AshantiHub's own riders, store pickups, fai
 the rider became third-party pay no rider: the fee stays platform delivery income. A rider's accounts are held by their
 staff account (otp.identity.ref gives ("staff", pk)), so the Stage 3b withdrawal engine pays them out.
 
-Lock order (spec W7, extended): the order row, its fee snapshots, the rider row (release) or the earning row (refund),
+A whole refund before release pays a rider who had already picked the goods up (credit_on_refund, journal
+`rider-refund-<order>`): the net of the same split of the delivery fee, out of the order's Delivery payable, recorded as a
+RiderEarning with no reserve and commission_bp 0; the commission part goes back to the customer. A rider only assigned,
+or an AshantiHub rider, is paid nothing.
+
+Lock order (spec W7, extended): the order row, its fee snapshots, the rider row (release), the delivery assignment row then
+the rider row (a refund before release) or the earning row (a refund after release),
 then every ledger account in one sorted pass (posting.lock). The end-of-day job locks the rider row first, then the day's
 earning rows, then the accounts: its commit checks the foreign key to the rider, which waits for a FOR UPDATE holder, so
 taking the accounts first would cycle with a release or a switch back (rider row, then reserve). A refund locks the
@@ -139,6 +145,78 @@ def credit_delivery(order, rider, now=None):
         order=order, rider=rider, gross_pesewas=gross, commission_bp=bp, reserve_pesewas=reserve, net_pesewas=net,
         earned_at=now, earned_on=timezone.localdate(now), journal=journal,
     )
+
+
+# --- a refund before release (Plan 7D: a trip made is paid even when the order is refunded) -----------------------------
+
+def refund_key(order):
+    return f"rider-refund-{order.pk}"
+
+
+def _picked_up(order, assignment):
+    return (
+        order.delivery_method == Order.DOOR_TO_DOOR and assignment is not None and assignment.dispatch_id is not None
+        and assignment.picked_up_at is not None and assignment.status != DeliveryAssignment.FAILED
+    )
+
+
+def rider_picked_up(order):
+    """True once a door-to-door order's delivery job shows the rider collected the goods and did not fail the delivery
+    (`picked_up_at` is stamped when they confirm pickup at the business). Assigned, accepted or at-pickup is not a trip."""
+    return _picked_up(order, DeliveryAssignment.objects.filter(order_id=order.pk).first())
+
+
+def refund_trip(order, delivery_pesewas):
+    """(rider, net) to pay for a trip made before this whole refund of `order`'s `delivery_pesewas` of delivery fee, or
+    None: nothing to pay, not picked up, AshantiHub's own rider (or one who was not third-party when they picked up), or
+    already paid. The delivery assignment row is locked first (so a pickup confirmed meanwhile waits for the refund, or the
+    refund sees it), then the rider's row. `net` is what the rider would net from that fee under the commission rate in
+    force when the order was paid (`split`); the commission part goes back to the customer with the rest of the fee. Call
+    inside the refund's transaction after the order row and its fee snapshots."""
+    from . import escrow
+
+    if delivery_pesewas <= 0 or order.delivery_method != Order.DOOR_TO_DOOR:
+        return None
+    assignment = DeliveryAssignment.objects.select_for_update(of=("self",)).filter(order_id=order.pk).first()
+    if not _picked_up(order, assignment):
+        return None
+    if Journal.objects.filter(key=refund_key(order)).exists() or RiderEarning.objects.filter(order_id=order.pk).exists():
+        return None
+    rider = Rider.objects.select_related("staff").filter(staff_id=assignment.dispatch_id).first()
+    if rider is None or not employment.third_party_at(rider, assignment.picked_up_at):
+        return None
+    rider = Rider.objects.select_related("staff").select_for_update(of=("self",)).get(pk=rider.pk)
+    paid_at = Journal.objects.get(key=escrow.pay_key(order)).created_at
+    _reserve, net = split(delivery_pesewas, settings_store.current(COMMISSION_SETTING, paid_at))
+    return (rider, net) if net > 0 else None
+
+
+def refund_accounts(trip, order):
+    """The accounts credit_on_refund posts to (for the refund's up-front lock); () without a trip."""
+    return (accounts_of(trip[0])[0], posting.account_for(Account.DELIVERY_PAYABLE, order)) if trip is not None else ()
+
+
+def credit_on_refund(order, now, *, trip):
+    """Pay the third-party rider the share of the delivery fee a whole refund before release owes them for a trip made
+    (Dr the order's Delivery payable, Cr rider balance, journal `rider-refund-<order>`) and record a RiderEarning with no
+    reserve and `commission_bp` 0: AshantiHub's commission part of the fee goes back to the customer, so no commission is
+    ever held or posted on it, and the earning's gross is what the rider was paid. Returns the pesewas paid. Only
+    refunds._post calls this, in the refund's transaction, with `trip` from refund_trip (its rows locked) and
+    refund_accounts(trip, order) in the up-front account lock. Idempotent on its key."""
+    rider, net = trip
+    if Journal.objects.filter(key=refund_key(order)).exists():
+        return 0
+    journal = posting.post(
+        key=refund_key(order), kind="rider_earning",
+        lines=[posting.debit(posting.account_for(Account.DELIVERY_PAYABLE, order), net), posting.credit(accounts_of(rider)[0], net)],
+        reference_type="orders.order", reference_id=str(order.pk),
+        memo=f"Order #{order.pk} refunded after the rider picked it up: the rider is paid for the trip",
+    )
+    RiderEarning.objects.create(
+        order=order, rider=rider, gross_pesewas=net, commission_bp=0, reserve_pesewas=0, net_pesewas=net,
+        earned_at=now, earned_on=timezone.localdate(now), journal=journal,
+    )
+    return net
 
 
 # --- end of day (spec §2.2 step 6) ------------------------------------------------------------------------------------

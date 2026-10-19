@@ -60,7 +60,7 @@ class ReconciliationTests(TestCase):
         self.buy("momo")
         self.buy("wallet")
         with transaction.atomic():
-            held = withdrawals.request(self.customer, destination_id=destination(self.customer).pk, amount_pesewas=2000, request_id="req-recon-0001")
+            held = withdrawals.request(self.customer, destination_id=destination(self.customer).pk, amount_pesewas=2000, request_id="req-recon-0001", now=timezone.now() + timedelta(hours=2))  # past the top-up hold
         payouts.submit(held.pk)
         run = reconciliation.reconcile(self.today)
         self.assertEqual((run.status, run.differences), (ReconciliationRun.MATCHED, []))

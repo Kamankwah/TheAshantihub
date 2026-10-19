@@ -1,5 +1,6 @@
 """Staff and withdrawals (wallets plan 3b, Task 5): the list (wallets.view) and failing a stuck one (wallets.manage and
-the password again; the provider is asked first). Review Focus 3 (a late "paid" after staff failed it, a provider
+the password again; the provider is asked first). Since wallet rulings 7C Task 4 the fail/ door only asks: a second
+holder of wallets.manage approves in the approvals inbox (test_withdrawal_resolution covers the two-person rules). Review Focus 3 (a late "paid" after staff failed it, a provider
 answer or an amount case stops a hand fail) and 6 (no number in the activity log)."""
 from datetime import timedelta
 from unittest import mock
@@ -20,7 +21,7 @@ from ledger import posting
 from ledger.models import Account, Journal
 from notifications.models import Notification
 from payments import providers
-from wallets import payouts, views_staff, withdrawals
+from wallets import approval_kinds, payouts, views_staff, withdrawals
 from wallets.models import Withdrawal
 
 from .helpers import destination, fund
@@ -36,6 +37,7 @@ class StaffWithdrawalTests(TestCase):
         self.client = APIClient()
         self.accountant = make_staff("accountant", "kofi@example.com")
         self.support = make_staff("support", "esi@example.com")
+        self.checker = make_staff("accountant", "yaw@example.com")  # approves what the accountant asks for
         self.customer = Customer.objects.create(full_name="Ama Owusu", phone="+233241234567", password_hash="x")
         self.dest = destination(self.customer)
         fund(Account.CUSTOMER_WALLET, self.customer, 20000, "fund-1")
@@ -62,7 +64,14 @@ class StaffWithdrawalTests(TestCase):
             if settings.SIMULATED_PAYOUT_OUTCOME == "pending":
                 raise providers.NotConnected("cannot report")
             return real_status(provider, reference)
-        post = lambda: self.client.post(f"{URL}{withdrawal.pk}/fail/", {"reason": reason}, format="json")  # noqa: E731
+        def post():
+            """Ask (fail/), then the checker approves with the password; the approval's answer when it was asked."""
+            asked = self.client.post(f"{URL}{withdrawal.pk}/fail/", {"reason": reason}, format="json")
+            if asked.status_code != 201:
+                return asked
+            checker = APIClient()
+            checker.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.checker, sudo=True)}")
+            return checker.post(f"/api/approvals/{asked.json()['approval_id']}/approve/", {}, format="json")
         if isinstance(providers.SimulatedProvider.__dict__["status"], mock.Mock):  # the test steers the answer itself
             return post()
         with mock.patch.object(providers.SimulatedProvider, "status", status):
@@ -172,12 +181,13 @@ class StaffWithdrawalTests(TestCase):
         self.as_staff(self.accountant, sudo=True)
         response = self.force_fail(withdrawal)
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual((response.json()["status"], response.json()["failure_reason"]), ("failed", views_staff.STAFF_FAILED_REASON))
+        withdrawal.refresh_from_db()
+        self.assertEqual((withdrawal.status, withdrawal.failure_reason), ("failed", views_staff.STAFF_FAILED_REASON))
         self.assertEqual(self.wallet(), 20000)
         self.assertEqual(posting.balance_of(Account.WITHDRAWAL_IN_TRANSIT), 0)
         event = ActivityEvent.objects.get(verb="wallets.withdrawal_failed")
         self.assertEqual(
-            (event.before, event.after["status"], event.after["reason"]), ({"status": "processing"}, "failed", "Hubtel says it never left"),
+            (event.before, event.after["status"], event.after["evidence"]), ({"status": "processing"}, "failed", "Hubtel says it never left"),
         )                                                                                         # the staff reason stays here only
         for text in (event.summary, event.target_label, str(event.before), str(event.after)):
             self.assertNotIn("241234567", text)
@@ -226,13 +236,21 @@ class StaffWithdrawalTests(TestCase):
         self.assertFalse(Journal.objects.filter(kind="withdrawal_reversed").exists())
         self.assertFalse(ActivityEvent.objects.filter(verb="wallets.withdrawal_failed").exists())
 
-    def test_a_case_opened_after_the_view_looked_is_caught_inside_the_lock(self):
-        """close() refuses it too, and the view answers 409 instead of claiming it failed."""
+    def test_a_case_opened_after_the_request_is_caught_at_approval(self):
+        """The approval checks again, and close() refuses it too: 409 instead of claiming it failed."""
         withdrawal = self.sent()
-        payouts.apply_result(withdrawal.reference, providers.SUCCEEDED, amount_pesewas=4000)
         self.as_staff(self.accountant, sudo=True)
-        with mock.patch.object(views_staff, "amount_case_open", return_value=False):
-            response = self.force_fail(withdrawal)
+        with mock.patch.object(providers.SimulatedProvider, "status", side_effect=providers.NotConnected("not wired")):
+            asked = self.client.post(f"{URL}{withdrawal.pk}/fail/", {"reason": "Hubtel says it never left"}, format="json")
+        self.assertEqual(asked.status_code, 201, asked.content)
+        payouts.apply_result(withdrawal.reference, providers.SUCCEEDED, amount_pesewas=4000)      # a case opens after the request
+        checker = APIClient()
+        checker.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.checker, sudo=True)}")
+        approve = lambda: checker.post(f"/api/approvals/{asked.json()['approval_id']}/approve/", {}, format="json")  # noqa: E731
+        with mock.patch.object(providers.SimulatedProvider, "status", side_effect=providers.NotConnected("not wired")):
+            self.assertEqual(approve().json()["code"], "amount_case_open")                         # the approval checks again
+            with mock.patch.object(approval_kinds, "amount_case_open", return_value=False):      # every check misses it: close() still refuses
+                response = approve()
         self.assertEqual((response.status_code, response.json()["code"]), (409, "amount_case_open"))
         withdrawal.refresh_from_db()
         self.assertEqual((withdrawal.status, self.wallet()), (Withdrawal.PROCESSING, 15000))
@@ -248,7 +266,8 @@ class StaffWithdrawalTests(TestCase):
                 before = self.wallet()
                 response = self.force_fail(withdrawal)
                 self.assertEqual(response.status_code, 200, response.content)
-                self.assertEqual(response.json()["status"], "failed")
+                withdrawal.refresh_from_db()
+                self.assertEqual(withdrawal.status, "failed")
                 self.assertEqual(self.wallet(), before + 5000)
                 self.assertEqual(self.force_fail(withdrawal).status_code, 409)                  # a second try is not stuck any more
                 self.assertEqual(self.wallet(), before + 5000)
@@ -284,7 +303,7 @@ class StaffWithdrawalTests(TestCase):
         self.as_staff(self.accountant, sudo=True)
         self.force_fail(withdrawal, reason="Customer 0241234567 and +233 24 123 4567 asked; ref 12345 ok")
         event = ActivityEvent.objects.get(verb="wallets.withdrawal_failed")
-        note = event.after["reason"]
+        note = event.after["evidence"]
         self.assertNotRegex(note, r"\d{6,}")
         self.assertNotIn("241234567", note)
         self.assertIn("*******567", note)

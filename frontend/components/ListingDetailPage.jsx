@@ -13,6 +13,9 @@ import { useSiteSettings } from "../hooks/useSiteSettings.js";
 import { useStaffGate } from "../hooks/useStaffGate.js";
 import ScrollSpyTabs from "./ScrollSpyTabs.jsx";
 import StaffGateNotice from "./StaffGateNotice.jsx";
+import BookingTermsNote from "./BookingTermsNote.jsx";
+import { useBookingTerms } from "../hooks/useBookingTerms.js";
+import { stayStart } from "../lib/bookingTerms.js";
 import { ReviewsList, ReviewWriteForm, starString, textareaStyle, submitBtnStyle } from "./ReviewComponents.jsx";
 
 // ─── ListingDetailPage ──────────────────────────────────────────────────────
@@ -68,6 +71,7 @@ export default function ListingDetailPage({
   CardComponent,
 }) {
   const { data: item, isLoading, isError, refetch } = useListing(id);
+  const bookingTerms = useBookingTerms();
   const { data: related } = useRelatedListings(id);
   // The delivery limits for this listing (backend cart/guard.py) — customers only; the server decides, we show its words.
   const guard = useCartGuard(id, { enabled: user?.accountType === "customer" && id != null });
@@ -267,6 +271,7 @@ export default function ListingDetailPage({
                 <label style={{ display: "block", color: "rgba(255,255,255,0.75)", fontSize: "0.68rem", marginBottom: 8 }}>Units / rooms
                   <input type="number" min={1} value={bookingUnits} onChange={(e) => setBookingUnits(Number(e.target.value) || 1)} style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box", marginTop: 3 }} />
                 </label>
+                {checkIn && <BookingTermsNote kind="stay" policy={item.cancellation_policy} start={stayStart(checkIn, bookingTerms.data?.stay_check_in_time)} />}
                 {bookingError && <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{bookingError}</div>}
                 <button
                   disabled={booking || !checkIn || !checkOut}
@@ -314,6 +319,7 @@ export default function ListingDetailPage({
                   placeholder="Your budget (GHS, optional)"
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: "0.8rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
                 />
+                <BookingTermsNote kind="service" policy={item.cancellation_policy} />
                 {requestError && <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{requestError}</div>}
                 <button
                   disabled={requesting || !requestMessage.trim()}

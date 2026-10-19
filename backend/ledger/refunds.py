@@ -19,7 +19,12 @@ A refund always goes to the customer's AshantiHub wallet and is recorded as an `
 * A third-party rider paid the delivery fee at release (ledger.riders) gives it back when the whole order is refunded
   after release, before the refund journal takes the fee from platform delivery income (riders.reverse_earning; the
   same when an emptied promo order's promo goes back to the business). A partial refund never touches the rider (it
-  never returns the delivery fee); before release the rider was never paid.
+  never returns the delivery fee). Before release, a whole refund pays a third-party rider who had already picked the
+  goods up their share of the delivery fee (riders.credit_on_refund: the net of the 90/10 split, out of the order's
+  Delivery payable, in its own journal first); the rest of the fee goes back to the customer. The customer's wallet
+  credit is then `amount + processing - rider share`, floored at 0 (a coupon can leave the customer less than the
+  rider's share; AshantiHub bears the difference, as the promo subsidy it would have taken back is reduced by it).
+  `OrderRefund.rider_pesewas` records the share and `wallet_pesewas` the credit actually given.
 * The provider's collection charge ("payment processing") is not refunded, except when staff say AshantiHub or a vendor
   was at fault (`refund_processing=True`): AshantiHub then bears it (Dr provider fees, Cr wallet). A partial refund
   gives back only its share of the charge (its share of the order total, half up, never more than is left); the refund
@@ -27,8 +32,9 @@ A refund always goes to the customer's AshantiHub wallet and is recorded as an `
 
 Callers: Support's cancel (orders.support), the uncollected-pickup job (ledger.verification), dispute resolution
 (disputes.views) and the delivery-case refund approval (delivery.config). Lock order: the order row, its fee
-snapshots, then the rider's earning row (only a whole refund after release, or a promo return, of a third-party rider's
-delivery: ledger.riders), then every account the transaction posts to, in one sorted pass before the first posting
+snapshots, then the delivery assignment row and the rider's row (a whole refund before release of a picked-up order), or
+the rider's earning row (a whole refund after release, or a promo return, of a third-party rider's delivery:
+ledger.riders), then every account the transaction posts to, in one sorted pass before the first posting
 (`_post` locks them; `extra_locks` carries the accounts of a later posting, such as the promo return)."""
 from dataclasses import dataclass
 
@@ -242,6 +248,14 @@ def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, 
     # was paid it gives it back first. Their earning row is locked here: after the order row and its snapshots, before
     # any account (wallets Plan 5).
     earning = riders.earning_to_reverse(order) if whole and released else None
+    # A whole refund before release of an order whose third-party rider already picked the goods up pays them for the
+    # trip out of the delivery fee; the customer gets the rest (their row is locked here, with the earning's place).
+    trip = riders.refund_trip(order, delivery) if whole and not released else None
+    rider_share = trip[1] if trip is not None else 0
+    # What the customer can still be given: a coupon may have left them less than the rider's share. The rider is paid in
+    # full anyway; the unfunded part comes out of the promo subsidy that would have gone back (AshantiHub bears it).
+    wallet_credit = max(0, customer + processing - rider_share)
+    unfunded = wallet_credit - (customer + processing - rider_share)
     by_vendor, allocation = {}, []
     for snap in snapshots:
         base = shares.get(snap.pk, 0)
@@ -275,21 +289,23 @@ def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, 
         if entry["fee"]:
             debits.append(posting.debit(posting.account_for(Account.PLATFORM_FEE_INCOME), entry["fee"]))
             credits.append(posting.credit(posting.account_for(Account.VENDOR_AVAILABLE, entry["owner"]), entry["fee"]))
-    if delivery:
+    if delivery - rider_share:
         holder = (
             posting.account_for(Account.PLATFORM_DELIVERY_INCOME) if released
             else posting.account_for(Account.DELIVERY_PAYABLE, order)
         )
-        debits.append(posting.debit(holder, delivery))
+        debits.append(posting.debit(holder, delivery - rider_share))   # the rider's share leaves the payable in its own journal
     if processing:
         debits.append(posting.debit(posting.account_for(Account.PROVIDER_FEES), processing))
-    if subsidy:
-        credits.append(posting.credit(posting.account_for(Account.PLATFORM_PROMO_SUBSIDY), subsidy))
-    if customer + processing:
-        credits.append(posting.credit(posting.account_for(Account.CUSTOMER_WALLET, order.customer), customer + processing))
+    if subsidy - unfunded:
+        credits.append(posting.credit(posting.account_for(Account.PLATFORM_PROMO_SUBSIDY), subsidy - unfunded))
+    if wallet_credit:
+        credits.append(posting.credit(posting.account_for(Account.CUSTOMER_WALLET, order.customer), wallet_credit))
     # Every account this transaction posts to, in one sorted pass before the first posting (spec W7); `extra_locks`
     # are the accounts a later posting in the same transaction touches (Task 6: the promo return).
-    posting.lock(*(line.account for line in debits + credits), *extra_locks, *riders.reversal_accounts(earning))
+    posting.lock(*(line.account for line in debits + credits), *extra_locks, *riders.reversal_accounts(earning), *riders.refund_accounts(trip, order))
+    if trip is not None:
+        riders.credit_on_refund(order, now, trip=trip)           # first: the refund below debits only what is left of the fee
     if earning is not None:
         riders.check_reversal(earning, delivery)                 # what comes back from the rider must be what is returned
         riders.reverse_earning(earning, now)                     # first: the refund below takes the fee back from there
@@ -300,11 +316,20 @@ def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, 
             reference_type="orders.order", reference_id=str(order.pk), memo=f"Refund for order #{order.pk} ({source})",
         )
     items = sum(entry["pending"] + entry["available"] for entry in by_vendor.values())
-    return OrderRefund.objects.create(
+    refund = OrderRefund.objects.create(
         order=order, source=source, whole=whole, amount_pesewas=customer, items_pesewas=items, delivery_pesewas=delivery,
+        rider_pesewas=rider_share,
         subsidy_pesewas=subsidy, processing_pesewas=processing, allocation=allocation, journal=journal, created_by=by,
         note=(note or "")[:300],
     )
+    from wallets import vendor_texts
+
+    for entry in by_vendor.values():  # each business is told what came off its balance (text and in-app copy; never raises)
+        vendor_texts.refund_text(
+            order, entry["owner"], entry["pending"] + entry["available"] - entry["fee"],
+            "Available balance" if entry["available"] else "Pending balance",
+        )
+    return refund
 
 
 def scope_for_dispute(dispute):

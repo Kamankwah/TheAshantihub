@@ -1,6 +1,10 @@
 """The three OTP switches (docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md §9). Each defaults
 off in settings, so merging this app changes nothing: sign-in, sign-up and every sensitive endpoint behave
-exactly as before until a switch is turned on. Read at call time, so override_settings works in tests."""
+exactly as before until a switch is turned on. Read at call time, so override_settings works in tests.
+
+One exception, by owner ruling (2026-10-18): a customer or business owner who turned on an authenticator app is
+asked for it at every sign-in even while OTP_SIGNIN_ENFORCED is off (otp.signin.sign_in_step). Nobody gets one
+without opting in, and texted or emailed sign-in codes stay behind the switch."""
 from django.conf import settings
 
 

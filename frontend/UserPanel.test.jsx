@@ -304,4 +304,17 @@ describe('UserPanel', () => {
       expect(await screen.findByRole('button', { name: 'Raise a dispute' })).toBeInTheDocument()
     })
   })
+
+  describe('My Requests tab — terms before paying a quote', () => {
+    it('shows when it can be cancelled and when the business is paid above the Pay button', async () => {
+      server.use(http.get('http://localhost:8000/api/services/requests/mine/', () => HttpResponse.json([
+        { id: 4, listing_name: 'Kumasi City Tour', message: 'Two adults', status: 'accepted', agreed_price: '300.00' },
+      ])))
+      renderPanel()
+      fireEvent.click(screen.getAllByText('My Requests')[0])
+      expect(await screen.findByRole('button', { name: /Pay GHS 300.00 to start/ })).toBeInTheDocument()
+      expect(await screen.findByText(/any time before the business marks the job done/)).toBeInTheDocument()
+      expect(screen.getByText(/accepted automatically 48 hours after the business marks it done/)).toBeInTheDocument()
+    })
+  })
 })

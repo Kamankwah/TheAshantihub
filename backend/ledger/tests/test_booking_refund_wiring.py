@@ -43,7 +43,7 @@ class BookingRefundWiringTests(BookingBase):
         return self.client.post(f"/api/ledger/bookings/{sale.pk}/cancel/", {"reason": reason}, format="json")
 
     def test_the_customer_cancels_a_paid_stay_and_gets_it_back_in_the_wallet(self):
-        sale = self.paid_stay(nights=2)                                                        # GH₵ 300.00
+        sale = self.paid_stay(nights=2, starts_in=3)                                                # GH₵ 300.00
         self.as_customer()
         response = self.client.post(f"/api/bookings/{sale.booking_id}/cancel/")
         self.assertEqual(response.status_code, 200, response.content)
@@ -55,7 +55,7 @@ class BookingRefundWiringTests(BookingBase):
         self.assertTrue(Notification.objects.filter(customer=self.customer, title="Your booking was cancelled").exists())
 
     def test_review_focus_a_cancelled_stay_cannot_be_checked_in(self):
-        sale = self.paid_stay(nights=1)
+        sale = self.paid_stay(nights=1, starts_in=3)
         self.as_customer()
         self.client.post(f"/api/bookings/{sale.booking_id}/cancel/")
         self.as_owner()
@@ -342,7 +342,7 @@ class SameMomentRaceTests(TransactionTestCase):
             "Ashanti Lodge", "150.00",
             Category.objects.create(slug="lodge-1b-race", label="Lodge", kind="service", is_accommodation=True), units_total=2,
         )
-        check_in = timezone.localdate() + timedelta(days=1)
+        check_in = timezone.localdate() + timedelta(days=3)
         paid = self.client_for(self.customer, "customer").post("/api/bookings/", {
             "listing": lodge.pk, "check_in": check_in.isoformat(), "check_out": (check_in + timedelta(days=2)).isoformat(), "units": 1,
         }, format="json")
