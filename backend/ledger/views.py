@@ -1,6 +1,7 @@
 """Ledger staff API: the fee rules and money settings in force, and proposals to change them
 (maker-checker through the approvals engine)."""
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -85,8 +86,18 @@ class MoneySettingsView(APIView):
         return [HasAnyRolePermission(VIEW, MANAGE)]
 
     def get(self, request):
+        now = timezone.now()
+        in_force = set(MoneySetting.objects.filter(effective_from__lte=now).values_list("key", flat=True))
+        later = {}
+        for row in MoneySetting.objects.filter(effective_from__gt=now).order_by("effective_from", "id"):
+            later.setdefault(row.key, []).append({"value": row.value, "effective_from": row.effective_from})
         rows = [
-            {"key": key, "label": d.label, "value": settings_store.current(key), "nullable": d.nullable, "minimum": d.minimum, "maximum": d.maximum}
+            {
+                "key": key, "label": d.label, "value": settings_store.current(key, now), "nullable": d.nullable,
+                "minimum": d.minimum, "maximum": d.maximum, "default": d.default,
+                "is_default": key not in in_force,  # nobody has set it: the built-in value is running
+                "scheduled": later.get(key, []),
+            }
             for key, d in settings_store.DEFINITIONS.items()
         ]
         pending = [
