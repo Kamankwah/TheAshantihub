@@ -40,7 +40,7 @@ def alert_owners_of_paid_order(order):
             owner, Notification.NEW_ORDER, f"New order #{order.id}",
             body=body, link="/business-dashboard", icon="🛍️",
         )
-        if amounts is not None:
+        if amounts is not None and not owner.is_suspended:
             # Queued in this transaction and sent after it commits; never raises (a text never blocks a payment).
             vendor_texts.queue(
                 owner, VendorText.ORDER_PAID, vendor_texts.paid_key(order, owner), vendor_texts.paid_text(order, amounts),

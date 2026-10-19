@@ -30,7 +30,7 @@ from django.utils import timezone
 
 from accounts.models import BusinessOwner
 from accounts.phones import mask_phone
-from ledger import escrow, posting
+from ledger import escrow, posting, settings_store
 from ledger.models import Account, Journal, JournalLine, OrderFeeSnapshot
 from ledger.money import to_pesewas
 from marketing.models_waivers import WaivedFeeCharge
@@ -156,6 +156,8 @@ def deliver(pk, now=None):
     # The claim bumped `attempts`; that value is this worker's fencing token. If the lease runs out and another worker
     # re-claims the text, `attempts` moves on and every write below matches nothing: a late worker changes nothing.
     mine = VendorText.objects.filter(pk=pk, status=VendorText.QUEUED, attempts=text.attempts)
+    if text.business_owner.is_suspended:  # suspended since it was queued: never sent, and not left to go out when lifted
+        return VendorText.FAILED if mine.update(status=VendorText.FAILED) else None
     phone = confirmed_phone(text.business_owner)
     if not phone:
         return VendorText.NO_PHONE if mine.update(status=VendorText.NO_PHONE) else None
@@ -222,6 +224,7 @@ def row(text):
 
 VENDOR_MONEY = "vendor_money"  # the in-app kind of a release or digest text's copy (Notification kinds are free slugs)
 OWNER_TYPE = BusinessOwner._meta.label_lower
+OWNER_KEY = "business_owner"  # otp.identity.ref / Withdrawal.holder_type of a business
 
 
 @dataclass(frozen=True)
@@ -350,16 +353,128 @@ def order_released(order, journal):
             continue
         if VendorText.objects.filter(key=released_key(order, owner)).exists():
             continue  # already texted (and noticed): a re-run adds neither
+        # A suspended business keeps its in-app notice but gets no text, now or later: nothing is queued, so lifting the
+        # suspension backfills nothing.
         if share["base"] <= 0:
             body = promo_only_text(order, share["promo"])
         else:
             body = released_text(order, share["released"], share["base"] - share["released"], share["promo"])
-        notice = notify_business_owner(
-            owner, VENDOR_MONEY, f"Order #{order.pk} released", body=body, link="/business-dashboard", icon="💰",
-        )
-        if queue(owner, VendorText.ORDER_RELEASED, released_key(order, owner), body, order=order, notification=notice) is not None:
-            queued += 1
+        try:
+            with transaction.atomic():  # a savepoint: a database error here must not poison the release's transaction
+                notice = notify_business_owner(
+                    owner, VENDOR_MONEY, f"Order #{order.pk} released", body=body, link="/business-dashboard", icon="💰",
+                )
+                if owner.is_suspended:
+                    continue
+                if queue(owner, VendorText.ORDER_RELEASED, released_key(order, owner), body, order=order, notification=notice) is not None:
+                    queued += 1
+        except Exception as exc:  # noqa: BLE001 - a text never stops a release
+            logger.error("Release text not queued: %s", type(exc).__name__)
     return queued
+
+
+# --- refunds, withdrawals and balance warnings (wallet rulings 7D, Task 3) --------------------------------------------
+# Every builder returns at once for a suspended business: no money text, no row (so nothing is waiting to be sent if the
+# suspension is lifted). A builder never raises: it runs inside the money transaction. No payout number is ever in a body.
+
+def refund_key(order, owner):
+    return f"refund-{order.pk}-{owner.pk}"
+
+
+def refund_text(order, owner, amount, where=""):
+    """The business's share of a refund on a paid order (`amount` pesewas, the fee given back already taken off), with its
+    in-app copy (kept for a suspended business). One per order and business."""
+    try:
+        with transaction.atomic():  # a savepoint: a database error here must not poison the refund's transaction
+            if amount <= 0 or VendorText.objects.filter(key=refund_key(order, owner)).exists():
+                return None
+            body = f"AshantiHub: order #{order.pk} was refunded to the customer. GHS {money(amount)} came off your {where or 'balance'}."
+            notice = notify_business_owner(
+                owner, VENDOR_MONEY, f"Order #{order.pk} refunded", body=body, link="/business-dashboard", icon="💰",
+            )
+            if owner.is_suspended:
+                return None
+            return queue(owner, VendorText.REFUND, refund_key(order, owner), body, order=order, notification=notice)
+    except Exception as exc:  # noqa: BLE001 - a text never stops a refund
+        logger.error("Refund text not queued: %s", type(exc).__name__)
+        return None
+
+
+WITHDRAWAL_STATES = ("requested", "paid", "failed")
+
+
+def withdrawal_text(withdrawal, state):
+    """A withdrawal's step ("requested", "paid", "failed") texted to the business that holds it, once per step. The in-app
+    notice is the payouts module's own. The body names no destination."""
+    try:
+        if state not in WITHDRAWAL_STATES or withdrawal.holder_type != OWNER_KEY:
+            return None
+        with transaction.atomic():  # a savepoint: a database error here must not poison the payout's transaction
+            owner = BusinessOwner.objects.filter(pk=withdrawal.holder_id).first()
+            if owner is None or owner.is_suspended:
+                return None
+            if state == "requested":
+                body = f"AshantiHub: withdrawal of GHS {money(withdrawal.amount_pesewas)} requested. We will text you when it is paid."
+            elif state == "paid":
+                body = f"AshantiHub: withdrawal paid. GHS {money(withdrawal.net_pesewas)} was sent to your payout account."
+            else:
+                body = f"AshantiHub: withdrawal of GHS {money(withdrawal.amount_pesewas)} did not go through. The money is back in your balance."
+            return queue(owner, VendorText.WITHDRAWAL, f"withdrawal-{withdrawal.pk}-{state}", body)
+    except Exception as exc:  # noqa: BLE001 - a text never stops a payout
+        logger.error("Withdrawal text not queued: %s", type(exc).__name__)
+        return None
+
+
+def balance_text(owner, available, kind):
+    """Warn a business its Available balance (`available` pesewas) is below zero (kind "negative") or at or under the low
+    setting (kind "low"). At most one per kind per Accra day (the key holds the day). Text only: the balance is on screen."""
+    try:
+        if kind not in ("negative", "low") or owner.is_suspended:
+            return None
+        with transaction.atomic():  # a savepoint: a database error here must not poison the posting's transaction
+            if kind == "negative":
+                body = (
+                    f"AshantiHub: your Available balance is below zero (GHS {money(available)}). Withdrawals are paused; "
+                    "your next sales will clear it."
+                )
+            else:
+                body = f"AshantiHub: your Available balance is low: GHS {money(available)}."
+            return queue(
+                owner, VendorText.BALANCE_NEGATIVE if kind == "negative" else VendorText.BALANCE_LOW,
+                f"balance-{owner.pk}-{kind}-{timezone.localdate()}", body, day=timezone.localdate(),
+            )
+    except Exception as exc:  # noqa: BLE001 - a text never stops a posting
+        logger.error("Balance text not queued: %s", type(exc).__name__)
+        return None
+
+
+def after_posting(accounts, before):
+    """Called by ledger.posting.post with the accounts it just changed and their balances before: texts a business whose
+    Available balance has just crossed below zero, or down to the low setting from above it. A balance already there is
+    not texted again by every later debit. Never raises."""
+    try:
+        with transaction.atomic():  # a savepoint: nothing here can break the posting's transaction
+            _warn_balances(accounts, before)
+    except Exception as exc:  # noqa: BLE001 - a text never stops a posting
+        logger.error("Balance texts not worked out: %s", type(exc).__name__)
+
+
+def _warn_balances(accounts, before):
+    threshold = None
+    for account in accounts:
+        if account.kind != Account.VENDOR_AVAILABLE or account.owner_type != OWNER_TYPE:
+            continue
+        was, now = before[account.pk], account.balance
+        if now >= was:
+            continue
+        if threshold is None:
+            threshold = settings_store.current("vendor_low_balance_pesewas")
+        kind = "negative" if now < 0 <= was else "low" if 0 <= now <= threshold < was else None
+        if kind is None:
+            continue
+        owner = BusinessOwner.objects.filter(pk=int(account.owner_id)).first()
+        if owner is not None:
+            balance_text(owner, now, kind)
 
 
 # --- the optional daily digest (Task 7) ----------------------------------------------------------------------------
@@ -382,34 +497,60 @@ def digest_text(day, summary, pending, available):
     )
 
 
-def queue_digests(day, now=None):
-    """Queue `day`'s digest (spec §6, "optional daily digest") with its in-app copy for each business that turned it on
-    and whose money moved that Accra day. A business already sent that day's digest is skipped, so a re-run adds
-    nothing; two runs at once (the beat entry and a manual run) also give one text and one in-app notice, because the text
-    is queued first (its key is unique) and the notice is made only if the text has none yet, under a lock on its row; one
-    business that fails is logged and skipped. Returns how many were queued."""
-    queued = 0
-    for owner in BusinessOwner.objects.filter(vendor_preference__daily_digest=True).order_by("pk"):
-        key = digest_key(owner, day)
-        if VendorText.objects.filter(key=key, notification__isnull=False).exists():
-            continue
-        try:
-            days = vendor.daily(owner, day, day)["days"]
-            if not days:
-                continue  # nothing moved: no text
-            body = digest_text(
-                day, days[0], posting.balance_of(Account.VENDOR_PENDING, owner), posting.balance_of(Account.VENDOR_AVAILABLE, owner),
-            )
-            with transaction.atomic():
-                text = queue(owner, VendorText.DAILY_DIGEST, key, body, day=day, now=now)  # first: an overlapping run gets this row
-                if text is None:
-                    continue
-                if VendorText.objects.select_for_update().get(pk=text.pk).notification_id is None:
-                    notice = notify_business_owner(
-                        owner, VENDOR_MONEY, f"Your AshantiHub day, {day:%d %b}", body=body, link="/business-dashboard", icon="💰",
-                    )
-                    VendorText.objects.filter(pk=text.pk).update(notification=notice)
-                    queued += 1
-        except Exception as exc:  # noqa: BLE001 - one business never stops the others' digests
-            logger.error("Digest for business %s not worked out: %s", owner.pk, type(exc).__name__)
-    return queued
+def run_digests(day, now=None, *, after_pk=0, batch=None, deadline=None):
+    """One batch of `day`'s digests (spec §6, "optional daily digest"), with its in-app copy, for the businesses that
+    turned it on, are not suspended and whose money moved that Accra day. Works through them in pk order after
+    `after_pk`, at most `batch` of them (default: the digest_batch_size setting) and stopping once `deadline` (a
+    time.monotonic() instant; default: now plus the digest_time_budget_seconds setting) has passed, but always handling
+    at least one so a run cannot stall. Returns (queued, cursor): how many digests this batch queued, and the last pk
+    handled if more businesses remain after it, else None.
+
+    A business already sent that day's digest is skipped, so a re-run, or a catch-up after a killed run, adds nothing;
+    two runs at once also give one text and one in-app notice, because the text is queued first (its key is unique)
+    and the notice is made only if the text has none yet, under a lock on its row; one business that fails is logged
+    and skipped."""
+    if batch is None:
+        batch = settings_store.current("digest_batch_size")
+    if deadline is None:
+        deadline = time.monotonic() + settings_store.current("digest_time_budget_seconds")
+    owners = BusinessOwner.objects.filter(vendor_preference__daily_digest=True, is_suspended=False, pk__gt=after_pk).order_by("pk")
+    queued, handled, last = 0, 0, None
+    for owner in owners.iterator():
+        if handled and (handled >= batch or time.monotonic() >= deadline):
+            break
+        handled, last = handled + 1, owner.pk
+        queued += _queue_digest(owner, day, now)
+    more = last is not None and owners.filter(pk__gt=last).exists()
+    return queued, (last if more else None)
+
+
+def queue_digests(day, now=None, *, after_pk=0, batch=None, deadline=None):
+    """`run_digests` for a caller that only needs the cursor: the last pk handled if more businesses remain, else None."""
+    return run_digests(day, now, after_pk=after_pk, batch=batch, deadline=deadline)[1]
+
+
+def _queue_digest(owner, day, now):
+    """Queue one business's digest; 1 if this call queued it, else 0."""
+    key = digest_key(owner, day)
+    if VendorText.objects.filter(key=key, notification__isnull=False).exists():
+        return 0
+    try:
+        days = vendor.daily(owner, day, day)["days"]
+        if not days:
+            return 0  # nothing moved: no text
+        body = digest_text(
+            day, days[0], posting.balance_of(Account.VENDOR_PENDING, owner), posting.balance_of(Account.VENDOR_AVAILABLE, owner),
+        )
+        with transaction.atomic():
+            text = queue(owner, VendorText.DAILY_DIGEST, key, body, day=day, now=now)  # first: an overlapping run gets this row
+            if text is None:
+                return 0
+            if VendorText.objects.select_for_update().get(pk=text.pk).notification_id is None:
+                notice = notify_business_owner(
+                    owner, VENDOR_MONEY, f"Your AshantiHub day, {day:%d %b}", body=body, link="/business-dashboard", icon="💰",
+                )
+                VendorText.objects.filter(pk=text.pk).update(notification=notice)
+                return 1
+    except Exception as exc:  # noqa: BLE001 - one business never stops the others' digests
+        logger.error("Digest for business %s not worked out: %s", owner.pk, type(exc).__name__)
+    return 0

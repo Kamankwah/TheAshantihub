@@ -170,6 +170,9 @@ def request(holder, *, destination_id, amount_pesewas, request_id, now=None):
         lines=[posting.debit(source, amount_pesewas), posting.credit(transit, amount_pesewas)],
         reference_type="wallets.withdrawal", reference_id=withdrawal.reference, memo=f"Withdrawal {withdrawal.reference}",
     )
+    from .vendor_texts import withdrawal_text
+
+    withdrawal_text(withdrawal, "requested")  # a business is texted (never raises; none while suspended)
     return withdrawal
 
 
@@ -185,6 +188,13 @@ def cancel(holder, withdrawal_id, now=None):
         if withdrawal.status != Withdrawal.PENDING:
             raise WithdrawalError("Only a withdrawal not sent yet can be cancelled.", "not_pending", 409)
         return close(withdrawal, Withdrawal.CANCELLED, "Cancelled by you.", now)
+
+
+def event_amount(withdrawal):
+    """The amount fields every withdrawal activity event carries (owner ruling: events show the amount). Never the payout
+    number: the destination is not read here."""
+    shown = money(withdrawal.amount_pesewas)
+    return {"amount": shown, "amount_label": f"GH₵ {shown}"}
 
 
 def row(withdrawal):

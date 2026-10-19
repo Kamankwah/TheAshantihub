@@ -33,7 +33,7 @@ from ledger.models import Account
 from notifications.services import notify_business_owner, notify_customer, notify_staff_on_commit
 from payments import providers
 
-from . import names
+from . import names, vendor_texts
 from .models import PayoutDestination, Withdrawal
 from .services import money
 from .withdrawals import paid_key, reversed_key
@@ -242,6 +242,7 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
         destination = withdrawal.destination
         _tell(withdrawal, "Your withdrawal was paid",
               f"GH₵ {money(withdrawal.net_pesewas)} was sent to your {destination.get_rail_display().lower()} ({destination.institution}).")
+        vendor_texts.withdrawal_text(withdrawal, "paid")  # never raises
         return withdrawal
 
 
@@ -272,6 +273,8 @@ def close(withdrawal, status, reason, now):
     withdrawal.save(update_fields=["status", "settled_at", "failure_reason", "provider_reference"])
     title = "Your withdrawal was cancelled" if status == Withdrawal.CANCELLED else "Your withdrawal didn't go through"
     _tell(withdrawal, title, f"GH₵ {money(withdrawal.amount_pesewas)} is back in your balance. {withdrawal.failure_reason}")
+    if status == Withdrawal.FAILED:
+        vendor_texts.withdrawal_text(withdrawal, "failed")  # never raises
     return withdrawal
 
 

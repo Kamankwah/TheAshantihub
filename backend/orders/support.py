@@ -261,9 +261,9 @@ class SupportOrderStatusView(APIView):
         else:
             title = "Your order was cancelled"
             body = f"Your order #{order.pk} was cancelled at your request. Contact AshantiHub Support with any question."
-            if refund is not None and refund.amount_pesewas > 0:
+            if refund is not None and refund.wallet_pesewas > 0:
                 body = (
-                    f"Your order #{order.pk} was cancelled at your request. GH₵ {from_pesewas(refund.amount_pesewas)} went back "
+                    f"Your order #{order.pk} was cancelled at your request. GH₵ {from_pesewas(refund.wallet_pesewas)} went back "
                     "to your AshantiHub wallet. Contact AshantiHub Support with any question."
                 )
         notify_customer(order.customer, "order_status", title, body=body, link="/my-account", icon="🚚")

@@ -629,6 +629,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "wallets.tasks.queue_vendor_digests",
         "schedule": crontab(hour=7, minute=0),  # yesterday's digest for businesses that asked; a no-op while the ledger is off
     },
+    "wallets-catch-up-digests": {
+        "task": "wallets.tasks.catch_up_digests",
+        "schedule": crontab(hour=10, minute=0),  # yesterday's digests again: sends only what a killed 07:00 run missed; off with the ledger
+    },
 }
 
 # Production sets this True so the nightly activity check emails its seal to

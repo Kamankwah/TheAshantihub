@@ -121,7 +121,10 @@ MoMo/top-up, a "payment processing" line.
 Fee tables, the cap, the rider commission rate, the verification-overdue and pickup windows, withdrawal
 limits and the cooling period share one flow: super admin or accounts propose, the other
 approves; each change logs who/when/old/new and takes effect only for orders paid after its
-effective time. Super admin may edit directly in an emergency (logged). Added 2026-10-18: `service_auto_accept_hours` (48),
+effective time. Super admin may edit directly in an emergency (logged). Added 2026-10-18 (plan 7A Task 1): `wallet_topup_hold_minutes` (60, minimum 60; minutes before top-up money is withdrawable),
+`otp_daily_failure_cap` (20; wrong sign-in or step-up codes per account per day), `vendor_low_balance_pesewas` (10,000; Available at or below this triggers the low-balance text),
+`digest_batch_size` (200; businesses per digest batch) and `digest_time_budget_seconds` (600; longest one digest batch may run), the three low-stock numbers
+`low_stock_cover_days` (7), `low_stock_fallback_units` (5) and `stock_cover_window_days` (28), and also: `service_auto_accept_hours` (48),
 `stay_issue_window_hours` (24) and `event_release_delay_hours` (48) for the booking milestones (§4.2); the verification-overdue
 window now covers products only.
 
@@ -295,7 +298,7 @@ Follow-ups found in the final review; none is reachable while the flag stays off
   have paid the vendor in full: refunds now raise each snapshot's refunded base and fee (reversed when whole), release
   pays only what is left, a skipped stop's case refunds that shop's lines only, and release waits while a delivery-case
   refund is pending the Super Admin's approval.
-- The money-releasing POST has no password re-check (`RequiresSudo`). Owner question: should it? (Still open.)
+- The money-releasing POST has no password re-check (`RequiresSudo`). **DECIDED 2026-10-18:** the system releases automatically; a manual release needs a password re-check (plan 7C Task 1). Original text, superseded: Owner question: should it? (Still open.)
 - **Done in Stage 3a (W5).** The waived delivery fee never reached the ledger: the business's promo cost is now taken
   from its Available at release and given back on a whole refund.
 
@@ -320,8 +323,8 @@ Found while writing the Stage 2 plan (`docs/superpowers/plans/2026-10-16-otp-sec
 - **Hubtel SMS client unverified:** `marketing/providers/hubtel_sms.py` has never sent through a live account; prove one real OTP text first.
 - **Existing accounts with only a foreign phone (or no usable contact):** they get `409 no_channel` and cannot sign in; Support must add an email first (the operational path is not built).
 - **Last contact removed by a staff edit is not re-checked:** a profile or staff edit can leave an account with no usable contact; re-validate before enforcing.
-- **Owner question, long-horizon guessing:** the 15-minute lock still lets someone holding the password try ~20 wrong codes an hour indefinitely; decide a daily cap before enabling. **Built (7C Task 6):** `otp_daily_failure_cap` (governed setting) locks an account for the rest of the Accra day.
-- **Owner question:** should an opted-in authenticator be honoured even when `OTP_SIGNIN_ENFORCED` is off? **Built (7C Task 6):** yes, sign-in asks for an enabled authenticator regardless of the flag; texted/emailed codes stay tied to it.
+- **DECIDED 2026-10-18, long-horizon guessing:** a daily wrong-code cap is set before enabling, governed as `otp_daily_failure_cap` (default 20, range 5-200; setting in plan 7A Task 1, enforcement in plan 7C Task 6). Original text: the 15-minute lock still lets someone holding the password try ~20 wrong codes an hour indefinitely; decide a daily cap before enabling.
+- **DECIDED 2026-10-18:** yes, an opted-in authenticator is honoured even when `OTP_SIGNIN_ENFORCED` is off (plan 7C Task 6). Original text: should an opted-in authenticator be honoured even when `OTP_SIGNIN_ENFORCED` is off?
 - **Devices trusted before authenticator setup keep skipping it** (up to the customer gap); offer "sign out other devices" (revoke trusted devices) when an authenticator is turned on.
 - **Per-IP hourly limit 60 is a guess** (carrier NAT); tune it with real traffic data.
 - **Phones are not normalised at registration**, so several accounts can name one number and share its 20-codes-an-hour ceiling; normalise registration phones (and lower-case emails).
@@ -404,7 +407,7 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   primary-key order), then the promo charge row. A failure webhook and a cancel on the same PENDING order can therefore
   deadlock (Postgres aborts one). Lock the order first, then listings sorted by primary key, then the charge row, as the
   cancel does, when (xi) is fixed.
-- (xvi) **Owner question: the Accountant's dispute-resolve door can refund an undecided delivery case** when the ledger
+- (xvi) **DECIDED 2026-10-18:** accepted as proposed: the Accountant's refund door stays as it is (no build). Original text: **Owner question: the Accountant's dispute-resolve door can refund an undecided delivery case** when the ledger
   is on, so money moves without the Delivery Manager's decision or the Super Admin's approval. Also, dispute and
   delivery wallet refunds send the customer no notice.
 - (xvii) **Checkout locks listings in cart order, not primary-key order** (`orders/views.py` ~160), so a checkout can
@@ -512,23 +515,14 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   no sudo, and send no notice; the portfolio `business.update` approval can change a KYC-verified owner's name with no
   re-KYC. While the ledger is on these need sudo and maker-checker, the old contacts must be notified, and a contact or
   name change must restart the cooling period or block withdrawals.
-  **Built (7C Task 5):** while the ledger is on, those two PATCH doors need sudo and submit `wallets.holder_details_edit`
-  (two_people; one approval from another `users.manage` holder or a Super Admin applies it). Applying revalidates, restarts
-  `payout_cooling_hours` on the holder's destinations and logs the change masked; a stale check uses a keyed digest. Not
-  built: notices to the old contacts, the portfolio `business.update` route (parked), and a staff-name edit door.
-- (xxxv) **Owner question: a second approver (maker-checker) for failing a stuck withdrawal by hand** is undecided (plan
-  B6). **Built (7C Task 4) on the owner's ruling, awaiting owner confirmation:** see (xxxvi). Before: `wallets.manage` plus
-  sudo and a password sufficed, after the provider was asked.
+- (xxxv) **DECIDED 2026-10-18:** a second approver (maker-checker) is required to fail a stuck withdrawal, for any amount (built by plan 7C Task 4, approval kind `wallets.withdrawal_resolution`). Original text, superseded: **Owner question: a second approver (maker-checker) for failing a stuck withdrawal by hand** is undecided (plan
+  B6). Today `wallets.manage` plus sudo and a password suffice, after the provider is asked.
 - (xxxvi) **Amount cases and the staff fail action.** A CONFIRMED amount case is treated like a dismissed one. Staff fail
   is REFUSED (409 `provider_processing`) while the provider says PROCESSING or answers any unmapped status; an
   unreachable provider answers 503 and changes nothing. A payout the provider keeps reporting as PROCESSING, or with a
   different amount, therefore cannot be ended in the app: a maker-checker "settle as paid / fail with provider evidence"
-  action is required before switch-on. **Built (7C Task 4), awaiting owner confirmation:** `wallets.withdrawal_resolution`
-  (two_people, sudo; `POST staff/withdrawals/<id>/resolve/`, and the fail door asks with outcome failed). The provider is
-  asked again at approval: PROCESSING (or unmapped) blocks "failed" (409 `provider_processing`); "paid" with evidence is
-  allowed; a provider not wired to report (NotConnected) lets the evidence stand; an opposite final answer is 409
-  `provider_changed`. Open: a payout stuck at PROCESSING whose money was never sent can only be settled as "paid", which
-  records a payment that did not happen; the owner should confirm that is acceptable or choose another way out.
+  action is required before switch-on. Owner to confirm.
+  **DECIDED 2026-10-18:** the maker-checker "settle as paid / fail with provider evidence" action is the way out for a payout stuck at processing, with mandatory evidence (built by plan 7C Task 4); the staff fail door submits it rather than failing directly.
 - (xxxvii) **The simulated statement is built from AshantiHub's own records,** so reconciliation can only prove sessions
   and journals agree. Plan 7 must supply: a Hubtel status client that raises a distinct "unreachable" exception (see
   (xxvii-b)), real `find()`, `pending_payouts()` and `statement()` implementations, and a flag on any reference that
@@ -561,7 +555,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   them; add the alias.
 - (l) **Test and plan-text notes.** The nested-dict/frame scrubber test is weak, and the contact-change happy path does
   not assert the token was spent. Plan text B6, E5 and the line near 428 is stale; this spec is correct.
-- (li) **Owner question: top-up money can be withdrawn immediately,** so a MoMo collection reversal after a withdrawal
+- (li) **DECIDED 2026-10-18:** top-up money is withdrawable only after a hold of 1 hour, held in the governed setting `wallet_topup_hold_minutes` (default 60, minimum 60); setting in plan 7A Task 1, hold built by plan 7C Task 3. Original text, superseded: **Owner question: top-up money can be withdrawn immediately,** so a MoMo collection reversal after a withdrawal
   could cost AshantiHub money. Consider a hold period on newly topped-up funds.
 - (lii) **Migrations 0003 and 0004 of `wallets` could be folded into one before any deploy** (nothing is deployed yet;
   the 0003 file is root-owned, so fold it with the right permissions).
@@ -644,10 +638,10 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
   own money; only the withdrawal fail is refused so far (403 `own_withdrawal`). List `FraudFlagConfirmView` /
   `FraudFlagDismissView` (`fraud.manage`) and `OrderVerificationView` (`orders.verify`: a rider releasing their own
   deliveries) as owner questions: refuse self-dealing there too, or never give those permissions to a rider's role.
-  Owner question (Task 6): a rider's withdrawal activity events carry the amount and are readable by Operations and line
+  DECIDED 2026-10-18: a rider's withdrawal activity events show the amount (built by plan 7D Task 2; the payout number stays masked). Original text: Owner question (Task 6): a rider's withdrawal activity events carry the amount and are readable by Operations and line
   managers who lack `wallets.view`; decide whether to log only the reference. Owner question: `staff_row` returns the
   withdrawal's `provider_reference` to every `wallets.view` holder, riders' withdrawals included.
-- (xciii) **Owner question: a rider is paid nothing for a delivery whose order is refunded whole,** before release (the fee
+- (xciii) **DECIDED 2026-10-18:** a third-party rider whose delivery was picked up (`picked_up_at` set) before a whole refund is paid, net of the rider commission split (90% of the delivery fee to the rider, 10% commission), and the remainder, including the 10% commission, goes to the customer; a rider who was only assigned (no pickup) gets nothing. If a coupon leaves the customer less than the rider share, the customer's credit floors at 0 and AshantiHub bears the shortfall. `OrderRefund.rider_pesewas` records the share, the posting is keyed `rider-refund-{order.pk}` (idempotent), and pay waits for Support's decision on the refund. Built by plan 7D Task 1. Original text, superseded: **Owner question: a rider is paid nothing for a delivery whose order is refunded whole,** before release (the fee
   goes back to the customer, W4) or after it (the earning is taken back and the balance may go below zero), even when the
   business was at fault and the rider did the work. The alternative is for AshantiHub to pay the rider from its own
   income in those cases. (See also (c): the same wait applies to an unreachable customer, who never pays the rider.)
@@ -656,6 +650,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
   refunds), the ledger refuses the posting and with it the whole refund. Either allow the commission-income account
   to go negative for that one posting (`allow_negative`, as the rider's balance does), or gate the refund and tell
   Support. Not built.
+  **OPEN owner question (found in final review, 2026-10-18):** before release, Delivery payable holds only the fee the customer paid; a delivery fee covered by the free-delivery promo is taken from the business only at release, so on a pre-release refund after pickup the rider gets nothing (`backend/ledger/riders.py` `refund_trip` returns None when `delivery_pesewas == 0`). With delivery fees off by default ((xcvii)) this is the common case today. Who funds rider pay for a promo-covered fee on a refund: the business, AshantiHub, or nobody? Not built; decision needed.
 - (xciv) **A rider switched back to AshantiHub's own can still owe money later.** The switch is refused while money is
   open, but a whole refund after release of an older third-party delivery still reverses its earning (it works on the
   earning, not on the current flag), leaving a negative balance on a closed wallet with no way to recover it in the app
@@ -691,9 +686,9 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
   riders need delivery fees on (owner decision 2026-10-13).
 - (xcviii) **Owner question: rider withdrawal limits.** Riders share the customers' and vendors' governed limits
   (GH₵ 5,000 per withdrawal, GH₵ 10,000 a day, 24-hour cooling); separate rider limits would need new settings.
-- (xcix) **Owner question: rider companies.** `Rider.company_name` is free text. If a rider company itself is to be
+- (xcix) **DECIDED 2026-10-18:** `Rider.company_name` stays free text; company records only if a real company signs (no build). Original text: **Owner question: rider companies.** `Rider.company_name` is free text. If a rider company itself is to be
   contracted, invoiced or paid (instead of each rider), a company record and company payouts are a new plan.
-- (c) **Owner question: rider pay waits for Support's verification call (RA12).** A third-party rider is credited only
+- (c) **DECIDED 2026-10-18:** rider pay on a refund after pickup waits for Support's call on the refund (plan 7D Task 1); the normal-delivery wait for the verification call is unchanged, and the new rider-event amounts are plan 7D Task 2. Original text: **Owner question: rider pay waits for Support's verification call (RA12).** A third-party rider is credited only
   when Support records "matches" (spec §2.2 step 2(c), §4.1), so their pay can wait up to 72 hours, or indefinitely when
   the customer cannot be reached: "could not reach" releases nothing, nothing releases on its own, and so an unreachable
   customer never pays the rider. Their switch back to AshantiHub's own is blocked meanwhile (R3, `deliveries`). Decide
@@ -794,7 +789,7 @@ nothing until `CATALOGUE_MATCHER_ENABLED` is on, and sold-out listings leave sea
   made-to-order product kept at 0 disappears from search. Counted goods only; a service or stay at 0 is never hidden. Also, with the switch on, a sold-out listing with a running
   paid Promotion drops out of search while the promotion keeps running (and keeps being charged for); decide whether to
   pause, extend or warn before it goes on.
-- (cxi) **Owner questions (G1–G12 in the plan):** the 7-day, 5-unit and 28-day defaults and their edges (fewer than 7
+- (cxi) **DECIDED 2026-10-18:** the stock-alert defaults (7 days, 5 units, 28 days) and the G1-G12 assumptions are accepted as proposed (no build). Original text: **Owner questions (G1–G12 in the plan):** the 7-day, 5-unit and 28-day defaults and their edges (fewer than 7
   days; 5 or fewer units) and the single-sale edge of the units fallback (G1), staff-only ungrouping (owner-confirmed on
   2026-10-16: a business also cannot withdraw a barcode match AshantiHub filed), whether the matcher should also file
   exact brand-and-name matches for branded listings without a barcode (they are grouped today only if their business
@@ -1005,7 +1000,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   (a promo, or a release with a promo, up to 306 characters) counts as one text in the alert; count parts if cost matters.
 - (lxxx) **Sender ID and content.** Hubtel needs an Approved Sender ID; confirm whether transactional texts need
   template approval with the networks.
-- (lxxxi) **Owner question: texts on refunds, a negative Available, withdrawals, or a low balance.** The spec names none,
+- (lxxxi) **DECIDED 2026-10-18:** businesses are texted on refunds, a negative Available, withdrawals (requested, paid, failed) and a low balance (Available at or below the governed `vendor_low_balance_pesewas`, default GH₵ 100); at most one balance text per kind per day. Built by plan 7D Task 3 (setting in plan 7A Task 1). Original text, superseded: **Owner question: texts on refunds, a negative Available, withdrawals, or a low balance.** The spec names none,
   so none is sent (3b's in-app withdrawal notices stay).
 - (lxxxii) **Businesses whose login phone is not a confirmed Ghana mobile get no texts** (`no_phone`, in-app copy kept, the
   texts screen says why). A phone is confirmed when a code sent to it was accepted (`otp.VerifiedContact`). This is stricter than
@@ -1028,11 +1023,11 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   the fee page and the texts settings.
 - (lxxxvi) **At-least-once texts.** A worker that dies between the claim and the provider's answer leaves the text to be
   tried again after 10 minutes; with a real provider the business may get it twice.
-- (lxxxvii) **Owner question: a suspended business still gets money texts** (its money still moves).
-- (lxxxviii) **Owner question: the digest loop has no cap or time budget.** `queue_digests` visits every opted-in business in
+- (lxxxvii) **DECIDED 2026-10-18:** a suspended business gets no money texts: its queued texts are dropped (never sent, not backfilled when it is reinstated); in-app notices are kept. Built by plan 7D Task 3. Original text, superseded: **Owner question: a suspended business still gets money texts** (its money still moves).
+- (lxxxviii) **DECIDED 2026-10-18:** the digest loop is batched (`digest_batch_size`, default 200) with a time budget (`digest_time_budget_seconds`, default 600), resuming from a cursor, and a catch-up job at 10:00 Accra sends a missed 07:00 run (which also resolves (lxxxix)); suspended businesses are skipped. Built by plan 7D Task 4 (settings in plan 7A Task 1). Original text, superseded: **Owner question: the digest loop has no cap or time budget.** `queue_digests` visits every opted-in business in
   one run, one at a time; at a large number of opted-in businesses the 07:00 run could take long. Decide a batch size or
   a time budget before switch-on.
-- (lxxxix) **A missed 07:00 run is not caught up.** The job digests "yesterday" only; if the worker or beat is down at
+- (lxxxix) **DECIDED 2026-10-18:** digest batching, a time budget and a catch-up of a missed run (built by plan 7D Task 4, with (lxxxviii)). Original text, superseded: **A missed 07:00 run is not caught up.** The job digests "yesterday" only; if the worker or beat is down at
   07:00 that day's digest is never sent (a manual `queue_digests(day)` can send it).
 - (xc) **A dedicated `texts` Celery queue and worker before real SMS goes live.** Business texts share the default
   queue with other jobs; a slow provider can hold a worker for up to the send budget (75 s) per run. A circuit breaker

@@ -132,7 +132,11 @@ class VendorText(models.Model):
     kept even when the text could not be sent."""
 
     ORDER_PAID, ORDER_RELEASED, DAILY_DIGEST = "order_paid", "order_released", "daily_digest"
-    KIND_CHOICES = [(ORDER_PAID, "Order paid"), (ORDER_RELEASED, "Order released"), (DAILY_DIGEST, "Daily digest")]
+    REFUND, WITHDRAWAL, BALANCE_NEGATIVE, BALANCE_LOW = "refund", "withdrawal", "balance_negative", "balance_low"
+    KIND_CHOICES = [
+        (ORDER_PAID, "Order paid"), (ORDER_RELEASED, "Order released"), (DAILY_DIGEST, "Daily digest"), (REFUND, "Refund"),
+        (WITHDRAWAL, "Withdrawal"), (BALANCE_NEGATIVE, "Balance below zero"), (BALANCE_LOW, "Balance low"),
+    ]
     QUEUED, SENT, FAILED, NO_PHONE = "queued", "sent", "failed", "no_phone"
     STATUS_CHOICES = [(QUEUED, "Waiting to send"), (SENT, "Sent"), (FAILED, "Could not be sent"), (NO_PHONE, "No number to text")]
 
