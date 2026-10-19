@@ -168,6 +168,7 @@ export const NAV_ITEMS = [
   { id: "notification-center", icon: "🔔", label: "Notification center", show: saOnly },
   { id: "staff-announcements", icon: "📣", label: "Staff announcements", show: saOnly },
   { id: "approval-rules", icon: "⏱️", label: "Approval rules & timers", show: saOnly },
+  { id: "money-rules", icon: "💰", label: "Money rules", show: saOnly },
   { id: "delivery-pricing", icon: "🛵", label: "Delivery pricing", show: saOnly },
   { id: "tax-tables", icon: "📑", label: "Tax tables", show: saOnly },
   { id: "integrations", icon: "🔌", label: "Integrations", show: saOnly },
@@ -223,7 +224,7 @@ const ROLE_MENUS = {
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
     ["communication", "Communication", ["notification-center", "staff-announcements"]],
-    ["settings", "Settings", ["approval-rules", "commission-policy", "delivery-pricing", "subscription-plans-approval", "targets", "tax-tables", "categories-zones", "integrations", "system-health"]],
+    ["settings", "Settings", ["approval-rules", "money-rules", "commission-policy", "delivery-pricing", "subscription-plans-approval", "targets", "tax-tables", "categories-zones", "integrations", "system-health"]],
   ],
   // Operations, exactly as the approved canvas draws it (Overview is pinned
   // above the groups). Users, Scout Assignments, Register a business, Field
