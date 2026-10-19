@@ -8,6 +8,7 @@ from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import filters, generics
+from rest_framework.exceptions import APIException
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -31,7 +32,7 @@ from storefront.permissions import MarketplaceOpen
 from payments.models import CheckoutSession
 from payments.services import process_payment
 
-from . import scan_notice
+from . import cancellation, scan_notice
 from .models import Event, EventPricingTier, EventRSVP, EventTicketType, Ticket
 from .permissions import (
     IsCustomerOrBusinessOwner,
@@ -93,6 +94,19 @@ def _live_events_queryset():
         avg_rating=Avg("reviews__rating", filter=Q(reviews__status="published")),
         review_count=Count("reviews", filter=Q(reviews__status="published"), distinct=True),
     )
+
+
+class EventCancelledConflict(APIException):
+    """409 {"code": "event_cancelled"}: a cancelled event is final (events.cancellation)."""
+
+    status_code = 409
+
+    def __init__(self):
+        super().__init__({"detail": cancellation.DETAIL, "code": cancellation.CODE})
+
+
+def _cancelled_response():
+    return Response({"detail": cancellation.DETAIL, "code": cancellation.CODE}, status=409)
 
 
 class EventPagination(PageNumberPagination):
@@ -384,6 +398,13 @@ class EventOwnerUpdateView(generics.UpdateAPIView):
     http_method_names = ["patch"]
 
     def perform_update(self, serializer):
+        with db_transaction.atomic():
+            # Locked, so an edit never crosses a cancel: a cancelled event is never reopened (Plan 7F-C).
+            if Event.objects.select_for_update().get(pk=serializer.instance.pk).status == Event.CANCELLED:
+                raise EventCancelledConflict()
+            self._save_and_requeue(serializer)
+
+    def _save_and_requeue(self, serializer):
         event = serializer.save()
         # Any edit re-enters moderation. A rejected event being fixed, or a
         # live one being changed, both go back to pending.
@@ -414,6 +435,8 @@ class EventRenewView(APIView):
         event = generics.get_object_or_404(Event, pk=pk)
         self.check_object_permissions(request, event)
 
+        if event.status == Event.CANCELLED:
+            return _cancelled_response()
         if event.paid_at is None or event.status not in (Event.APPROVED, Event.EXPIRED):
             return Response(
                 {"detail": "Only a paid, live or expired event can be renewed."}, status=400
@@ -581,7 +604,13 @@ class EventApproveView(APIView):
         return [HasRolePermission("event.approve")]
 
     def post(self, request, pk):
-        event = generics.get_object_or_404(Event, pk=pk)
+        with db_transaction.atomic():
+            event = generics.get_object_or_404(Event.objects.select_for_update(), pk=pk)
+            if event.status == Event.CANCELLED:
+                return _cancelled_response()
+            return self._approve(request, event)
+
+    def _approve(self, request, event):
         event.status = Event.APPROVED
         event.rejection_reason = None
         event.approved_by = request.user
@@ -613,6 +642,8 @@ class EventRejectView(APIView):
         if not reason:
             return Response({"reason": "A rejection reason is required."}, status=400)
         event = generics.get_object_or_404(Event, pk=pk)
+        if event.status == Event.CANCELLED:
+            return _cancelled_response()  # a cancelled event is final (Plan 7F-C)
         event.status = Event.REJECTED
         event.rejection_reason = reason
         event.reviewed_by = request.user
@@ -1130,10 +1161,15 @@ class EscrowReleaseView(APIView):
         note = _required_note(request.data.get("note"))
         if note is None:
             return Response({"note": "Write a note of at least 3 characters: every release is explained."}, status=400)
-        if _ledger_sale(generics.get_object_or_404(Ticket, pk=ticket_id)) is not None:
+        ticket = generics.get_object_or_404(Ticket.objects.select_related("ticket_type__event"), pk=ticket_id)
+        if ticket.ticket_type.event.status == Event.CANCELLED:
+            return _cancelled_response()  # its tickets are being refunded, never paid out (Plan 7F-C)
+        if _ledger_sale(ticket) is not None:
             return Response({"detail": LEDGER_RELEASES, "code": "ledger_on"}, status=409)
         with db_transaction.atomic():
             ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
+            if Event.objects.filter(ticket_types__tickets=ticket, status=Event.CANCELLED).exists():
+                return _cancelled_response()
 
             if ticket.refunded_at is not None:
                 return Response({"detail": "This ticket was refunded and cannot be released."}, status=400)

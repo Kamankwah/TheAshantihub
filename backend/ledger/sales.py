@@ -202,6 +202,8 @@ def release_due(now=None):
             continue
         if candidate.kind == BookingSale.TICKETS and candidate.event.status in (Event.PENDING, Event.REJECTED):
             continue  # an event sent back for review or rejected is not paid out; one merely past its listing window is
+        if candidate.kind == BookingSale.TICKETS and candidate.event.status == Event.CANCELLED:
+            continue  # a cancelled event's tickets are being refunded (events.cancellation), never paid out
         try:
             with transaction.atomic():
                 sale = lock(candidate)

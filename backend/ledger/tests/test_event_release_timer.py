@@ -76,6 +76,15 @@ class EventReleaseTimerTests(BookingBase):
         self.assertEqual(Ticket.objects.filter(transaction=sale.session.transaction, refunded_at__isnull=True).count(), 0)
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.owner), 0)
 
+    def test_release_due_skips_cancelled_event(self):
+        sale = self.paid_tickets()
+        due = sales.release_at(sale) + timedelta(hours=1)
+        Event.objects.filter(pk=sale.event_id).update(status=Event.CANCELLED)  # a cancel whose refunds have not run yet
+        self.assertEqual(sales.release_due(due), 0)
+        sale.refresh_from_db()
+        self.assertIsNone(sale.released_at)
+        self.assertEqual(self.balance(Account.VENDOR_PENDING, self.owner), sale.base_pesewas)
+
     def test_job_is_scheduled_hourly(self):
         entry = settings.CELERY_BEAT_SCHEDULE["ledger-release-due-booking-sales"]
         self.assertEqual(entry["task"], "ledger.tasks.release_due_booking_sales")

@@ -57,11 +57,15 @@ class Event(models.Model):
     APPROVED = "approved"
     REJECTED = "rejected"
     EXPIRED = "expired"
+    # Final (Plan 7F-C, ruling R4): set only by events.cancellation.cancel_event, which refunds every ticket. Nothing
+    # moves a cancelled event to another status: edit, approve, reject, renew and the renewal finalizer all refuse it.
+    CANCELLED = "cancelled"
     STATUS_CHOICES = [
         (PENDING, "Pending"),
         (APPROVED, "Approved"),
         (REJECTED, "Rejected"),
         (EXPIRED, "Expired"),
+        (CANCELLED, "Cancelled"),
     ]
 
     PUBLIC = "public"
@@ -111,6 +115,13 @@ class Event(models.Model):
 
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+
+    # Who cancelled it and why (events.cancellation): the staff member, or null when the organiser cancelled.
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancel_reason = models.CharField(max_length=300, blank=True, default="")
+    cancelled_by_staff = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
 
     paid_at = models.DateTimeField(null=True, blank=True)
     # Computed as paid_at + visibility_days once the organizer pays for an
