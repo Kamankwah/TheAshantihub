@@ -123,6 +123,7 @@ export default function DeliveryPromosPanel() {
               <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem" }}>{p.name}</div>
               <span style={{ background: `${color}22`, color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{label}{p.live ? " · running now" : ""}</span>
             </div>
+            {p.funded_by === "platform" && <div style={{ marginTop: 4 }}><span style={{ background: `${D.green}22`, color: D.green, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>AshantiHub pays</span></div>}
             <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 4 }}>{when(p.starts_at)} to {when(p.ends_at)}</div>
             <div style={{ color: D.textFaint, fontSize: "0.72rem", marginTop: 4 }}>{p.all_items ? "All your items" : p.listings.map((l) => l.name).join(", ")}</div>
             <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 4 }}>Delivery covered so far: GH₵ {p.covered_total} on {p.covered_orders} {p.covered_orders === 1 ? "order" : "orders"}</div>

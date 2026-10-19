@@ -347,6 +347,16 @@ export const handlers = [
   http.get('http://localhost:8000/api/listings/hero/pending/', () => {
     return HttpResponse.json([])
   }),
+  // Free-delivery promos (staff queue and the AshantiHub-paid create) - overridden per test.
+  http.get('http://localhost:8000/api/marketing/delivery-promos/', () => HttpResponse.json({ results: [] })),
+  http.post('http://localhost:8000/api/marketing/delivery-promos/platform/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json({
+      id: 90, name: body.name, business_id: body.business_owner, business: 'Business', starts_at: body.starts_at, ends_at: body.ends_at, all_items: true, listings: [],
+      status: 'pending', effective_status: 'pending', live: false, source: 'staff', rejection_reason: '', covered_orders: 0, covered_total: '0.00',
+      funded_by: 'platform', budget_cap: body.budget_cap, spent: '0.00', awaiting_approval: true, approval_id: 91, approval: { id: 91, status: 'pending' },
+    }, { status: 201 })
+  }),
   http.get('http://localhost:8000/api/accounts/customers/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),

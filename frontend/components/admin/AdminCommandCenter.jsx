@@ -554,7 +554,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "mk-consent" && <ConsentPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "mk-flash-sales" && <FlashSalesPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "mk-coupons" && <CouponsPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
-          {activeTab === "mk-delivery-promos" && <DeliveryPromosPanel />}
+          {activeTab === "mk-delivery-promos" && <DeliveryPromosPanel auth={auth} />}
           {activeTab === "mk-banners" && <BannersPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "mk-featured" && <FeaturedListingsPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "mk-results" && <CampaignResultsPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
