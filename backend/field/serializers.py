@@ -39,14 +39,16 @@ class CheckInSerializer(FixSerializer):
     business_owner = serializers.IntegerField(required=False, allow_null=True)
     scout_assignment = serializers.IntegerField(required=False, allow_null=True)
     prospect = serializers.IntegerField(required=False, allow_null=True)
+    change_request = serializers.IntegerField(required=False, allow_null=True)
     purpose = serializers.ChoiceField(choices=VisitCheckIn.PURPOSE_CHOICES, required=False)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        picked = [attrs.get(key) for key in ("business_owner", "scout_assignment", "prospect") if attrs.get(key)]
+        places = ("business_owner", "scout_assignment", "prospect", "change_request")
+        picked = [attrs.get(key) for key in places if attrs.get(key)]
         if len(picked) != 1:
             raise serializers.ValidationError({"detail": "Pick the place you are visiting."})
-        if not attrs.get("scout_assignment") and not attrs.get("purpose"):
+        if not attrs.get("scout_assignment") and not attrs.get("change_request") and not attrs.get("purpose"):
             raise serializers.ValidationError({"purpose": "Pick a purpose for the visit."})
         return attrs
 
@@ -92,6 +94,7 @@ def visit_item(visit, request=None):
             "has_pin": prospect_pin(prospect) is not None,
         } if prospect is not None else None,
         "scout_assignment_id": visit.scout_assignment_id,
+        "change_request_id": visit.change_request_id,
         "scout_name": visit.scout.full_name,
         "checked_in_at": visit.checked_in_at,
         "checked_out_at": visit.checked_out_at,

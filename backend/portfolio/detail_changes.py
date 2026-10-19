@@ -16,11 +16,13 @@ from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from datetime import timedelta
+
 from accounts.claims import mask_email
 from accounts.models import BusinessOwner, Customer
 from accounts.phones import filter_by_phone, mask_phone, normalize_gh_phone, phone_key
 from activity.services import record
-from notifications.services import notify_staff, notify_staff_role
+from notifications.services import notify_business_owner, notify_staff, notify_staff_role
 
 from .models import BusinessDetailChangeRequest as Request
 
@@ -48,6 +50,20 @@ UNAVAILABLE = "That phone number or email cannot be used. Contact AshantiHub Sup
 REASON_TOO_LONG = f"Keep the reason to {REASON_MAX} characters or fewer."
 NOT_FOUND = "We couldn't find that request."
 NOT_WITHDRAWABLE = "This request can no longer be withdrawn."
+NOT_A_SCOUT = "That staff member is not an active scout who can verify businesses."
+NOT_ASSIGNABLE = "This request is no longer waiting for a scout."
+ALREADY_ASSIGNED_TO_THEM = "That scout is already assigned to this request."
+NOT_WAITING_FOR_VISIT = "This request is no longer waiting for your visit."
+OUTCOME_INVALID = "Say whether the change was verified or not verified."
+NOTE_MIN, NOTE_MAX = 10, 500
+NOTE_INVALID = f"Write {NOTE_MIN} to {NOTE_MAX} characters about what you checked on site."
+NO_VISIT = "Check in at the business for this request first, then record what you found."
+OUTSIDE_RADIUS = "Your visit was checked in too far from the business pin. Visit again and check in at the business."
+NO_PIN = "The business has no map pin, so your visit can't be measured. Ask Operations to pin it first."
+
+APPROVAL_KIND = "business.detail_change"  # registered by portfolio.approval_kinds (plan 7F-C Task 8)
+SCOUT_PERMISSION = "scouts.verify"
+VISIT_DUE = timedelta(hours=48)
 
 
 class DetailChangeError(Exception):
@@ -199,6 +215,7 @@ def withdraw(owner, request_id, http_request=None):
     change.status = Request.WITHDRAWN
     change.decided_at = timezone.now()
     change.save(update_fields=["status", "decided_at"])
+    _close_visit_tasks(change, cancelled=True)
     label = LABELS[change.field]
     if change.assigned_scout_id:
         notify_staff(
@@ -232,4 +249,270 @@ def row(change):
         "verified_at": change.verified_at,
         "decided_at": change.decided_at,
         "can_withdraw": change.status in Request.WITHDRAWABLE_STATUSES,
+    }
+
+
+# ── Operations assigns a scout; the scout verifies on site (plan 7F-C Task 7) ────────────────────────────────────
+
+
+def _visit_tasks(change):
+    from staff_tasks.models import Task
+
+    return Task.objects.filter(
+        source_type=Request._meta.label_lower, source_id=str(change.pk), status=Task.OPEN,
+    )
+
+
+def _close_visit_tasks(change, *, cancelled):
+    """Close the open visit task(s) made for this request: cancelled when the visit is no longer needed (withdrawn,
+    reassigned), done when the scout recorded the outcome."""
+    from staff_tasks.models import Task
+
+    status = Task.CANCELLED if cancelled else Task.DONE
+    return _visit_tasks(change).update(status=status, done_at=timezone.now())
+
+
+def _locked(request_id):
+    if not str(request_id).isdigit():
+        return None
+    return Request.objects.select_for_update().select_related("business_owner").filter(pk=request_id).first()
+
+
+def assign(staff, request_id, scout_id, http_request=None):
+    """Operations (scouts.assign, checked by the view) assigns a scout to verify the request on site. The scout must be
+    an active, unsuspended scout who holds scouts.verify, and must not be one who put the business's details forward
+    (accounts.kyc.is_kyc_submitter: its registrar, account manager, address corrector, ...). A request still waiting
+    for its visit can be reassigned; the first scout's task is cancelled and they are told. The scout gets a task due
+    in 48 hours. Raises DetailChangeError: 404 not_found, 400 not_a_scout / kyc_submitter / already_assigned,
+    409 not_assignable."""
+    from accounts import kyc
+    from accounts.permissions import staff_holding
+    from staff_tasks.models import Task
+    from staff_tasks.services import create_task
+
+    change = _locked(request_id)
+    if change is None:
+        raise DetailChangeError(NOT_FOUND, "not_found", status_code=404)
+    if change.status not in (Request.REQUESTED, Request.ASSIGNED):
+        raise DetailChangeError(NOT_ASSIGNABLE, "not_assignable", status_code=409)
+    scout = (
+        staff_holding(SCOUT_PERMISSION).filter(pk=scout_id, role__name="scout").select_related("role").first()
+        if str(scout_id).isdigit() else None
+    )
+    if scout is None:
+        raise DetailChangeError(NOT_A_SCOUT, "not_a_scout")
+    owner = change.business_owner
+    if kyc.is_kyc_submitter(owner, scout):
+        # The assign door's wording (accounts.views.ScoutAssignmentListCreateView).
+        raise DetailChangeError(
+            f"{scout.full_name} registered or manages this business — assign another scout.", "kyc_submitter",
+        )
+    previous = change.assigned_scout if change.status == Request.ASSIGNED else None
+    if previous is not None and previous.pk == scout.pk:
+        raise DetailChangeError(ALREADY_ASSIGNED_TO_THEM, "already_assigned")
+    now = timezone.now()
+    if previous is not None:
+        _close_visit_tasks(change, cancelled=True)
+    change.status = Request.ASSIGNED
+    change.assigned_scout, change.assigned_by, change.assigned_at = scout, staff, now
+    change.save(update_fields=["status", "assigned_scout", "assigned_by", "assigned_at"])
+    label = LABELS[change.field]
+    create_task(
+        scout, f"Visit {owner.display_name} to verify its new {label}", now + VISIT_DUE,
+        notes="Check in at the business for this request, confirm the change with the owner in person, then record "
+              "whether it is verified.",
+        source=change, created_by=staff, kind=Task.OPS_FOLLOW_UP, business=owner,
+    )
+    notify_staff(
+        scout, "detail_change_assigned", f"Verify {owner.display_name}'s new {label} on site"[:200],
+        body="Visit within 48 hours.", link="detail-changes", icon="🪪",
+    )
+    if previous is not None:
+        notify_staff(
+            previous, "detail_change_reassigned", f"{owner.display_name}'s {label} change went to another scout"[:200],
+            body="No visit is needed from you for it.", link="detail-changes", icon="🪪",
+        )
+    record(
+        staff, "business.detail_change_assigned", target=owner,
+        summary=f"Assigned {scout.full_name} to verify the business's new {label} on site",
+        after={"request_id": change.pk, "field": change.field, "scout_id": scout.pk,
+               "previous_scout_id": previous.pk if previous is not None else None},
+        request=http_request,
+    )
+    return change
+
+
+def _note(value):
+    text = ("" if value is None else str(value)).strip()
+    if not NOTE_MIN <= len(text) <= NOTE_MAX:
+        raise DetailChangeError(NOTE_INVALID, "note_invalid")
+    from wallets.approval_kinds import mask_numbers
+
+    # The note is staff-facing text kept for good (the request and the approval's maker note): a number or email the
+    # scout types into it is masked as the business's reason is.
+    return mask_numbers(_EMAIL_IN_TEXT.sub(lambda match: mask_email(match.group()), text))[:NOTE_MAX]
+
+
+def _verifying_visit(change, scout):
+    """The scout's visit for this request that proves they were there: done or still open (never abandoned), and
+    measured inside the radius of the business pin. 409 no_visit / outside_radius / no_pin otherwise."""
+    from field.models import VisitCheckIn
+
+    visits = list(
+        VisitCheckIn.objects.filter(
+            change_request=change, scout=scout, purpose=VisitCheckIn.CHANGE_VERIFICATION,
+            status__in=(VisitCheckIn.DONE, VisitCheckIn.OPEN),
+        ).order_by("-checked_in_at", "-id")
+    )
+    if not visits:
+        raise DetailChangeError(NO_VISIT, "no_visit", status_code=409)
+    for visit in visits:
+        if visit.distance_m is not None and not visit.outside_radius:
+            return visit
+    if all(visit.distance_m is None for visit in visits):
+        raise DetailChangeError(NO_PIN, "no_pin", status_code=409)
+    raise DetailChangeError(OUTSIDE_RADIUS, "outside_radius", status_code=409)
+
+
+def submit_for_approval(change, scout, note, http_request=None):
+    """Stage the verified change for two people with the password (kind business.detail_change). The verifying scout
+    is the maker, so approvals never lets them decide it, and accounts.kyc.is_kyc_submitter (Task 8 adds the kind)
+    keeps them off the business's KYC too. The payload holds the raw value because applying needs it; the kind's
+    public_payload masks it wherever it is shown or logged. Returns the approval, or None while the kind is not
+    registered (before Task 8 lands), in which case the request stays verified and waiting."""
+    from approvals.registry import get_kind
+    from approvals.services import submit
+
+    from .proposals import _owner_target_type
+
+    if get_kind(APPROVAL_KIND) is None:
+        return None
+    owner = change.business_owner
+    approval = submit(
+        scout, APPROVAL_KIND, title=f"Change the {LABELS[change.field]} of {owner.display_name}",
+        payload={
+            "change_request_id": change.pk, "business_owner_id": owner.pk, "field": change.field,
+            "new_value": change.new_value,
+        },
+        target_type=_owner_target_type(), target_id=str(owner.pk), target_label=owner.display_name,
+        maker_note=note, request=http_request,
+    )
+    change.approval = approval
+    change.save(update_fields=["approval"])
+    return approval
+
+
+def verify(scout, request_id, outcome, note, http_request=None):
+    """The assigned scout records what they found on site. Requires their own change verification visit for this
+    request, inside the radius. "verified" moves the request to verified and submits the approval with the scout as
+    maker; "not_verified" ends it (the business files a new one) and tells the business and Operations.
+    Raises DetailChangeError: 404 not_found (not theirs), 403 kyc_submitter, 409 not_waiting / no_visit /
+    outside_radius / no_pin, 400 outcome_invalid / note_invalid."""
+    from accounts import kyc
+
+    change = _locked(request_id)
+    if change is None or change.assigned_scout_id != scout.pk:
+        raise DetailChangeError(NOT_FOUND, "not_found", status_code=404)
+    if change.status != Request.ASSIGNED:
+        raise DetailChangeError(NOT_WAITING_FOR_VISIT, "not_waiting", status_code=409)
+    if outcome not in (Request.VERIFIED, Request.NOT_VERIFIED):
+        raise DetailChangeError(OUTCOME_INVALID, "outcome_invalid")
+    note = _note(note)
+    owner = change.business_owner
+    # Checked again: the scout may have become the business's account manager since they were assigned.
+    if kyc.is_kyc_submitter(owner, scout):
+        raise DetailChangeError(kyc.OWN_REGISTRATION, "kyc_submitter", status_code=403)
+    visit = _verifying_visit(change, scout)
+    now = timezone.now()
+    label = LABELS[change.field]
+    change.visit, change.verification_note = visit, note
+    if outcome == Request.VERIFIED:
+        change.status, change.verified_at = Request.VERIFIED, now
+        change.save(update_fields=["status", "visit", "verification_note", "verified_at"])
+        _close_visit_tasks(change, cancelled=False)
+        approval = submit_for_approval(change, scout, note, http_request=http_request)
+        notify_business_owner(
+            owner, "detail_change_verified", f"A scout verified your {label} change",
+            body="It now needs approval from AshantiHub before it takes effect.", link="detail-changes", icon="🪪",
+        )
+        record(
+            scout, "business.detail_change_verified", target=owner,
+            summary=f"Verified the business's new {label} on site",
+            after={"request_id": change.pk, "field": change.field, "visit_id": visit.pk,
+                   "approval_id": approval.pk if approval is not None else None},
+            request=http_request,
+        )
+        return change
+    change.status = Request.NOT_VERIFIED
+    change.decided_at = now
+    change.save(update_fields=["status", "visit", "verification_note", "decided_at"])
+    _close_visit_tasks(change, cancelled=False)
+    notify_business_owner(
+        owner, "detail_change_not_verified", f"Your {label} change could not be verified",
+        body="The scout could not confirm it on site, so nothing changed. You can file a new request.",
+        link="detail-changes", icon="🪪",
+    )
+    notify_staff_role(
+        OPERATIONS_PERMISSION, "detail_change_not_verified",
+        f"{owner.display_name}'s {label} change was not verified on site"[:200],
+        body=f"{scout.full_name} could not confirm it. The request has ended.", link="detail-changes", icon="🪪",
+    )
+    record(
+        scout, "business.detail_change_not_verified", target=owner,
+        summary=f"Could not verify the business's new {label} on site; the request ended",
+        after={"request_id": change.pk, "field": change.field, "visit_id": visit.pk},
+        request=http_request,
+    )
+    return change
+
+
+def staff_row(change):
+    """What Operations sees of one request: the new value masked as everywhere else (a name in full)."""
+    scout = change.assigned_scout
+    return {
+        "id": change.pk,
+        "business": {"id": change.business_owner_id, "name": change.business_owner.display_name},
+        "field": change.field,
+        "field_label": change.get_field_display(),
+        "new_value": shown(change.field, change.new_value),
+        "reason": change.reason,
+        "status": change.status,
+        "status_label": change.get_status_display(),
+        "requested_at": change.requested_at,
+        "assigned_scout": {"id": scout.pk, "name": scout.full_name} if scout is not None else None,
+        "assigned_at": change.assigned_at,
+        "verified_at": change.verified_at,
+        "verification_note": change.verification_note,
+        "visit_id": change.visit_id,
+        "approval_id": change.approval_id,
+        "decided_at": change.decided_at,
+    }
+
+
+def scout_row(change):
+    """What the assigned scout sees: the field and the new value in full (they verify it on the ground with the owner),
+    the current value masked, and where the business is."""
+    from field.services import business_pin
+
+    owner = change.business_owner
+    profile = getattr(owner, "profile", None)
+    zone = getattr(profile, "zone", None)
+    pin = business_pin(owner)
+    return {
+        "id": change.pk,
+        "business": {
+            "id": owner.pk, "name": owner.display_name, "area": zone.name if zone else None,
+            "has_pin": pin is not None,
+        },
+        "field": change.field,
+        "field_label": change.get_field_display(),
+        "current_value": shown(change.field, getattr(owner, change.field)),
+        "new_value": change.new_value,
+        "reason": change.reason,
+        "status": change.status,
+        "status_label": change.get_status_display(),
+        "assigned_at": change.assigned_at,
+        "due_at": change.assigned_at + VISIT_DUE if change.assigned_at else None,
+        "verified_at": change.verified_at,
+        "can_verify": change.status == Request.ASSIGNED,
     }
