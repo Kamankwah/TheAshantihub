@@ -5,8 +5,8 @@ from django.test import override_settings
 from django.utils import timezone
 
 from delivery.models import RiderEarning
-from ledger import posting, refunds, riders
-from ledger.models import Account, Journal, JournalLine
+from ledger import escrow, posting, refunds, riders
+from ledger.models import Account, FulfilmentCheck, Journal, JournalLine
 from orders.models import DeliveryAssignment, Order
 
 from . import rider_helpers
@@ -20,8 +20,8 @@ class RiderRefundPayTests(RefundBase):
         self.kofi = self.owner("Kofi")
         self.swift = rider_helpers.rider()
 
-    def assigned(self, rider_row=None, *, status, picked_up=False):
-        order = self.paid([(self.listing(self.kofi, "60.00"), 1)], delivery="10.00")
+    def assigned(self, rider_row=None, *, status, picked_up=False, discount="0.00"):
+        order = self.paid([(self.listing(self.kofi, "60.00"), 1)], delivery="10.00", discount=discount)
         order.delivery_method = Order.DOOR_TO_DOOR
         order.save(update_fields=["delivery_method"])
         DeliveryAssignment.objects.create(
@@ -60,8 +60,11 @@ class RiderRefundPayTests(RefundBase):
         self.assertEqual(self.balance(Account.DELIVERY_PAYABLE, order), 0)
         self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 0)
         self.assertEqual(refund.delivery_pesewas, 1000)                    # the refund still accounts for the whole fee
+        self.assertEqual((refund.rider_pesewas, refund.wallet_pesewas), (900, 6100))   # what the customer is told went back
         earning = RiderEarning.objects.get(order=order)
-        self.assertEqual((earning.rider_id, earning.gross_pesewas, earning.net_pesewas, earning.reserve_pesewas), (self.swift.pk, 900, 900, 0))
+        self.assertEqual((earning.rider_id, earning.gross_pesewas, earning.net_pesewas, earning.reserve_pesewas, earning.commission_bp),
+            (self.swift.pk, 900, 900, 0, 0),
+        )
         self.assertEqual(earning.journal.key, f"rider-refund-{order.pk}")
         self.assertEqual(refunds.left(order).delivery, 0)
         self.assert_balanced()
@@ -69,8 +72,35 @@ class RiderRefundPayTests(RefundBase):
     def test_a_later_release_pays_nothing_more(self):
         order = self.assigned(status=DeliveryAssignment.PICKED_UP, picked_up=True)
         refunds.refund_order(order, source="dispute-1")
-        self.assertEqual(riders.credit_on_refund(order, timezone.now()), 0)
+        now = timezone.now()
+        DeliveryAssignment.objects.filter(order=order).update(status=DeliveryAssignment.DELIVERED, delivered_at=now)
+        order.refresh_from_db()
+        FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        escrow.release_verified(order)                                     # the call arrives after the refund
         self.assertEqual(self.rider_balances(), (900, 0))
+        self.assertFalse(Journal.objects.filter(key=riders.earning_key(order)).exists())
+        self.assertEqual(RiderEarning.objects.filter(order=order).count(), 1)
+        self.assert_balanced()
+
+    def test_a_coupon_that_leaves_less_than_the_rider_share_still_pays_the_rider_in_full(self):
+        order = self.assigned(status=DeliveryAssignment.PICKED_UP, picked_up=True, discount="65.00")   # the customer paid 5.00
+        refund = refunds.refund_order(order, source="dispute-1")
+        self.assertEqual(self.rider_balances(), (900, 0))
+        self.assertEqual(self.wallet(), 0)                                 # floored: AshantiHub bears the rest
+        self.assertEqual((refund.rider_pesewas, refund.wallet_pesewas), (900, 0))
+        self.assertEqual(self.balance(Account.DELIVERY_PAYABLE, order), 0)
+        self.assert_balanced()
+
+    def test_a_partial_then_whole_refund_with_a_coupon_pays_the_rider_in_full(self):
+        order = self.assigned(status=DeliveryAssignment.PICKED_UP, picked_up=True, discount="5.00")
+        refunds.refund_order(order, 6000, source="dispute-1")
+        refund = refunds.refund_order(order, source="dispute-2")
+        self.assertTrue(refund.whole)
+        self.assertEqual(self.rider_balances(), (900, 0))
+        self.assertEqual(self.wallet(), 6000)
+        self.assertEqual(refund.wallet_pesewas, 0)
+        self.assertEqual(self.balance(Account.DELIVERY_PAYABLE, order), 0)
+        self.assert_balanced()
 
     def test_refund_after_release_still_reverses_the_earning(self):
         order = self.assigned(status=DeliveryAssignment.CONFIRMED, picked_up=True)
@@ -113,5 +143,5 @@ class RiderRefundPayTests(RefundBase):
     @override_settings(LEDGER_ENABLED=False)
     def test_inert_while_the_ledger_is_off(self):
         order = self.assigned(status=DeliveryAssignment.PICKED_UP, picked_up=True)
-        self.assertEqual(riders.credit_on_refund(order, timezone.now()), 0)
         self.assertIsNone(refunds.refund_order(order, source="dispute-1"))
+        self.assertFalse(RiderEarning.objects.exists())
