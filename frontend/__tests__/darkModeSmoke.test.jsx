@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../mocks/server.js'
 import BusinessCommandCenter from '../components/dashboard/BusinessCommandCenter.jsx'
-import { StaffDashboard } from '../App.jsx'
+import AshantiHub, { StaffDashboard, UserPanel } from '../App.jsx'
+import { MemoryRouter } from 'react-router-dom'
 import { setStoredAuth } from '../apiClient.js'
 import { fullHome } from '../mocks/storefront.js'
 import StorefrontHeader from '../components/storefront/StorefrontHeader.jsx'
@@ -80,11 +81,22 @@ export function lightOnlyStyles(root = document.body) {
 const usesThemeTokens = (root = document.body) =>
   [...root.querySelectorAll('[style]')].some((el) => /var\(--ah-/.test(el.getAttribute('style')))
 
+// framer-motion's whileInView (the shadcn About page) needs an observer
+class FakeIntersectionObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() { return [] }
+}
+
 beforeEach(() => {
+  window.IntersectionObserver = FakeIntersectionObserver
+  Element.prototype.scrollIntoView = Element.prototype.scrollIntoView || (() => {})
   document.documentElement.dataset.theme = 'dark'
   document.documentElement.classList.add('dark')
 })
 afterEach(() => {
+  delete window.IntersectionObserver
   delete document.documentElement.dataset.theme
   document.documentElement.classList.remove('dark')
 })
@@ -196,4 +208,34 @@ describe('dark mode smoke: cart drawer', () => {
     expect(usesThemeTokens()).toBe(true)
     expect(lightOnlyStyles()).toEqual([])
   })
+})
+
+describe('dark mode smoke: account', () => {
+  it('every account tab renders with theme tokens and no light-only surfaces', async () => {
+    withClient(
+      <UserPanel user={{ fullName: 'Ama Boateng', accountType: 'customer', id: 1, avatar: null }} auth={{ updateProfile: vi.fn(), refreshUser: vi.fn() }}
+        favourites={[]} toggleFav={vi.fn()} onExit={vi.fn()} PaymentComponent={() => null} theme="dark" toggleTheme={vi.fn()} />,
+    )
+    await screen.findByText('Total Orders')
+    expect(screen.getByRole('button', { name: 'Toggle theme' })).toBeInTheDocument()
+    expect(usesThemeTokens()).toBe(true)
+    expect(lightOnlyStyles()).toEqual([])
+    for (const tab of ['Orders & Delivery', 'Saved Businesses', 'Messages', 'My Events', 'My Tickets', 'Profile', 'Settings']) {
+      fireEvent.click(screen.getAllByText(tab)[0])
+      await new Promise((r) => setTimeout(r, 30))
+      expect(lightOnlyStyles(), tab).toEqual([])
+    }
+  })
+})
+
+describe('dark mode smoke: public pages', () => {
+  it.each(['/business', '/events', '/about', '/contact', '/faq', '/no-such-page'])('%s renders with theme tokens and no light-only surfaces', async (path) => {
+    localStorage.setItem('ashantihub.theme', 'dark')
+    withClient(<MemoryRouter initialEntries={[path]}><AshantiHub /></MemoryRouter>)
+    await new Promise((r) => setTimeout(r, 2100)) // past the splash screen
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(usesThemeTokens()).toBe(true)
+    expect(lightOnlyStyles()).toEqual([])
+    localStorage.removeItem('ashantihub.theme')
+  }, 10000)
 })
