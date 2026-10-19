@@ -33,6 +33,14 @@ export const handlers = [
     return HttpResponse.json({ status: 'saved' })
   }),
   http.post('http://localhost:8000/api/storefront/notify-me/stop/', () => HttpResponse.json({ status: 'stopped' })),
+  // Marketplace home feeds (Task 10): nothing live by default, so every home
+  // section hides itself. Tests fill them with mocks/storefront.js.
+  http.get('http://localhost:8000/api/listings/categories/tree/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/listings/categories/:id/visit/', () => new HttpResponse(null, { status: 204 })),
+  http.get('http://localhost:8000/api/storefront/search/', () => HttpResponse.json({ products: [], services: [], stays: [], events: [] })),
+  http.get('http://localhost:8000/api/storefront/deals/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/storefront/home/', () => HttpResponse.json({ most_visited: [] })),
+  http.get('http://localhost:8000/api/marketing/banners/', () => HttpResponse.json({ banners: [] })),
   // Marketing consent card (customer Settings, business Profile & Settings): nothing ticked, no wording.
   http.get('http://localhost:8000/api/marketing/consent/me/', () => {
     return HttpResponse.json({ channels: Object.fromEntries(['sms', 'whatsapp', 'email', 'inapp'].map((k) => [k, { label: k, status: null, at: null, wording: `Send me offers by ${k}.`, wording_label: '' }])) })

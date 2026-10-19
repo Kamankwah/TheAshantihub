@@ -10,4 +10,5 @@ urlpatterns = [
     path("notify-me/stop/", views.NotifyStopView.as_view(), name="storefront-notify-stop"),
     path("deals/", views.DealsView.as_view(), name="storefront-deals"),
     path("search/", views.SearchView.as_view(), name="storefront-search"),
+    path("home/", views.HomeFeedView.as_view(), name="storefront-home"),
 ]

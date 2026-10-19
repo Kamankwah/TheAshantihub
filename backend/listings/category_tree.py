@@ -32,16 +32,22 @@ def _node(category):
     }
 
 
+def shopper_ids(categories=None):
+    """Ids of the categories a shopper sees: each populated category and all its ancestors."""
+    if categories is None:
+        categories = Category.objects.only("id", "parent_id")
+    by_id = {c.pk: c for c in categories}
+    keep = set()
+    for category_id in _populated_ids():
+        while category_id is not None and category_id not in keep and category_id in by_id:
+            keep.add(category_id)
+            category_id = by_id[category_id].parent_id
+    return keep
+
+
 def build_tree(full=False):
     categories = list(Category.objects.order_by("sort_order", "id"))
-    keep = None
-    if not full:
-        by_id = {c.pk: c for c in categories}
-        keep = set()
-        for category_id in _populated_ids():
-            while category_id is not None and category_id not in keep and category_id in by_id:
-                keep.add(category_id)
-                category_id = by_id[category_id].parent_id
+    keep = None if full else shopper_ids(categories)
     nodes = {c.pk: _node(c) for c in categories if keep is None or c.pk in keep}
     roots = []
     for category in categories:

@@ -1,35 +1,36 @@
 import { C } from "../../theme.js";
 import CountdownTakeover from "./CountdownTakeover.jsx";
-import { BODY_FONT, HEADING_FONT } from "./storefrontType.js";
+import CtaBlock from "./CtaBlock.jsx";
+import DealsRow from "./DealsRow.jsx";
+import FlashStrip from "./FlashStrip.jsx";
+import HeroSlider from "./HeroSlider.jsx";
+import MostVisitedCategories from "./MostVisitedCategories.jsx";
+import { BODY_FONT } from "./storefrontType.js";
 
-// The marketplace home at "/". This is the shell: the countdown takeover sits
-// first until opening, then a short honest intro with a way into the browse
-// page, then `children` — the slot where App.jsx places the home sections
-// (Task 10 adds the hero slider, flash banner, deals and categories here).
+// The marketplace home at "/". Order, top to bottom: the countdown takeover
+// (only before opening), the header (`header`, App's StorefrontHeader — it
+// replaces the Navbar here), then the hero slider, the flash strip, today's
+// deals, the most visited categories and the call-to-action block; `children`
+// follow for anything App adds later. Each section owns its feed and renders
+// nothing when the feed is empty or failing, so an empty marketplace still
+// shows the header and the call to action rather than a blank page — never
+// placeholder tiles. Navigation, the auth modal and registration are App's,
+// threaded in as props.
 // Colours come from the --ah-* CSS variables (index.css) so the header theme
 // toggle restyles this surface; the fallbacks are the light `C` values.
-export default function StorefrontHome({ onBrowse, children }) {
+export default function StorefrontHome({ header, user, onNavigate, onOpenListing, onSignIn, onSell, children }) {
   return (
-    <div data-testid="storefront-home" style={{ background: `var(--ah-canvas, ${C.cream})`, color: `var(--ah-ink, ${C.darkBrown})` }}>
+    <div data-testid="storefront-home" style={{ background: `var(--ah-canvas, ${C.cream})`, color: `var(--ah-ink, ${C.darkBrown})`, fontFamily: BODY_FONT, overflowX: "clip" }}>
       <CountdownTakeover />
-      <section style={{ maxWidth: 1120, margin: "0 auto", padding: "32px 16px", boxSizing: "border-box", fontFamily: BODY_FONT }}>
-        <h1 style={{ margin: "0 0 8px", fontFamily: HEADING_FONT, fontWeight: 600, fontSize: "clamp(1.75rem, 5vw, 2.5rem)", lineHeight: 1.1, letterSpacing: "-0.02em", color: `var(--ah-ink, ${C.darkBrown})` }}>
-          AshantiHub marketplace
-        </h1>
-        <p style={{ margin: "0 0 20px", fontSize: 16, lineHeight: 1.5, color: `var(--ah-ink-dim, rgba(44,24,16,0.62))`, maxWidth: 560 }}>
-          Shop from Kumasi businesses — products, services, stays and events.
-        </p>
-        {onBrowse && (
-          <button
-            type="button"
-            onClick={onBrowse}
-            style={{ minHeight: 44, padding: "10px 22px", borderRadius: 12, border: "none", background: C.gold, color: C.darkBrown, fontFamily: BODY_FONT, fontSize: 15, fontWeight: 700, cursor: "pointer" }}
-          >
-            Browse businesses
-          </button>
-        )}
-      </section>
-      {children}
+      {header}
+      <main>
+        <HeroSlider onNavigate={onNavigate} />
+        <FlashStrip onNavigate={onNavigate} />
+        <DealsRow onOpen={onOpenListing} />
+        <MostVisitedCategories onNavigate={onNavigate} />
+        <CtaBlock user={user} onSignIn={onSignIn} onSell={onSell} />
+        {children}
+      </main>
     </div>
   );
 }

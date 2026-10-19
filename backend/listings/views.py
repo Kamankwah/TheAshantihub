@@ -356,7 +356,10 @@ class PublicListingListView(generics.ListAPIView):
 
         category_slug = self.request.query_params.get("category")
         if category_slug:
-            queryset = queryset.filter(category__slug=category_slug)
+            # A department includes its sub-categories (the home's department links land here).
+            from storefront.search import category_ids
+
+            queryset = queryset.filter(category_id__in=category_ids(category_slug))
 
         zone_name = self.request.query_params.get("zone")
         if zone_name:

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { C } from "../theme.js";
 import { isStaffSession } from "../lib/staffSession.js";
 import logoIcon from "../assets/logo/logo-icon.png";
+import AccountMenu from "./AccountMenu.jsx";
 
 // ─── Navbar ────────────────────────────────────────────────────────────────
 // Three-group layout: logo pinned far left, page nav centered, utility
@@ -67,8 +68,6 @@ export default function Navbar({
   onSignOut,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const profileRef = useRef(null);
 
   const isBusiness = user?.accountType === "business_owner";
   // Cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) is a Customer-only
@@ -79,15 +78,8 @@ export default function Navbar({
   const isStaff = isStaffSession(user);
   const accountLabel = isBusiness ? "Business Owner" : isStaff ? "Staff · view only" : "Customer";
   const signOut = onSignOut ?? (() => auth.logout());
-  const act = (fn) => (...args) => { fn(...args); setMenuOpen(false); setProfileOpen(false); };
+  const act = (fn) => (...args) => { fn(...args); setMenuOpen(false); };
   const goToDashboard = () => (isBusiness ? setShowBizDash(true) : setShowAccount(true));
-
-  useEffect(() => {
-    if (!profileOpen) return;
-    const onClick = (e) => { if (profileRef.current && !profileRef.current.contains(e.target)) setProfileOpen(false); };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [profileOpen]);
 
   // Always solid: the translucent look over the old full-viewport Hero was
   // retired with the Hero (the marketplace home sits on the cream canvas).
@@ -176,35 +168,21 @@ export default function Navbar({
           </>
         ) : (
           <>
-            <div ref={profileRef} style={{position:"relative"}}>
-              <button
-                onClick={() => setProfileOpen(o => !o)}
-                aria-label="Account menu"
-                aria-expanded={profileOpen}
-                style={{background:C.darkBrown,color:C.gold,border:`1.5px solid ${C.gold}88`,borderRadius:"50%",width:38,height:38,padding:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",fontWeight:900,flexShrink:0}}
-              >
-                {user.avatar
-                  ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",borderRadius:"50%",objectFit:"cover"}}/>
-                  : (user.fullName?.[0]?.toUpperCase() || "U")}
-              </button>
-              {profileOpen && (
-                <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"white",borderRadius:14,boxShadow:"0 10px 40px rgba(0,0,0,0.25)",padding:10,display:"flex",flexDirection:"column",gap:6,minWidth:210,zIndex:200}}>
-                  <div style={{padding:"4px 8px 8px",borderBottom:"1px solid #f0f0f0",marginBottom:2}}>
-                    <div style={{fontWeight:800,color:C.darkBrown,fontSize:"0.82rem"}}>{user.fullName}</div>
-                    <div style={{color:"#999",fontSize:"0.68rem"}}>{accountLabel}</div>
-                  </div>
-                  {isBusiness ? (
-                    <>
-                      <button onClick={act(() => setShowBizDash(true))} style={menuItemStyle}>🏪 Business Dashboard</button>
-                      <button onClick={act(() => setShowPayments(true))} style={menuItemStyle}>💳 Payments</button>
-                    </>
-                  ) : !isStaff ? (
-                    <button onClick={act(() => setShowAccount(true))} style={menuItemStyle}>👤 My Account</button>
-                  ) : null}
-                  <button onClick={act(signOut)} style={{...menuItemStyle,color:"#dc2626"}}>⏻ Sign Out</button>
-                </div>
-              )}
-            </div>
+            <AccountMenu
+              user={user}
+              accountLabel={accountLabel}
+              isBusiness={isBusiness}
+              isStaff={isStaff}
+              onBizDash={() => setShowBizDash(true)}
+              onPayments={() => setShowPayments(true)}
+              onAccount={() => setShowAccount(true)}
+              onSignOut={signOut}
+              triggerStyle={{background:C.darkBrown,color:C.gold,border:`1.5px solid ${C.gold}88`,borderRadius:"50%",width:38,height:38,padding:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",fontWeight:900,flexShrink:0}}
+            >
+              {user.avatar
+                ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",borderRadius:"50%",objectFit:"cover"}}/>
+                : (user.fullName?.[0]?.toUpperCase() || "U")}
+            </AccountMenu>
           </>
         )
       ) : (
@@ -298,17 +276,4 @@ const utilityBtnStyle = {
   display: "flex",
   alignItems: "center",
   gap: 6,
-};
-
-const menuItemStyle = {
-  background: "#f6f6f6",
-  color: C.darkBrown,
-  border: "1px solid #e5e5e5",
-  borderRadius: 12,
-  padding: "8px 12px",
-  fontSize: "0.78rem",
-  fontWeight: 700,
-  cursor: "pointer",
-  textAlign: "left",
-  fontFamily: "inherit",
 };

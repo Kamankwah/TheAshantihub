@@ -41,7 +41,12 @@ describe('AshantiHub routing', () => {
       renderAtPath('/')
       expect(await screen.findByTestId('storefront-home', {}, { timeout: 3000 })).toBeInTheDocument()
       expect(screen.queryByText(/A Kingdom Wired/i)).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Browse businesses' })).toBeInTheDocument()
+      // Task 10: the home has its own header (search + departments) in place
+      // of the Navbar's bar, and ends on the call-to-action block.
+      expect(screen.getByRole('search', { name: 'Site search' })).toBeInTheDocument()
+      expect(screen.getByRole('navigation', { name: 'Departments' })).toBeInTheDocument()
+      expect(screen.queryByText('Adwaso')).not.toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Sell on AshantiHub' })).toBeInTheDocument()
       // Gate off (the default): no countdown takeover.
       expect(screen.queryByRole('button', { name: 'Notify me' })).not.toBeInTheDocument()
     },
@@ -101,6 +106,20 @@ describe('AshantiHub routing', () => {
   )
 
   it(
+    'a department link from the home lands on /business with that category filter',
+    async () => {
+      const asked = []
+      server.use(http.get('http://localhost:8000/api/listings/', ({ request }) => {
+        asked.push(new URL(request.url).searchParams.get('category'))
+        return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+      }))
+      renderAtPath('/business?category=books')
+      await waitFor(() => expect(asked).toContain('books'), { timeout: 4000 })
+    },
+    8000,
+  )
+
+  it(
     'an unmatched path renders the 404 page instead of Home',
     async () => {
       renderAtPath('/this-page-does-not-exist')
@@ -116,6 +135,9 @@ describe('AshantiHub routing', () => {
       // asserted against directly — this is the same setPage prop Navbar
       // receives and calls unmodified (see Navbar.jsx/Navbar.test.jsx), now
       // backed by useNavigate() instead of a bare useState setter.
+      // Task 10: "/" shows the StorefrontHeader instead of the Navbar, so the
+      // walk starts there: its "All businesses" link (navigate) reaches
+      // /business, where the Navbar and its "Adwaso" link are back.
       window.history.pushState({}, '', '/')
       const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
       render(
@@ -126,8 +148,11 @@ describe('AshantiHub routing', () => {
         </QueryClientProvider>,
       )
 
+      fireEvent.click(await screen.findByRole('button', { name: 'All businesses' }, { timeout: 3000 }))
+      expect(window.location.pathname).toBe('/business')
+      fireEvent.click(screen.getAllByText('Events')[0])
+      expect(window.location.pathname).toBe('/events')
       // The Business nav link is labelled "Adwaso" (route stays /business).
-      await screen.findByText('Adwaso', {}, { timeout: 3000 })
       fireEvent.click(screen.getAllByText('Adwaso')[0])
       expect(window.location.pathname).toBe('/business')
 

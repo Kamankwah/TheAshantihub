@@ -36,6 +36,7 @@ import OrderTrackingMap from "./components/OrderTrackingMap.jsx";
 import DeliveryCodeBox from "./components/DeliveryCodeBox.jsx";
 import Navbar from "./components/Navbar.jsx";
 import StorefrontHome from "./components/storefront/StorefrontHome.jsx";
+import StorefrontHeader from "./components/storefront/StorefrontHeader.jsx";
 import NotifyStopPage from "./components/storefront/NotifyStopPage.jsx";
 import HeroCarousel from "./components/HeroCarousel.jsx";
 import SiteBanner from "./components/SiteBanner.jsx";
@@ -45,7 +46,6 @@ import ListingDetailPage from "./components/ListingDetailPage.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
 import { Footer2 } from "./components/ui/footer-2.tsx";
 import { BusinessCtaBand } from "./components/ui/business-cta-band.tsx";
-import { HomeCtaBand } from "./components/ui/home-cta-band.tsx";
 import { EventsCtaBand } from "./components/ui/events-cta-band.tsx";
 import { AboutCtaBand } from "./components/ui/about-cta-band.tsx";
 import { ContactCtaBand } from "./components/ui/contact-cta-band.tsx";
@@ -2832,6 +2832,23 @@ export default function AshantiHub() {
     return ()=>clearTimeout(t);
   },[eventSearchInput]);
 
+  // The marketplace home's header search and department links land on the
+  // browse pages with the choice in the URL: /business?category=<slug>&q=<text>
+  // and /events?category=<slug>. Read once per arrival into the page's own
+  // filter state (the URL is not kept in sync after that).
+  useEffect(()=>{
+    const params=new URLSearchParams(location.search);
+    const category=params.get("category")||undefined;
+    const q=params.get("q");
+    if(location.pathname==="/business"&&(category||q!==null)){
+      setFilters(f=>({...f,category}));
+      if(q!==null) setSearchInput(q);
+    }
+    if(location.pathname==="/events"&&category){
+      setEventFilters(f=>({...f,category}));
+    }
+  },[location.pathname,location.search]);
+
   const {
     data: eventsData,
     isLoading: eventsLoading,
@@ -3156,7 +3173,9 @@ export default function AshantiHub() {
       {showFavs&&<FavsDrawer/>}
       {showCart&&isCustomer&&<CartDrawer user={user} currency={currency} onClose={()=>setShowCart(false)} PaymentComponent={MoMoPayment}/>}
       {/* Referral feature hidden until it's built properly (see note below). */}
-      <Navbar
+      {/* On "/" the marketplace home's own StorefrontHeader replaces this bar
+          (it is passed to StorefrontHome below); every other page keeps it. */}
+      {page!=="home"&&<Navbar
         page={page} setPage={setPage}
         lang={lang} setLang={setLang}
         user={user} auth={auth}
@@ -3172,7 +3191,7 @@ export default function AshantiHub() {
         theme={theme} toggleTheme={toggleTheme}
         T={T}
         onSignOut={staffSession ? staffSignOut : undefined}
-      />
+      />}
 
       {/* A staff session can't register a business — same notice the
           "Register Your Business" CTAs show, for a direct /register visit. */}
@@ -3183,19 +3202,37 @@ export default function AshantiHub() {
       )}
 
       {/* "/" is the marketplace home (StorefrontHome): the opening countdown
-          until opening day, then the home sections. The old Hero landing is
-          retired; /business stays the browse page. */}
+          until opening day, its own header, then the hero slider, flash
+          strip, deals, most visited categories and the call to action. The
+          old Hero landing, featured row, home banners and CTA band are
+          retired from home; /business stays the browse page. */}
       {page==="home"&&(
-        <StorefrontHome onBrowse={()=>setPage("business")}>
-          <SiteBanner slot="home_hero" onNavigate={navigate}/>
-          <FeaturedRow onOpen={(id)=>setSelectedListingId(id)}/>
-          <SiteBanner slot="home_strip" onNavigate={navigate}/>
-
-          {/* Referral program hidden for now — not yet implemented (no real
-              referral tracking/credit). Re-enable once it's built properly. */}
-
-          <HomeCtaBand/>
-        </StorefrontHome>
+        <StorefrontHome
+          header={
+            <StorefrontHeader
+              user={user}
+              onSignOut={staffSession ? staffSignOut : () => auth.logout()}
+              setAuthModal={setAuthModal}
+              setShowAccount={setShowAccount}
+              setShowBizDash={setShowBizDash}
+              setShowPayments={setShowPayments}
+              setShowCart={setShowCart}
+              setShowFavs={setShowFavs}
+              setShowNotifs={setShowNotifs}
+              cartCount={cartItemCount}
+              wishlistCount={favourites.length}
+              notifCount={unreadNotifs}
+              theme={theme} toggleTheme={toggleTheme}
+              onNavigate={navigate}
+              onLogoClick={()=>{handleLogoClick();setPage("home");}}
+            />
+          }
+          user={user}
+          onNavigate={navigate}
+          onOpenListing={(id)=>setSelectedListingId(id)}
+          onSignIn={()=>setAuthModal("login")}
+          onSell={openRegister}
+        />
       )}
 
       {/* Business page — the marketplace browsing experience (search, category
