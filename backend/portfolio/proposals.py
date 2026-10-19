@@ -514,6 +514,14 @@ def update_duplicate_errors(owner, fields):
         for field, message in OWNER_HAS_LOGIN.items():
             if field in fields:
                 errors[field] = [message]
+    return contact_duplicate_errors(owner, fields, errors)
+
+
+def contact_duplicate_errors(owner, fields, errors=None):
+    """The duplicate and self-dealing checks alone (no sign-in rule): another business's phone, Ghana Post address or
+    email, and a staff member's phone or email. portfolio.detail_changes reuses them for the business's own request.
+    Fields already in `errors` are not checked again."""
+    errors = {} if errors is None else errors
     for field in PHONE_FIELDS:
         if field in errors or not fields.get(field):
             continue

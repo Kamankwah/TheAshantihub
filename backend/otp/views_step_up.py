@@ -12,7 +12,8 @@ Who may ask (final review F2):
 * Only while a code could be owed: OTP_STEP_UP_ENFORCED or OTP_SIGNIN_ENFORCED is on, or - for
   `authenticator_change` alone - always (the authenticator app is offered whatever the switches say), or - for `withdrawal`,
   `payout_destination` and `contact_change` - LEDGER_ENABLED is on (the wallet endpoints and adding a customer's
-  recovery email or phone always ask then: spec §8 and §11). The authenticator settings ask for a
+  recovery email or phone always ask then: spec §8 and §11), or - for `detail_change`, a business owner only - LEDGER_ENABLED
+  is on (portfolio.detail_changes). The authenticator settings ask for a
   step-up whatever OTP_STEP_UP_ENFORCED says (force=True): setting one up, renewing recovery codes and turning
   it off all need a code even with every switch off. Anything else answers 409 {"code": "otp_off"} and sends nothing, so with every switch off these
   endpoints cannot be used to send anyone an email or a text."""
@@ -72,6 +73,8 @@ def _codes_off(account, action):
         return False
     if action in WALLET_ACTIONS and escrow.enabled() and (action != step_up.CONTACT_CHANGE or isinstance(account, Customer)):
         return False  # a business owner has no endpoint that asks for a contact_change code, so none is sent for one
+    if action == step_up.DETAIL_CHANGE and escrow.enabled() and isinstance(account, BusinessOwner):
+        return False  # a business's own name/contact change request always asks while the ledger is on (plan 7F-C R3)
     return True
 
 

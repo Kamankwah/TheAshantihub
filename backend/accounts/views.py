@@ -1398,6 +1398,62 @@ class PayoutDetailUpdateView(generics.UpdateAPIView):
             return super().update(request, *args, **kwargs)
 
 
+def _detail_change_refused(exc):
+    return Response({"detail": exc.message, "code": exc.code}, status=exc.status_code)
+
+
+class OwnerDetailChangeListCreateView(APIView):
+    """A business asks to change its owner's name, sign-in phone or email (plan 7F-C R3; portfolio.detail_changes).
+    GET lists its requests (contacts masked); POST {field, new_value, reason} files one: 201, or 400/409 {detail, code}.
+    While the ledger is on a step-up code is always asked (detail_change). The view records its own event, without the
+    raw value."""
+
+    permission_classes = [IsBusinessOwner]
+    activity_exempt = True
+    throttle_scope = "owner_detail_change"
+
+    def get_throttles(self):
+        return super().get_throttles() if self.request.method == "POST" else []
+
+    def get(self, request):
+        from portfolio import detail_changes
+        from portfolio.models import BusinessDetailChangeRequest
+
+        rows = BusinessDetailChangeRequest.objects.filter(business_owner=request.user).select_related("assigned_scout")
+        return Response({"results": [detail_changes.row(change) for change in rows]})
+
+    def post(self, request):
+        from portfolio import detail_changes
+
+        body = request.data if isinstance(request.data, dict) else {}
+        try:
+            with transaction.atomic():
+                step_up.require(request, step_up.DETAIL_CHANGE, force=escrow.enabled())
+                change = detail_changes.request_change(
+                    request.user, body.get("field"), body.get("new_value"), body.get("reason"), http_request=request,
+                )
+        except detail_changes.DetailChangeError as exc:
+            return _detail_change_refused(exc)
+        return Response(detail_changes.row(change), status=status.HTTP_201_CREATED)
+
+
+class OwnerDetailChangeWithdrawView(APIView):
+    """POST: the business withdraws its own request while it is requested or assigned (404 / 409 otherwise)."""
+
+    permission_classes = [IsBusinessOwner]
+    activity_exempt = True
+
+    def post(self, request, pk):
+        from portfolio import detail_changes
+
+        try:
+            with transaction.atomic():
+                change = detail_changes.withdraw(request.user, pk, http_request=request)
+        except detail_changes.DetailChangeError as exc:
+            return _detail_change_refused(exc)
+        return Response(detail_changes.row(change))
+
+
 class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
     serializer_class = BusinessOwnerProfileUpdateSerializer
     permission_classes = [IsBusinessOwner]

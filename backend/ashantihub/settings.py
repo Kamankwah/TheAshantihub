@@ -421,6 +421,8 @@ REST_FRAMEWORK = {
         "owner_claim": "10/min",
         # A staff member emailing owners claim links (portfolio.views.ClaimLinkView).
         "claim_link": "5/hour",
+        # A business asking to change its name, sign-in phone or email (portfolio.detail_changes).
+        "owner_detail_change": "10/hour",
         # The Hubtel webhook is a public, unauthenticated endpoint (Hubtel
         # calls it from the internet, not a logged-in app user) — generous
         # but not unlimited, since it's dark/unexercised until HUBTEL_* env
