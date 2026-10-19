@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
+import { gatedOpening } from './mocks/opening.js'
+import { setStoredAuth } from './apiClient.js'
 import EventDetailPage from './components/EventDetailPage.jsx'
 
 function renderPage(props = {}) {
@@ -448,5 +450,42 @@ describe('EventDetailPage — refund terms shown before buying a ticket (plan 7E
     serveEvent({ refund_until_days_before: 3 })
     renderPage({ user: CUSTOMER })
     expect(await screen.findByText('Free cancellation until Fri 7 Jun, 18:00')).toBeInTheDocument()
+  })
+})
+
+// Before opening (gate on) a shopper sees ticket Buy greyed with the opening date.
+describe('EventDetailPage — before the marketplace opens', () => {
+  const CUSTOMER = { id: 4, fullName: 'Ama Boateng', accountType: 'customer' }
+  const TICKET_TYPES = [
+    { id: 7, name: 'General Admission', description: '', price: '25.00', delivery_method: 'digital', quantity_remaining: 10 },
+  ]
+  function gated(canBuy) {
+    server.use(
+      gatedOpening({ opensAt: '2026-11-06T06:00:00Z', serverNow: '2026-11-01T06:00:00Z' }),
+      http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({ id: 4, can_buy: canBuy })),
+      http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json({ ...PUBLIC_DETAIL, has_tickets: true })),
+      http.get('http://localhost:8000/api/events/1/ticket-types/', () => HttpResponse.json(TICKET_TYPES)),
+    )
+    setStoredAuth({ token: 't', account_type: 'customer' })
+  }
+
+  it('buy_disabled_with_opens_label_before_opening', async () => {
+    gated(false)
+    try {
+      renderPage({ user: CUSTOMER, PaymentComponent: () => null })
+      await screen.findByText('General Admission')
+      const btn = await screen.findByRole('button', { name: 'Opens 6 Nov' })
+      expect(btn).toBeDisabled()
+      expect(screen.queryByRole('button', { name: 'Buy' })).not.toBeInTheDocument()
+    } finally { setStoredAuth(null) }
+  })
+
+  it('enabled_when_can_buy_true', async () => {
+    gated(true)
+    try {
+      renderPage({ user: CUSTOMER, PaymentComponent: () => null })
+      await screen.findByText('General Admission')
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Buy' })).not.toBeDisabled())
+    } finally { setStoredAuth(null) }
   })
 })

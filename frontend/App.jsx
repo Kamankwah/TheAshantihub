@@ -35,7 +35,8 @@ import Flag from "./components/Flag.jsx";
 import OrderTrackingMap from "./components/OrderTrackingMap.jsx";
 import DeliveryCodeBox from "./components/DeliveryCodeBox.jsx";
 import Navbar from "./components/Navbar.jsx";
-import Hero from "./components/Hero.jsx";
+import StorefrontHome from "./components/storefront/StorefrontHome.jsx";
+import NotifyStopPage from "./components/storefront/NotifyStopPage.jsx";
 import HeroCarousel from "./components/HeroCarousel.jsx";
 import SiteBanner from "./components/SiteBanner.jsx";
 import FeaturedRow from "./components/FeaturedRow.jsx";
@@ -2652,6 +2653,8 @@ export default function AshantiHub() {
   // The stop link in a marketing message (Marketing consent): a standalone page keyed by a signed token.
   const unsubscribeMatch = useMatch("/unsubscribe/:token");
   const trackedLinkMatch = useMatch("/r/:token");
+  // The opt-out link in the opening message (notify-me): a standalone page keyed by a signed token.
+  const notifyStopMatch = useMatch("/notify/stop/:token");
   // Staff dashboard panels are URL-addressable (/staff/kyc, /staff/users, …)
   // so Android's back gesture steps through panels inside the installed app
   // and manifest shortcuts can deep-link. /staff/activate and /staff/install
@@ -2684,22 +2687,17 @@ export default function AshantiHub() {
     const path = PAGE_TO_PATH[id] ?? "/";
     if (location.pathname !== path) navigate(path);
   };
-  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !unsubscribeMatch && !trackedLinkMatch && !onStaffDashboardPath;
+  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !unsubscribeMatch && !trackedLinkMatch && !notifyStopMatch && !onStaffDashboardPath;
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
   const queryClient=useQueryClient();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;
-  // Site-wide light/dark toggle (docs/UI_MODERNIZATION_ROADMAP.md Phase E) —
-  // same useTheme() hook StaffDashboard already uses internally, but lifted
-  // here so the customer-facing Navbar can offer the same control. The
-  // `dark` class on <html> is what Tailwind's `dark:` variants (and the CSS
-  // variable swap in index.css's `.dark` block) key off of; this only
-  // affects Tailwind-built surfaces (currently the footer) — the legacy
-  // inline-style `C`-palette surfaces are unaffected by design.
+  // Site-wide light/dark toggle, shown in the public Navbar. useTheme()
+  // follows the device until the user toggles, and sets `data-theme` + the
+  // `dark` class on <html>: the class drives the Tailwind/shadcn tokens, and
+  // `data-theme` drives the --ah-* variables (index.css) that the header and
+  // the app root/home wrappers read, so inline-`C` public surfaces follow too.
   const {theme,toggleTheme} = useTheme();
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-  }, [theme]);
   const [legalDoc,setLegalDoc]=useState(null);
   // showBizDash/showPayments/showCredit — same "derive from the URL, wrap the
   // setter in a navigate() closure" pattern as `page`/`setPage` above, so
@@ -3113,6 +3111,7 @@ export default function AshantiHub() {
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
   if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
   if(unsubscribeMatch) return <UnsubscribePage token={unsubscribeMatch.params.token} onHome={()=>navigate("/")}/>;
+  if(notifyStopMatch) return <NotifyStopPage token={notifyStopMatch.params.token} onHome={()=>navigate("/")}/>;
   if(isLoading) return <LoadingScreen/>;
   if(show404) return <NotFoundPage onHome={()=>setPage("home")} user={user}/>;
 
@@ -3144,7 +3143,7 @@ export default function AshantiHub() {
   const showStaffBar = staffSession && !onStaffDashboardPath;
 
   return (
-    <div style={{fontFamily:"'Georgia',serif",background:C.cream,minHeight:"100vh",
+    <div style={{fontFamily:"'Georgia',serif",background:`var(--ah-canvas, ${C.cream})`,minHeight:"100vh",
       ...(showStaffBar ? {"--ah-top-offset":`${STAFF_VIEW_ONLY_BAR_HEIGHT}px`,paddingTop:STAFF_VIEW_ONLY_BAR_HEIGHT} : {})}}>
       {showStaffBar&&<StaffViewOnlyBar onBackToDashboard={()=>navigate("/staff")} onSignOut={staffSignOut}/>}
       {appStaffGate.shownFor&&<StaffGateNotice floating onDismiss={appStaffGate.dismiss}/>}
@@ -3182,15 +3181,12 @@ export default function AshantiHub() {
         </div>
       )}
 
+      {/* "/" is the marketplace home (StorefrontHome): the opening countdown
+          until opening day, then the home sections. The old Hero landing is
+          retired; /business stays the browse page. */}
       {page==="home"&&(
-        <>
+        <StorefrontHome onBrowse={()=>setPage("business")}>
           <SiteBanner slot="home_hero" onNavigate={navigate}/>
-          <Hero
-            T={T}
-            user={user}
-            setAuthModal={setAuthModal}
-            setPage={setPage}
-          />
           <FeaturedRow onOpen={(id)=>setSelectedListingId(id)}/>
           <SiteBanner slot="home_strip" onNavigate={navigate}/>
 
@@ -3198,7 +3194,7 @@ export default function AshantiHub() {
               referral tracking/credit). Re-enable once it's built properly. */}
 
           <HomeCtaBand/>
-        </>
+        </StorefrontHome>
       )}
 
       {/* Business page — the marketplace browsing experience (search, category

@@ -20,7 +20,7 @@ function mountApp() {
 }
 
 async function waitForHome() {
-  await screen.findByText(/Ashanti Rising/i, {}, { timeout: 3000 })
+  await screen.findByTestId('storefront-home', {}, { timeout: 3000 })
 }
 
 afterEach(() => {

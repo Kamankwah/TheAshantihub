@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
+import { gatedOpening } from './mocks/opening.js'
+import { setStoredAuth } from './apiClient.js'
 import CartDrawer from './components/CartDrawer.jsx'
 
 // Same stub as test/setup.js plus a second pin, so a test can move the pin from one point to another.
@@ -514,5 +516,38 @@ describe('CartDrawer and the delivery limits', () => {
       expect(await screen.findByText('Delivery value (not charged):')).toBeInTheDocument()
       expect(screen.queryByText(/straight-line estimate/)).not.toBeInTheDocument()
     })
+  })
+})
+
+// Before opening (gate on) checkout is greyed with the opening date; the cart itself still shows.
+describe('CartDrawer — before the marketplace opens', () => {
+  function gated(canBuy) {
+    server.use(
+      gatedOpening({ opensAt: '2026-11-06T06:00:00Z', serverNow: '2026-11-01T06:00:00Z' }),
+      http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({ id: 4, can_buy: canBuy })),
+      http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)),
+    )
+    setStoredAuth({ token: 't', account_type: 'customer' })
+  }
+
+  it('buy_disabled_with_opens_label_before_opening', async () => {
+    gated(false)
+    try {
+      renderDrawer()
+      await screen.findByText('Kente Cloth')
+      const btn = await screen.findByRole('button', { name: 'Opens 6 Nov' })
+      expect(btn).toBeDisabled()
+      fireEvent.click(btn)
+      expect(screen.queryByText('Confirm & Pay')).not.toBeInTheDocument()
+    } finally { setStoredAuth(null) }
+  })
+
+  it('enabled_when_can_buy_true', async () => {
+    gated(true)
+    try {
+      renderDrawer()
+      await screen.findByText('Kente Cloth')
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Checkout →' })).not.toBeDisabled())
+    } finally { setStoredAuth(null) }
   })
 })

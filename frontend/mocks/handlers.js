@@ -20,6 +20,19 @@ export const handlers = [
       },
     })
   }),
+  // Marketplace opening (storefront). Default = the gate switched off (ruling
+  // R1): open, so no countdown and every buy button stays live. A test that
+  // needs the gate uses server.use(gatedOpening(...)) from mocks/opening.js.
+  http.get('http://localhost:8000/api/storefront/opening/', () => HttpResponse.json({
+    opens_at: '2026-11-06T06:00:00Z', server_now: new Date().toISOString(), is_open: true, gate_enabled: false,
+  })),
+  // Notify me: always "saved" (400 only for neither field, as the server answers).
+  http.post('http://localhost:8000/api/storefront/notify-me/', async ({ request }) => {
+    const body = await request.json().catch(() => ({}))
+    if (!body?.phone && !body?.email) return HttpResponse.json({ detail: 'Give a phone number or an email address.' }, { status: 400 })
+    return HttpResponse.json({ status: 'saved' })
+  }),
+  http.post('http://localhost:8000/api/storefront/notify-me/stop/', () => HttpResponse.json({ status: 'stopped' })),
   // Marketing consent card (customer Settings, business Profile & Settings): nothing ticked, no wording.
   http.get('http://localhost:8000/api/marketing/consent/me/', () => {
     return HttpResponse.json({ channels: Object.fromEntries(['sms', 'whatsapp', 'email', 'inapp'].map((k) => [k, { label: k, status: null, at: null, wording: `Send me offers by ${k}.`, wording_label: '' }])) })

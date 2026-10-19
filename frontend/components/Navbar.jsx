@@ -10,7 +10,7 @@ import logoIcon from "../assets/logo/logo-icon.png";
 // currency (formerly in the "More" popover) are dropped from the navbar
 // entirely per the redesign brief; Messages stays reachable via the floating
 // ChatLauncher, Saved/Payments no longer have a navbar entry point.
-// Transparent glass look over the home Hero; per-nav-item hover shows a gold
+// Solid on every page (colours from --ah-header-*); per-nav-item hover shows a gold
 // glow border (no ambient whole-bar hover effect) via .ah-nav-item:hover.
 //
 // Signed-in state: Sign In/Create Account are fully replaced by a single
@@ -39,7 +39,6 @@ import logoIcon from "../assets/logo/logo-icon.png";
 // block); >=1200px is the full header. The row needs ~1,150px uncompacted.
 const NAV_BREAKPOINT = 1024;
 const COMPACT_MAX = 1199;
-const SOLIDIFY_SCROLL_Y = 60;
 
 const NAV_ITEMS = [
   { id: "home", label: "Home" },
@@ -68,7 +67,6 @@ export default function Navbar({
   onSignOut,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef(null);
 
@@ -85,20 +83,14 @@ export default function Navbar({
   const goToDashboard = () => (isBusiness ? setShowBizDash(true) : setShowAccount(true));
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > SOLIDIFY_SCROLL_Y);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  useEffect(() => {
     if (!profileOpen) return;
     const onClick = (e) => { if (profileRef.current && !profileRef.current.contains(e.target)) setProfileOpen(false); };
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [profileOpen]);
 
-  const transparent = page === "home" && !scrolled;
+  // Always solid: the translucent look over the old full-viewport Hero was
+  // retired with the Hero (the marketplace home sits on the cream canvas).
 
   const onLogoClick = () => {
     handleLogoClick();
@@ -225,14 +217,14 @@ export default function Navbar({
   );
 
   return (
-    <div style={{
-      background: transparent ? "rgba(12,8,4,0.32)" : `linear-gradient(135deg,${C.darkBrown} 0%,${C.black} 50%,${C.kente3} 100%)`,
-      backdropFilter: transparent ? "blur(14px)" : "none",
-      WebkitBackdropFilter: transparent ? "blur(14px)" : "none",
-      borderBottom: transparent ? "1px solid rgba(255,255,255,0.08)" : "none",
+    // `data-theme` (from the theme prop) selects the --ah-header-* variables
+    // in index.css, so the toggle restyles the header; the fallback is the
+    // light gradient.
+    <div data-theme={theme === "dark" ? "dark" : "light"} style={{
+      background: `var(--ah-header-bg, linear-gradient(135deg,${C.darkBrown} 0%,${C.black} 50%,${C.kente3} 100%))`,
+      borderBottom: "1px solid var(--ah-header-edge, transparent)",
       padding: "0 20px", position: "sticky", top: "var(--ah-top-offset, 0px)", zIndex: 100,
       boxShadow: "0 2px 20px rgba(0,0,0,0.4)",
-      transition: "background 0.3s ease, backdrop-filter 0.3s ease",
     }}>
       <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
       <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:72,paddingTop:4,gap:16}}>
