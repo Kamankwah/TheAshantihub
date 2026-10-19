@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 
 ACCRA = ZoneInfo("Africa/Accra")
-OPENING_DEFAULT = datetime(2026, 11, 6, 6, 0, tzinfo=ACCRA)  # documents the seeded row (migration 0002 holds its own literal)
+OPENING_DEFAULT = datetime(2026, 11, 6, 6, 0, tzinfo=ACCRA)  # the fallback when no row exists; migration 0002 holds its own literal
 
 
 class OpeningError(Exception):
@@ -27,7 +27,8 @@ def _current():
 
 
 def opens_at():
-    return _current().opens_at
+    row = _current()
+    return row.opens_at if row else OPENING_DEFAULT
 
 
 def _real_open(now):
@@ -47,8 +48,10 @@ def can_buy(user, now=None):
 
     if is_open(now):
         return True
+    if not getattr(user, "is_authenticated", False):
+        return False  # anonymous (None or the DRF AnonymousUser) cannot buy before opening
     if not isinstance(user, Customer):
-        return user is not None  # a business owner or staff member; anonymous cannot buy
+        return True  # a business owner or staff member
     return TestAccount.objects.filter(customer=user).exists()
 
 

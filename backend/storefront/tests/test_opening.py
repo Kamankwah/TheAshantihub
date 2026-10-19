@@ -51,7 +51,15 @@ class OpeningServiceTests(TestCase):
 
     @GATE_ON
     def test_anonymous_cannot_buy_before_opening(self):
+        from accounts.mixins import AnonymousUser
+
         self.assertFalse(opening.can_buy(None, BEFORE))
+        self.assertFalse(opening.can_buy(AnonymousUser(), BEFORE))
+
+    def test_opens_at_falls_back_to_the_default_with_no_row(self):
+        OpeningTime.objects.all().delete()
+        self.assertEqual(opening.opens_at(), opening.OPENING_DEFAULT)
+        self.assertIn("is_open", opening.snapshot(BEFORE))
 
     def test_gate_off_everyone_can_buy_and_it_is_open(self):
         self.assertTrue(opening.is_open(BEFORE))
