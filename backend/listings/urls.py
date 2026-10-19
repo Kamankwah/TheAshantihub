@@ -51,6 +51,7 @@ urlpatterns = [
         views.PromotionCancelView.as_view(),
         name="promotion-cancel",
     ),
+    path("sponsored/", views.SponsoredListView.as_view(), name="listing-sponsored-list"),
     path("", views.PublicListingListView.as_view(), name="listing-list"),
     path("<int:pk>/", views.PublicListingDetailView.as_view(), name="listing-detail"),
     path("<int:pk>/related/", views.RelatedListingsView.as_view(), name="listing-related"),

@@ -109,7 +109,8 @@ class ConversationCreateSerializer(serializers.Serializer):
     )
     # Chat assistant intake (source == "chatbot"): all three required then, ignored for any other source.
     contact_name = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
-    contact_email = serializers.EmailField(required=False, allow_blank=True, default="")
+    # 254: the model column's length, so an over-long address is a 400, not a database error (500).
+    contact_email = serializers.EmailField(max_length=254, required=False, allow_blank=True, default="")
     contact_phone = serializers.CharField(max_length=30, required=False, allow_blank=True, default="")
 
     def validate(self, attrs):

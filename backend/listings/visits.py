@@ -44,6 +44,12 @@ def root_of(parents, category_id):
 def most_visited(limit=8, days=30):
     """Up to `limit` product departments, most visited first. Departments with no visits follow in seed order; with
     fewer than MIN_VISITS_FOR_RANKING visits in the window the whole list is the seed order."""
+    return most_visited_ranking(limit=limit, days=days)[0]
+
+
+def most_visited_ranking(limit=8, days=30):
+    """(departments, ranked): the most_visited list, and whether it is really ranked by visits (False when it fell
+    back to the seed order for want of data), so a page can say "most visited" only when that is true."""
     departments = list(
         Category.objects.filter(parent__isnull=True, kind=Category.PRODUCT).order_by("sort_order", "id")
     )
@@ -58,7 +64,7 @@ def most_visited(limit=8, days=30):
         totals[root] = totals.get(root, 0) + row["total"]
     ranked = {d.pk: totals.get(d.pk, 0) for d in departments}
     if sum(ranked.values()) < MIN_VISITS_FOR_RANKING:
-        return departments[:limit]
+        return departments[:limit], False
     visited = sorted((d for d in departments if ranked[d.pk] > 0), key=lambda d: (-ranked[d.pk], d.sort_order, d.pk))
     rest = [d for d in departments if ranked[d.pk] == 0]
-    return (visited + rest)[:limit]
+    return (visited + rest)[:limit], True

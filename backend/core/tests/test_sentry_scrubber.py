@@ -31,6 +31,12 @@ class SentryScrubberTests(SimpleTestCase):
         claim = event["extra"]["claim"]
         self.assertEqual({key: shown(value) for key, value in claim.items()}, {"raw": "[Filtered]", "claim_link": "[Filtered]"})
 
+    def test_chat_intake_contact_details_are_scrubbed(self):
+        event = {"request": {"data": {"contact_name": "Efua Visitor", "contact_email": "e@example.com", "contact_phone": "0245553553"}}}
+        event_scrubber().scrub_event(event)
+        for key in ("contact_name", "contact_email", "contact_phone"):
+            self.assertEqual(shown(event["request"]["data"][key]), "[Filtered]", key)
+
     def test_database_query_parameters_are_scrubbed(self):
         """A failing query ships its parameters (a whole phone number in a lookup)."""
         event = {"extra": {"sql": "SELECT 1", "params": ["+233201110001"]}}

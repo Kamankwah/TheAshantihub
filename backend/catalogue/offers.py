@@ -50,7 +50,7 @@ def live_offers(product_id, exclude_owner_id=None, limit=MAX_OFFERS):
         queryset = queryset.exclude(business_owner_id=exclude_owner_id)
     return (
         queryset
-        .select_related("business_owner__profile", "zone")
+        .select_related("business_owner__profile", "zone", "category")  # effective_price reads the category
         .order_by(effective_price_expr(), "pk")[:limit]
     )
 

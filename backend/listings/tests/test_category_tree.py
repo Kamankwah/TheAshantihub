@@ -157,6 +157,15 @@ class ShopperTreeTests(Base):
         data = self.client.get("/api/listings/categories/").json()
         self.assertTrue(all("children" not in c for c in data))
 
+    def test_flat_category_list_carries_parent_id(self):
+        # Ruling R34: forms group sub-categories under their department from `parent` (id or null).
+        rows = {c["slug"]: c for c in self.client.get("/api/listings/categories/").json()}
+        dept = Category.objects.get(slug="electronics")
+        child = dept.children.first()
+        self.assertIsNone(rows["electronics"]["parent"])
+        self.assertEqual(rows[child.slug]["parent"], dept.pk)
+        self.assertTrue(all("parent" in c for c in rows.values()))
+
 
 class VisitTests(Base):
     def test_visit_beacon_increments_once_per_call_and_204(self):

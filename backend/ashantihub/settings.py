@@ -395,8 +395,9 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
     "DEFAULT_THROTTLE_RATES": {
         "vendor_statement_export": "6/min",
-        # Marketplace opening: the public "Notify me" form and its one-click stop link.
-        "notify_me": "5/hour",
+        # Marketplace opening: the public "Notify me" form and its one-click stop link. 30/hour, not 5: mobile
+        # carriers put many phones behind one address (CGNAT), and the throttle keys on the address.
+        "notify_me": "30/hour",
         "notify_me_stop": "30/hour",
         "category_visit": "60/min",
         "storefront_search": "120/min",

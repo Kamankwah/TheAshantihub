@@ -1,4 +1,5 @@
-"""Public feeds for the storefront (Plan M1). Deals: live product listings with a real discount, plus sponsored ones.
+"""Public feeds for the storefront (Plan M1). Deals: live goods and food listings (cart.guard.deliverable_q, the same
+listings a sale price can apply to) with a real discount, plus sponsored ones.
 
 A discount counts only while `sale_price < price_amount`. `was_price` and `discount_percent` appear only when the
 listing really held its regular price for the previous 7 days (listings.pricing); otherwise the row shows the sale
@@ -6,9 +7,10 @@ price alone. Rows carry no phone, email or business detail (businesses are never
 from django.db.models import F, Q
 from django.utils import timezone
 
+from cart.guard import deliverable_q
 from catalogue.offers import live_q
 from listings import pricing
-from listings.models import Category, Listing, ListingPriceHistory
+from listings.models import Listing, ListingPriceHistory
 from listings.views import _with_rating_annotations
 
 from .search import _url
@@ -21,7 +23,7 @@ def deals(limit=DEFAULT_LIMIT, request=None):
     limit = max(1, min(int(limit), MAX_LIMIT))
     discounted = Q(sale_price__isnull=False, sale_price__lt=F("price_amount"))
     queryset = (
-        _with_rating_annotations(Listing.objects.filter(live_q(), category__kind=Category.PRODUCT))
+        _with_rating_annotations(Listing.objects.filter(live_q()).filter(deliverable_q()))
         .filter(discounted | Q(sponsored=True))
         .select_related("category")
         .order_by("-created_at", "-pk")[:limit]

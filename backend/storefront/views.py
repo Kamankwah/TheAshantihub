@@ -147,7 +147,9 @@ class DealsView(APIView):
 class HomeFeedView(APIView):
     """Public feed for the marketplace home. `most_visited`: up to 8 product departments, most visited over the last
     30 days first (listings.visits; seed order until there is enough data), keeping only departments a shopper can
-    open (something live in them or below them), so the home never shows an empty department."""
+    open (something live in them or below them), so the home never shows an empty department. `ranked`: true only
+    when the order really comes from visits; false when it fell back to the seed order, so the home does not call a
+    seed-ordered list "most visited"."""
 
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -155,9 +157,10 @@ class HomeFeedView(APIView):
 
     def get(self, request):
         from listings.category_tree import shopper_ids
-        from listings.visits import most_visited
+        from listings.visits import most_visited_ranking
 
         open_ids = shopper_ids()
-        departments = [c for c in most_visited(limit=1000) if c.pk in open_ids][:8]
+        ordered, ranked = most_visited_ranking(limit=1000)
+        departments = [c for c in ordered if c.pk in open_ids][:8]
         rows = [{"id": c.pk, "slug": c.slug, "label": c.label, "icon": c.icon} for c in departments]
-        return Response({"most_visited": rows})
+        return Response({"most_visited": rows, "ranked": ranked})

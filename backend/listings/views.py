@@ -550,6 +550,26 @@ class ListingSponsoredView(APIView):
         return Response({"id": listing.pk, "sponsored": listing.sponsored})
 
 
+class SponsoredListView(APIView):
+    """GET /api/listings/sponsored/ - every listing flagged sponsored now, newest change first, for the Marketing
+    Sponsored products screen (`deals.manage`). Read straight from the flag, not from the Deals feed, so a flagged
+    listing beyond the feed's limit (or one not showing there because it is not live) still reads as sponsored.
+    `live`: whether it shows in Deals now (published, priced, in stock, goods or food, business not hidden)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("deals.manage")]
+
+    def get(self, request):
+        from catalogue.offers import live_q
+
+        live_ids = set(Listing.objects.filter(live_q(), sponsored=True).values_list("pk", flat=True))
+        rows = Listing.objects.filter(sponsored=True).select_related("category").order_by("-updated_at", "-pk")
+        return Response([
+            {"id": item.pk, "name": item.name, "category_label": item.category.label, "live": item.pk in live_ids}
+            for item in rows
+        ])
+
+
 class ListingRestockView(APIView):
     """POST /api/listings/mine/{id}/restock/ — a business owner sets a
     listing's stock count (Wave F). Unlike the general edit endpoint (which

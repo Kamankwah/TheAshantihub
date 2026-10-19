@@ -58,6 +58,15 @@ class ChatbotIntakeTests(TestCase):
                 response = self.client.post(URL, data, format="json")
                 self.assertEqual(response.status_code, 400, (missing, blank))
         self.assertEqual(self.post(contact_name="x" * 121).status_code, 400)
+
+    def test_over_long_email_is_a_400_not_a_500(self):
+        # The column holds 254 characters; a longer (still well-formed) address is refused by the serializer.
+        long_email = "a" * 64 + "@" + ".".join(["b" * 60] * 4) + ".com"
+        self.assertGreater(len(long_email), 254)
+        response = self.post(contact_email=long_email)
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("contact_email", response.json())
+        self.assertFalse(Conversation.objects.exists())
         self.assertEqual(Conversation.objects.count(), 0)
 
     def test_invalid_email_rejected(self):

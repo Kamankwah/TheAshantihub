@@ -88,8 +88,8 @@ class CaptureTests(NotifyBase):
         self.assertEqual(NotifyRequest.objects.count(), 1)
         self.assertEqual(NotifyRequest.objects.get().email_lower, "a@example.com")
 
-    def test_throttled_after_five_per_hour(self):
-        for i in range(5):
+    def test_throttled_after_thirty_per_hour(self):
+        for i in range(30):
             self.assertEqual(self.post(email=f"u{i}@example.com").status_code, 200)
         self.assertEqual(self.post(email="u9@example.com").status_code, 429)
 

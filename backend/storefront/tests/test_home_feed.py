@@ -45,6 +45,20 @@ class HomeFeedTests(TestCase):
         self.assertIn("baby", slugs)
         self.assertLessEqual(len(slugs), 8)
 
+    def test_ranked_true_when_ordered_by_visits(self):
+        self.listing("books")
+        CategoryVisit.objects.create(category=Category.objects.get(slug="books"), day=timezone.localdate(),
+                                     count=visits.MIN_VISITS_FOR_RANKING)
+        self.assertIs(self.client.get(URL).json()["ranked"], True)
+
+    def test_ranked_false_when_fallen_back_to_seed_order(self):
+        self.listing("books")
+        CategoryVisit.objects.create(category=Category.objects.get(slug="books"), day=timezone.localdate(),
+                                     count=visits.MIN_VISITS_FOR_RANKING - 1)
+        body = self.client.get(URL).json()
+        self.assertIs(body["ranked"], False)
+        self.assertIn("books", [r["slug"] for r in body["most_visited"]])
+
     def test_home_feed_is_public(self):
         self.assertEqual(self.client.get(URL).status_code, 200)
 

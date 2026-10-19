@@ -191,6 +191,18 @@ class DealsFeedTests(DealsBase):
         self.listing("Service", sale_price="80.00", category=service)
         self.assertEqual([row["id"] for row in self.client.get(DEALS).json()], [good.pk])
 
+    def test_food_on_sale_is_a_deal(self):
+        # Food (a service-kind category flagged is_food) is carted and can carry a sale price, so it is a deal too.
+        food = Category.objects.create(slug="zz-deals-food", label="ZZ Food", icon="x", color="#000",
+                                       kind=Category.SERVICE, is_food=True)
+        stay = Category.objects.create(slug="zz-deals-stay", label="ZZ Stay", icon="x", color="#000",
+                                       kind=Category.SERVICE, is_accommodation=True)
+        jollof = self.listing("Jollof", sale_price="60.00", category=food)
+        self.listing("Room", sale_price="60.00", category=stay)
+        rows = self.client.get(DEALS).json()
+        self.assertEqual([row["id"] for row in rows], [jollof.pk])
+        self.assertEqual(rows[0]["sale_price"], "60.00")
+
     def test_limit_param(self):
         for i in range(3):
             self.listing(f"S{i}", sale_price="50.00")
@@ -225,6 +237,28 @@ class SponsoredFlagTests(DealsBase):
         self.assertEqual(self.post(token, listing, "yes").status_code, 400)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
         self.assertEqual(self.client.post("/api/listings/9999999/sponsored/", {"sponsored": True}, format="json").status_code, 404)
+
+    def test_sponsored_list_reads_the_flag_not_the_deals_feed(self):
+        # 49 newer discounted listings push an older sponsored one past the Deals feed's 48-row cap.
+        old = self.listing("Old sponsored", sponsored=True)
+        draft = self.listing("Draft sponsored", sponsored=True, status=Listing.DRAFT)
+        for i in range(49):
+            self.listing(f"Sale {i}", sale_price="50.00")
+        self.assertNotIn(old.pk, [row["id"] for row in self.client.get(DEALS + "?limit=48").json()])
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.staff('marketing')}")
+        response = self.client.get("/api/listings/sponsored/")
+        self.assertEqual(response.status_code, 200, response.content)
+        rows = {row["id"]: row for row in response.json()}
+        self.assertEqual(set(rows), {old.pk, draft.pk})
+        self.assertTrue(rows[old.pk]["live"])
+        self.assertFalse(rows[draft.pk]["live"])
+        self.assertEqual(set(rows[old.pk]), {"id", "name", "category_label", "live"})
+
+    def test_sponsored_list_is_for_deals_managers_only(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.staff('support')}")
+        self.assertEqual(self.client.get("/api/listings/sponsored/").status_code, 403)
+        self.client.credentials()
+        self.assertIn(self.client.get("/api/listings/sponsored/").status_code, (401, 403))
 
 
 class CartPriceTests(DealsBase):

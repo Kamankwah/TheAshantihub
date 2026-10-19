@@ -30,7 +30,9 @@ class ListingPhotoSerializer(serializers.ModelSerializer):
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ["id", "slug", "icon", "label", "color", "kind", "is_accommodation", "is_food"]
+        # `parent` (the parent category's id, or null for a department / top-level row) lets business and staff
+        # forms group the ~300 flat rows under their department (ruling R34). Read-only: the tree is set by migration.
+        fields = ["id", "slug", "icon", "label", "color", "kind", "is_accommodation", "is_food", "parent"]
         # `kind` has a model-level default (PRODUCT), which would otherwise
         # make it optional on create — but staff must consciously choose
         # Product vs Service when creating a category (the admin form forces
@@ -40,7 +42,7 @@ class CategorySerializer(serializers.ModelSerializer):
         extra_kwargs = {"kind": {"required": True}}
         # is_food (the delivery food rules, cart.guard) is set by migration only (listings 0020: food and beverages);
         # it is shown, never changed through the category screens.
-        read_only_fields = ["is_food"]
+        read_only_fields = ["is_food", "parent"]
 
 
 
@@ -544,7 +546,7 @@ class HeroActiveSerializer(serializers.ModelSerializer):
     video_url = serializers.SerializerMethodField()
     youtube_id = serializers.CharField(read_only=True, default=None)
     listing_id = serializers.IntegerField(read_only=True, default=None)
-    business_name = serializers.CharField(source="business_owner.full_name", read_only=True, default=None)
+    # No `business_name`: it was the owner's personal full_name, and no slider shows it.
     # The listing behind this hero slide, so the slider's Buy Now / Engage
     # Service CTA can route to the cart (product) or the listing (service).
     listing_kind = serializers.CharField(source="listing.category.kind", read_only=True, default=None)
@@ -556,7 +558,7 @@ class HeroActiveSerializer(serializers.ModelSerializer):
         model = HeroMediaSubmission
         fields = [
             "id", "media_type", "image", "video_url", "youtube_id", "title", "caption", "link_path", "listing_id",
-            "media", "business_name", "approved_at", "expires_at", "listing", "listing_kind", "price_amount",
+            "media", "approved_at", "expires_at", "listing", "listing_kind", "price_amount",
         ]
 
     def _url(self, field):
