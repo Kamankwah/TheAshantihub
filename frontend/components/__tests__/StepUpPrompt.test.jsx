@@ -194,6 +194,38 @@ describe('StepUpPrompt', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('Cancel while a code is being sent resolves null', async () => {
+    const attempts = guard()
+    server.use(overview([SMS]), http.post(SEND, () => new Promise(() => {})))
+    mount()
+    const action = apiPost('/api/payout/destination/', {}).catch((e) => e)
+    expect(await screen.findByText('Sending your code...')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    const failure = await action
+    expect(failure.status).toBe(403)
+    expect(failure.body.code).toBe('step_up_required')
+    expect(attempts()).toBe(1)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('Escape while loading cancels', async () => {
+    guard(); server.use(http.get(ME, () => new Promise(() => {})))
+    mount()
+    const action = apiPost('/api/payout/destination/', {}).catch((e) => e)
+    const cancel = await screen.findByRole('button', { name: 'Cancel' })
+    await waitFor(() => expect(cancel).toHaveFocus())
+    fireEvent.keyDown(cancel, { key: 'Escape' })
+    expect((await action).status).toBe(403)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('names the detail_change action', async () => {
+    server.use(http.post(PAYOUT, () => need('detail_change')), overview([SMS]), sent())
+    mount()
+    apiPost('/api/payout/destination/', {}).catch(() => {})
+    expect(await screen.findByText('Ask to change your name, sign-in phone or email')).toBeInTheDocument()
+  })
+
   it('Escape cancels', async () => {
     guard(); server.use(overview([SMS]), sent())
     mount()

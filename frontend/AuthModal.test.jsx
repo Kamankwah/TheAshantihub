@@ -192,7 +192,7 @@ describe('AuthModal — signed-out notice', () => {
   })
 
   describe('code screen (OTP challenges)', () => {
-    const challenge = { otp_required: true, mfa_token: 'mfa-1', channels: [{ channel: 'sms', hint: 'Text a code to 0•• ••• 1234' }] }
+    const challenge = { otp_required: true, mfa_token: 'mfa-1', channels: [{ channel: 'sms', hint: '024 *** 1234' }] }
     const signedIn = { token: 't', account_type: 'customer', id: 1, full_name: 'Ama' }
     const submitLogin = () => {
       fireEvent.change(screen.getByPlaceholderText('Phone or email'), { target: { value: '+233241234567' } })
@@ -206,7 +206,7 @@ describe('AuthModal — signed-out notice', () => {
       const onSuccess = vi.fn()
       render(<AuthModal authState="login" auth={auth} onClose={vi.fn()} onSuccess={onSuccess} />)
       submitLogin()
-      expect(await screen.findByText('Text a code to 0•• ••• 1234')).toBeInTheDocument()
+      expect(await screen.findByText('Text a code to 024 *** 1234')).toBeInTheDocument()
       expect(screen.queryByPlaceholderText('Password')).not.toBeInTheDocument()
       expect(onSuccess).not.toHaveBeenCalled()
     })
@@ -215,7 +215,7 @@ describe('AuthModal — signed-out notice', () => {
       const auth = makeAuth({ login: vi.fn().mockResolvedValue(challenge) })
       render(<AuthModal authState="login" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
       submitLogin()
-      await screen.findByText('Text a code to 0•• ••• 1234')
+      await screen.findByText('Text a code to 024 *** 1234')
       expect(auth.login).toHaveBeenCalledTimes(1)
       expect(auth.login.mock.calls[0]).toEqual(['customer', '+233241234567', 'secret'])
     })
@@ -251,7 +251,7 @@ describe('AuthModal — signed-out notice', () => {
       const auth = makeAuth({ login: vi.fn().mockResolvedValue(challenge) })
       render(<AuthModal authState="staff-login" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
       submitLogin()
-      expect(await screen.findByText('Text a code to 0•• ••• 1234')).toBeInTheDocument()
+      expect(await screen.findByText('Text a code to 024 *** 1234')).toBeInTheDocument()
       expect(auth.login.mock.calls[0][0]).toBe('staff')
     })
 
@@ -277,7 +277,7 @@ describe('AuthModal — signed-out notice', () => {
       const auth = makeAuth({ login: vi.fn().mockResolvedValue(challenge), sendOtpCode: vi.fn().mockRejectedValue(expired) })
       render(<AuthModal authState="login" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
       submitLogin()
-      fireEvent.click(await screen.findByText('Text a code to 0•• ••• 1234'))
+      fireEvent.click(await screen.findByText('Text a code to 024 *** 1234'))
       expect(await screen.findByRole('status')).toHaveTextContent('Your sign-in timed out. Enter your password again.')
       const password = screen.getByPlaceholderText('Password')
       expect(password).toHaveValue('')
@@ -287,14 +287,14 @@ describe('AuthModal — signed-out notice', () => {
       const auth = makeAuth({ login: vi.fn().mockResolvedValue(challenge) })
       render(<AuthModal authState="login" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
       submitLogin()
-      await screen.findByText('Text a code to 0•• ••• 1234')
+      await screen.findByText('Text a code to 024 *** 1234')
       fireEvent.click(screen.getByRole('button', { name: 'Start again' }))
       expect(screen.getByPlaceholderText('Password')).toHaveValue('')
     })
 
     it('signup answering a challenge shows the sign-up code screen and calls onSuccess only after verifyOtp', async () => {
       const verifyOtp = vi.fn().mockResolvedValue({ token: 't', account_type: 'customer', id: 9, full_name: 'Kofi' })
-      const sendOtpCode = vi.fn().mockResolvedValue({ channel: 'sms', hint: 'Text a code to 0•• ••• 1234', expires_in: 300, resend_in: 60 })
+      const sendOtpCode = vi.fn().mockResolvedValue({ channel: 'sms', hint: '024 *** 1234', expires_in: 300, resend_in: 60 })
       const auth = makeAuth({ registerCustomer: vi.fn().mockResolvedValue({ id: 9, full_name: 'Kofi', ...challenge }), verifyOtp, sendOtpCode })
       const onSuccess = vi.fn()
       render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={onSuccess} />)
@@ -304,18 +304,41 @@ describe('AuthModal — signed-out notice', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Create Free Account' }))
       expect(await screen.findByText("Confirm it's you")).toBeInTheDocument()
       expect(onSuccess).not.toHaveBeenCalled()
-      fireEvent.click(screen.getByText('Text a code to 0•• ••• 1234'))
+      fireEvent.click(screen.getByText('Text a code to 024 *** 1234'))
       fireEvent.change(await screen.findByLabelText('6-digit code'), { target: { value: '123456' } })
       fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
       await waitFor(() => expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ token: 't' })))
       expect(verifyOtp).toHaveBeenCalledWith('mfa-1', expect.objectContaining({ code: '123456', registration: 'customer' }))
     })
 
+    it('Start again after a sign-up code switches to Sign In with an account-created notice', async () => {
+      const auth = makeAuth({ registerCustomer: vi.fn().mockResolvedValue({ id: 9, full_name: 'Kofi', ...challenge }) })
+      render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
+      fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Kofi Mensah' } })
+      fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Create Free Account' }))
+      await screen.findByText("Confirm it's you")
+      fireEvent.click(screen.getByRole('button', { name: 'Start again' }))
+      expect(await screen.findByRole('status')).toHaveTextContent('Your account is created. Sign in to confirm it with a code.')
+      expect(screen.getByPlaceholderText('Password')).toBeInTheDocument()
+      expect(screen.queryByPlaceholderText('Full name')).not.toBeInTheDocument()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('the error box is an alert', async () => {
+      const err = Object.assign(new Error('429'), { status: 429, body: { detail: 'Too many tries. Try again tomorrow.', code: 'try_later' } })
+      const auth = makeAuth({ login: vi.fn().mockRejectedValue(err) })
+      render(<AuthModal authState="login" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
+      submitLogin()
+      expect(await screen.findByRole('alert')).toHaveTextContent('Too many tries. Try again tomorrow.')
+    })
+
     it('a business-owner signup challenge verifies with registration business_owner', async () => {
       const verifyOtp = vi.fn().mockResolvedValue({ token: 't', account_type: 'business_owner', registration_step: 'business_info' })
       const auth = makeAuth({
         registerBusinessOwner: vi.fn().mockResolvedValue({ id: 9, ...challenge }),
-        sendOtpCode: vi.fn().mockResolvedValue({ channel: 'sms', hint: 'Text a code to 0•• ••• 1234', resend_in: 60 }),
+        sendOtpCode: vi.fn().mockResolvedValue({ channel: 'sms', hint: '024 *** 1234', resend_in: 60 }),
         verifyOtp,
       })
       render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
@@ -324,7 +347,7 @@ describe('AuthModal — signed-out notice', () => {
       fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
       fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
       fireEvent.click(screen.getByRole('button', { name: 'Create Business Account' }))
-      fireEvent.click(await screen.findByText('Text a code to 0•• ••• 1234'))
+      fireEvent.click(await screen.findByText('Text a code to 024 *** 1234'))
       fireEvent.change(await screen.findByLabelText('6-digit code'), { target: { value: '123456' } })
       fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
       await waitFor(() => expect(verifyOtp).toHaveBeenCalledWith('mfa-1', expect.objectContaining({ registration: 'business_owner' })))

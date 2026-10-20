@@ -12,12 +12,10 @@ const primary = (disabled) => ({ ...button(D.gold, D.text, disabled), borderRadi
 
 const clock = (seconds) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 const wayName = (channel) => (channel === "email" ? "email" : "text");
-// The server's hint reads "Text a code to 0•• ••• 1234"; once the code is sent
-// it reads as past tense. Anything unexpected falls back to a plain line.
-const sentLine = (hint) => {
-  const m = /^(?:Text|Email) a code to (.+)$/.exec(hint || "");
-  return m ? `We sent a code to ${m[1]}.` : "We sent you a code.";
-};
+// The server's hint is only the masked destination ("024 *** 1234" or
+// "am•••@example.com"); the wording around it is composed here.
+const sentLine = (hint) => (hint ? `We sent a code to ${hint}.` : "We sent you a code.");
+const chooseLabel = (c) => `${c.channel === "email" ? "Email" : "Text"} a code to ${c.hint}`;
 
 // The code step of a customer / business-owner sign-in or sign-up, shown by
 // AuthModal and BusinessRegistrationFlow when the password (or registration)
@@ -148,7 +146,8 @@ export default function OtpSignIn({ challenge, accountType, purpose, auth, onSuc
         setLocked(true);
         setError(apiErrorMessage(err, "Too many tries. Try again later."));
       } else if (kind === "authenticator_unreadable") {
-        setError(`${apiErrorMessage(err, "We couldn't read your authenticator app setup.")}${supportNote}`);
+        const detail = apiErrorMessage(err, "We couldn't read your authenticator app setup.");
+        setError(/AshantiHub Support/i.test(detail) ? detail : `${detail}${supportNote}`);
       } else {
         setError(apiErrorMessage(err, "That code isn't right."));
       }
@@ -166,7 +165,7 @@ export default function OtpSignIn({ challenge, accountType, purpose, auth, onSuc
         <div style={title}>{purpose === "sign_up" ? "Confirm it's you" : "Check it's you"}</div>
         <div style={text}>We will send a 6-digit code. Choose where to send it.</div>
         {channels.map((c, i) => (
-          <button key={c.channel} ref={i === 0 ? firstChannel : undefined} type="button" disabled={busy || locked} onClick={() => send(c.channel)} style={{ ...button(D.panelBg, D.text, busy || locked), textAlign: "left", padding: "12px" }}>{c.hint}</button>
+          <button key={c.channel} ref={i === 0 ? firstChannel : undefined} type="button" disabled={busy || locked} onClick={() => send(c.channel)} style={{ ...button(D.panelBg, D.text, busy || locked), textAlign: "left", padding: "12px" }}>{chooseLabel(c)}</button>
         ))}
         {errorLine}
         {startAgain}

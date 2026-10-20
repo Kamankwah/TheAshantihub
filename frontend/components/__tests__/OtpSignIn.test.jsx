@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import OtpSignIn from '../OtpSignIn.jsx'
 
 const channels = [
-  { channel: 'sms', hint: 'Text a code to 0•• ••• 1234' },
-  { channel: 'email', hint: 'Email a code to a•••@x.com' },
+  { channel: 'sms', hint: '024 *** 1234' },
+  { channel: 'email', hint: 'am•••@example.com' },
 ]
 const challenge = { otp_required: true, mfa_token: 'mfa', channels }
 const signedIn = { token: 't', account_type: 'customer', id: 1, full_name: 'Ama' }
@@ -26,7 +26,8 @@ const choose = async (name) => {
   fireEvent.click(screen.getByRole('button', { name }))
   return screen.findByLabelText('6-digit code')
 }
-const SMS = 'Text a code to 0•• ••• 1234'
+const SMS = 'Text a code to 024 *** 1234'
+const SMS_HINT = '024 *** 1234'
 
 afterEach(() => { vi.useRealTimers(); localStorage.clear(); sessionStorage.clear() })
 
@@ -34,20 +35,20 @@ describe('OtpSignIn', () => {
   it('lists each channel with the server hint and sends nothing until chosen', () => {
     const { auth } = setup()
     expect(screen.getByRole('button', { name: SMS })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Email a code to a•••@x.com' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Email a code to am•••@example.com' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: SMS })).toHaveFocus()
     expect(auth.sendOtpCode).not.toHaveBeenCalled()
   })
 
   it('sends on the chosen channel and shows the code field', async () => {
     const { auth } = setup()
-    const input = await choose('Email a code to a•••@x.com')
+    const input = await choose('Email a code to am•••@example.com')
     expect(auth.sendOtpCode).toHaveBeenCalledWith('mfa', 'email')
     expect(input).toHaveAttribute('inputmode', 'numeric')
     expect(input).toHaveAttribute('autocomplete', 'one-time-code')
     expect(input).toHaveAttribute('maxlength', '7')
     await waitFor(() => expect(input).toHaveFocus())
-    expect(screen.getByRole('status')).toHaveTextContent('We sent a code to a•••@x.com.')
+    expect(screen.getByRole('status')).toHaveTextContent('We sent a code to am•••@example.com.')
   })
 
   it('signs in with the typed code (spaces stripped) and clears the field', async () => {
@@ -173,7 +174,7 @@ describe('OtpSignIn', () => {
   it('resend_cooldown restarts the countdown from retry_after', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: false })
     const sendOtpCode = vi.fn()
-      .mockResolvedValueOnce({ channel: 'sms', hint: SMS, expires_in: 300, resend_in: 1 })
+      .mockResolvedValueOnce({ channel: 'sms', hint: SMS_HINT, expires_in: 300, resend_in: 1 })
       .mockRejectedValueOnce(fail(429, { detail: 'Please wait before asking for another code.', code: 'resend_cooldown', retry_after: 42 }))
     setup({ auth: { sendOtpCode } })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: SMS })) })
@@ -186,14 +187,14 @@ describe('OtpSignIn', () => {
   it('a cooldown refusal on a channel switch keeps the channel the code really went by', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: false })
     const sendOtpCode = vi.fn()
-      .mockResolvedValueOnce({ channel: 'sms', hint: SMS, expires_in: 300, resend_in: 60 })
+      .mockResolvedValueOnce({ channel: 'sms', hint: SMS_HINT, expires_in: 300, resend_in: 60 })
       .mockRejectedValueOnce(fail(429, { detail: 'Please wait before asking for another code.', code: 'resend_cooldown', retry_after: 10 }))
-      .mockResolvedValueOnce({ channel: 'sms', hint: SMS, expires_in: 300, resend_in: 60 })
+      .mockResolvedValueOnce({ channel: 'sms', hint: SMS_HINT, expires_in: 300, resend_in: 60 })
     setup({ auth: { sendOtpCode } })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: SMS })) })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send by email instead' })) })
     expect(screen.getByRole('alert')).toHaveTextContent('Please wait')
-    expect(screen.getByRole('status')).toHaveTextContent('We sent a code to 0•• ••• 1234.')
+    expect(screen.getByRole('status')).toHaveTextContent('We sent a code to 024 *** 1234.')
     expect(screen.getByRole('button', { name: 'Send by email instead' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Send a new code/ })).toHaveTextContent('in 0:10')
     act(() => { vi.advanceTimersByTime(10_000) })
@@ -203,7 +204,7 @@ describe('OtpSignIn', () => {
 
   it('channel_unavailable points at the other channel', async () => {
     const sendOtpCode = vi.fn()
-      .mockResolvedValueOnce({ channel: 'sms', hint: SMS, expires_in: 300, resend_in: 60 })
+      .mockResolvedValueOnce({ channel: 'sms', hint: SMS_HINT, expires_in: 300, resend_in: 60 })
       .mockRejectedValueOnce(fail(400, { detail: 'We cannot send to that email right now.', code: 'channel_unavailable' }))
     setup({ auth: { sendOtpCode } })
     await choose(SMS)
@@ -218,7 +219,7 @@ describe('OtpSignIn', () => {
     setup({ auth: { sendOtpCode } })
     fireEvent.click(screen.getByRole('button', { name: SMS }))
     expect(await screen.findByRole('alert')).toHaveTextContent('could not send the text')
-    expect(screen.getByRole('button', { name: 'Email a code to a•••@x.com' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Email a code to am•••@example.com' })).toBeEnabled()
   })
 
   it('an authenticator challenge asks for the app code', async () => {
@@ -248,6 +249,15 @@ describe('OtpSignIn', () => {
     fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '123456' } })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Ask AshantiHub Support to help you sign in.')
+  })
+
+  it('does not repeat the support note when the server detail already has it', async () => {
+    const verifyOtp = vi.fn(async () => { throw fail(400, { detail: 'We could not read your setup. Ask AshantiHub Support to help you sign in.', code: 'authenticator_unreadable' }) })
+    setup({ auth: { verifyOtp }, ch: { two_factor_required: true, mfa_token: 'tf' } })
+    fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent.match(/AshantiHub Support/g)).toHaveLength(1)
   })
 
   it('a correct sign-up code that returns two_factor_required moves to the authenticator stage and keeps the trust choice', async () => {

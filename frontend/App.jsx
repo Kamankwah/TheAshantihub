@@ -1269,8 +1269,14 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   const cancelOtp=(message)=>{
     const purpose=otp?.purpose;
     setOtp(null);setPassword("");
+    if(purpose==="sign_up"){
+      // The account already exists; a second sign-up would fail. Signing in answers the same sign-up code challenge.
+      setError(null);setMode("login");
+      setTwoStepNotice(`${typeof message==="string"?`${message} `:""}Your account is created. Sign in to confirm it with a code.`);
+      return;
+    }
     if(typeof message!=="string")return;
-    if(purpose==="sign_up")setError(message);else setTwoStepNotice(message);
+    setTwoStepNotice(message);
   };
 
   return <div data-testid="auth-modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -1286,7 +1292,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
         </div>}
 
         {signedOutNotice && <div role="status" style={{background:C.canvas,border:`1px solid ${C.gold}`,color:C.ink,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{signedOutNotice}</div>}
-        {error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+        {error && <div role="alert" style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
         {otp && <OtpSignIn challenge={otp.challenge} accountType={otp.accountType} purpose={otp.purpose} auth={auth} onSuccess={onSuccess} onCancel={cancelOtp}/>}
         {mode==="login" && twoStep && <StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/>}

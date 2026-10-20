@@ -30,7 +30,7 @@ describe('SecurityPolicySection one-time codes', () => {
     expect(await screen.findByRole('heading', { name: 'One-time codes' })).toBeInTheDocument()
     expect(screen.getByLabelText(GAP)).toHaveValue(30)
     expect(screen.getByLabelText(ALERT)).toHaveValue(500)
-    expect(screen.getByText(/Staff and vendors always get a code/)).toBeInTheDocument()
+    expect(screen.getByText(/staff and vendors always get a code/)).toBeInTheDocument()
   })
 
   it('saving sends only the changed key', async () => {

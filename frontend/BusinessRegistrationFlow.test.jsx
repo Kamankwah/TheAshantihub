@@ -303,10 +303,10 @@ describe('BusinessRegistrationFlow', () => {
   })
 
   it('business registration waits for the code before the business_info step', async () => {
-    const challenge = { id: 7, full_name: 'Abena Owusu', otp_required: true, mfa_token: 'mfa-9', channels: [{ channel: 'sms', hint: 'Text a code to 0•• ••• 2233' }] }
+    const challenge = { id: 7, full_name: 'Abena Owusu', otp_required: true, mfa_token: 'mfa-9', channels: [{ channel: 'sms', hint: '024 *** 2233' }] }
     const auth = makeAuth({
       registerBusinessOwner: vi.fn().mockResolvedValue(challenge),
-      sendOtpCode: vi.fn().mockResolvedValue({ channel: 'sms', hint: 'Text a code to 0•• ••• 2233', resend_in: 60 }),
+      sendOtpCode: vi.fn().mockResolvedValue({ channel: 'sms', hint: '024 *** 2233', resend_in: 60 }),
       verifyOtp: vi.fn().mockResolvedValue({ token: 't', account_type: 'business_owner', registration_step: 'business_info' }),
     })
     renderFlow(<BusinessRegistrationFlow user={null} auth={auth} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
@@ -316,7 +316,7 @@ describe('BusinessRegistrationFlow', () => {
     fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
-    fireEvent.click(await screen.findByText('Text a code to 0•• ••• 2233'))
+    fireEvent.click(await screen.findByText('Text a code to 024 *** 2233'))
     expect(screen.queryByText(/Tell us about your business/)).not.toBeInTheDocument()
     fireEvent.change(await screen.findByLabelText('6-digit code'), { target: { value: '123456' } })
     expect(screen.queryByText(/Tell us about your business/)).not.toBeInTheDocument()
@@ -327,7 +327,7 @@ describe('BusinessRegistrationFlow', () => {
   })
 
   it('Start again on the registration code screen returns to the personal details', async () => {
-    const challenge = { id: 7, otp_required: true, mfa_token: 'mfa-9', channels: [{ channel: 'sms', hint: 'Text a code to 0•• ••• 2233' }] }
+    const challenge = { id: 7, otp_required: true, mfa_token: 'mfa-9', channels: [{ channel: 'sms', hint: '024 *** 2233' }] }
     const auth = makeAuth({ registerBusinessOwner: vi.fn().mockResolvedValue(challenge) })
     renderFlow(<BusinessRegistrationFlow user={null} auth={auth} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
     fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })

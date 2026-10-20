@@ -57,7 +57,7 @@ function OtpCodesSection({ otp }) {
   return (
     <section aria-labelledby="otp-heading" style={section}>
       <h2 id="otp-heading" style={heading}>One-time codes</h2>
-      <div style={dim}>Staff and vendors always get a code. Who gets a code is not a setting here; it is fixed in the server. These two numbers can be changed.</div>
+      <div style={dim}>Once sign-in codes are switched on, staff and vendors always get a code. Who gets a code is not a setting here; it is fixed in the server. These two numbers can be changed.</div>
       {OTP_FIELDS.map((f) => (
         <div key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, color: D.text, fontSize: "0.82rem", fontWeight: 700 }}>

@@ -18,6 +18,7 @@ const ACTION_WORDS = {
   authenticator_change: "Turn the authenticator app on or off",
   password_change: "Change your password",
   withdrawal: "Withdraw money",
+  detail_change: "Ask to change your name, sign-in phone or email",
 };
 const OFF_TEXT = "Confirming changes with a code isn't switched on.";
 
@@ -119,7 +120,7 @@ export default function StepUpPrompt() {
   // Decide the first stage once the person's ways of receiving a code are known.
   useEffect(() => {
     if (!open || stage !== "loading" || overview.isFetching) return;
-    if (overview.isError || !overview.data) {
+    if (!overview.data) {
       setError("We couldn't check how to reach you. Close this and try again.");
       setStage("failed");
     } else if (channels.length === 0) {
@@ -145,7 +146,7 @@ export default function StepUpPrompt() {
   useEffect(() => {
     if (!open) return;
     if (stage === "code") codeInput.current?.focus();
-    else if (stage !== "loading" && stage !== "sending") box.current?.querySelector("button")?.focus();
+    else box.current?.querySelector("button")?.focus();
   }, [open, stage]);
 
   const verify = async (e) => {
@@ -188,7 +189,10 @@ export default function StepUpPrompt() {
         <div id="stepup-title" style={{ color: D.text, fontWeight: 800, fontSize: "1rem" }}>{ACTION_WORDS[action] || "Confirm it's you"}</div>
 
         {(stage === "loading" || stage === "sending") && (
-          <div role="status" style={{ color: D.textDim, fontSize: "0.8rem" }}>{stage === "sending" ? "Sending your code..." : "One moment..."}</div>
+          <>
+            <div role="status" style={{ color: D.textDim, fontSize: "0.8rem" }}>{stage === "sending" ? "Sending your code..." : "One moment..."}</div>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>{cancel}</div>
+          </>
         )}
 
         {stage === "choose" && (
