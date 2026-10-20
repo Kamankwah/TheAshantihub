@@ -78,6 +78,7 @@ import { AutoAssignRulesPanel, DeliveryPricingPanel, TimeLimitsPanel } from "./p
 import ActiveDeliveries from "./panels/delivery/ActiveDeliveriesPanel.jsx";
 import DisputesCases from "./panels/delivery/DisputesCasesPanel.jsx";
 import DispatchQueuePanel from "./panels/delivery/DispatchQueuePanel.jsx";
+import ScheduledPanel from "./panels/delivery/ScheduledPanel.jsx";
 import LiveOperationsPanel from "./panels/delivery/LiveOperationsPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsPanel from "./panels/PromotionsPanel.jsx";
@@ -511,6 +512,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "dr-documents" && <RiderDocumentsScreen />}
           {activeTab === "dr-menu" && <RiderMenuScreen auth={auth} onSelect={selectTab} onSignOut={signOut} />}
           {activeTab === "dm-queue" && <DispatchQueuePanel auth={auth} onNavigate={selectTab} />}
+          {activeTab === "dm-scheduled" && <ScheduledPanel auth={auth} />}
           {activeTab === "dm-active" && <ActiveDeliveries detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-active", id))} onOpenCase={(id) => openAt("dm-cases", id)} />}
           {activeTab === "dm-cases" && <DisputesCases detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-cases", id))} onOpenDelivery={(id) => openAt("dm-active", id)} />}
           {activeTab === "dm-riders" && <Riders detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-riders", id))} onOpenDelivery={(id) => openAt("dm-active", id)} onNavigate={selectTab} />}
@@ -524,7 +526,8 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "dm-pricing" && <DeliveryPricingPanel auth={auth} />}
           {activeTab === "dm-autoassign" && <AutoAssignRulesPanel auth={auth} onNavigate={selectTab} />}
           {activeTab === "dm-limits" && <TimeLimitsPanel auth={auth} />}
-          {activeTab === "delivery-coordination" && <DeliveryManagerPanel />}
+          {activeTab === "delivery-coordination" && <DeliveryManagerPanel auth={auth} />}
+          {activeTab === "delivery-scheduled" && <ScheduledPanel auth={auth} />}
           {activeTab === "my-deliveries" && <DispatchPanel />}
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
           {activeTab === "analytics" && (role === "super_admin" ? <SaAnalyticsPanel /> : <AnalyticsPanel auth={auth} />)}

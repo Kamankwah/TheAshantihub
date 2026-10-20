@@ -17,12 +17,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts import claims, sessions
+from accounts import claims, hours, sessions
 from accounts.models import BusinessOwner, Role, StaffUser
 from accounts.views import IsBusinessOwner
 from accounts.permissions import HasAnyRolePermission, HasRolePermission, IsStaff, RequiresSudo
 from accounts.phones import filter_by_phone, phone_key
-from accounts.serializers import staff_brief
+from accounts.serializers import BusinessHoursSerializer, hours_payload, staff_brief
 from activity.models import ActivityEvent
 from activity.services import record
 from approvals.services import ApprovalError
@@ -330,7 +330,7 @@ def _portfolio_sort_key(row):
 
 
 KYC_FILTERS = ("verified", "pending", "suspended")
-FLAG_FILTERS = ("fraud", "dispute", "no_login")
+FLAG_FILTERS = ("fraud", "dispute", "no_login", "no_hours")
 
 
 def _filtered_rows(request, now):
@@ -366,12 +366,14 @@ def _filtered_rows(request, now):
         rows = [row for row in rows if row.owner.open_disputes > 0]
     elif flag_filter == "no_login":
         rows = [row for row in rows if row.owner.needs_claim]
+    elif flag_filter == "no_hours":
+        rows = [row for row in rows if not row.owner.has_hours]
     return rows
 
 
 class PortfolioListView(APIView):
     """GET /api/portfolio/businesses/?scope=mine|team|all&health=&subscription=
-    &kyc=verified|pending|suspended&flag=fraud|dispute|no_login
+    &kyc=verified|pending|suspended&flag=fraud|dispute|no_login|no_hours
     &scout=&zone=&unassigned=1&q=&page= — a DRF page of 25 plus `summary`."""
 
     def get_permissions(self):
@@ -410,6 +412,47 @@ class PortfolioBusinessDetailView(APIView):
             now,
         )[0]
         return Response(business_detail(row, request))
+
+
+WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+
+def _first_error(errors):
+    while isinstance(errors, (dict, list)) and errors:
+        errors = next(iter(errors.values())) if isinstance(errors, dict) else errors[0]
+    return str(errors)
+
+
+class BusinessHoursStaffView(APIView):
+    """PUT /api/portfolio/businesses/<pk>/hours/ {days: [...]} — staff enter a business's weekly opening
+    hours, under the same rules as the owner's own endpoint. Only the account manager or a portfolio.manage
+    holder (anyone else gets 404). New orders use the new hours; orders already placed keep their times.
+    A broken rule answers 400 {detail, weekday} naming the failing day. Records business.hours_set (last)."""
+
+    def get_permissions(self):
+        return [HasAnyRolePermission(PORTFOLIO_SCOUT, PORTFOLIO_MANAGE)]
+
+    def put(self, request, pk):
+        owner = get_managed_business(request, pk)
+        serializer = BusinessHoursSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"detail": _first_error(serializer.errors)}, status=400)
+        days = serializer.validated_data["days"]
+        before = hours_payload(owner)
+        try:
+            with transaction.atomic():
+                hours.set_week(owner, days)
+                after = hours_payload(owner)
+                record(
+                    request.user, "business.hours_set", target=owner, summary=f"Opening hours set for {owner.display_name}",
+                    before={"days": before}, after={"days": after}, request=request,
+                )
+        except hours.HoursError as exc:
+            message = str(exc)
+            if exc.weekday is not None:
+                message = f"{WEEKDAY_NAMES[exc.weekday]}: {message}"
+            return Response({"detail": message, "weekday": exc.weekday}, status=400)
+        return Response({"days": after, "has_hours": True})
 
 
 class BusinessOrdersView(APIView):

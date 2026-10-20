@@ -177,6 +177,15 @@ def _portfolio_mask_ip(ip):
     return ".".join(parts[:2] + ["x", "x"]) if len(parts) == 4 else ip
 
 
+def _has_hours(owner):
+    """Annotated by health.with_health_inputs; one query for an owner that was loaded without it."""
+    flag = getattr(owner, "has_hours", None)
+    if flag is None:
+        from accounts.hours import has_hours
+        return has_hours(owner)
+    return bool(flag)
+
+
 def portfolio_item(row, masked=False):
     """One business in a portfolio list (row: health.RatedBusiness). For a
     portfolio.manage holder (masked=True) (Operations) gets the sign-in phone masked, as in
@@ -196,6 +205,7 @@ def portfolio_item(row, masked=False):
         "registration_channel": owner.registration_channel,
         "needs_claim": owner.needs_claim,
         "claimed_at": owner.claimed_at,
+        "has_hours": _has_hours(owner),
         "account_manager": _portfolio_person(owner.account_manager),
         "health": {"rating": row.rating, "reasons": list(row.reasons)},
         "subscription": row.subscription,

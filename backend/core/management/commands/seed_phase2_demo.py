@@ -20,6 +20,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
+from accounts import hours
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
 from accounts.permissions import can_lead_team
 from approvals import services as approvals
@@ -103,6 +104,8 @@ class Command(BaseCommand):
         profile.save()
         assign_account_manager(owner, scout, by=scout, reason="Demo data")
         if state == "kyc_waiting":
+            # A scout registration always carries hours; an owner can't claim without them.
+            hours.set_week(owner, [{"weekday": d, "closed": d == 6, "opens": "08:00", "closes": "18:00"} for d in range(7)])
             approvals.submit(scout, "business.kyc", target=owner, title=f"New business · {business}",
                              payload={"business_owner_id": owner.pk, "business_name": business})
             return

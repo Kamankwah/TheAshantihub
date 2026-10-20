@@ -186,6 +186,46 @@ def not_due_error(order):
     return DeliveryError(f"The business opens {when}; this delivery is held until then and cannot be assigned yet.", 409, "not_due")
 
 
+def is_held(order, now=None):
+    """Held = a vendor was closed at purchase and the opening is still ahead (the rule assign() and board.waiting_orders use)."""
+    return order.ready_not_before is not None and order.ready_not_before > (now or timezone.now())
+
+
+def send_early(order_id, staff, reason, *, request=None):
+    """A delivery manager releases a held order before the vendors open: ready_not_before becomes now, so the order joins the
+    queue and the customer's "delivery starts" time moves up. Only a paid door-to-door order that is still held (and not
+    wholly refunded). The decision is logged (delivery.early_send: who, when, why) and the customer told, once: a second
+    call finds the order no longer held and answers 409 not_held, changing nothing.
+    Lock order: the order row only (the same first lock refunds and release take), then nothing else is locked."""
+    from activity.services import record
+    from orders.models import Order
+
+    reason = (reason or "").strip()
+    if len(reason) < 3:
+        raise DeliveryError("Give a reason of at least 3 characters.", 400, "reason_required")
+    reason = reason[:200]
+    with transaction.atomic():
+        order = Order.objects.select_for_update(of=("self",)).get(pk=order_id)
+        if order.status != Order.PAID or order.delivery_method != Order.DOOR_TO_DOOR or order.refunds.filter(whole=True).exists():
+            raise DeliveryError("Only a paid door-to-door order that has not been refunded can be sent early.", 409, "not_sendable")
+        now = timezone.now()
+        if not is_held(order, now):
+            raise DeliveryError("This order is not being held for an opening time.", 409, "not_held")
+        before = order.ready_not_before
+        order.ready_not_before = now
+        order.save(update_fields=["ready_not_before"])
+        notify_customer(
+            order.customer, "order_status", "Your order is being sent now",
+            body=f"Order #{order.id} is being sent now.", link="/my-account", icon="🚚",
+        )
+        # record() takes the global activity advisory lock until commit, so it is the last call in the transaction.
+        record(
+            staff, "delivery.early_send", target=order, request=request, method="POST",
+            summary=f"Sent early: {reason}"[:300], before={"ready_not_before": before.isoformat()}, after={"ready_not_before": now.isoformat(), "reason": reason},
+        )
+    return order
+
+
 def assign(order, rider_staff, assigned_by, *, mode):
     """Give a paid door-to-door order to a rider (one assignment per order). Creates the four-digit
     codes the first time and stamps an ``assigned`` event. Re-assigning before the rider has picked up
@@ -193,7 +233,7 @@ def assign(order, rider_staff, assigned_by, *, mode):
     from orders.models import DeliveryAssignment
 
     now = timezone.now()
-    if order.ready_not_before is not None and order.ready_not_before > now:
+    if is_held(order, now):
         raise not_due_error(order)
     existing = DeliveryAssignment.objects.select_for_update().filter(order=order).first()
     previous_reason = existing.failed_reason if existing is not None else ""

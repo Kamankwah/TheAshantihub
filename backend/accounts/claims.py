@@ -22,7 +22,7 @@ from rest_framework import serializers
 from activity.services import client_ip, record
 from notifications.services import notify_staff
 
-from . import sessions
+from . import hours, sessions
 from .emails import send_business_claim_email
 from .models import BusinessOwner, BusinessOwnerProfile, OwnerClaimToken, OwnerConsent, StaffUser
 from .serializers import mask_but_last
@@ -43,6 +43,9 @@ WRONG_DEVICE = "Finish the hand-over on the phone that started it."
 INVALID = "This link isn't valid. Check you opened the whole link, or ask your account manager for a new one."
 TERMS_REQUIRED = "Accept the Business Agreement to continue."
 EMAIL_TAKEN = "That email already belongs to another account."
+HOURS_REQUIRED = (
+    "This business's opening hours are missing. Your AshantiHub account manager must add them before you can claim it."
+)
 STAFF_EMAIL = "That email belongs to a staff member — use your own email."
 
 
@@ -120,6 +123,9 @@ def _check_usable(token, request, now):
         raise ClaimError(USED, code="used")
     if token.expires_at <= now:
         raise ClaimError(EXPIRED, code="expired")
+    # A scout-registered business is not live until claimed, so refusing here never blocks a trading shop.
+    if not hours.has_hours(token.business_owner):
+        raise ClaimError(HOURS_REQUIRED, code="hours_required")
     if token.channel == OwnerClaimToken.HANDOVER:
         user = getattr(request, "user", None)
         session = sessions.current(request)

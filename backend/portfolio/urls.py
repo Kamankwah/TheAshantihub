@@ -13,6 +13,7 @@ urlpatterns = [
     path("businesses/export/", oversight.BusinessExportView.as_view(), name="portfolio-business-export"),
     path("businesses/<int:pk>/oversight/", oversight.BusinessOversightView.as_view(), name="portfolio-business-oversight"),
     path("businesses/<int:pk>/", views.PortfolioBusinessDetailView.as_view(), name="portfolio-business-detail"),
+    path("businesses/<int:pk>/hours/", views.BusinessHoursStaffView.as_view(), name="portfolio-business-hours"),
     path("businesses/<int:pk>/orders/", views.BusinessOrdersView.as_view(), name="portfolio-business-orders"),
     path(
         "businesses/<int:pk>/orders/<int:order_id>/delivery-problem/",

@@ -13,7 +13,7 @@ import LogCallSheet from "./LogCallSheet.jsx";
 import OrdersSection, { FlagForm } from "./OrdersSection.jsx";
 import OwnerHandover from "./OwnerHandover.jsx";
 import ProposeChangeForm from "./ProposeChangeForm.jsx";
-import { staffHoursText } from "./hoursSummary.js";
+import StaffHoursSection from "./StaffHoursSection.jsx";
 import {
   FollowUpForm, HealthChip, ReassignForm, card, errorStyle, errorText, firstName, formatDateTime, formatDay,
   h2, h3, money, subscriptionText,
@@ -148,7 +148,7 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
   const details = [
     ["Sign-in phone", signInPhone], ["Business phone", phoneCell(b.business_contact_phone)], ["Email", b.email || "Not given"],
     ["Kind", b.business_kind === "service" ? "Service" : "Product"], ["Category", b.business_category?.name],
-    ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Map pin", pin], ["Opening hours", staffHoursText(b)],
+    ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Map pin", pin],
     ["Description", b.business_description], ["Registered", registered], ["Account manager", b.account_manager?.full_name || "None"],
   ];
   const actionButton = (label, onClick, { disabled = false, primary = false } = {}) => (
@@ -261,6 +261,8 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
         </dl>
         {b.signboard_photo && <img src={b.signboard_photo} alt="Signboard" style={{ width: "100%", maxWidth: 280, borderRadius: 10, border: `1px solid ${D.cardBorder}` }} />}
       </section>
+
+      <StaffHoursSection businessId={b.id} days={b.hours} oldText={b.opening_hours} canEdit={b.can_manage || isOps} />
 
       <section aria-label="Listings and photos" style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
