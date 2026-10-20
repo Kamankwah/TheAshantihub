@@ -119,6 +119,8 @@ describe('SupportOrderStatusPanel re-delivery (Plan 7F-E Task 7)', () => {
     await openDetail()
     const section = await screen.findByRole('region', { name: "Re-deliver at the customer's request" })
     expect(within(section).getByText('GH₵ 15.00')).toBeInTheDocument()
+    expect(within(section).getByText(/original delivery fee is settled for the first trip/)).toBeInTheDocument()
+    expect(within(section).getByLabelText(/Reason/)).toHaveAttribute('placeholder', expect.stringMatching(/no phone numbers/))
   })
 
   it('requires a reason', async () => {

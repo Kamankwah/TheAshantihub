@@ -126,9 +126,9 @@ function RedeliverySection({ order }) {
           <div style={dim}>
             The rider reached the address and could not reach the customer, and the goods came back. If the customer asks
             for it again, they pay a re-delivery fee of <strong style={{ color: D.text, fontVariantNumeric: "tabular-nums" }}>{`GH₵ ${order.redelivery_fee}`}</strong> first.
-            The original delivery fee stays with the first rider.
+            The original delivery fee is settled for the first trip.
           </div>
-          <label style={labelStyle}>Reason (kept on the order)<textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} style={field} /></label>
+          <label style={labelStyle}>Reason (kept on the order)<textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="What the customer asked for (no phone numbers)" style={field} /></label>
           <button type="button" disabled={busy || !reason.trim()} onClick={ask} style={{ ...button(D.text, D.panelBg, busy || !reason.trim()), alignSelf: "flex-start" }}>Ask the customer to pay and deliver again</button>
         </>
       )}

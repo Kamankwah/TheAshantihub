@@ -75,15 +75,22 @@ def latest(order):
     return Redelivery.objects.filter(order_id=order.pk).order_by("-attempt").first()
 
 
+def ledger_paid(order):
+    """The order's payment was recorded in the ledger (an order paid before the ledger was on was not: it has no re-delivery
+    fee and its failures are re-assigned as before, Plan 7F-E Task 6 only)."""
+    from ledger.models import Journal
+
+    return Journal.objects.filter(key=escrow.pay_key(order)).exists()
+
+
 def _refusal(order, assignment):
     """Why `order` cannot be re-delivered now, or None."""
     from ledger import refunds
-    from ledger.models import Journal
     from orders.models import Order
 
     if order.delivery_method != Order.DOOR_TO_DOOR or order.status != Order.PAID:
         return NOT_REDELIVERABLE
-    if not Journal.objects.filter(key=escrow.pay_key(order)).exists() or refunds.is_wholly_refunded(order):
+    if not ledger_paid(order) or refunds.is_wholly_refunded(order):
         return NOT_REDELIVERABLE
     if not customer_unavailable(assignment):
         return NOT_REDELIVERABLE
@@ -134,7 +141,8 @@ def _log(actor, verb, redelivery, *, request=None):
     kwargs = dict(
         target_type="delivery.redelivery", target_id=str(redelivery.pk),
         target_label=f"Re-delivery {redelivery.attempt} of order #{redelivery.order_id}",
-        summary=f"Order #{redelivery.order_id}: {ghs(redelivery.fee_pesewas)}. {redelivery.reason}"[:300],
+        # The reason is free text staff typed: it stays out of the summary (which feeds the live feed and notices).
+        summary=f"Order #{redelivery.order_id}: re-delivery {redelivery.attempt}, fee {ghs(redelivery.fee_pesewas)}, {redelivery.status}",
         after={"order": redelivery.order_id, "fee_pesewas": redelivery.fee_pesewas, "status": redelivery.status, "reason": redelivery.reason[:500]},
     )
     if request is not None:
@@ -282,7 +290,9 @@ FEE_UNPAID = "The customer has not paid the re-delivery fee yet, so this deliver
 
 
 def gate_applies(order):
-    return escrow.enabled() or open_row(order) is not None
+    """The re-delivery gate holds for an order that can carry a request: the ledger is on and recorded the order's payment
+    (the same test request() makes), or a request is already open."""
+    return (escrow.enabled() and ledger_paid(order)) or open_row(order) is not None
 
 
 def check_assign(order, existing, rider):
@@ -352,11 +362,11 @@ def for_whole_refund(order):
     redelivery = open_row(order, lock=True)
     if redelivery is None:
         return None, None
-    if redelivery.status == Redelivery.AWAITING_PAYMENT or redelivery.pay_journal_id is None:
+    if redelivery.status == Redelivery.AWAITING_PAYMENT:
         return redelivery, "cancel"
     if redelivery.status == Redelivery.ASSIGNED and riders.pickup_made(order) is not None:
-        return redelivery, "settle"
-    return redelivery, "refund"
+        return redelivery, "settle"                 # a GH₵ 0.00 fee posts nothing but the request still completes
+    return redelivery, "refund" if redelivery.pay_journal_id is not None else "cancel"
 
 
 def refund_accounts(redelivery, action):

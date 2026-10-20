@@ -72,16 +72,35 @@ def first_leg(order):
     return leg
 
 
-def fee_rider(order):
-    """The payee of the order's ORIGINAL delivery fee (a StaffUser), or None: the rider who completed the first trip when
-    the order was re-delivered at the customer's request (Redelivery.first_rider: they reached the address and the customer
-    was away, so the fee is theirs, Ruling R4), else the rider on the assignment. Whether that rider is actually paid (a
-    third-party rider, at release) or the fee stays platform income (an AshantiHub rider) is third_party_rider's call."""
+def fee_payee(order, *, at_settle=False):
+    """(staff id, the time their employment is tested at) of the rider the order's ORIGINAL delivery fee belongs to, or
+    None. The one source for third_party_rider (release) and rider_for_settle (a whole refund before release):
+    - re-delivered at the customer's request (Redelivery.first_rider, Ruling R4): the first rider, at the end of their leg
+      (they reached the address and the customer was away), whatever the second trip does;
+    - else at release: the rider on the assignment, at `delivered_at` (none for a failed or undelivered job);
+    - else at a settle (`at_settle`): the rider on the assignment, at their own pickup (pickup_made, the current leg)."""
+    leg = first_leg(order)
+    if leg is not None:
+        return leg
+    assignment = DeliveryAssignment.objects.filter(order_id=order.pk).first()
+    if assignment is None or assignment.dispatch_id is None:
+        return None
+    if at_settle:
+        picked = pickup_made(order)
+        return (assignment.dispatch_id, picked) if picked is not None else None
+    if assignment.status == DeliveryAssignment.FAILED or assignment.delivered_at is None:
+        return None
+    return assignment.dispatch_id, assignment.delivered_at
+
+
+def fee_rider(order, *, at_settle=False):
+    """The payee of the order's original delivery fee (a StaffUser), or None (fee_payee). Whether that rider is actually
+    paid (third-party, at release or settle) or the fee stays platform income (an AshantiHub rider) is decided by
+    third_party_rider / rider_for_settle from the employment periods."""
     from accounts.models import StaffUser
 
-    leg = first_leg(order)
-    staff_id = leg[0] if leg is not None else DeliveryAssignment.objects.filter(order_id=order.pk).values_list("dispatch_id", flat=True).first()
-    return StaffUser.objects.filter(pk=staff_id).first() if staff_id else None
+    payee = fee_payee(order, at_settle=at_settle)
+    return StaffUser.objects.filter(pk=payee[0]).first() if payee is not None and payee[0] else None
 
 
 def third_party_rider(order, *, lock=False):
@@ -92,17 +111,10 @@ def third_party_rider(order, *, lock=False):
     back to AshantiHub's own (delivery.employment.apply) waits for the caller."""
     if order.delivery_method != Order.DOOR_TO_DOOR:
         return None
-    leg = first_leg(order)
-    if leg is not None:
-        staff_id, at = leg
-    else:
-        assignment = DeliveryAssignment.objects.filter(order_id=order.pk).first()
-        if (
-            assignment is None or assignment.status == DeliveryAssignment.FAILED or assignment.delivered_at is None
-            or assignment.dispatch_id is None
-        ):
-            return None
-        staff_id, at = assignment.dispatch_id, assignment.delivered_at
+    payee = fee_payee(order)
+    if payee is None:
+        return None
+    staff_id, at = payee
     rider = Rider.objects.select_related("staff").filter(staff_id=staff_id).first() if staff_id else None
     # History reads the employment periods (delivery.RiderEmploymentPeriod), never the current flag, so a later switch
     # back or forward cannot re-label this delivery.
@@ -241,14 +253,10 @@ def rider_for_settle(order):
     if order.delivery_method != Order.DOOR_TO_DOOR:
         return None
     assignment = locks.lock_assignment(order)       # `order` is the refund's locked row (orders.locks.lock_order)
-    leg = first_leg(order)
-    if leg is not None:                             # re-delivered at the customer's request: the first rider's fee (fee_rider)
-        staff_id, at = leg
-    else:
-        at = pickup_made(order)
-        staff_id = assignment.dispatch_id if assignment is not None else None
-        if at is None:
-            return None
+    payee = fee_payee(order, at_settle=True)       # re-delivered: the first rider at the end of their leg; else the pickup
+    if payee is None:
+        return None
+    staff_id, at = payee
     rider = Rider.objects.select_related("staff").filter(staff_id=staff_id).first() if staff_id else None
     if rider is None or not employment.third_party_at(rider, at):
         return None

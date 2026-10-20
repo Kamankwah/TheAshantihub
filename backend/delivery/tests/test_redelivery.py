@@ -349,3 +349,56 @@ class RedeliveryEndpointsLedgerOffTests(RedeliveryBase):
         self.assertFalse(detail["redeliverable"])
         # The failed delivery is re-assigned exactly as before the re-delivery fee existed.
         self.assertEqual(self.give(order, self.own).dispatch_id, self.own.staff_id)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class RedeliveryFixRoundTests(RedeliveryBase):
+    """Review fix round 1 (Plan 7F-E Task 7)."""
+
+    def test_an_order_paid_before_the_ledger_was_on_is_reassigned_without_a_redelivery(self):
+        from orders.models import Order
+
+        order = self.order([(self.listing(self.kofi, "100.00"), 1)], delivery="15.00")     # no order-pay journal
+        order.delivery_method = Order.DOOR_TO_DOOR
+        order.save(update_fields=["delivery_method"])
+        self.unavailable(order)
+        with self.assertRaises(RedeliveryError):
+            self.ask(order)                                                     # it cannot carry a re-delivery fee
+        from delivery import dispatching
+
+        self.assertIsNone(dispatching.redelivery_hold(order))
+        self.assertEqual(self.give(order, self.own).dispatch_id, self.own.staff_id)
+        self.assertFalse(Redelivery.objects.filter(order=order).exists())
+
+    def test_a_free_assigned_request_whose_rider_collected_completes_on_a_whole_refund(self):
+        from ledger import refunds
+
+        MoneySetting.objects.create(key="redelivery_fee_pesewas", value=0, effective_from=timezone.now() - timedelta(minutes=1))
+        order = self.unavailable()
+        row = self.ask(order)
+        self.second_trip(order, self.own)
+        self.collect_all(order, self.own)
+        refunds.refund_order(order, source="cancel")
+        row.refresh_from_db()
+        self.assertEqual((row.status, row.rider_id, row.settle_journal), (Redelivery.COMPLETED, self.own.staff_id, None))
+
+    def test_the_paid_event_is_written_after_commit_without_the_reason_in_its_summary(self):
+        from activity.models import ActivityEvent
+
+        order = self.unavailable()
+        row = self.ask(order, reason="Customer home after 5pm")
+        with self.captureOnCommitCallbacks(execute=True):
+            self.pay(row)
+        event = ActivityEvent.objects.get(verb="delivery.redelivery_paid")
+        self.assertEqual((event.target_type, event.target_id, event.after["fee_pesewas"]), ("delivery.redelivery", str(row.pk), 1500))
+        self.assertNotIn("5pm", event.summary)
+        self.assertNotIn(self.customer.phone, event.summary + str(event.after))
+
+    def test_fee_rider_names_the_first_rider_after_the_second_trip_is_assigned(self):
+        from ledger import riders
+
+        order = self.unavailable()
+        self.pay(self.ask(order))
+        self.second_trip(order, self.own)
+        self.assertEqual(riders.fee_rider(order).pk, self.swift.staff_id)
+        self.assertEqual(riders.fee_rider(order, at_settle=True).pk, self.swift.staff_id)
