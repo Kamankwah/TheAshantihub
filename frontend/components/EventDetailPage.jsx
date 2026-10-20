@@ -491,7 +491,7 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user,
                   {soldOut ? "Sold out" : tt.quantity_remaining != null ? `${tt.quantity_remaining} remaining` : "Available"}
                 </div>
               </div>
-              <div style={{ color: C.gold, fontWeight: 900, fontSize: "0.95rem", whiteSpace: "nowrap" }}>GHS {tt.price}</div>
+              <div style={{ color: C.lightGold, fontWeight: 900, fontSize: "0.95rem", whiteSpace: "nowrap" }}>GHS {tt.price}</div>
             </div>
 
             {!soldOut && (

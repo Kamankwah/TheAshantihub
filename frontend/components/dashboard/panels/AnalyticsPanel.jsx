@@ -185,7 +185,7 @@ export default function AnalyticsPanel({ user, onNavigate }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
                       <span style={{ fontWeight: 700, fontSize: "0.8rem", color: D.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
-                      <span style={{ fontWeight: 900, color: D.green, fontSize: "0.8rem", whiteSpace: "nowrap" }}>{item.price_amount != null ? `GHS ${item.price_amount}` : "No price set"}</span>
+                      <span style={{ fontWeight: 900, color: D.price, fontSize: "0.8rem", whiteSpace: "nowrap" }}>{item.price_amount != null ? `GHS ${item.price_amount}` : "No price set"}</span>
                     </div>
                     <div style={{ marginTop: 4, height: 6, background: D.panelBg2, borderRadius: 10, overflow: "hidden" }}>
                       <div style={{ height: "100%", width: item.status === "published" ? "100%" : item.status === "pending_review" ? "60%" : "25%", background: statusMeta.color, borderRadius: 10 }} />

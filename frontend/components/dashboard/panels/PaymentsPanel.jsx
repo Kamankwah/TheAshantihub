@@ -205,7 +205,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
                     if (c.key === "item") return <span>{r.item} <span style={{ color: D.textFaint, fontSize: "0.66rem" }}>({r.kind})</span></span>;
                     if (c.key === "customer") return r.customer;
                     if (c.key === "quantity") return r.quantity;
-                    if (c.key === "line_total") return <span style={{ fontWeight: 800, color: D.green }}>GHS {Number(r.line_total).toLocaleString()}</span>;
+                    if (c.key === "line_total") return <span style={{ fontWeight: 800, color: D.price }}>GHS {Number(r.line_total).toLocaleString()}</span>;
                     return null;
                   }}
                 />

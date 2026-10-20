@@ -641,7 +641,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                   </div>
                   <div style={{ flex: 1, minWidth: 160 }}>
                     <div style={{ fontWeight: 800, fontSize: "0.85rem", color: D.text }}>{item.name} <span style={{ background: tint(statusMeta.color, "22"), color: statusMeta.color, borderRadius: 20, padding: "2px 7px", fontSize: "0.6rem", fontWeight: 700 }}>{statusMeta.label}</span></div>
-                    <div style={{ fontWeight: 900, color: D.green, fontSize: "0.95rem", marginTop: 2 }}>{item.price_amount != null ? `GHS ${item.price_amount}` : "No price set"} <span style={{ color: D.textFaint, fontWeight: 400, fontSize: "0.72rem" }}>{item.price_unit}</span></div>
+                    <div style={{ fontWeight: 900, color: D.price, fontSize: "0.95rem", marginTop: 2 }}>{item.price_amount != null ? `GHS ${item.price_amount}` : "No price set"} <span style={{ color: D.textFaint, fontWeight: 400, fontSize: "0.72rem" }}>{item.price_unit}</span></div>
                     {item.updated_at && (
                       <>
                         <div style={{ fontSize: "0.62rem", color: freshnessColor(item.updated_at), fontWeight: 700, marginTop: 2 }}>🕐 {freshnessLabel(item.updated_at)}</div>

@@ -893,7 +893,7 @@ function MoreOptionsSection({ related, onOpenListing, label }) {
                 <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.7rem" }}>{r.zone?.name}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {r.price_amount != null && <span style={{ color: C.gold, fontWeight: 800, fontSize: "0.82rem" }}>GHS {r.price_amount}{r.price_unit || ""}</span>}
+                {r.price_amount != null && <span style={{ color: C.lightGold, fontWeight: 800, fontSize: "0.82rem" }}>GHS {r.price_amount}{r.price_unit || ""}</span>}
                 <button onClick={() => onOpenListing && onOpenListing(r.id)} style={viewBtnStyle}>View</button>
               </div>
             </div>
