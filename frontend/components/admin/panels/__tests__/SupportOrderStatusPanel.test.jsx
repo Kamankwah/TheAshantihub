@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../../../mocks/server.js'
@@ -79,5 +79,71 @@ describe('SupportOrderStatusPanel', () => {
     fireEvent.click(await screen.findByRole('listitem'))
     expect(await screen.findByText(/No Support change is available/)).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Update the status' })).not.toBeInTheDocument()
+  })
+})
+
+describe('SupportOrderStatusPanel re-delivery (Plan 7F-E Task 7)', () => {
+  const auth = (perms) => ({ hasPermission: (p) => perms.includes(p) })
+  function mountWith({ perms = ['orders.redeliver'], over = {}, requests = [] } = {}) {
+    const seen = { posts: [], lists: 0 }
+    let rows = requests
+    server.use(
+      http.get(`${API}/api/orders/support/`, () => HttpResponse.json({ results: [row], recent: [] })),
+      http.get(`${API}/api/orders/support/:id/`, () => HttpResponse.json(detail(over))),
+      http.get(`${API}/api/delivery/redeliveries/`, () => { seen.lists += 1; return HttpResponse.json({ results: rows }) }),
+      http.post(`${API}/api/delivery/redeliveries/`, async ({ request }) => {
+        const body = await request.json()
+        seen.posts.push(body)
+        rows = [{ id: 5, order: 1, attempt: 1, status: 'awaiting_payment', status_label: 'Waiting for the customer to pay', fee: '15.00', reason: body.reason }]
+        return HttpResponse.json(rows[0], { status: 201 })
+      }),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><SupportOrderStatusPanel auth={auth(perms)} /></QueryClientProvider>)
+    return seen
+  }
+  const openDetail = async () => { fireEvent.click(await screen.findByRole('listitem')); await screen.findByText('Order #1') }
+
+  it('shows the re-delivery action only with orders.redeliver and redeliverable true', async () => {
+    const seen = mountWith({ perms: [], over: { redeliverable: true, redelivery_fee: '15.00' } })
+    await openDetail()
+    expect(screen.queryByRole('region', { name: "Re-deliver at the customer's request" })).not.toBeInTheDocument()
+    expect(seen.lists).toBe(0)
+    cleanup()
+    const plain = mountWith({ over: { redeliverable: false } })
+    await openDetail()
+    await waitFor(() => expect(plain.lists).toBe(1))
+    expect(screen.queryByRole('region', { name: "Re-deliver at the customer's request" })).not.toBeInTheDocument()
+    cleanup()
+    mountWith({ over: { redeliverable: true, redelivery_fee: '15.00' } })
+    await openDetail()
+    const section = await screen.findByRole('region', { name: "Re-deliver at the customer's request" })
+    expect(within(section).getByText('GH₵ 15.00')).toBeInTheDocument()
+  })
+
+  it('requires a reason', async () => {
+    const seen = mountWith({ over: { redeliverable: true, redelivery_fee: '15.00' } })
+    await openDetail()
+    const section = await screen.findByRole('region', { name: "Re-deliver at the customer's request" })
+    const ask = within(section).getByRole('button', { name: 'Ask the customer to pay and deliver again' })
+    expect(ask).toBeDisabled()
+    fireEvent.change(within(section).getByLabelText(/Reason/), { target: { value: '   ' } })
+    expect(ask).toBeDisabled()
+    fireEvent.change(within(section).getByLabelText(/Reason/), { target: { value: 'Customer called, home tomorrow' } })
+    fireEvent.click(ask)
+    await waitFor(() => expect(seen.posts).toEqual([{ order: 1, reason: 'Customer called, home tomorrow' }]))
+    expect(await within(section).findByText('Waiting for the customer to pay GH₵ 15.00.')).toBeInTheDocument()
+  })
+
+  it('shows waiting for payment state', async () => {
+    mountWith({
+      over: { redeliverable: false },
+      requests: [{ id: 5, order: 1, attempt: 1, status: 'awaiting_payment', status_label: 'Waiting', fee: '15.00', reason: 'x' }],
+    })
+    await openDetail()
+    const section = await screen.findByRole('region', { name: "Re-deliver at the customer's request" })
+    expect(within(section).getByRole('status')).toHaveTextContent('Waiting for the customer to pay GH₵ 15.00.')
+    expect(within(section).getByRole('button', { name: 'Cancel the re-delivery' })).toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: 'Ask the customer to pay and deliver again' })).not.toBeInTheDocument()
   })
 })

@@ -17,3 +17,12 @@ describe('Riders group', () => {
     expect(grouped[0][1].map((s) => s.key)).toEqual(['rider_commission_bp', 'rider_withdrawals_per_day'])
   })
 })
+
+describe('Re-delivery group (Plan 7F-E Task 7)', () => {
+  it('Re-delivery group lists redelivery_fee_pesewas', () => {
+    const group = GROUPS.find(([title]) => title === 'Re-delivery')
+    expect(group[1]).toEqual(['redelivery_fee_pesewas'])
+    const grouped = groupSettings([{ key: 'redelivery_fee_pesewas', value: 1500 }])
+    expect(grouped.map(([title]) => title)).toEqual(['Re-delivery'])
+  })
+})

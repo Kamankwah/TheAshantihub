@@ -499,7 +499,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "roles-permissions" && <RolesPermissionsPanel />}
           {activeTab === "escrow" && <EscrowLedgerPanel auth={auth} />}
           {activeTab === "disputes" && (role === "super_admin" ? <SaDisputesPanel auth={auth} /> : role === "support" ? <SupportDisputeIntakePanel /> : <DisputesPanel auth={auth} />)}
-          {activeTab === "support-order-status" && role === "support" && <SupportOrderStatusPanel key={supportOrder || "none"} orderId={supportOrder} />}
+          {activeTab === "support-order-status" && role === "support" && <SupportOrderStatusPanel key={supportOrder || "none"} orderId={supportOrder} auth={auth} />}
           {activeTab === "transactions" && (role === "super_admin" ? <RevenueSalesPanel /> : <TransactionsReportPanel />)}
           {activeTab === "credit" && <CreditPanel />}
           {activeTab === "scout-assignments" && <ScoutAssignmentsPanel />}

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../mocks/server.js'
@@ -151,5 +151,31 @@ describe('OrderTrackingMap with several shops', () => {
   it('adds nothing for a single shop', () => {
     mount(<OrderTrackingMap orderId={7} assignmentStatus="accepted" deliveryStatus="processing" stops={null} />)
     expect(screen.queryByText(/Collecting from/)).not.toBeInTheDocument()
+  })
+})
+
+describe('OrderTrackingMap re-delivery notice (Plan 7F-E Task 7)', () => {
+  const waiting = { id: 5, order: 7, attempt: 1, status: 'awaiting_payment', fee: '15.00', fee_pesewas: 1500 }
+
+  it('shows the pay notice while awaiting payment and posts the chosen method', async () => {
+    const posts = []
+    server.use(http.post(`${API}/api/orders/:id/redelivery/pay/`, async ({ request, params }) => {
+      posts.push({ id: params.id, body: await request.json() })
+      return HttpResponse.json({ mode: 'immediate', redelivery: { ...waiting, status: 'paid' } })
+    }))
+    mount(<OrderTrackingMap orderId={7} assignmentStatus="failed" deliveryStatus="out_for_delivery" redelivery={waiting} />)
+    expect(screen.getByText(/We could not reach you\. Pay/)).toHaveTextContent('We could not reach you. Pay GH₵ 15.00 to have it delivered again.')
+    fireEvent.click(screen.getByRole('button', { name: 'Pay from wallet' }))
+    await waitFor(() => expect(posts).toEqual([{ id: '7', body: { method: 'wallet' } }]))
+    fireEvent.click(screen.getByRole('button', { name: 'Pay by mobile money' }))
+    await waitFor(() => expect(posts[1]).toEqual({ id: '7', body: { method: 'momo' } }))
+  })
+
+  it('shows nothing otherwise', () => {
+    const { container } = mount(<OrderTrackingMap orderId={7} assignmentStatus="failed" deliveryStatus="out_for_delivery" redelivery={null} />)
+    expect(container).toBeEmptyDOMElement()
+    const paid = mount(<OrderTrackingMap orderId={7} assignmentStatus="failed" deliveryStatus="out_for_delivery" redelivery={{ ...waiting, status: 'paid' }} />)
+    expect(paid.container).toBeEmptyDOMElement()
+    expect(screen.queryByText(/We could not reach you/)).not.toBeInTheDocument()
   })
 })
