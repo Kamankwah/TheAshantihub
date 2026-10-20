@@ -1,8 +1,8 @@
 """Re-delivery at the customer's request (Plan 7F-E Task 7, owner Rulings R4 and R5).
 
-The first rider completed the trip and the customer was not there (CUSTOMER_UNAVAILABLE: the assignment failed with
-`no_answer` after `arrived_drop_at`; services.cant_deliver already enforced the 10-minute wait and two calls). The goods
-came back. At the customer's request Support or the Pickup Desk (`orders.redeliver`) asks for a second trip
+The first rider completed the trip and the customer was not available (CUSTOMER_UNAVAILABLE_REASONS: the assignment failed
+after `arrived_drop_at` with `no_answer`, for which services.cant_deliver enforced the 10-minute wait and two calls, or
+with `refused`, the customer turning the order away at the door). The goods came back. At the customer's request Support or the Pickup Desk (`orders.redeliver`) asks for a second trip
 (`request`): the governed fee `redelivery_fee_pesewas` (Ruling R5) is copied onto a Redelivery row and the customer is
 told to pay it. Nothing is reserved before payment. Once paid (`record_payment`, the payment finalizer) the Dispatch or
 Delivery Manager may assign the job again, to an AshantiHub (in-house) rider only (`check_assign` / `link_rider`, called
@@ -32,14 +32,16 @@ from notifications.services import notify_customer
 from .models import Redelivery
 from .services import DeliveryError
 
-# What "the customer was not available" means (owner to confirm; the owner may add reasons): the first rider reached the
-# address (arrived_drop_at) and the job failed for one of these. Other reasons (wrong_address, refused, unsafe, other) are
-# a plain re-assignment (Plan 7F-E Task 6), with no extra fee.
-CUSTOMER_UNAVAILABLE_REASONS = ("no_answer",)
+# What "the customer was not available" means (Director ruling 3, 2026-10-20): the first rider reached the address
+# (arrived_drop_at, so the trip was completed) and the job failed there because nobody answered (services.cant_deliver
+# also enforced the 10-minute wait and two calls) or the customer refused the order at the door. A refusal reported
+# before the rider reached the address, and every other reason (wrong_address, unsafe, other), is a plain re-assignment
+# (Plan 7F-E Task 6), with no extra fee.
+CUSTOMER_UNAVAILABLE_REASONS = ("no_answer", "refused")
 
 NOT_REDELIVERABLE = (
     "This order cannot be delivered again at the customer's request: only a paid door-to-door order whose rider reached "
-    "the address and could not reach the customer qualifies."
+    "the address and found the customer unavailable (no answer, or the order refused at the door) qualifies."
 )
 
 
@@ -184,14 +186,14 @@ def request(order, staff, reason, now=None, *, http_request=None):
         if fee:
             notify_customer(
                 order.customer, "order_status", f"Pay {ghs(fee)} to have Order #{order.pk} delivered again",
-                body=(f"We could not reach you at the delivery address for Order #{order.pk}. Pay {ghs(fee)} to have it "
+                body=(f"We could not hand Order #{order.pk} over at the delivery address. Pay {ghs(fee)} to have it "
                       "delivered again: open your orders to pay from your wallet or by mobile money."),
                 link="/my-account", icon="🛵",
             )
         else:
             notify_customer(
                 order.customer, "order_status", f"Order #{order.pk} will be delivered again",
-                body=f"We could not reach you at the delivery address for Order #{order.pk}. It will be delivered again.",
+                body=f"We could not hand Order #{order.pk} over at the delivery address. It will be delivered again.",
                 link="/my-account", icon="🛵",
             )
         _log(staff, "delivery.redelivery_requested", redelivery, request=http_request)

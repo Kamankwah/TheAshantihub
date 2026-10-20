@@ -1,5 +1,5 @@
 """Fixtures for the re-delivery tests (Plan 7F-E Task 7) in ledger and delivery: a paid door-to-door ledger order whose
-first rider reached the address and could not reach the customer (not test cases themselves)."""
+first rider reached the address and found the customer unavailable (not test cases themselves)."""
 from datetime import timedelta
 from decimal import Decimal
 
@@ -78,10 +78,20 @@ class RedeliveryBase(RefundBase):
         return order
 
     def failed_other(self, reason="wrong_address"):
+        """The first rider collected the order and failed for `reason` before reaching the address (no arrived_drop_at)."""
         order = self.door_order()
         self.give(order, self.swift)
         self.collect_all(order, self.swift)
         services.cant_deliver(self.job(order), self.swift.staff, reason, "No such house", *HERE, 10)
+        return order
+
+    def failed_at_the_door(self, reason):
+        """The first rider collected the order, reached the address (waited and called) and failed there for `reason`."""
+        order = self.door_order()
+        self.give(order, self.swift)
+        self.collect_all(order, self.swift)
+        self.reach_customer(order, self.swift)
+        services.cant_deliver(self.job(order), self.swift.staff, reason, "At the gate", *HERE, 10)
         return order
 
     # --- the re-delivery -----------------------------------------------------------------------------------------------

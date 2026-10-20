@@ -103,6 +103,45 @@ class RedeliveryRequestTests(RedeliveryBase):
         self.assert_balanced()
 
 
+@override_settings(LEDGER_ENABLED=True)
+class CustomerUnavailableReasonTests(RedeliveryBase):
+    """Director ruling 3 (2026-10-20): "the customer was not available" is a failure at the address (arrived_drop_at set)
+    for no answer OR a refusal at the door (CUSTOMER_UNAVAILABLE_REASONS). Any other reason is a plain re-assignment."""
+
+    def unavailable_now(self, order):
+        return redelivery.customer_unavailable(DA.objects.get(order=order))
+
+    def test_the_named_reasons_are_no_answer_and_refused(self):
+        self.assertEqual(redelivery.CUSTOMER_UNAVAILABLE_REASONS, ("no_answer", "refused"))
+
+    def test_no_answer_after_arrival_counts(self):
+        order = self.unavailable()
+        self.assertTrue(self.unavailable_now(order))
+        self.assertEqual(self.ask(order).status, Redelivery.AWAITING_PAYMENT)
+
+    def test_refused_at_the_door_counts(self):
+        order = self.failed_at_the_door("refused")
+        self.assertTrue(self.unavailable_now(order))
+        row = self.ask(order)
+        self.assertEqual((row.status, row.first_rider_id), (Redelivery.AWAITING_PAYMENT, self.swift.staff_id))
+
+    def test_refused_before_reaching_the_address_does_not_count(self):
+        order = self.failed_other("refused")                              # no arrived_drop_at: the trip was not completed
+        self.assertFalse(self.unavailable_now(order))
+        self.refused(order)
+
+    def test_another_reason_at_the_door_does_not_count(self):
+        order = self.failed_at_the_door("wrong_address")
+        self.assertFalse(self.unavailable_now(order))
+        self.refused(order)
+        self.assertEqual(self.give(order, self.own).dispatch_id, self.own.staff_id)   # a plain re-assignment, no fee
+
+    def refused(self, order, code="not_redeliverable"):
+        with self.assertRaises(RedeliveryError) as raised:
+            self.ask(order)
+        self.assertEqual((raised.exception.status_code, raised.exception.code), (409, code))
+
+
 class RedeliverPermissionSeedTests(RedeliveryBase):
     def test_orders_redeliver_is_seeded_to_support_pickup_desk_and_super_admin(self):
         from accounts.models import Role
