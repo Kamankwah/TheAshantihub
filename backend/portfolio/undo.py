@@ -81,19 +81,19 @@ def _revert_update(change, approval, owner):
 
     pin = [field for field in proposals.PIN_FIELDS if field in applied]
     pin_unchanged = all(unchanged(field) for field in pin)  # the pin goes back whole or not at all
-    skipped, owner_fields, profile_fields = [], [], []
+    skipped, profile_fields = [], []
     for field in proposals.ordered_fields(applied):
+        if field in proposals.PROTECTED_OWNER_FIELDS:
+            # An old change from before name and contact moved to the business's own request: never written back.
+            skipped.append(field)
+            continue
         still_applied = pin_unchanged if field in proposals.PIN_FIELDS else unchanged(field)
         if not still_applied or not _can_restore(business, field, before.get(field)):
             skipped.append(field)
             continue
         value = proposals.model_value(field, before.get(field))
-        if field in proposals.OWNER_FIELDS:
-            setattr(business, field, value)
-            owner_fields.append(field)
-        else:
-            setattr(profile, field, value)
-            profile_fields.append(field)
+        setattr(profile, field, value)
+        profile_fields.append(field)
     if pin and pin_unchanged and "location_set_by_before" in change.result:
         profile.location_set_by = change.result["location_set_by_before"] or ""
         set_at = change.result.get("location_set_at_before")
@@ -107,8 +107,6 @@ def _revert_update(change, approval, owner):
         decided_at = change.result.get("address_verified_at_before")
         profile.address_verified_at = parse_datetime(decided_at) if decided_at else None
         profile_fields += ["address_verified", "address_verified_by", "address_verified_at"]
-    if owner_fields:
-        business.save(update_fields=owner_fields)
     if profile_fields:
         profile.save(update_fields=profile_fields)
     return [proposals.FIELD_LABELS[field] for field in skipped]

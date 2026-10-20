@@ -26,6 +26,8 @@ def event_state(event, now):
         return "rejected", "Rejected"
     if event.status == Event.EXPIRED:
         return "expired", "Listing expired"
+    if event.status == Event.CANCELLED:
+        return "cancelled", "Cancelled by the organiser" if event.cancelled_by_staff_id is None else "Cancelled by AshantiHub"
     if event.event_date < now:
         return "ended", "Ended"
     if event.paid_at is None:
@@ -108,7 +110,7 @@ def filtered(request, now):
     if show == "waiting":
         events = events.filter(status=Event.PENDING)
     elif show == "ended":
-        events = events.filter(status=Event.APPROVED, event_date__lt=now)
+        events = events.filter(Q(status=Event.APPROVED, event_date__lt=now) | Q(status=Event.CANCELLED))
     elif show == "on_sale":
         events = events.filter(status=Event.APPROVED, event_date__gte=now, paid_at__isnull=False, expires_at__gt=now)
     elif show == "not_live":

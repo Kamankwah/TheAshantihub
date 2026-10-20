@@ -220,15 +220,15 @@ class BookingReleaseTests(BookingBase):
         self.assertEqual(sale.dispute.answer_due_at, sales.release_at(sale))
 
     @override_settings(LEDGER_ENABLED=False)
-    def test_a_scan_still_releases_the_flag_with_the_ledger_off(self):
+    def test_a_scan_leaves_the_flag_held_with_the_ledger_off(self):
         self.buy_tickets(quantity=1)
         ticket = self.scan(Ticket.objects.get())
-        self.assertEqual(ticket.escrow_status, Ticket.RELEASED)
-        self.assertIsNotNone(ticket.escrow_released_at)
+        self.assertEqual(ticket.escrow_status, Ticket.HELD)  # Plan 7F-C R5: only Accounting's manual release moves it
+        self.assertIsNone(ticket.escrow_released_at)
 
-    def test_a_scan_still_releases_a_ticket_that_has_no_sale(self):
+    def test_a_scan_leaves_a_ticket_that_has_no_sale_held(self):
         with override_settings(LEDGER_ENABLED=False):
             self.buy_tickets(quantity=1)
         ticket = self.scan(Ticket.objects.get())
-        self.assertEqual(ticket.escrow_status, Ticket.RELEASED)
-        self.assertIsNotNone(ticket.escrow_released_at)
+        self.assertEqual(ticket.escrow_status, Ticket.HELD)  # Plan 7F-C R5: only Accounting's manual release moves it
+        self.assertIsNone(ticket.escrow_released_at)

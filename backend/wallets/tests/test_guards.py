@@ -90,7 +90,10 @@ class WalletStepUpTests(TestCase):
                 verified = self.client.post("/api/otp/step-up/verify/", {"action": action, "code": last_sms_code()}, format="json")
                 self.assertEqual(verified.status_code, 200, verified.content)
                 self.assertEqual(verified.json()["action"], action)
-        self.assertEqual(self.send("authenticator_change").json()["code"], "otp_off")          # not the other actions
+        # Not the other actions: a customer has no business detail change, so no code is sent for one. (The
+        # authenticator's own code is issuable whatever the switches say since plan 7F-C R6, so it is not the example.)
+        self.assertEqual(self.send("detail_change").json()["code"], "otp_off")
+        self.assertEqual(self.send("authenticator_change").status_code, 200)
 
     @override_settings(LEDGER_ENABLED=True, OTP_STEP_UP_ENFORCED=False, OTP_SIGNIN_ENFORCED=False)
     def test_review_focus_a_recovery_email_needs_a_code_while_the_ledger_is_on(self):

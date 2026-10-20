@@ -57,11 +57,15 @@ class Event(models.Model):
     APPROVED = "approved"
     REJECTED = "rejected"
     EXPIRED = "expired"
+    # Final (Plan 7F-C, ruling R4): set only by events.cancellation.cancel_event, which refunds every ticket. Nothing
+    # moves a cancelled event to another status: edit, approve, reject, renew and the renewal finalizer all refuse it.
+    CANCELLED = "cancelled"
     STATUS_CHOICES = [
         (PENDING, "Pending"),
         (APPROVED, "Approved"),
         (REJECTED, "Rejected"),
         (EXPIRED, "Expired"),
+        (CANCELLED, "Cancelled"),
     ]
 
     PUBLIC = "public"
@@ -111,6 +115,13 @@ class Event(models.Model):
 
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+
+    # Who cancelled it and why (events.cancellation): the staff member, or null when the organiser cancelled.
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancel_reason = models.CharField(max_length=300, blank=True, default="")
+    cancelled_by_staff = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
 
     paid_at = models.DateTimeField(null=True, blank=True)
     # Computed as paid_at + visibility_days once the organizer pays for an
@@ -382,10 +393,11 @@ def _generate_unique_ticket_code():
 class Ticket(models.Model):
     """A single purchased ticket (event ticketing + escrow work). Payment for
     a ticket is held in escrow (`escrow_status=held`) until the ticket is
-    delivered/checked in (`EventCheckinView`), at which point it is
-    auto-released — or a staff `accountant` (holding `escrow.release`/
-    `escrow.hold`/`escrow.refund`) can manually override that lifecycle as
-    an exception path (fraud, dispute, no-show, etc.).
+    released. A check-in (`EventCheckinView`) only records delivery and never
+    releases: a ticket in a ledger booking sale is released by the clock
+    (`ledger.sales.release_due`), any other ticket by a staff `accountant`
+    (holding `escrow.release`/`escrow.hold`/`escrow.refund`) by hand, which
+    is also the exception path (fraud, dispute, no-show, etc.).
 
     `delivery_method`/`price` are snapshotted from the `EventTicketType` at
     purchase time rather than FK'd live — mirrors how `cart`/`orders`
@@ -427,9 +439,9 @@ class Ticket(models.Model):
     escrow_status = models.CharField(max_length=10, choices=ESCROW_STATUS_CHOICES, default=HELD)
     escrow_held_at = models.DateTimeField(auto_now_add=True)
     escrow_released_at = models.DateTimeField(null=True, blank=True)
-    # Null when the release happened automatically via check-in rather than
-    # a staff override (see EventCheckinView) — a non-null value here means
-    # an accountant manually intervened.
+    # Null when the release was automatic (the release timer); a check-in never
+    # releases (see EventCheckinView). A non-null value here means an
+    # accountant manually intervened.
     escrow_released_by_staff = models.ForeignKey(
         StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="escrow_overrides",

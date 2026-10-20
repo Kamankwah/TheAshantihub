@@ -55,7 +55,7 @@ describe('ProposeChangeForm', () => {
     const onSent = vi.fn()
     renderForm({ onSent })
     expect(await screen.findByRole('button', { name: 'Send for approval' })).toBeDisabled()
-    fireEvent.change(screen.getByLabelText('Sign-in phone'), { target: { value: '055 400 0402' } })
+    fireEvent.change(screen.getByLabelText('Business phone'), { target: { value: '055 400 0402' } })
     fireEvent.change(screen.getByLabelText('Days'), { target: { value: 'Mon–Sat' } })
     fireEvent.change(screen.getByLabelText('Opens'), { target: { value: '07:30' } })
     fireEvent.change(screen.getByLabelText('Closes'), { target: { value: '18:30' } })
@@ -65,7 +65,7 @@ describe('ProposeChangeForm', () => {
     fireEvent.click(send)
     await waitFor(() => expect(sent.body).not.toBeNull())
     expect(sent.body).toEqual({
-      fields: { login_phone: '055 400 0402', opening_hours: 'Mon–Sat 07:30–18:30' },
+      fields: { business_contact_phone: '055 400 0402', opening_hours: 'Mon–Sat 07:30–18:30' },
       reason: 'Moved next door and opens earlier',
     })
     expect(await screen.findByText('Sent to Ama Boateng')).toBeInTheDocument()
@@ -121,12 +121,19 @@ describe('ProposeChangeForm', () => {
     expect(await screen.findByText('Sent to Operations')).toBeInTheDocument()
   })
 
-  it('leaves sign-in details to a claimed owner and still lets the business phone change', async () => {
-    renderForm({}, business({ needs_claim: false }))
-    expect(await screen.findByText('The owner changes their sign-in phone and email themselves.')).toBeInTheDocument()
+  it('form no longer offers name or contact', async () => {
+    renderForm({}, business({ needs_claim: true }))
+    expect(await screen.findByLabelText('Business name')).toBeInTheDocument()
+    expect(screen.getByLabelText('Business phone')).toBeInTheDocument()
+    expect(screen.queryByLabelText("Owner's full name")).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Sign-in phone')).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Owner's email")).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Business phone')).toBeInTheDocument()
+  })
+
+  it('note explains who changes them', async () => {
+    renderForm({}, business({ needs_claim: false }))
+    expect(await screen.findByText('Name and contact are changed by the business itself.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Sign-in phone')).not.toBeInTheDocument()
   })
 
   it('keeps diffing against the business it opened with when it refetches, and says it changed', async () => {
@@ -141,23 +148,21 @@ describe('ProposeChangeForm', () => {
     expect(sent.body.fields).toEqual({ business_name: 'Adwoa Textiles' })
   })
 
-  it('leaves the sign-in fields out when the owner claims while the form is open', async () => {
+  it('other fields still diff and submit', async () => {
     const sent = captureChanges()
-    const view = renderForm()
-    fireEvent.change(await screen.findByLabelText('Sign-in phone'), { target: { value: '055 400 0402' } })
-    fireEvent.change(screen.getByLabelText('Business name'), { target: { value: 'Adwoa Textiles' } })
-    await view.serveNext(business({ needs_claim: false }))
-    expect(await screen.findByText('The owner changes their sign-in phone and email themselves.')).toBeInTheDocument()
+    renderForm()
+    fireEvent.change(await screen.findByLabelText('Business name'), { target: { value: 'Adwoa Textiles' } })
+    fireEvent.change(screen.getByLabelText('Ghana Post address'), { target: { value: 'AK-100-2000' } })
     fireEvent.change(screen.getByLabelText('Why the change (Operations sees this)'), { target: { value: 'New name' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Send 1 change for approval' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send 2 changes for approval' }))
     await waitFor(() => expect(sent.body).not.toBeNull())
-    expect(sent.body.fields).toEqual({ business_name: 'Adwoa Textiles' })
+    expect(sent.body.fields).toEqual({ business_name: 'Adwoa Textiles', gps_address: 'AK-100-2000' })
   })
 
   it("shows the server's reason, including a field error", async () => {
-    server.use(http.post(`${API}/api/portfolio/businesses/12/changes/`, () => HttpResponse.json({ login_phone: ['Already registered — ask Operations.'] }, { status: 400 })))
+    server.use(http.post(`${API}/api/portfolio/businesses/12/changes/`, () => HttpResponse.json({ business_contact_phone: ['Already registered — ask Operations.'] }, { status: 400 })))
     renderForm()
-    fireEvent.change(await screen.findByLabelText('Sign-in phone'), { target: { value: '0244000999' } })
+    fireEvent.change(await screen.findByLabelText('Business phone'), { target: { value: '0244000999' } })
     fireEvent.change(screen.getByLabelText('Why the change (Operations sees this)'), { target: { value: 'New phone' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send 1 change for approval' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Already registered — ask Operations.')

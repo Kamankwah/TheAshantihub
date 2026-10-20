@@ -139,7 +139,7 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   (`accounts.kyc.is_kyc_submitter` - extend it, never copy it) decides its KYC through either
   door, Super Admin included (403, `kyc.OWN_REGISTRATION`), or records its Ghana Post address
   decision: the registrar, the current account manager, the maker of any
-  `business.kyc`/`business.update` request for it, any staff member who edited the owner's details
+  `business.kyc`/`business.update`/`business.detail_change` request for it (`kyc.SUBMITTER_KINDS`), any staff member who edited the owner's details
   directly (`PATCH business-owners/{id}/` records `business_owner.details_changed` with only the
   changed fields, payout numbers and TIN masked by `accounts.serializers.owner_details_change`; a
   PATCH that changes nothing records nothing), and a field scout who corrected the address (one
@@ -153,9 +153,19 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
   `PortfolioConfig.ready()`); only the business's account manager may submit them; each applied
   change writes a `portfolio.AppliedChange` the owner can undo for 7 days
-  (`portfolio.undo.undo_change`), which always opens a fraud case. `email` / `login_phone` are
-  proposable only while the owner `needs_claim`, and a proposed email or phone that belongs to
-  staff is refused. Deactivating a scout counts only their non-rejected managed businesses.
+  (`portfolio.undo.undo_change`), which always opens a fraud case. A scout can never propose
+  `full_name`, `login_phone` or `email` (`proposals.PROTECTED_OWNER_FIELDS`, claimed or not): the
+  business files those itself (`portfolio.detail_changes`, `business.detail_change`) and a scout visit
+  verifies them. A pending or historical `business.update` that still holds one cannot be approved,
+  and its undo lists the field as not reverted. A proposed phone that belongs to staff is refused. Deactivating a
+  scout counts only their non-rejected managed businesses.
+- **Business detail change request (`portfolio/detail_changes.py`).** A claimed business files a
+  `BusinessDetailChangeRequest` for its `full_name`, `login_phone` or `email` (step-up forced while the ledger is on;
+  the refusals for a contact someone else holds are one generic message). Operations assigns an independent scout
+  (not the registrar or account manager) who visits and verifies in range of the business's pin; the scout then
+  submits `business.detail_change` (two people, sudo, `public_payload` masks the new value). Applying re-runs
+  `clean(detailed=True)`, restarts payout cooling, revokes the owner's trusted devices when the sign-in contact
+  changes (JWTs already issued stay valid) and notifies the old contact. There is no owner undo for an applied change.
 - **Owner claim tokens** (`accounts.claims`) are stored as SHA-256 hashes; a hand-over token works
   only on the scout session that started it; the claim view is `activity_exempt` and records
   `business.claimed` itself, so the password never reaches the activity log. The claim strips
@@ -271,6 +281,17 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   on Support's "matches" (`sales.record_verification`, `/api/ledger/bookings/`), with the 72-hour window counted from
   hand-over (provisional until the owner confirms it: spec gate (lvii)). Tickets for a customer-organised event stay outside the ledger (MoMo only). With the ledger on a ticket's
   escrow flag follows its sale: a scan no longer releases it, the manual release and hold answer `409 ledger_on`.
+  **A door scan never releases money, ledger on or off:** it records evidence and tells the customer. A ticket with no
+  `BookingSale` (legacy) stays held until Accounting releases it by hand (`unreleased_legacy`; the serializer's
+  `in_ledger`, the summary's `legacy_held`).
+  **Event cancellation (`events/cancellation.py`):** `cancel_event` marks the event `CANCELLED` (one record: first
+  reason, time and staff win), then refunds each ticket in its own transaction, in full (price plus its processing
+  share) through `sales.refund`: the ticket price comes out of the organiser's Pending or Available (Available may go
+  negative after release) and AshantiHub bears only the processing charge. The organiser
+  (`events/mine/<pk>/cancel/`, refused once the event date has passed) or Operations (`events/moderation/<pk>/cancel/`,
+  sudo) cancels; an hourly beat job (`ledger.tasks.finish_cancelled_event_refunds`) finishes leftovers. A cancelled event takes
+  no ticket sale, edit, approval, rejection or renewal; a Hubtel payment confirmed after the cancel marks its session
+  FAILED (`not_applied="event_cancelled"`) and is refunded by hand; `release_due` skips its sales.
   Refunds go to the wallet through `sales.refund` (one `BookingRefund` per sale and source; the refund that empties a
   sale cancels a booking not yet handed over), wired into the customer's stay cancel, Support's booking cancel, the
   Accountant's ticket refund and dispute resolution. **Lock order:** the service request or stay row (tickets: the

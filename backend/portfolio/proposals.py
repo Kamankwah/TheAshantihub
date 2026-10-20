@@ -37,6 +37,7 @@ from listings.models import Category, Listing, ListingPhoto, Zone
 from listings.serializers import LISTING_DECISION_FIELDS, PRODUCT_ANSWER_MESSAGES, validate_listing_for_owner
 from notifications.services import notify_business_owner
 
+from . import detail_changes
 from .checks import exact_duplicates, staff_phone_matches
 from .models import AppliedChange, StagedPhoto
 
@@ -51,14 +52,19 @@ GHANA_LAT = (Decimal("4.5"), Decimal("11.2"))
 GHANA_LNG = (Decimal("-3.3"), Decimal("1.3"))
 SIX_PLACES = Decimal("0.000001")
 
+# Name and sign-in contact are changed by the business itself and verified by a scout visit
+# (portfolio.detail_changes), never proposed by a scout. One constant, shared with that flow.
+PROTECTED_OWNER_FIELDS = detail_changes.PROTECTED_FIELDS
 EDITABLE_FIELDS = (
-    "full_name", "login_phone", "email", "business_name", "business_contact_phone", "gps_address",
+    "business_name", "business_contact_phone", "gps_address",
     "lat", "lng", "location_accuracy_m", "location_is_manual", "zone_id", "business_description",
     "opening_hours",
 )
-OWNER_FIELDS = ("full_name", "login_phone", "email")  # on BusinessOwner; the rest are on its profile
+# Old applied changes and pending approvals may still hold these (they were editable before); they are only
+# read, for display and undo, never written. The three owner columns come first, as they always did.
+_HISTORIC_ORDER = (*PROTECTED_OWNER_FIELDS, *EDITABLE_FIELDS)
 PIN_FIELDS = ("lat", "lng", "location_accuracy_m", "location_is_manual")  # always proposed together
-PHONE_FIELDS = ("login_phone", "business_contact_phone")
+PHONE_FIELDS = ("login_phone", "business_contact_phone")  # contact_duplicate_errors also serves detail_changes
 
 FIELD_LABELS = {
     "full_name": "Owner's name",
@@ -108,6 +114,11 @@ LISTING_LABELS = (
 
 NOT_ACCOUNT_MANAGER = "Only the business's account manager can propose changes."
 PAYOUT_MESSAGE = "Payout details can't be changed by scouts. The owner changes them in their dashboard."
+PROTECTED_MESSAGE = (
+    "Name and contact are changed by the business itself and checked by a scout visit. "
+    "Ask the owner to request it in their dashboard."
+)
+NEEDS_OWN_REQUEST = "This change cannot be approved: name and contact now need the business's own request. Reject it."
 NOT_EDITABLE = "This detail can't be changed here."
 NO_FIELDS = "Choose at least one detail to change."
 NOTHING_CHANGED = "Nothing changed — these are already the business's details."
@@ -129,10 +140,6 @@ NO_PHOTOS = "Add at least one photo."
 LISTING_MOVED = "This listing isn't this business's any more."
 STAFF_PHONE = "That number belongs to a staff member — ask Operations."
 STAFF_EMAIL = "That email belongs to a staff member — ask Operations."
-OWNER_HAS_LOGIN = {
-    "email": "Sign-in email is changed by the owner once they have a login.",
-    "login_phone": "Sign-in phone is changed by the owner once they have a login.",
-}
 UNDO_HINT = "Not you? Press “This wasn't me” in your dashboard within 7 days."
 
 
@@ -162,7 +169,7 @@ def first_message(errors):
 
 
 def ordered_fields(fields):
-    return [field for field in EDITABLE_FIELDS if field in fields]
+    return [field for field in _HISTORIC_ORDER if field in fields]
 
 
 def join_words(words):
@@ -180,7 +187,7 @@ def summary_words(fields):
 
 
 def current_value(owner, profile, field):
-    return getattr(owner, field) if field in OWNER_FIELDS else getattr(profile, field)
+    return getattr(owner, field) if field in PROTECTED_OWNER_FIELDS else getattr(profile, field)
 
 
 def model_value(field, value):
@@ -372,9 +379,6 @@ def _zone(value):
 
 
 _CLEANERS = {
-    "full_name": lambda value: _text(value, max_length=150, required=True),
-    "login_phone": _phone,
-    "email": _email,
     "business_name": lambda value: _text(value, max_length=150, required=True),
     "business_contact_phone": _phone,
     "gps_address": _gps,
@@ -478,6 +482,9 @@ def clean_update_fields(owner, fields):
     if not isinstance(fields, dict) or not fields:
         raise ValidationError({"fields": [NO_FIELDS]})
     errors = {}
+    protected = [key for key in fields if key in PROTECTED_OWNER_FIELDS]
+    if protected:  # before any other check, and the whole proposal is refused
+        raise ValidationError({key: [PROTECTED_MESSAGE] for key in protected})
     for key in fields:
         if str(key).startswith("payout_") or key == "default_payout_method":
             errors[key] = [PAYOUT_MESSAGE]
@@ -506,14 +513,16 @@ def clean_update_fields(owner, fields):
 
 
 def update_duplicate_errors(owner, fields):
-    """The checks a detail change re-runs at proposal and approval: sign-in
-    details only before the owner has a login, then duplicates, then staff
-    emails and phones (self-dealing)."""
-    errors = {}
-    if not owner.needs_claim:
-        for field, message in OWNER_HAS_LOGIN.items():
-            if field in fields:
-                errors[field] = [message]
+    """The checks a detail change re-runs at proposal and approval: duplicates, then staff emails and phones
+    (self-dealing). Sign-in contact is not proposable at all (PROTECTED_OWNER_FIELDS)."""
+    return contact_duplicate_errors(owner, fields)
+
+
+def contact_duplicate_errors(owner, fields, errors=None):
+    """The duplicate and self-dealing checks alone (no sign-in rule): another business's phone, Ghana Post address or
+    email, and a staff member's phone or email. portfolio.detail_changes reuses them for the business's own request.
+    Fields already in `errors` are not checked again."""
+    errors = {} if errors is None else errors
     for field in PHONE_FIELDS:
         if field in errors or not fields.get(field):
             continue
@@ -565,7 +574,10 @@ def update_state(approval):
 
 def validate_update(approval):
     owner = BusinessOwner.objects.get(pk=approval.payload["business_owner_id"])
-    errors = update_duplicate_errors(owner, approval.payload.get("fields") or {})
+    fields = approval.payload.get("fields") or {}
+    if any(field in fields for field in PROTECTED_OWNER_FIELDS):
+        raise ApprovalError(NEEDS_OWN_REQUEST)  # an update made before name and contact moved to the business
+    errors = update_duplicate_errors(owner, {k: v for k, v in fields.items() if k not in PROTECTED_OWNER_FIELDS})
     if errors:
         raise ApprovalError(first_message(errors))
 
@@ -575,9 +587,11 @@ def apply_update(approval):
     owner = BusinessOwner.objects.select_for_update().get(pk=payload["business_owner_id"])
     profile = BusinessOwnerProfile.objects.select_for_update().get(business_owner=owner)
     fields = payload.get("fields") or {}
+    if any(field in fields for field in PROTECTED_OWNER_FIELDS):
+        raise ApprovalError(NEEDS_OWN_REQUEST)
     now = timezone.now()
     result = {}
-    owner_fields, profile_fields = [], []
+    profile_fields = []
     if any(field in fields for field in PIN_FIELDS):
         # Kept so an undo can put the pin's "set by" back too.
         result = {
@@ -602,14 +616,8 @@ def apply_update(approval):
         profile_fields += ["address_verified", "address_verified_by", "address_verified_at"]
     for field in ordered_fields(fields):
         value = model_value(field, fields[field])
-        if field in OWNER_FIELDS:
-            setattr(owner, field, value)
-            owner_fields.append(field)
-        else:
-            setattr(profile, field, value)
-            profile_fields.append(field)
-    if owner_fields:
-        owner.save(update_fields=owner_fields)
+        setattr(profile, field, value)
+        profile_fields.append(field)
     if profile_fields:
         profile.save(update_fields=profile_fields)
     words = summary_words(fields)

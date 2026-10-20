@@ -839,3 +839,96 @@ class LeaderboardView(APIView):
             return Response(leaderboard.build(request.user, request.query_params.get("month")))
         except leaderboard.LeaderboardError as exc:
             return Response({"detail": str(exc)}, status=400)
+
+
+# ── Business detail change requests: Operations assigns, the scout verifies (plan 7F-C Task 7) ───────────────────
+
+def _detail_change_refused(exc):
+    return Response({"detail": exc.message, "code": exc.code}, status=exc.status_code)
+
+
+DETAIL_CHANGE_LIST_LIMIT = 200
+
+
+class DetailChangeListView(APIView):
+    """GET detail-changes/?status= — Operations (scouts.assign) lists the businesses' change requests, newest first;
+    with no status, the live ones (requested, assigned, verified). Values are masked as on every staff screen."""
+
+    def get_permissions(self):
+        return [HasRolePermission("scouts.assign")]
+
+    def get(self, request):
+        from .detail_changes import staff_row
+        from .models import BusinessDetailChangeRequest as ChangeRequest
+
+        wanted = request.query_params.get("status")
+        rows = ChangeRequest.objects.select_related("business_owner__profile", "assigned_scout")
+        if wanted:
+            if wanted not in dict(ChangeRequest.STATUS_CHOICES):
+                return Response({"detail": "Unknown status.", "code": "invalid"}, status=400)
+            rows = rows.filter(status=wanted)
+        else:
+            rows = rows.filter(status__in=ChangeRequest.LIVE_STATUSES)
+        return Response({"results": [staff_row(change) for change in rows[:DETAIL_CHANGE_LIST_LIMIT]]})
+
+
+class MyDetailChangesView(APIView):
+    """GET detail-changes/mine/ — the scout's assigned requests (scouts.verify), waiting ones first. The scout sees the
+    new value in full: they confirm it with the owner on site."""
+
+    def get_permissions(self):
+        return [HasRolePermission("scouts.verify")]
+
+    def get(self, request):
+        from .detail_changes import scout_row
+        from .models import BusinessDetailChangeRequest as ChangeRequest
+
+        rows = ChangeRequest.objects.filter(assigned_scout=request.user).select_related(
+            "business_owner__profile__zone",
+        ).exclude(status=ChangeRequest.WITHDRAWN)
+        items = sorted(
+            (scout_row(change) for change in rows),
+            key=lambda item: (not item["can_verify"], -(item["assigned_at"].timestamp() if item["assigned_at"] else 0)),
+        )
+        return Response({"results": items})
+
+
+class DetailChangeAssignView(APIView):
+    """POST detail-changes/<pk>/assign/ {scout} — Operations (scouts.assign) assigns a scout who is not the business's
+    registrar or account manager. 200 with the request, or 400/404/409 {detail, code}."""
+
+    def get_permissions(self):
+        return [HasRolePermission("scouts.assign")]
+
+    def post(self, request, pk):
+        from . import detail_changes
+
+        body = request.data if isinstance(request.data, dict) else {}
+        try:
+            with transaction.atomic():
+                change = detail_changes.assign(request.user, pk, body.get("scout"), http_request=request)
+        except detail_changes.DetailChangeError as exc:
+            return _detail_change_refused(exc)
+        return Response(detail_changes.staff_row(change))
+
+
+class DetailChangeVerifyView(APIView):
+    """POST detail-changes/<pk>/verify/ {outcome: "verified"|"not_verified", note} — the assigned scout only, after
+    checking in at the business for this request inside the radius. The view records its own event (the note is
+    masked there and not copied from the body)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("scouts.verify")]
+
+    def post(self, request, pk):
+        from . import detail_changes
+
+        body = request.data if isinstance(request.data, dict) else {}
+        try:
+            with transaction.atomic():
+                change = detail_changes.verify(
+                    request.user, pk, body.get("outcome"), body.get("note"), http_request=request,
+                )
+        except detail_changes.DetailChangeError as exc:
+            return _detail_change_refused(exc)
+        return Response(detail_changes.scout_row(change))

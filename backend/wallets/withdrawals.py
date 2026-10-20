@@ -100,11 +100,11 @@ def existing(holder, request_id):
 
 def withdrawable(holder, now=None, balance=None):
     """What the holder can withdraw now: the balance (read fresh unless the caller already holds the lock and passes it)
-    less top-ups still inside their hold window, never below zero."""
+    less top-ups still inside their hold window, never below zero. The one formula: `request` and the summaries use it."""
     now = now or timezone.now()
     if balance is None:
         balance = posting.balance_of(source_kind(holder), holder)
-    return max(balance - held_topups(holder, now)[0], 0)
+    return max(balance - held_topups(holder, now, balance)[0], 0)
 
 
 def request(holder, *, destination_id, amount_pesewas, request_id, now=None):
@@ -154,10 +154,11 @@ def request(holder, *, destination_id, amount_pesewas, request_id, now=None):
         raise WithdrawalError(NEGATIVE[kind], "negative_balance", 409)
     if amount_pesewas > balance:
         raise WithdrawalError(f"You have GH₵ {from_pesewas(max(balance, 0))} to withdraw.", "insufficient_funds", 409)
-    held, free_at = held_topups(holder, now)
-    if held and amount_pesewas > withdrawable(holder, now, balance):
+    available = withdrawable(holder, now, balance)
+    if amount_pesewas > available:
+        held, free_at = held_topups(holder, now, balance)
         raise WithdrawalError(
-            f"Money you just added is held until it can be withdrawn. You can withdraw GH₵ {from_pesewas(withdrawable(holder, now, balance))} now.",
+            f"Money you just added is held until it can be withdrawn. You can withdraw GH₵ {from_pesewas(available)} now.",
             "topup_held", 409, free_at=free_at.isoformat(), held_topup_pesewas=held,
         )
     today = mine(holder).filter(status__in=Withdrawal.COUNTED, created_at__gte=start_of_day(now)).aggregate(total=Sum("amount_pesewas"))["total"] or 0

@@ -70,6 +70,13 @@ class WhoMayAskTests(StepUpBase):
         self.assertFalse(OtpChallenge.objects.exists())
         self.assertFalse(OtpEvent.objects.exists())
 
+    def test_step_up_code_issued_for_authenticator_change_with_switches_off(self):
+        for client in (self.client, client_for(make_customer(), "customer")):
+            senders.sms_outbox.clear()
+            self.assertEqual(client.post(SEND, {"action": "authenticator_change", "channel": "sms"}, format="json").status_code, 200)
+            self.assertEqual(len(senders.sms_outbox), 1)
+            self.assertTrue(client.post(VERIFY, {"action": "authenticator_change", "code": last_sms_code()}, format="json").json()["step_up_token"])
+
     def test_staff_use_sudo_and_are_refused_whatever_the_switches_say(self):
         staff = APIClient()
         staff.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(make_support(), sudo=True)}")
@@ -93,7 +100,8 @@ class WhoMayAskTests(StepUpBase):
         self.assertEqual(self.client.post("/api/otp/authenticator/disable/", HTTP_X_STEP_UP_TOKEN=token).status_code, 204)
         # ...but that opens only the authenticator action, and only while one is on.
         self.assertOff(self.client.post(SEND, {"action": "payout_destination", "channel": "sms"}, format="json"))
-        self.assertOff(self.client.post(SEND, {"action": "authenticator_change", "channel": "sms"}, format="json"))
+        # authenticator_change is always issuable (plan 7F-C R6): the app is offered whatever the switches say.
+        self.assertEqual(self.client.post(SEND, {"action": "authenticator_change", "channel": "sms"}, format="json").status_code, 200)
 
 
 class SwitchedOffTests(StepUpBase):
