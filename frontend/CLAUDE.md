@@ -133,3 +133,8 @@ monolith holding most components, with extractions living in `components/`,
 - **Never read a multipart request body that holds a jsdom `File` in a test**; spy on
   `FormData.prototype.append` instead.
 - **Duplicate-match copy lives in `registrationCheckCopy.js`** - don't re-word it per screen.
+- **Step-up codes are handled in `apiClient.js`, not per screen.** A `403 step_up_required` retries
+  once with `X-Step-Up-Token`; `StepUpPrompt` (mounted in `main.jsx`) supplies the code, so a screen
+  just does a plain `apiPost`/`apiPatch`. A customer/owner `two_factor_required` goes to
+  `/api/otp/sign-in/verify/`, a staff one to the staff two-factor endpoint. The trusted-device token
+  lives in `ashantihub.deviceToken` (customers only) and survives sign-out.
