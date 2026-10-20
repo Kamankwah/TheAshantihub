@@ -51,6 +51,35 @@ describe('AccountSecurityCard overview', () => {
   })
 })
 
+describe('AccountSecurityCard states', () => {
+  it('renders nothing, and no alert, without a stored session', async () => {
+    setStoredAuth(null)
+    const { container } = mount()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(container).toBeEmptyDOMElement()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('keeps the content and the authenticator section when a refetch fails', async () => {
+    let fail = false
+    server.use(
+      http.get(ME, () => (fail ? HttpResponse.json({ detail: 'x' }, { status: 500 }) : HttpResponse.json({ channels: [SMS], authenticator: null, trusted_devices: [], switches: { sign_in: true, step_up: true, sign_up: true }, customer_gap_days: 30 }))),
+      status(),
+      http.post(`${BASE}/api/otp/authenticator/setup/`, () => HttpResponse.json({ secret: 'JBSWY3DPEHPK3PXP', otpauth_uri: 'otpauth://totp/AshantiHub:x?secret=JBSWY3DPEHPK3PXP' })),
+    )
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><AccountSecurityCard accountType="customer" /></QueryClientProvider>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Set up' }))
+    await screen.findByLabelText('6-digit code from the app')
+    fail = true
+    await client.refetchQueries({ queryKey: ['otp', 'me'] })
+    await waitFor(() => expect(client.getQueryState(['otp', 'me']).status).toBe('error'))
+    expect(screen.getByLabelText('6-digit code from the app')).toBeInTheDocument()
+    expect(screen.getByText('0•• ••• 1234')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
 describe('trusted devices', () => {
   it('lists trusted devices with dates and no this-device marker', async () => {
     server.use(overview({ trusted_devices: [DEVICE] }), status())

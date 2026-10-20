@@ -68,7 +68,7 @@ export default function AuthenticatorSettings() {
     body = (
       <>
         <div style={{ color: D.text, fontSize: "0.78rem" }}>
-          On{status.enabled_at ? ` since ${new Date(status.enabled_at).toLocaleString("en-GH")}` : ""}. <span style={{ fontVariantNumeric: "tabular-nums" }}>{status.recovery_codes_left}</span> recovery codes left.
+          On{status.enabled_at ? ` since ${new Date(status.enabled_at).toLocaleString("en-GH")}` : ""}. <span style={{ fontVariantNumeric: "tabular-nums" }}>{status.recovery_codes_left}</span> recovery {status.recovery_codes_left === 1 ? "code" : "codes"} left.
         </div>
         <div style={dim}>Turning it on or off asks for a code first.</div>
         {!confirmOff ? (

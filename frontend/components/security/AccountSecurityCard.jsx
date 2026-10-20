@@ -10,12 +10,14 @@ const dim = { color: D.textDim, fontSize: "0.76rem" };
 // (ProfilePanel): how a code reaches you, the authenticator app, and (customers
 // only) trusted devices. Hints only; never a code or a secret.
 export default function AccountSecurityCard({ accountType }) {
-  const { data, isLoading, isError, refetch } = useSecurityOverview();
+  const { data, isError, isPending, fetchStatus, refetch } = useSecurityOverview();
+  // Query disabled (no stored session): nothing to show, and no alert to confuse the page.
+  if (!data && !isError && isPending && fetchStatus === "idle") return null;
   const heading = <div style={{ fontWeight: 800, color: D.text, fontSize: "0.85rem" }}>Sign-in &amp; security</div>;
 
   let body;
-  if (isLoading) body = <div style={dim}>Loading…</div>;
-  else if (isError || !data) body = <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>Could not load your security settings.</div>;
+  if (!data && !isError) body = <div style={dim}>Loading…</div>;
+  else if (!data) body = <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>Could not load your security settings.</div>;
   else {
     const devices = data.trusted_devices || [];
     const channels = data.channels || [];
