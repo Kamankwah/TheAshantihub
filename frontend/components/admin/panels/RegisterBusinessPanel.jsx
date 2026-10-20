@@ -543,7 +543,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
                   <div><button type="button" onClick={() => setEditingHours(true)} style={linkButton}>Change hours</button></div>
                 </>
               ) : (
-                <div style={{ background: "#fff", borderRadius: 12, padding: 12 }}>
+                <div style={{ borderRadius: 12, padding: 12 }}>
                   <BusinessHoursEditor initialDays={form.hours || undefined} saveLabel="Use these hours"
                     onSave={(days) => { dirty.current = true; setSavedForLater(false); setForm((f) => ({ ...f, hours: days })); setEditingHours(false); setStepError(null); }} />
                 </div>
