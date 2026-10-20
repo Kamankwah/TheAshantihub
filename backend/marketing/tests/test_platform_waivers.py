@@ -225,3 +225,36 @@ class PlatformLedger(RefundBase):
         escrow.charge_waiver(order)
         self.assertEqual(self.balance(Account.PLATFORM_PROMO_SUBSIDY), 1500)
         self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, kofi), 0)
+
+
+class BusinessSearch(PlatformBase):
+    URL = "/api/marketing/delivery-promos/business-search/"
+
+    def get(self, q, staff=None):
+        self.as_staff(staff or self.akua)
+        return self.client.get(self.URL, {"q": q})
+
+    def test_needs_the_fund_permission(self):
+        self.assertEqual(self.get("ab", staff=self.support).status_code, 403)
+
+    def test_short_query_returns_nothing(self):
+        r = self.get("a")
+        self.assertEqual((r.status_code, r.json()), (200, {"results": []}))
+
+    def test_returns_only_id_and_name_of_a_verified_business(self):
+        name = self.owner.display_name
+        r = self.get(name[:3])
+        self.assertEqual(r.status_code, 200, r.content)
+        rows = r.json()["results"]
+        self.assertIn({"id": self.owner.pk, "name": name}, rows)
+        self.assertTrue(all(set(row) == {"id", "name"} for row in rows))
+        self.assertLessEqual(len(rows), 10)
+
+    def test_excludes_unverified_and_suspended_businesses(self):
+        name = self.owner.display_name
+        self.owner.kyc_status = "pending"
+        self.owner.save(update_fields=["kyc_status"])
+        self.assertEqual(self.get(name[:3]).json()["results"], [])
+        self.owner.kyc_status, self.owner.is_suspended = "verified", True
+        self.owner.save(update_fields=["kyc_status", "is_suspended"])
+        self.assertEqual(self.get(name[:3]).json()["results"], [])

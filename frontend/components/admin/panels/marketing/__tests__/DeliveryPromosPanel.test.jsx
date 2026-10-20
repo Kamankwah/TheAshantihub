@@ -47,7 +47,7 @@ describe('staff DeliveryPromosPanel', () => {
     fireEvent.change(screen.getByLabelText('Ends'), { target: { value: '2026-10-22T08:00' } })
     fireEvent.change(screen.getByLabelText('Budget cap (GH₵)'), { target: { value: '250' } })
   }
-  const owners = http.get(`${API}/api/accounts/business-owners/`, () => HttpResponse.json({ results: [{ id: 7, full_name: 'Ama', business_name: 'Kente House' }] }))
+  const owners = http.get(`${API}/api/marketing/delivery-promos/business-search/`, ({ request }) => HttpResponse.json({ results: new URL(request.url).searchParams.get('q') === 'Kente' ? [{ id: 7, name: 'Kente House' }] : [] }))
 
   it('submits all_items true with the cap, says it was sent to Operations or Super Admin, and shows the pending promo after refetch', async () => {
     let sent = null
@@ -61,6 +61,19 @@ describe('staff DeliveryPromosPanel', () => {
     expect(await screen.findByText('Sent for approval to Operations or a Super Admin.')).toBeInTheDocument()
     expect(sent).toMatchObject({ business_owner: 7, name: 'Pay the fee', all_items: true, budget_cap: '250' })
     expect(await screen.findByText('Needs a decision')).toBeInTheDocument()
+  })
+
+  it('shows the chosen business name before submit and says when nothing matches', async () => {
+    list([])
+    server.use(owners)
+    renderMk(DeliveryPromosPanel, { permissions: ['delivery_promo.fund'] })
+    fireEvent.change(screen.getByLabelText('Find the business'), { target: { value: 'Zzz' } })
+    expect(await screen.findByText('No verified business matches.')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Business number/)).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Find the business'), { target: { value: 'Kente' } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Kente House' }))
+    expect(screen.getByText('Kente House')).toBeInTheDocument()
+    expect(screen.getByText('Business:')).toBeInTheDocument()
   })
 
   it("shows the server's error for a blocked business", async () => {

@@ -20,3 +20,13 @@ export const staffDeliveryPromoAction = (id, action, body = {}) => apiPost(`/api
 
 // AshantiHub-paid promo for one business; always waits for Operations or a Super Admin.
 export const createPlatformDeliveryPromo = (body) => apiPost('/api/marketing/delivery-promos/platform/', body)
+
+// GET /api/marketing/delivery-promos/business-search/?q= (delivery_promo.fund) -> {results: [{id, name}]}; asked from 2 characters.
+export const usePlatformPromoBusinessSearch = (term) => {
+  const q = (term || '').trim()
+  return useQuery({
+    queryKey: ['platform-promo-business-search', q],
+    queryFn: () => apiFetch(`/api/marketing/delivery-promos/business-search/?q=${encodeURIComponent(q)}`),
+    enabled: q.length >= 2,
+  })
+}
