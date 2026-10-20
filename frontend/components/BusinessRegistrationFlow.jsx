@@ -289,7 +289,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
                   🎉 Your first billing cycle is FREE — nothing is due now.
                 </div>
 
-                {plansQuery.isLoading && <div style={{fontSize:"0.8rem",color:C.inkFaint,marginBottom:14}}>Loading plans…</div>}
+                {plansQuery.isLoading && <div style={{fontSize:"0.8rem",color:C.inkDim,marginBottom:14}}>Loading plans…</div>}
                 {plansQuery.isError && <div style={{fontSize:"0.8rem",color:C.errInk,marginBottom:14}}>Could not load plans. Please try again.</div>}
 
                 {plansQuery.data && (
@@ -309,7 +309,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
                         )}
                         <div style={{fontWeight:800,color:C.ink,fontSize:"0.88rem"}}>{plan.name}</div>
                         <div style={{fontSize:"0.76rem",color:C.inkDim,margin:"2px 0"}}>GHS {plan.monthly_price} / month</div>
-                        <div style={{fontSize:"0.72rem",color:C.inkFaint}}>
+                        <div style={{fontSize:"0.72rem",color:C.inkDim}}>
                           {plan.max_active_listings == null ? "Unlimited listings" : `${plan.max_active_listings} listings`}
                           {" · "}{plan.hero_days} hero days
                           {plan.boost_credits_per_month ? ` · ${plan.boost_credits_per_month} boost credits/mo` : ""}
@@ -340,7 +340,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
                               }}
                             >
                               <div style={{fontWeight:800,fontSize:"0.76rem"}}>{months} mo</div>
-                              <div style={{fontSize:"0.64rem",color:C.inkFaint}}>GHS {total}</div>
+                              <div style={{fontSize:"0.64rem",color:C.inkDim}}>GHS {total}</div>
                             </button>
                           );
                         })}

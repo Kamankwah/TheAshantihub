@@ -33,9 +33,9 @@ export default function PromoCountdown({ startsAt, endsAt, compact = false }) {
     <div role="timer" aria-label={`${label} ${p.days} days, ${p.hours} hours, ${p.minutes} minutes`} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
       <span style={{ fontSize: "0.72rem", fontWeight: 700, color: C.ink }}>{label}</span>
       {cells.map(([v, l]) => (
-        <span key={l} style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", minWidth: 44, padding: "4px 6px", borderRadius: 8, border: `1px solid ${C.darkBrown}33`, background: C.surface }}>
+        <span key={l} style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", minWidth: 44, padding: "4px 6px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.surface }}>
           <strong style={{ fontSize: "1.05rem", color: C.ink, fontVariantNumeric: "tabular-nums" }}>{String(v).padStart(2, "0")}</strong>
-          <span style={{ fontSize: "0.58rem", color: "#6b5a4d" }}>{l}</span>
+          <span style={{ fontSize: "0.58rem", color: C.inkDim }}>{l}</span>
         </span>
       ))}
     </div>

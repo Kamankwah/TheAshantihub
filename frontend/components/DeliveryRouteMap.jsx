@@ -57,7 +57,7 @@ export default function DeliveryRouteMap({ pickups = [], dropoff = null, height 
 
   if (allPoints.length === 0) {
     return (
-      <div style={{ height, display: "flex", alignItems: "center", justifyContent: "center", background: C.surface2, borderRadius: 12, color: "#8A7A6B", fontSize: "0.78rem", textAlign: "center", padding: 16 }}>
+      <div style={{ height, display: "flex", alignItems: "center", justifyContent: "center", background: C.surface2, borderRadius: 12, color: C.inkDim, fontSize: "0.78rem", textAlign: "center", padding: 16 }}>
         No map coordinates for this delivery yet — use the address and phone below.
       </div>
     );

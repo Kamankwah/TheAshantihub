@@ -273,7 +273,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
               <div key={item.id} style={{ padding: "10px 14px", borderBottom: `1px solid ${C.line}`, display: "flex", gap: 10, alignItems: "center" }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: "0.78rem", color: C.ink }}>{item.listing_name}</div>
-                  <div style={{ fontSize: "0.65rem", color: C.inkFaint }}>{formatAmount(item.unit_price_snapshot)} each</div>
+                  <div style={{ fontSize: "0.65rem", color: C.inkDim }}>{formatAmount(item.unit_price_snapshot)} each</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                     <button
                       disabled={pendingId === item.id || item.quantity <= 1}
@@ -419,10 +419,10 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
             <div style={{ fontSize: "2.4rem", marginBottom: 10 }}>✅</div>
             <div style={{ fontWeight: 900, color: C.trust, fontSize: "0.95rem", marginBottom: 6 }}>Order Confirmed!</div>
             <div style={{ background: C.surface2, borderRadius: 12, padding: "12px 14px", marginBottom: 14, textAlign: "left", fontSize: "0.74rem", lineHeight: 1.8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.inkFaint }}>Order Ref</span><span style={{ fontWeight: 700 }}>#{order.id}</span></div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.inkDim }}>Order Ref</span><span style={{ fontWeight: 700 }}>#{order.id}</span></div>
               {order.items?.map((oi, i) => (
                 <div key={oi.id ?? i} style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: C.inkFaint }}>{oi.listing_name || oi.listing} × {oi.quantity}</span>
+                  <span style={{ color: C.inkDim }}>{oi.listing_name || oi.listing} × {oi.quantity}</span>
                   <span>{formatAmount(oi.line_total)}</span>
                 </div>
               ))}

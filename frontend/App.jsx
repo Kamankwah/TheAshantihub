@@ -225,7 +225,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                     <div style={{ width:40, height:40, borderRadius:"50%", background:n.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.2rem", flexShrink:0 }}>{n.logo}</div>
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:800, fontSize:"0.88rem", color:C.ink }}>{n.name}</div>
-                      <div style={{ fontSize:"0.68rem", color:C.inkFaint }}>Dial {n.ussd} • {n.fee} transaction fee</div>
+                      <div style={{ fontSize:"0.68rem", color:C.inkDim }}>Dial {n.ussd} • {n.fee} transaction fee</div>
                     </div>
                     <div style={{ color:"#ccc", fontSize:"1.2rem" }}>›</div>
                   </button>
@@ -236,11 +236,11 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                 <div style={{ display:"flex", justifyContent:"space-between", color:C.inkDim, marginBottom:4 }}>
                   <span>Amount</span><span style={{ fontWeight:700 }}>GHS {amount.toFixed(2)}</span>
                 </div>
-                <div style={{ display:"flex", justifyContent:"space-between", color:C.inkFaint, marginBottom:6 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", color:C.inkDim, marginBottom:6 }}>
                   <span>Transaction fee (1.5%)</span><span>GHS {fee.toFixed(2)}</span>
                 </div>
                 <div style={{ display:"flex", justifyContent:"space-between", fontWeight:900, color:C.ink, borderTop:`1px solid ${C.gold}33`, paddingTop:6 }}>
-                  <span>Total</span><span style={{ color:C.trust }}>GHS {total.toFixed(2)}</span>
+                  <span>Total</span><span style={{ color:C.price }}>GHS {total.toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -267,14 +267,14 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
 
               {/* Payment summary */}
               <div style={{ background:C.surface2, borderRadius:12, padding:"12px 14px", marginBottom:16, fontSize:"0.76rem", lineHeight:1.8 }}>
-                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkFaint }}>Purpose</span><span style={{ fontWeight:700 }}>{purpose}</span></div>
-                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkFaint }}>Network</span><span style={{ fontWeight:700 }}>{selectedNetwork.name}</span></div>
-                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkFaint }}>Amount</span><span style={{ fontWeight:700 }}>GHS {amount}</span></div>
-                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkFaint }}>Fee</span><span>GHS {fee.toFixed(2)}</span></div>
-                <div style={{ display:"flex", justifyContent:"space-between", borderTop:`1px solid ${C.line}`, paddingTop:4, marginTop:2 }}><span style={{ fontWeight:800 }}>Total</span><span style={{ fontWeight:900, color:C.trust }}>GHS {total.toFixed(2)}</span></div>
+                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Purpose</span><span style={{ fontWeight:700 }}>{purpose}</span></div>
+                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Network</span><span style={{ fontWeight:700 }}>{selectedNetwork.name}</span></div>
+                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Amount</span><span style={{ fontWeight:700 }}>GHS {amount}</span></div>
+                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Fee</span><span>GHS {fee.toFixed(2)}</span></div>
+                <div style={{ display:"flex", justifyContent:"space-between", borderTop:`1px solid ${C.line}`, paddingTop:4, marginTop:2 }}><span style={{ fontWeight:800 }}>Total</span><span style={{ fontWeight:900, color:C.price }}>GHS {total.toFixed(2)}</span></div>
               </div>
 
-              <div style={{ background:C.surface2, border:"1px solid #bfdbfe", borderRadius:10, padding:"10px 12px", fontSize:"0.7rem", color:"#1e40af", marginBottom:16, lineHeight:1.6 }}>
+              <div style={{ background:tint(C.info, "14"), border:`1px solid ${tint(C.info, "40")}`, borderRadius:10, padding:"10px 12px", fontSize:"0.7rem", color:C.info, marginBottom:16, lineHeight:1.6 }}>
                 📲 After tapping Pay, you will receive a <strong>prompt on your phone</strong>. Enter your {selectedNetwork.name} PIN to approve the payment.
               </div>
 
@@ -323,7 +323,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                   <div style={{ fontSize:"0.68rem", color:C.inkFaint }}>Waiting for approval... {countdown}s</div>
                   <div style={{ marginTop:16, background:tint(selectedNetwork?.color, "15"), border:`1px solid ${tint(selectedNetwork?.color, "33")}`, borderRadius:12, padding:"10px 14px" }}>
                     <div style={{ fontSize:"0.72rem", color:C.inkDim }}>📱 Check your phone for the {selectedNetwork?.name} payment prompt</div>
-                    <div style={{ fontSize:"0.68rem", color:C.inkFaint, marginTop:3 }}>Ref: <strong>{txnRef}</strong></div>
+                    <div style={{ fontSize:"0.68rem", color:C.inkDim, marginTop:3 }}>Ref: <strong>{txnRef}</strong></div>
                   </div>
                 </>
               ) : (
@@ -345,7 +345,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                       ["Status", "✅ Confirmed"],
                     ].map(([k,v]) => (
                       <div key={k} style={{ display:"flex", justifyContent:"space-between", fontSize:"0.72rem", marginBottom:4 }}>
-                        <span style={{ color:C.inkFaint }}>{k}</span>
+                        <span style={{ color:C.inkDim }}>{k}</span>
                         <span style={{ fontWeight:700, color:C.ink }}>{v}</span>
                       </div>
                     ))}
@@ -386,7 +386,7 @@ const btnP = (on=true) => ({ background:on?C.gold:C.surface3,color:on?C.darkBrow
 function Stars({rating,size="0.85rem"}) {
   return <span style={{color:C.gold,fontSize:size}}>
     {"★".repeat(Math.floor(rating))}{"☆".repeat(5-Math.floor(rating))}
-    <span style={{color:C.inkFaint,marginLeft:4,fontSize:"0.75rem"}}>{rating}</span>
+    <span style={{color:C.inkDim,marginLeft:4,fontSize:"0.75rem"}}>{rating}</span>
   </span>;
 }
 
@@ -606,8 +606,8 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
               return (
               <div key={conv.id} onClick={()=>{setActiveConvId(conv.id);setPhonePane("chat");}}
                 style={{padding:"12px 14px",cursor:"pointer",borderBottom:`1px solid ${C.line}`,background:activeConvId===conv.id?`${C.gold}12`:C.surface,transition:"background 0.2s"}}
-                onMouseEnter={e=>{ if(activeConvId!==conv.id) e.currentTarget.style.background="#fafafa"; }}
-                onMouseLeave={e=>{ if(activeConvId!==conv.id) e.currentTarget.style.background="white"; }}>
+                onMouseEnter={e=>{ if(activeConvId!==conv.id) e.currentTarget.style.background=C.surface2; }}
+                onMouseLeave={e=>{ if(activeConvId!==conv.id) e.currentTarget.style.background=C.surface; }}>
                 <div style={{display:"flex",gap:10,alignItems:"center"}}>
                   {/* Avatar */}
                   <div style={{position:"relative",flexShrink:0}}>
@@ -623,7 +623,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                     </div>
                     {conv.subject&&<div style={{fontSize:"0.64rem",color:C.deepGold,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{subjectLine(conv.subject)}</div>}
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{fontSize:"0.68rem",color:C.inkFaint,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{lastMsg?.body||"No messages yet"}</span>
+                      <span style={{fontSize:"0.68rem",color:C.inkDim,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{lastMsg?.body||"No messages yet"}</span>
                       {attention&&<span style={{width:10,height:10,borderRadius:"50%",background:C.kente2,flexShrink:0,marginLeft:4}}/>}
                     </div>
                   </div>
@@ -690,7 +690,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
               <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:10,background:C.surface2}}>
                 {activeConv&&activeConv.messages.length>0&&(
                   <div style={{textAlign:"center",margin:"4px 0"}}>
-                    <span style={{background:C.surface3,color:C.inkFaint,borderRadius:20,padding:"3px 12px",fontSize:"0.62rem",fontWeight:600}}>Conversation started {formatConvTime(activeConv.created_at)}</span>
+                    <span style={{background:C.surface3,color:C.inkDim,borderRadius:20,padding:"3px 12px",fontSize:"0.62rem",fontWeight:600}}>Conversation started {formatConvTime(activeConv.created_at)}</span>
                   </div>
                 )}
                 {/* Auto-welcome (messaging fixes work) — a purely client-side
@@ -811,7 +811,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                 </div>
               </div>
               ) : (
-              <div style={{padding:"14px",borderTop:`1px solid ${C.line}`,background:C.surface,textAlign:"center",fontSize:"0.74rem",color:C.inkFaint,lineHeight:1.6}}>
+              <div style={{padding:"14px",borderTop:`1px solid ${C.line}`,background:C.surface,textAlign:"center",fontSize:"0.74rem",color:C.inkDim,lineHeight:1.6}}>
                 Staff replies to support threads live in the Messaging tab of the staff dashboard.
               </div>
               )}
@@ -989,7 +989,7 @@ function MoMoModal({item,user,onClose}) {
               <label style={lStyle}>📱 {network} MoMo Number</label>
               <input style={iStyle} placeholder="0244 000 000" value={momoNum} onChange={e=>setMomoNum(e.target.value)}/>
             </div>
-            <div style={{background:C.surface2,border:"1px solid #bae6fd",borderRadius:10,padding:"10px 12px",fontSize:"0.72rem",color:"#0369a1",lineHeight:1.6}}>
+            <div style={{background:tint(C.info, "14"),border:`1px solid ${tint(C.info, "40")}`,borderRadius:10,padding:"10px 12px",fontSize:"0.72rem",color:C.info,lineHeight:1.6}}>
               📲 You will receive a <strong>prompt on your phone</strong> to approve this payment. Enter your {network} MoMo PIN when prompted.
             </div>
             <button onClick={pay} style={{...btnP(momoNum.length>=10),background:processing?"#aaa":C.kente2,color:"white"}}>
@@ -1129,7 +1129,7 @@ function ReferralModal({user,onClose}) {
       </div>
       <div style={{padding:"24px"}}>
         <div style={{background:`${C.gold}15`,border:`1.5px solid ${C.gold}33`,borderRadius:14,padding:"16px",marginBottom:16,textAlign:"center"}}>
-          <div style={{fontSize:"0.72rem",color:C.inkFaint,marginBottom:6}}>Your Referral Code</div>
+          <div style={{fontSize:"0.72rem",color:C.inkDim,marginBottom:6}}>Your Referral Code</div>
           <div style={{fontWeight:900,fontSize:"1.4rem",color:C.ink,letterSpacing:3,marginBottom:10}}>{code}</div>
           <button onClick={copy} style={{background:copied?C.kente2:C.gold,color:copied?"white":C.darkBrown,border:"none",borderRadius:20,padding:"8px 20px",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem"}}>
             {copied?"✓ Copied!":"Copy Code"}
@@ -1288,7 +1288,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
         {mode==="forgot" && <div>
           <button type="button" onClick={()=>{setMode("login");setResetSubmitted(false);}} style={{background:"none",border:"none",color:C.deepGold,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",marginBottom:14,padding:0,fontFamily:"inherit"}}>← Back to Sign In</button>
           {resetSubmitted ? (
-            <div style={{background:C.okBg,color:"#1b7a43",borderRadius:10,padding:"12px 14px",fontSize:"0.8rem",lineHeight:1.6}}>
+            <div style={{background:C.okBg,color:C.okInk,borderRadius:10,padding:"12px 14px",fontSize:"0.8rem",lineHeight:1.6}}>
               If an account exists for that email, we've sent a password reset link. Please check your inbox (and spam folder).
             </div>
           ) : (
@@ -1445,7 +1445,7 @@ function ResetPasswordPage({auth,setPage,setAuthModal}) {
       <div style={{padding:"20px 24px"}}>
         {success ? (
           <>
-            <div style={{background:C.okBg,color:"#1b7a43",borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:"0.8rem",lineHeight:1.6}}>Your password has been reset. You can now sign in with your new password.</div>
+            <div style={{background:C.okBg,color:C.okInk,borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:"0.8rem",lineHeight:1.6}}>Your password has been reset. You can now sign in with your new password.</div>
             <button onClick={()=>{setAuthModal("login");setPage("home");}} style={authSubmitStyle}>Sign In</button>
           </>
         ) : (
@@ -1650,7 +1650,7 @@ const TRANSLATIONS = {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 // The staff dashboard is the Admin Command Center (frontend/components/
-// admin/*), the light "artisan" restyle of the old inline-in-App.jsx
+// admin/*), the "artisan" restyle (light/dark theme tokens) of the old inline-in-App.jsx
 // StaffDashboard — matching the Business Command Center's visual system
 // (frontend/components/dashboard/*) while keeping every panel's behavior/
 // text unchanged (see frontend/StaffDashboard.test.jsx, the behavioral
@@ -1682,7 +1682,7 @@ function StaffNotificationsSlot({ user }) {
   </>;
 }
 
-// The business-owner dashboard is the unified light "artisan" Business
+// The business-owner dashboard is the unified "artisan" Business
 // Command Center (frontend/components/dashboard/*), which replaced the three
 // former inline-styled dashboards (BusinessDashboard / PaymentDashboard /
 // CreditDashboard) — folding Payments and Credit in as tabs and adding the
@@ -1695,7 +1695,7 @@ export function BusinessDashboard({ onExit, user, auth }) {
 
 // ─── Account Center (customer "My Account" dashboard) ─────────────────────────
 // Redesigned to match the business-owner side's Business Command Center
-// (frontend/components/dashboard/*) — the same always-light "artisan"
+// (frontend/components/dashboard/*) — the same "artisan"
 // shell language, reusing its `D` palette, `glassCard`, and the shared
 // KpiCard/ChartFrame/SpendAreaChart/ListingsDonut chart primitives directly
 // rather than duplicating them, plus a `.command-center.account-grid` square-
@@ -1707,10 +1707,9 @@ export function BusinessDashboard({ onExit, user, auth }) {
 // module-top-level in this file — App.jsx importing components/dashboard/* is
 // the established one-directional convention (already done for
 // BusinessCommandCenter/EventSubmissionPanel above); components/ itself never
-// imports back into App.jsx. Always-light — no light/dark toggle of its own,
-// matching BusinessCommandCenter's own "one consistent dashboard visual
-// language" choice; this also resolves MyEventsTab's old "known limitation"
-// note below, since EventSubmissionPanel was already hardcoded always-dark.
+// imports back into App.jsx. Follows the site's light/dark theme through `D`
+// (theme tokens), with a toggle in its header like the business and staff
+// shells. EventSubmissionPanel (My Events) keeps its own fixed-dark palette.
 const ACCOUNT_NAV_ITEMS = [
   { id: "overview", icon: "📊", label: "Overview", group: "main" },
   { id: "orders", icon: "📦", label: "Orders & Delivery", group: "main" },
@@ -2208,9 +2207,8 @@ function SavedBusinessesTab({ favourites, toggleFav }) {
 // Mounts the same self-contained EventSubmissionPanel used on the public
 // Events page (form + "My Events" list + ticket management) — an organizer
 // submits and manages events straight from their account. Its own hardcoded
-// always-dark styling now matches this panel's always-dark shell exactly
-// (previously a known mismatch against UserPanel's old light/dark toggle,
-// resolved by dropping that toggle).
+// fixed-dark styling sits on the account shell, which follows the site
+// theme (in light mode it reads as a dark card on cream).
 function MyEventsTab({ user, categories, zones }) {
   return <EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/>;
 }
@@ -2534,7 +2532,7 @@ function FavDrawerItem({id,onRemove}) {
     <span style={{fontSize:"1.5rem"}}>{item.category?.icon}</span>
     <div style={{flex:1}}>
       <div style={{fontWeight:700,fontSize:"0.78rem"}}>{item.name}</div>
-      <div style={{fontSize:"0.65rem",color:C.inkFaint}}>GHS {item.price_amount}{item.price_unit||""}</div>
+      <div style={{fontSize:"0.65rem",color:C.inkDim}}>GHS {item.price_amount}{item.price_unit||""}</div>
     </div>
     <button onClick={()=>onRemove(id)} style={{background:"none",border:"none",cursor:"pointer",color:C.danger,fontSize:"1rem"}}>✕</button>
   </div>;
@@ -2699,12 +2697,12 @@ export default function AshantiHub() {
   const auth=useAuth();
   const queryClient=useQueryClient();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;
-  // Site-wide light/dark toggle, shown in the public Navbar. useTheme()
-  // follows the device until the user toggles, and sets `data-theme` + the
-  // `dark` class on <html>: the class drives the Tailwind/shadcn tokens, and
-  // `data-theme` drives the --ah-* variables (index.css) that only the header
-  // and the StorefrontHome wrapper read. The app root stays cream: the other
-  // public pages are inline-`C` dark-brown text and must not go dark under it.
+  // Site-wide light/dark theme for every page. useTheme() follows the device
+  // until the user toggles, and sets `data-theme` + the `dark` class on
+  // <html>: the class drives the Tailwind/shadcn tokens, and `data-theme`
+  // drives the --ah-* variables (index.css) behind C's theme tokens and `D`.
+  // The toggle is threaded as props to the Navbar/StorefrontHeader and the
+  // business, staff and account top bars.
   const {theme,toggleTheme} = useTheme();
   const [legalDoc,setLegalDoc]=useState(null);
   // showBizDash/showPayments/showCredit — same "derive from the URL, wrap the

@@ -68,7 +68,7 @@ function CallRow({ call, onEarlier }) {
   return (
     <tr>
       <td style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{sameDay(call.started_at) ? clock(call.started_at) : stamp(call.started_at)}</td>
-      <td style={td}><span style={{ fontWeight: 800, fontSize: "0.7rem", color: call.direction === "in" ? "#00502F" : D.text }}>{call.direction === "in" ? "In" : "Out"}</span></td>
+      <td style={td}><span style={{ fontWeight: 800, fontSize: "0.7rem", color: call.direction === "in" ? D.okInk : D.text }}>{call.direction === "in" ? "In" : "Out"}</span></td>
       <td style={td}>
         <div style={{ fontWeight: 700, overflowWrap: "anywhere" }}>{call.counterpart_name || "Unknown"}</div>
         <div style={dim}>{TYPE_LABEL[call.counterpart_type] || label(call.counterpart_type)}{call.counterpart_phone ? ` · ${call.counterpart_phone}` : ""}</div>

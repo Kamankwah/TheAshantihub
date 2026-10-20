@@ -93,7 +93,7 @@ export default function LeaderboardPanel() {
                       {(text || tag) && (
                         <span style={{ fontSize: "0.75rem", color: D.textDim }}>
                           {text}
-                          {tag && <span style={{ fontWeight: 800, color: "#00500A" }}>{text ? ` · ${tag}` : tag}</span>}
+                          {tag && <span style={{ fontWeight: 800, color: D.okInk }}>{text ? ` · ${tag}` : tag}</span>}
                         </span>
                       )}
                     </span>
