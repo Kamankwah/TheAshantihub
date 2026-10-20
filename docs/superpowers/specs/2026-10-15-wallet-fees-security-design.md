@@ -1044,8 +1044,9 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   Admin through the approvals engine (kind `marketing.delivery_promo_funding`, pool permission `delivery_promo.approve`
   seeded to `operations` and `super_admin`, chain pool then Super Admin, password again to approve); the maker never
   approves their own, a Super Admin's own applies at once, and there is no threshold shortcut. A required budget cap
-  bounds the spend: `live_waivers` stops waiving once the owed charges reach the cap (derived, not a status change); the
-  cap is soft by at most the fees of orders in flight at the same instant. A promo covers one named business's items.
+  bounds the spend: `live_waivers` stops waiving once the owed charges reach the cap (derived, not a status change). The
+  cap is SOFT: the spend is an unlocked count of OWED charges, so concurrent checkouts can overshoot it by about one fee
+  each, and the last order waives a full fee even when less of the cap is left. A promo covers one named business's items.
   Coupons, campaigns, banners and the send policy stay Super Admin only; the owner-submitted promo review by
   `site_promo.manage` staff is business-funded only. Also: a blocked business (KYC not verified) answers 403 on the platform
   endpoint, as `create_for_staff` does (not 400); spend counts OWED charges only; a cap above the co-sign threshold
@@ -1067,7 +1068,13 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   figure are gone. `OrderRefund.subsidy_pesewas` still records the whole coupon share closed off (so
   `left()` reaches 0). Staff see "can still be refunded" (`refundable`) on the dispute and the order screen. Known limits:
   `OrderRefund` rows written under the old rule (staging test data only) read `wallet_pesewas` too high by the kept fee;
-  when the order total N is below the fee F after a pickup, `refundable` is 0 and no dispute path leads to a whole refund.
+  when the order total N is at or below the fee F after a pickup, `refundable` is 0 and every door refuses an amount of 0, so
+  dispute resolution (unscoped only) and the delivery-case refund ask for that whole refund with an explicit `whole_refund`
+  flag and no amount (7F-E fix wave: `refunds.whole_at_zero_refusal` / `check_whole`; ledger on, payment recorded, not already
+  refunded whole, `refundable` 0; the approval re-checks at apply). It runs `refund_order(order, None)`: the rider is paid in
+  full, the vendor's money, the Delivery payable and the subsidy (D - (F - N)) are reversed, the customer's credit is 0
+  (`Dispute.refund_amount` 0.00) and the order is cancelled. The dispute payload's `order_whole_refund_at_zero` drives a
+  checkbox in the staff DisputesPanel; the delivery-case screen has no control for it yet (API only).
 - (cxxvi) **CLOSED (xciii-open): one canonical lock order (plan 7F-E Task 2).** `orders/locks.py` holds it: the approval or
   dispute row, the Order row, its OrderFeeSnapshot rows (by pk), its DeliveryAssignment row, the order's open Redelivery row
   (level 4b, Task 7), the PickupStop rows, the Rider row (`of=("self",)`), every ledger Account in one sorted pass
@@ -1093,7 +1100,9 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   (the rider is in-house); completion pays the current rider; the first rider gets nothing. A failed job given again to the
   same rider is allowed and starts a new leg. `Rider.employment` is read without a rider lock in `assign` (a rider lock there
   would invert gate (cxxvi); release pays the completer anyway), so an employment switch racing an assign could let a
-  third-party rider through, and the money gate at release still holds. Mid-route swap: stops the first rider collected stay
+  third-party rider through, and the money gate at release still holds. Owner awareness: the in-house-only rule is not a
+  money rule and is not behind `LEDGER_ENABLED`, so it applies in production on deploy even with the ledger off: a failed or
+  accepted job cannot be given to a third-party rider, and if no in-house rider is on shift the job stalls. Mid-route swap: stops the first rider collected stay
   done and count for no one; if the second rider skips all the rest, the pickup stamp names the earlier stop's collector, not
   the manager who skipped; a null stamp (older row) counts for whoever is on the job, which matters only for an in-flight swap
   during the deploy.

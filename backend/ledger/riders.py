@@ -222,7 +222,10 @@ def pickup_made(order):
 def delivery_earned(order):
     """True once the delivery fee has been earned: a pickup was made, a rider was already paid for the order, the first
     trip was completed and the customer was away (a re-delivery was asked for, Plan 7F-E Task 7: the first rider keeps the
-    fee, so no refund returns it), or the order was released with a delivered assignment. Once true it stays true."""
+    fee, so no refund returns it), or the order was released with a delivered assignment. It can become false again: a
+    re-assignment (Plan 7F-E Task 6, Ruling R3) clears the first leg's pickup (pickup_made counts the current leg only), so
+    an order earned only by that pickup is unearned until the new rider picks up; a rider paid, a completed first trip or a
+    release keeps it true."""
     from . import escrow
 
     if pickup_made(order) is not None or RiderEarning.objects.filter(order_id=order.pk).exists() or first_leg(order) is not None:
