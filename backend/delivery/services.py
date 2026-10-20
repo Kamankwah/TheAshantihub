@@ -190,7 +190,14 @@ def assign(order, rider_staff, assigned_by, *, mode):
     """Give a paid door-to-door order to a rider (one assignment per order). Creates the four-digit
     codes the first time and stamps an ``assigned`` event. Re-assigning before the rider has picked up
     swaps the rider and starts the job again; once the goods are picked up it is refused. `order` must be
-    locked by the caller (orders.locks.lock_order: the order row before its assignment)."""
+    locked by the caller (orders.locks.lock_order: the order row before its assignment).
+
+    A re-assignment (Plan 7F-E Task 6, owner Ruling R3) is a job the first rider had accepted or taken further, or one
+    that failed, given to a different rider: it goes to AshantiHub's own riders only (409 redelivery_in_house_only), and
+    it ends the first rider's leg. Any reset of the job (a swap, or a failed job given again) clears the assignment's
+    pickup stamp and the reopened stops' collection stamps, so the first leg's pickup counts for no one
+    (ledger.riders.pickup_made); it stays in the append-only DeliveryEvent rows. A swap of a job still waiting to be
+    accepted is ordinary dispatch, open to any rider."""
     from orders import locks
     from orders.models import DeliveryAssignment
 
@@ -204,18 +211,20 @@ def assign(order, rider_staff, assigned_by, *, mode):
         DeliveryAssignment.ASSIGNED, DeliveryAssignment.ACCEPTED, DeliveryAssignment.AT_PICKUP, DeliveryAssignment.FAILED,
     ):
         raise DeliveryError("This delivery is already on the road or finished, so it cannot be given to another rider.", 409, "not_reassignable")
-    assignment = existing or DeliveryAssignment(order=order)
     swapped = existing is not None and existing.dispatch_id != rider_staff.pk
+    rider = Rider.objects.filter(staff=rider_staff).select_related("vehicle").first()
+    if swapped and existing.status != DeliveryAssignment.ASSIGNED and rider is not None and rider.employment != Rider.ASHANTIHUB:
+        raise DeliveryError("A re-assigned delivery is done by AshantiHub's own riders.", 409, "redelivery_in_house_only")
+    assignment = existing or DeliveryAssignment(order=order)
     assignment.dispatch = rider_staff
     assignment.assigned_by = assigned_by
     assignment.assignment_mode = mode
     if existing is None or swapped or existing.status == DeliveryAssignment.FAILED:
         assignment.status = DeliveryAssignment.ASSIGNED
-        for field in ("accepted_at", "arrived_pickup_at", "arrived_drop_at", "failed_at"):
+        for field in ("accepted_at", "arrived_pickup_at", "arrived_drop_at", "failed_at", "picked_up_at", "picked_up_by"):
             setattr(assignment, field, None)
         assignment.failed_reason = assignment.failed_note = ""
         assignment.pickup_code_attempts = assignment.drop_code_attempts = 0
-    rider = Rider.objects.filter(staff=rider_staff).select_related("vehicle").first()
     if rider is not None and rider.vehicle_id:
         assignment.vehicle_id = rider.vehicle_id
     from . import stops
@@ -332,8 +341,8 @@ def pickup(assignment, rider_staff, code, lat, lng, accuracy):
     last = len(stops.open_stops(assignment)) == 1
     step = DeliveryEvent.PICKED_UP if last else DeliveryEvent.COLLECTED_STOP
     event = _stamp(assignment, step, rider_staff, (stop.lat, stop.lng), lat, lng, accuracy, at_stop=stop)
-    stop.status, stop.collected_at = PickupStop.COLLECTED, event.at
-    stop.save(update_fields=["status", "collected_at"])
+    stop.status, stop.collected_at, stop.collected_by_id = PickupStop.COLLECTED, event.at, assignment.dispatch_id
+    stop.save(update_fields=["status", "collected_at", "collected_by"])
     _after_stop(assignment, stop, rider_staff, event.at, left_shop=True)
     return event
 
@@ -363,8 +372,9 @@ def _after_stop(assignment, stop, by, at, *, left_shop, summary_event=False):
         return
     if summary_event:
         DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.PICKED_UP, at=at, by=by, note="The last shop was skipped.")
-    assignment.status, assignment.picked_up_at = DeliveryAssignment.PICKED_UP, at
-    assignment.save(update_fields=["status", "picked_up_at"])
+    # The pickup belongs to the rider on the job (not to a manager whose skip ended the pickups): Plan 7F-E Task 6.
+    assignment.status, assignment.picked_up_at, assignment.picked_up_by_id = DeliveryAssignment.PICKED_UP, at, assignment.dispatch_id
+    assignment.save(update_fields=["status", "picked_up_at", "picked_up_by"])
     _sync(assignment)
 
 
@@ -723,11 +733,11 @@ def legacy_pickup(assignment, rider_staff, code):
         _check_stop_code(assignment, rows[0], code)
     now = timezone.now()
     if rows:
-        rows[0].status, rows[0].collected_at = PickupStop.COLLECTED, now
-        rows[0].save(update_fields=["status", "collected_at"])
+        rows[0].status, rows[0].collected_at, rows[0].collected_by_id = PickupStop.COLLECTED, now, assignment.dispatch_id
+        rows[0].save(update_fields=["status", "collected_at", "collected_by"])
     assignment.status = DeliveryAssignment.PICKED_UP
-    assignment.picked_up_at = now
-    assignment.save(update_fields=["status", "picked_up_at"])
+    assignment.picked_up_at, assignment.picked_up_by_id = now, assignment.dispatch_id
+    assignment.save(update_fields=["status", "picked_up_at", "picked_up_by"])
     DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.PICKED_UP, at=now, by=rider_staff, stop=rows[0] if rows else None)
     _sync(assignment)
 

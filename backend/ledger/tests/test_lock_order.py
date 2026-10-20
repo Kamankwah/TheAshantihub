@@ -214,7 +214,8 @@ class LockOrderRaceTests(TransactionTestCase):
         Order's delivery status) while a whole refund starts. Nothing was picked up, so the customer gets everything back."""
         self.order, self.customer, kofi = paid_order("1401")
         self.swift = rider_helpers.rider()
-        second = rider_helpers.rider("second@example.com", phone="+233244000088")
+        # A re-assigned delivery goes to AshantiHub's own riders only (Plan 7F-E Task 6).
+        second = rider_helpers.rider("second@example.com", phone="+233244000088", third_party=False)
         job(self.order, self.swift, kofi, status=DeliveryAssignment.FAILED, stop_status=PickupStop.PENDING)
         # The re-assignment writes the Order row only when its delivery status changes (a failed job leaves it where it was).
         Order.objects.filter(pk=self.order.pk).update(delivery_status=Order.OUT_FOR_DELIVERY)

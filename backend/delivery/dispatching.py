@@ -48,6 +48,9 @@ def deadline_for(order, *, express=False, limits=None):
     return start + timedelta(minutes=minutes)
 
 
+IN_HOUSE_ONLY = "Re-assigned: AshantiHub's own riders only"
+
+
 def rank(order, rules=None, now=None):
     """{"eligible": [...best first], "left_out": [...], "pickup_located": bool, "rules": ..., "distance_basis": ...}.
     Every rider distance here (``km``, the radius check, the distance score) is the straight-line estimate, so the
@@ -68,6 +71,11 @@ def rank(order, rules=None, now=None):
         if delivered_at and (staff_id not in last_done or delivered_at > last_done[staff_id]):
             last_done[staff_id] = delivered_at
     refused = set(Offer.objects.filter(order=order, status__in=(Offer.DECLINED, Offer.EXPIRED)).values_list("rider_id", flat=True))
+    # An order whose job a rider had accepted or taken further (in the queue: a failed attempt) is re-assigned, and a
+    # re-assigned delivery is done by AshantiHub's own riders only (services.assign; Plan 7F-E Task 6). The rider who
+    # held it may still be given it again: that is not a re-assignment.
+    held = getattr(order, "delivery_assignment", None)
+    reassigning = held is not None and held.status != DeliveryAssignment.ASSIGNED
     stale_after = timedelta(seconds=int(rules["stale_s"]))
     eligible, left_out = [], []
     for rider in riders:
@@ -91,6 +99,8 @@ def rank(order, rules=None, now=None):
             reason = "A required paper is missing or expired"
         elif cod_over_cap(rider, rules):
             reason = "Holds cash over the cap"
+        elif reassigning and rider.employment != Rider.ASHANTIHUB and staff.pk != held.dispatch_id:
+            reason = IN_HOUSE_ONLY
         elif rider.pk in refused:
             reason = "Declined or timed out on this order"
         elif plat is None:

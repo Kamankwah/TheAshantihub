@@ -29,7 +29,7 @@ select_for_update that reaches the rider's rows takes `of=("self",)` so the staf
 import logging
 
 from django.db import transaction
-from django.db.models import Min, Sum
+from django.db.models import Min, Q, Sum
 from django.utils import timezone
 
 from delivery import employment
@@ -150,18 +150,28 @@ def credit_delivery(order, rider, now=None):
 # --- the delivery fee belongs to the rider once a pickup is done (Plan 7F-D) ----------------------------------------------
 
 def pickup_made(order):
-    """When the rider first collected goods for this door-to-door order, or None: the earliest `collected_at` of its
-    COLLECTED pickup stops, else the assignment's `picked_up_at`. Does not look at the assignment's status: a delivery that
-    failed after a pickup still counts."""
+    """When the rider on the CURRENT leg first collected goods for this door-to-door order, or None: the earliest
+    `collected_at` of its COLLECTED pickup stops, else the assignment's `picked_up_at`, counting only a pickup made by the
+    rider on the assignment now (`collected_by` / `picked_up_by` is `assignment.dispatch_id`, or null on a row written before
+    those stamps existed). A re-assignment ends the previous leg (Plan 7F-E Task 6, Ruling R3): the first rider's pickup
+    then counts for no one, so a refund before the new rider's own pickup returns the fee, and the settle test reads the new
+    rider's own pickup time. Does not look at the assignment's status: a delivery that failed after a pickup still counts."""
     if order.delivery_method != Order.DOOR_TO_DOOR:
         return None
     assignment = DeliveryAssignment.objects.filter(order_id=order.pk).first()
     if assignment is None:
         return None
-    first = PickupStop.objects.filter(
-        assignment_id=assignment.pk, status=PickupStop.COLLECTED, collected_at__isnull=False,
-    ).aggregate(first=Min("collected_at"))["first"]
-    return first or assignment.picked_up_at
+    current = assignment.dispatch_id
+    first = (
+        PickupStop.objects.filter(assignment_id=assignment.pk, status=PickupStop.COLLECTED, collected_at__isnull=False)
+        .filter(Q(collected_by__isnull=True) | Q(collected_by_id=current))
+        .aggregate(first=Min("collected_at"))["first"]
+    )
+    if first is not None:
+        return first
+    if assignment.picked_up_by_id is None or assignment.picked_up_by_id == current:
+        return assignment.picked_up_at
+    return None
 
 
 def delivery_earned(order):
@@ -185,7 +195,9 @@ def delivery_kept(order):
 
 def rider_for_settle(order):
     """The third-party rider to pay when a whole refund settles this order's delivery before release, or None (no
-    pickup, AshantiHub's own rider, or one who was not third-party when they picked up). The delivery assignment row is
+    pickup, AshantiHub's own rider, or one who was not third-party when they picked up). The rider is the one on the
+    assignment now and the pickup is that rider's own (pickup_made counts the current leg only, Plan 7F-E Task 6), so a
+    re-assigned rider is never tested against the first rider's pickup time. The delivery assignment row is
     locked first (refunds.refund_order already holds it from before it decided whether the fee was earned, so a pickup
     confirmed meanwhile either finished before that decision or waits for the refund), then the rider's row; call inside the
     refund's transaction after the order row and its fee snapshots."""

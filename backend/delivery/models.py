@@ -240,6 +240,8 @@ class PickupStop(models.Model):
     planned_arrival = models.DateTimeField(null=True, blank=True)
     arrived_at = models.DateTimeField(null=True, blank=True)
     collected_at = models.DateTimeField(null=True, blank=True)
+    # The rider on the job when this stop was collected (Plan 7F-E Task 6); cleared with collected_at when the stop reopens.
+    collected_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     skip_note = models.CharField(max_length=500, blank=True)
     skipped_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     dispute = models.OneToOneField("disputes.Dispute", null=True, blank=True, on_delete=models.SET_NULL, related_name="pickup_stop")
