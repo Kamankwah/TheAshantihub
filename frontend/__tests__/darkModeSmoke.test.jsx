@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../mocks/server.js'
 import BusinessCommandCenter from '../components/dashboard/BusinessCommandCenter.jsx'
-import AshantiHub, { StaffDashboard, UserPanel } from '../App.jsx'
+import AshantiHub, { AuthModal, MessagingCenter, MoMoPayment, StaffDashboard, UserPanel } from '../App.jsx'
 import { MemoryRouter } from 'react-router-dom'
 import { setStoredAuth } from '../apiClient.js'
 import { fullHome } from '../mocks/storefront.js'
@@ -238,4 +238,84 @@ describe('dark mode smoke: public pages', () => {
     expect(lightOnlyStyles()).toEqual([])
     localStorage.removeItem('ashantihub.theme')
   }, 10000)
+})
+
+// Every inline surface/ink on the element set comes from a theme token.
+const tokenised = (els, prop) => els.filter((el) => el.style[prop] && !/^(none|transparent|inherit)$/.test(el.style[prop]))
+  .every((el) => /var\(--ah-|color-mix/.test(el.getAttribute('style')))
+
+describe('dark mode smoke: modals, drawers and panels', () => {
+  it('messaging centre: rows, thread and hover keep theme surfaces', async () => {
+    server.use(http.get(`${API}/api/messaging/conversations/`, () => HttpResponse.json([
+      { id: 1, customer: 1, business_owner: null, starter_name: 'Yaw', subject: 'Re: Kente stole', status: 'open',
+        messages: [{ id: 1, conversation: 1, sender_type: 'staff', body: 'Ready soon.', created_at: '2026-10-05T09:27:00Z' }],
+        created_at: '2026-10-05T09:24:00Z', updated_at: '2026-10-05T09:27:00Z' },
+      { id: 2, customer: 1, business_owner: null, starter_name: 'Yaw', subject: 'Re: Lodge', status: 'open',
+        messages: [{ id: 3, conversation: 2, sender_type: 'customer', body: 'Is it free?', created_at: '2026-10-04T09:27:00Z' }],
+        created_at: '2026-10-04T09:24:00Z', updated_at: '2026-10-04T09:27:00Z' },
+    ])))
+    withClient(<MessagingCenter user={{ id: 1, fullName: 'Yaw', accountType: 'customer' }} onClose={vi.fn()} />)
+    const rows = await screen.findAllByText('AshantiHub Support')
+    for (const label of rows) {
+      const row = label.closest('[style*="cursor: pointer"]') || label.parentElement
+      fireEvent.mouseEnter(row)
+      expect(row.style.background, 'hover').not.toMatch(/rgb\((255, 255, 255|250, 250, 250)\)|white|#fafafa/)
+      if (row.style.background) expect(row.style.background).toMatch(/var\(--ah-|color-mix/)
+      fireEvent.mouseLeave(row)
+      expect(row.style.background, 'leave').not.toMatch(/rgb\((255, 255, 255|250, 250, 250)\)|white|#fafafa/)
+    }
+    expect(usesThemeTokens()).toBe(true)
+    expect(lightOnlyStyles()).toEqual([])
+  })
+
+  it.each(['login', 'signup'])('auth modal (%s) uses theme surfaces and inks', (authState) => {
+    withClient(<AuthModal authState={authState} auth={{ login: vi.fn(), register: vi.fn() }} onClose={vi.fn()} onSuccess={vi.fn()} />)
+    const styled = [...document.body.querySelectorAll('[style]')]
+    expect(tokenised(styled.filter((el) => el.tagName === 'INPUT'), 'background')).toBe(true)
+    expect(usesThemeTokens()).toBe(true)
+    expect(lightOnlyStyles()).toEqual([])
+  })
+
+  it('MoMo payment modal: totals use the price token, no light surfaces', () => {
+    withClient(<MoMoPayment amount={30} purpose="Event visibility payment" businessName="Ama" onSuccess={vi.fn()} onClose={vi.fn()} />)
+    expect(lightOnlyStyles()).toEqual([])
+    fireEvent.click(screen.getByText('MTN MoMo'))
+    const total = screen.getAllByText(/^GHS \d/).at(-1)
+    expect(total.getAttribute('style')).toContain('var(--ah-price')
+    expect(usesThemeTokens()).toBe(true)
+    expect(lightOnlyStyles()).toEqual([])
+  })
+
+  it('cart checkout confirmation: total uses the price token', async () => {
+    server.use(http.get(`${API}/api/cart/`, () => HttpResponse.json({
+      id: 1, total: '300.00', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-10T00:00:00Z',
+      items: [{ id: 10, listing: 5, listing_name: 'Kente Cloth', quantity: 2, unit_price_snapshot: '150.00', line_total: '300.00', added_at: '2026-07-10T00:00:00Z' }],
+    })))
+    withClient(<CartDrawer onClose={vi.fn()} user={{ fullName: 'Ama Boateng', accountType: 'customer' }} currency="GHS" PaymentComponent={() => null} />)
+    fireEvent.click(await screen.findByText('Checkout →'))
+    await screen.findByText('Confirm your order')
+    const totalRow = screen.getByText('Total').closest('div')
+    expect(totalRow.getAttribute('style')).toContain('var(--ah-price')
+    expect(lightOnlyStyles()).toEqual([])
+  })
+
+  it('notifications panel and favourites drawer (from the marketplace header) use theme surfaces', async () => {
+    setStoredAuth({ token: 't', account_type: 'customer', id: 2, full_name: 'Yaa' })
+    server.use(http.get(`${API}/api/notifications/`, () => HttpResponse.json({ unread_count: 1, results: [
+      { id: 1, title: 'Order shipped', body: 'Your kente is on the way', icon: '📦', is_read: false, created_at: '2026-10-19T09:00:00Z' },
+    ] })))
+    localStorage.setItem('ashantihub.theme', 'dark')
+    withClient(<MemoryRouter initialEntries={['/']}><AshantiHub /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }, { timeout: 4000 }))
+    const item = await screen.findByText('Order shipped')
+    expect(item.getAttribute('style')).toContain('var(--ah-ink')
+    expect(lightOnlyStyles()).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: /^Wishlist/ }))
+    const fav = await screen.findByText(/Saved Businesses/)
+    expect(fav.getAttribute('style')).toContain('var(--ah-ink')
+    expect(fav.parentElement.getAttribute('style')).toContain('var(--ah-surface')
+    expect(lightOnlyStyles()).toEqual([])
+    localStorage.removeItem('ashantihub.theme')
+    setStoredAuth(null)
+  }, 12000)
 })
