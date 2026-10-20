@@ -186,6 +186,26 @@ def not_due_error(order):
     return DeliveryError(f"The business opens {when}; this delivery is held until then and cannot be assigned yet.", 409, "not_due")
 
 
+IN_HOUSE_ONLY_MESSAGE = "A re-assigned delivery is done by AshantiHub's own riders."
+
+
+def reassignment_refused(existing, rider):
+    """True when giving the order's assignment `existing` (or None) to `rider` (a Rider row, or None for a dispatch with no
+    rider profile, who counts as AshantiHub's own) is a re-assignment to a rider who is not AshantiHub's own (Plan 7F-E
+    Task 6, Ruling R3): the job was accepted or taken further, or failed, and goes to a different rider. The one test that
+    assign, the ranking and a manager's offer all use."""
+    from orders.models import DeliveryAssignment
+
+    return (
+        existing is not None and rider is not None and existing.dispatch_id != rider.staff_id
+        and existing.status != DeliveryAssignment.ASSIGNED and rider.employment != Rider.ASHANTIHUB
+    )
+
+
+def in_house_only_error():
+    return DeliveryError(IN_HOUSE_ONLY_MESSAGE, 409, "redelivery_in_house_only")
+
+
 def assign(order, rider_staff, assigned_by, *, mode):
     """Give a paid door-to-door order to a rider (one assignment per order). Creates the four-digit
     codes the first time and stamps an ``assigned`` event. Re-assigning before the rider has picked up
@@ -213,8 +233,8 @@ def assign(order, rider_staff, assigned_by, *, mode):
         raise DeliveryError("This delivery is already on the road or finished, so it cannot be given to another rider.", 409, "not_reassignable")
     swapped = existing is not None and existing.dispatch_id != rider_staff.pk
     rider = Rider.objects.filter(staff=rider_staff).select_related("vehicle").first()
-    if swapped and existing.status != DeliveryAssignment.ASSIGNED and rider is not None and rider.employment != Rider.ASHANTIHUB:
-        raise DeliveryError("A re-assigned delivery is done by AshantiHub's own riders.", 409, "redelivery_in_house_only")
+    if reassignment_refused(existing, rider):
+        raise in_house_only_error()
     assignment = existing or DeliveryAssignment(order=order)
     assignment.dispatch = rider_staff
     assignment.assigned_by = assigned_by
@@ -372,8 +392,15 @@ def _after_stop(assignment, stop, by, at, *, left_shop, summary_event=False):
         return
     if summary_event:
         DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.PICKED_UP, at=at, by=by, note="The last shop was skipped.")
-    # The pickup belongs to the rider on the job (not to a manager whose skip ended the pickups): Plan 7F-E Task 6.
-    assignment.status, assignment.picked_up_at, assignment.picked_up_by_id = DeliveryAssignment.PICKED_UP, at, assignment.dispatch_id
+    # The pickup belongs to the rider on the job (not to a manager whose skip ended the pickups), but only when that rider
+    # collected a stop of their own: after a mid-route swap the goods may all be an earlier rider's, whose leg has ended, so
+    # the stamp names that rider and counts for no one (ledger.riders.pickup_made; Plan 7F-E Task 6).
+    collected = assignment.stops.filter(status=PickupStop.COLLECTED)
+    if collected.filter(collected_by_id=assignment.dispatch_id).exists():
+        by_id = assignment.dispatch_id
+    else:
+        by_id = collected.exclude(collected_by=None).order_by("sequence").values_list("collected_by_id", flat=True).first()
+    assignment.status, assignment.picked_up_at, assignment.picked_up_by_id = DeliveryAssignment.PICKED_UP, at, by_id
     assignment.save(update_fields=["status", "picked_up_at", "picked_up_by"])
     _sync(assignment)
 

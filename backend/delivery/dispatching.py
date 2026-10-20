@@ -75,7 +75,6 @@ def rank(order, rules=None, now=None):
     # re-assigned delivery is done by AshantiHub's own riders only (services.assign; Plan 7F-E Task 6). The rider who
     # held it may still be given it again: that is not a re-assignment.
     held = getattr(order, "delivery_assignment", None)
-    reassigning = held is not None and held.status != DeliveryAssignment.ASSIGNED
     stale_after = timedelta(seconds=int(rules["stale_s"]))
     eligible, left_out = [], []
     for rider in riders:
@@ -99,7 +98,7 @@ def rank(order, rules=None, now=None):
             reason = "A required paper is missing or expired"
         elif cod_over_cap(rider, rules):
             reason = "Holds cash over the cap"
-        elif reassigning and rider.employment != Rider.ASHANTIHUB and staff.pk != held.dispatch_id:
+        elif services.reassignment_refused(held, rider):
             reason = IN_HOUSE_ONLY
         elif rider.pk in refused:
             reason = "Declined or timed out on this order"
@@ -143,6 +142,11 @@ def live_offer(order):
 
 
 def make_offer(order, rider, *, source, by=None, score=None, rules=None, now=None):
+    """Offer the order to `rider`, withdrawing any live offer. A re-assigned order (services.reassignment_refused) is
+    offered to AshantiHub's own riders only: refused here (409 redelivery_in_house_only) before anything changes, so a
+    manager's offer can never stall waiting for an accept that services.assign would refuse."""
+    if services.reassignment_refused(DeliveryAssignment.objects.filter(order_id=order.pk).first(), rider):
+        raise services.in_house_only_error()
     now = now or timezone.now()
     rules = rules or config.effective_rules()
     existing = live_offer(order)

@@ -258,3 +258,50 @@ class RiderReassignmentTests(RefundBase):
         left = {r["rider_id"]: r["reason"] for r in ranked["left_out"]}
         self.assertEqual(left[self.swift.pk], "Re-assigned: AshantiHub's own riders only")
         self.assertNotIn("Re-assigned: AshantiHub's own riders only", {r["reason"] for r in fresh_rank["left_out"]})
+
+    def test_new_rider_who_collected_nothing_after_a_swap_makes_no_pickup(self):
+        """The first rider collected Kofi's stop and the job was swapped mid-route; the new rider skipped Esi's stop and so
+        collected nothing. The job goes on to the customer with the first rider's goods, but the pickup stamp names the
+        first rider (whose leg ended), so it counts for no one."""
+        esi = self.owner("Esi")
+        order = self.door_order(self.kofi, esi)
+        self.give(order, self.own)
+        services.accept(self.job(order), self.own.staff)
+        first = self.job(order).stops.order_by("sequence").first()
+        services.arrive_pickup(self.job(order), self.own.staff, *HERE, 10)
+        services.pickup(self.job(order), self.own.staff, first.code, *HERE, 10)
+        other = rider_helpers.rider("own2@example.com", name="Efua Mensah", phone="+233244000006", third_party=False)
+        self.give(order, other)
+        services.accept(self.job(order), other.staff)
+        services.skip_stop(self.job(order), other.staff, "Shop shut", lat=HERE[0], lng=HERE[1], accuracy=10)
+        row = DA.objects.get(order=order)
+        self.assertEqual((row.status, row.picked_up_by_id), (DA.PICKED_UP, self.own.staff_id))
+        self.assertIsNone(riders.pickup_made(order))
+
+    # --- a manager's offer ----------------------------------------------------------------------------------------------
+    def offer(self, order, rider_row):
+        from accounts.testing import staff_token
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.manager)}")
+        return client.post(f"/api/delivery/queue/{order.pk}/offer/", {"rider": rider_row.pk}, format="json")
+
+    def test_manager_offer_on_a_reassignment_goes_to_in_house_riders_only(self):
+        from delivery.models import Offer
+
+        order = self.picked_then_failed()                                    # in the queue again, Swift's attempt failed
+        third = rider_helpers.rider("other3p@example.com", name="Kwesi Owusu", phone="+233244000005")
+        refused = self.offer(order, third)
+        self.assertEqual((refused.status_code, refused.json()["code"]), (409, "redelivery_in_house_only"))
+        self.assertEqual(refused.json()["detail"], "A re-assigned delivery is done by AshantiHub's own riders.")
+        self.assertFalse(Offer.objects.filter(order=order).exists())
+        self.assertEqual(self.offer(order, self.own).status_code, 201)
+        live = Offer.objects.get(order=order, status=Offer.OFFERED)
+        self.assertEqual(self.offer(order, third).status_code, 409)          # a refused offer leaves the live one alone
+        live.refresh_from_db()
+        self.assertEqual(live.status, Offer.OFFERED)
+
+    def test_manager_offer_on_an_ordinary_order_is_open_to_any_rider(self):
+        order = self.door_order()
+        self.assertEqual(self.offer(order, self.swift).status_code, 201)

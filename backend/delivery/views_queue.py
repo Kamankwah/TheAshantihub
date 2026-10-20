@@ -89,7 +89,10 @@ class OfferToRiderView(ManageView):
         data.is_valid(raise_exception=True)
         order = get_object_or_404(board.waiting_orders(), pk=order_id)
         rider = get_object_or_404(Rider.objects.select_related("staff"), pk=data.validated_data["rider"], staff__is_active=True, staff__is_suspended=False)
-        offer = dispatching.make_offer(order, rider, source=Offer.MANAGER, by=request.user)
+        try:
+            offer = dispatching.make_offer(order, rider, source=Offer.MANAGER, by=request.user)
+        except services.DeliveryError as exc:
+            return Response(exc.body(), status=exc.status_code)
         return Response({"offer_id": offer.pk, "expires_at": offer.expires_at}, status=201)
 
 
