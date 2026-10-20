@@ -93,8 +93,11 @@ export default function OtpSignIn({ challenge, accountType, purpose, auth, onSuc
       if (kind === "resend_cooldown") {
         // A code was just sent: show the code field and wait out the cooldown.
         const wait = Number(err.body.retry_after) || 0;
-        setChannel(way);
-        setHint(channels.find((c) => c.channel === way)?.hint || "");
+        // Nothing was sent on `way`: adopt it only on the first send; a switch keeps the channel the code really went by.
+        if (!channel) {
+          setChannel(way);
+          setHint(channels.find((c) => c.channel === way)?.hint || "");
+        }
         startCountdown(wait);
         setError(apiErrorMessage(err, `Please wait ${wait} seconds before asking for another code.`));
         setStage("code");

@@ -183,6 +183,24 @@ describe('OtpSignIn', () => {
     expect(screen.getByRole('button', { name: /Send a new code/ })).toBeDisabled()
   })
 
+  it('a cooldown refusal on a channel switch keeps the channel the code really went by', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: false })
+    const sendOtpCode = vi.fn()
+      .mockResolvedValueOnce({ channel: 'sms', hint: SMS, expires_in: 300, resend_in: 60 })
+      .mockRejectedValueOnce(fail(429, { detail: 'Please wait before asking for another code.', code: 'resend_cooldown', retry_after: 10 }))
+      .mockResolvedValueOnce({ channel: 'sms', hint: SMS, expires_in: 300, resend_in: 60 })
+    setup({ auth: { sendOtpCode } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: SMS })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send by email instead' })) })
+    expect(screen.getByRole('alert')).toHaveTextContent('Please wait')
+    expect(screen.getByRole('status')).toHaveTextContent('We sent a code to 0•• ••• 1234.')
+    expect(screen.getByRole('button', { name: 'Send by email instead' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Send a new code/ })).toHaveTextContent('in 0:10')
+    act(() => { vi.advanceTimersByTime(10_000) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send a new code' })) })
+    expect(sendOtpCode).toHaveBeenLastCalledWith('mfa', 'sms')
+  })
+
   it('channel_unavailable points at the other channel', async () => {
     const sendOtpCode = vi.fn()
       .mockResolvedValueOnce({ channel: 'sms', hint: SMS, expires_in: 300, resend_in: 60 })
