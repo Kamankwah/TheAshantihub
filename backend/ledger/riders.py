@@ -20,6 +20,11 @@ run (escrow.settle_delivery: the held fee moves to platform delivery income, the
 exactly as a release does). A rider only assigned, with nothing collected, is paid nothing and the customer gets the fee
 back; an AshantiHub rider's fee stays platform delivery income.
 
+An order re-delivered at the customer's request (delivery.Redelivery, Plan 7F-E Task 7, Ruling R4) was delivered on the
+first trip as far as its fee goes: the first rider reached the address and the customer was away. That rider keeps the
+original fee (fee_rider, tested at Redelivery.first_leg_ended_at), whatever the second trip does, and no refund returns it
+(delivery_earned). The second trip's own fee is the re-delivery fee (ledger.redelivery), never the original one.
+
 Lock order (spec W7, extended; the canonical order is in orders/locks.py): the order row, its fee snapshots, the rider
 row (release), the delivery assignment row then the rider row (a whole refund before release: rider_for_settle), then
 every ledger account in one sorted pass (posting.lock). The end-of-day job locks the rider row first, then the day's
@@ -58,22 +63,50 @@ def accounts_of(rider):
     return posting.account_for(Account.RIDER_BALANCE, rider.staff), posting.account_for(Account.RIDER_RESERVE, rider.staff)
 
 
+def first_leg(order):
+    """(staff id, when the leg ended) of the rider who completed the first trip of an order re-delivered at the customer's
+    request (delivery.Redelivery, Plan 7F-E Task 7, Ruling R4), or None when the order was never re-delivered."""
+    from delivery.models import Redelivery
+
+    leg = Redelivery.objects.filter(order_id=order.pk).order_by("attempt").values_list("first_rider_id", "first_leg_ended_at").first()
+    return leg
+
+
+def fee_rider(order):
+    """The payee of the order's ORIGINAL delivery fee (a StaffUser), or None: the rider who completed the first trip when
+    the order was re-delivered at the customer's request (Redelivery.first_rider: they reached the address and the customer
+    was away, so the fee is theirs, Ruling R4), else the rider on the assignment. Whether that rider is actually paid (a
+    third-party rider, at release) or the fee stays platform income (an AshantiHub rider) is third_party_rider's call."""
+    from accounts.models import StaffUser
+
+    leg = first_leg(order)
+    staff_id = leg[0] if leg is not None else DeliveryAssignment.objects.filter(order_id=order.pk).values_list("dispatch_id", flat=True).first()
+    return StaffUser.objects.filter(pk=staff_id).first() if staff_id else None
+
+
 def third_party_rider(order, *, lock=False):
-    """The third-party Rider who delivered this order, or None: not door to door, no delivery made (none, failed, never
-    marked delivered), AshantiHub's own rider, or delivered before the rider became third-party. `lock` takes the rider
-    row's lock (that row only), so a switch back to AshantiHub's own (delivery.employment.apply) waits for the caller."""
+    """The third-party Rider who earned this order's delivery fee, or None: not door to door, no delivery made (none,
+    failed, never marked delivered), AshantiHub's own rider, or delivered before the rider became third-party. For an
+    order re-delivered at the customer's request the payee is the first rider (fee_rider), tested at the end of their leg:
+    their trip was completed, whatever the second trip does. `lock` takes the rider row's lock (that row only), so a switch
+    back to AshantiHub's own (delivery.employment.apply) waits for the caller."""
     if order.delivery_method != Order.DOOR_TO_DOOR:
         return None
-    assignment = DeliveryAssignment.objects.filter(order_id=order.pk).first()
-    if (
-        assignment is None or assignment.status == DeliveryAssignment.FAILED or assignment.delivered_at is None
-        or assignment.dispatch_id is None
-    ):
-        return None
-    rider = Rider.objects.select_related("staff").filter(staff_id=assignment.dispatch_id).first()
+    leg = first_leg(order)
+    if leg is not None:
+        staff_id, at = leg
+    else:
+        assignment = DeliveryAssignment.objects.filter(order_id=order.pk).first()
+        if (
+            assignment is None or assignment.status == DeliveryAssignment.FAILED or assignment.delivered_at is None
+            or assignment.dispatch_id is None
+        ):
+            return None
+        staff_id, at = assignment.dispatch_id, assignment.delivered_at
+    rider = Rider.objects.select_related("staff").filter(staff_id=staff_id).first() if staff_id else None
     # History reads the employment periods (delivery.RiderEmploymentPeriod), never the current flag, so a later switch
     # back or forward cannot re-label this delivery.
-    if rider is None or not employment.third_party_at(rider, assignment.delivered_at):
+    if rider is None or not employment.third_party_at(rider, at):
         return None
     if lock:
         # Only a third-party rider's row is locked, so an AshantiHub rider's release never queues behind a fleet edit. The
@@ -175,11 +208,12 @@ def pickup_made(order):
 
 
 def delivery_earned(order):
-    """True once the delivery fee has been earned: a pickup was made, a rider was already paid for the order, or the order
-    was released with a delivered assignment. Once true it stays true."""
+    """True once the delivery fee has been earned: a pickup was made, a rider was already paid for the order, the first
+    trip was completed and the customer was away (a re-delivery was asked for, Plan 7F-E Task 7: the first rider keeps the
+    fee, so no refund returns it), or the order was released with a delivered assignment. Once true it stays true."""
     from . import escrow
 
-    if pickup_made(order) is not None or RiderEarning.objects.filter(order_id=order.pk).exists():
+    if pickup_made(order) is not None or RiderEarning.objects.filter(order_id=order.pk).exists() or first_leg(order) is not None:
         return True
     if not Journal.objects.filter(key=escrow.release_key(order)).exists():
         return False
@@ -195,7 +229,8 @@ def delivery_kept(order):
 
 def rider_for_settle(order):
     """The third-party rider to pay when a whole refund settles this order's delivery before release, or None (no
-    pickup, AshantiHub's own rider, or one who was not third-party when they picked up). The rider is the one on the
+    pickup, AshantiHub's own rider, or one who was not third-party when they picked up). For an order re-delivered at the
+    customer's request it is the first rider (fee_rider), tested at the end of their leg. Otherwise the rider is the one on the
     assignment now and the pickup is that rider's own (pickup_made counts the current leg only, Plan 7F-E Task 6), so a
     re-assigned rider is never tested against the first rider's pickup time. The delivery assignment row is
     locked first (refunds.refund_order already holds it from before it decided whether the fee was earned, so a pickup
@@ -206,11 +241,16 @@ def rider_for_settle(order):
     if order.delivery_method != Order.DOOR_TO_DOOR:
         return None
     assignment = locks.lock_assignment(order)       # `order` is the refund's locked row (orders.locks.lock_order)
-    picked = pickup_made(order)
-    if assignment is None or assignment.dispatch_id is None or picked is None:
-        return None
-    rider = Rider.objects.select_related("staff").filter(staff_id=assignment.dispatch_id).first()
-    if rider is None or not employment.third_party_at(rider, picked):
+    leg = first_leg(order)
+    if leg is not None:                             # re-delivered at the customer's request: the first rider's fee (fee_rider)
+        staff_id, at = leg
+    else:
+        at = pickup_made(order)
+        staff_id = assignment.dispatch_id if assignment is not None else None
+        if at is None:
+            return None
+    rider = Rider.objects.select_related("staff").filter(staff_id=staff_id).first() if staff_id else None
+    if rider is None or not employment.third_party_at(rider, at):
         return None
     return Rider.objects.select_related("staff").select_for_update(of=("self",)).get(pk=rider.pk)
 

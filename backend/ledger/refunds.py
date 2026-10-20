@@ -33,6 +33,10 @@ A refund always goes to the customer's AshantiHub wallet and is recorded as an `
   still goes to the rider at the usual release. After release a whole refund takes nothing back from the rider. With no
   pickup, a whole refund returns the fee as usual and the rider is paid nothing. A delivery earned also keeps the
   free-delivery promo charged to its owner (the promo is not returned).
+* A re-delivery fee (Plan 7F-E Task 7) is not part of the order total, so `left` never counts it. A whole refund returns
+  it to the wallet before the second trip's rider collected anything and settles it to platform delivery income after
+  (delivery.redelivery.close_for_whole_refund); a partial or shop-scoped refund never touches it. The first trip of a
+  re-delivered order was completed, so its original delivery fee is kept (riders.delivery_earned).
 * The provider's collection charge ("payment processing") is not refunded, except when staff say AshantiHub or a vendor
   was at fault (`refund_processing=True`): AshantiHub then bears it (Dr provider fees, Cr wallet). A partial refund
   gives back only its share of the charge (its share of the order total, half up, never more than is left); the refund
@@ -40,7 +44,8 @@ A refund always goes to the customer's AshantiHub wallet and is recorded as an `
 
 Callers: Support's cancel (orders.support), the uncollected-pickup job (ledger.verification), dispute resolution
 (disputes.views) and the delivery-case refund approval (delivery.config). Lock order (the canonical one, orders/locks.py):
-the order row, its fee snapshots, then the delivery assignment row and the rider's row (a whole refund before release of a picked-up order:
+the order row, its fee snapshots, then the delivery assignment row, the order's open re-delivery row (a whole refund closes
+it: delivery.redelivery.for_whole_refund) and the rider's row (a whole refund before release of a picked-up order:
 ledger.riders.rider_for_settle), then every account the transaction posts to, in one sorted pass before the first posting
 (`_post` locks them; `extra_locks` carries the accounts of a later posting, such as the promo return)."""
 from dataclasses import dataclass
@@ -193,6 +198,7 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
     coupon. Returns the OrderRefund (the existing one when this source already refunded), or None while the ledger is
     off, when the order's payment was never recorded in the ledger (paid before it was on), or when nothing is left.
     Raises RefundError, writing nothing, for an amount it cannot give."""
+    from delivery import redelivery as redelivery_rules
     from orders import locks
 
     if not escrow.enabled():
@@ -228,14 +234,22 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
         items_room = sum(room for _, room in rooms)
         processing = remaining.processing if refund_processing else 0
         whole = owner_ids is None and (amount_pesewas is None or amount_pesewas == remaining.customer)
+        # A re-delivery fee (not part of the order total) is closed by a whole refund only: returned before the second
+        # trip's rider collected anything, settled after (delivery.redelivery). Its row is locked now, after the assignment
+        # and before the rider row (orders/locks.py).
+        redo = redelivery_rules.for_whole_refund(order) if whole else (None, None)
+        redo_accounts = redelivery_rules.refund_accounts(*redo)
         if whole:
             if not (remaining.customer or remaining.delivery or remaining.subsidy or items_room or processing):
                 if not earned:                          # an earned delivery keeps its promo charge: the promo's owner pays
-                    _free_promo(order, [], now)         # nothing left to refund, but the business must not stay charged for the promo
+                    _free_promo(order, redo_accounts, now)  # nothing left to refund, but the business must not stay charged for the promo
                 elif not released:                      # earned, never released: settle it now (the promo's owner pays the rider)
                     rider = riders.rider_for_settle(order)
-                    posting.lock(*escrow.settle_accounts(order, rider))
+                    posting.lock(*escrow.settle_accounts(order, rider), *redo_accounts)
                     escrow.settle_delivery(order, now, rider=rider)
+                else:
+                    posting.lock(*redo_accounts)
+                redelivery_rules.close_for_whole_refund(*redo, now=now)
                 return None
             customer, delivery, subsidy, shares = remaining.customer, remaining.delivery, remaining.subsidy, dict(rooms)
             shortfall = remaining.shortfall
@@ -266,8 +280,9 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
         refund = _post(
             order, snapshots, shares, customer=customer, delivery=delivery, subsidy=subsidy, processing=processing,
             whole=whole, source=source, by=by, note=note, now=now, earned=earned, kept_fee=kept_fee, shortfall=shortfall,
-            extra_locks=escrow.waiver_return_accounts(order) if clears_promo else (),
+            extra_locks=(*(escrow.waiver_return_accounts(order) if clears_promo else ()), *redo_accounts),
         )
+        redelivery_rules.close_for_whole_refund(*redo, now=now)   # its accounts were in the refund's up-front lock
         if clears_promo:
             escrow.return_waiver(order)               # charged at release: the business owes nothing for a refunded order
             from marketing.waivers import reverse_for_order

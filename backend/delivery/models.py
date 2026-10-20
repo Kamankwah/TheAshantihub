@@ -556,3 +556,58 @@ class RiderEarning(models.Model):
                 name="delivery_rider_earning_adds_up",
             ),
         ]
+
+
+# ── Re-delivery at the customer's request (Plan 7F-E Task 7, owner Rulings R4/R5; rules in delivery.redelivery) ─────
+class Redelivery(models.Model):
+    """The customer was not at the address when the first rider completed the trip (the assignment failed `no_answer`
+    after `arrived_drop_at`), the goods came back, and Support or the Pickup Desk asked, at the customer's request, for
+    the order to be delivered again. The customer pays `fee_pesewas` (the governed `redelivery_fee_pesewas` copied here
+    when it was asked for) before the second trip can be assigned; that money waits in the order's Re-delivery payable
+    and becomes platform delivery income when the second trip's rider completes it (`rider`, `completed_at`: what
+    AshantiHub owes that in-house rider, paid outside the app). The first rider (`first_rider`, whose leg ended at
+    `first_leg_ended_at`) keeps the order's original delivery fee (ledger.riders.fee_rider). Integer pesewas only."""
+
+    AWAITING_PAYMENT, PAID, ASSIGNED, COMPLETED, CANCELLED, REFUNDED = (
+        "awaiting_payment", "paid", "assigned", "completed", "cancelled", "refunded",
+    )
+    STATUS_CHOICES = [
+        (AWAITING_PAYMENT, "Waiting for the customer to pay"), (PAID, "Paid, waiting for a rider"),
+        (ASSIGNED, "Given to a rider"), (COMPLETED, "Second trip done"), (CANCELLED, "Cancelled"),
+        (REFUNDED, "Cancelled, fee returned to the wallet"),
+    ]
+    OPEN_STATUSES = (AWAITING_PAYMENT, PAID, ASSIGNED)
+
+    order = models.ForeignKey("orders.Order", on_delete=models.PROTECT, related_name="redeliveries")
+    attempt = models.PositiveSmallIntegerField()
+    first_rider = models.ForeignKey("accounts.StaffUser", null=True, on_delete=models.PROTECT, related_name="+")
+    first_leg_ended_at = models.DateTimeField()
+    fee_pesewas = models.BigIntegerField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=AWAITING_PAYMENT)
+    requested_by = models.ForeignKey("accounts.StaffUser", on_delete=models.PROTECT, related_name="+")
+    reason = models.TextField()
+    checkout_session = models.ForeignKey(
+        "payments.CheckoutSession", null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+    )
+    paid_at = models.DateTimeField(null=True, blank=True)
+    rider = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    completed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    pay_journal = models.ForeignKey("ledger.Journal", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    settle_journal = models.ForeignKey("ledger.Journal", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    refund_journal = models.ForeignKey("ledger.Journal", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["order", "attempt"], name="delivery_redelivery_attempt_unique"),
+            models.UniqueConstraint(
+                fields=["order"], condition=models.Q(status__in=("awaiting_payment", "paid", "assigned")),
+                name="delivery_one_open_redelivery_per_order",
+            ),
+            models.CheckConstraint(condition=models.Q(fee_pesewas__gte=0), name="delivery_redelivery_fee_not_negative"),
+        ]
+
+    def __str__(self):
+        return f"Re-delivery {self.attempt} of order #{self.order_id} ({self.status})"

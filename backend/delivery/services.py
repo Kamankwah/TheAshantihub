@@ -554,6 +554,9 @@ def deliver(assignment, rider_staff, code, lat, lng, accuracy):
 
     snapshot_rider_pay(assignment)
     _sync(assignment)
+    from . import redelivery
+
+    redelivery.complete(assignment, event.at)     # a second trip at the customer's request: its fee is earned (Plan 7F-E Task 7)
     notify_customer(
         assignment.order.customer, "order_status", "Your order has been delivered",
         body=f"Order #{assignment.order_id} has been delivered. Please confirm you received it.", link="/my-account", icon="📦",
@@ -618,6 +621,10 @@ def cant_deliver(assignment, rider_staff, reason, note, lat, lng, accuracy):
     assignment.failed_reason = reason
     assignment.failed_note = (note or "")[:500]
     assignment.save(update_fields=["status", "failed_at", "failed_reason", "failed_note"])
+    from . import redelivery
+
+    # A second trip at the customer's request that fails after its rider collected the goods keeps its fee (Plan 7F-E Task 7).
+    redelivery.complete(assignment, event.at)
     dispute = open_case_for_failed_delivery(assignment)
     manager = rider_staff.manager
     if manager is not None and manager.is_active:
@@ -784,6 +791,9 @@ def legacy_deliver(assignment, rider_staff, code):
     snapshot_rider_pay(assignment)
     DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.DELIVERED, at=now, by=rider_staff)
     _sync(assignment)
+    from . import redelivery
+
+    redelivery.complete(assignment, now)          # a second trip at the customer's request: its fee is earned (Plan 7F-E Task 7)
     notify_customer(
         assignment.order.customer, "order_status", "Your order has been delivered",
         body=f"Order #{assignment.order_id} has been delivered. Please confirm you received it.", link="/my-account", icon="📦",

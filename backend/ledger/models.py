@@ -19,6 +19,9 @@ class Account(models.Model):
     PROVIDER_CLEARING = "provider_clearing"
     PROVIDER_FEES = "provider_fees"
     WITHDRAWAL_IN_TRANSIT = "withdrawal_in_transit"
+    # A re-delivery fee the customer paid (one per order: owner orders.order), held until the second trip is done or the
+    # fee is returned (Plan 7F-E Task 7; ledger.redelivery).
+    REDELIVERY_PAYABLE = "redelivery_payable"
     KIND_CHOICES = [
         (CUSTOMER_WALLET, "Customer wallet"),
         (VENDOR_PENDING, "Vendor pending"),
@@ -33,6 +36,7 @@ class Account(models.Model):
         (PROVIDER_CLEARING, "Provider clearing"),
         (PROVIDER_FEES, "Provider fees"),
         (WITHDRAWAL_IN_TRANSIT, "Withdrawal in transit"),
+        (REDELIVERY_PAYABLE, "Re-delivery payable"),
     ]
     # Asset and expense accounts grow with debits; everything else grows with credits.
     DEBIT_NORMAL = frozenset({PROVIDER_CLEARING, PLATFORM_PROMO_SUBSIDY, PROVIDER_FEES})

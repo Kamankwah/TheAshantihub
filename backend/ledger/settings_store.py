@@ -26,6 +26,8 @@ STOCK_COVER_DAYS, STOCK_FALLBACK_UNITS, STOCK_WINDOW_DAYS = (
     "low_stock_cover_days", "low_stock_fallback_units", "stock_cover_window_days",
 )
 
+REDELIVERY_FEE = "redelivery_fee_pesewas"
+
 DEFINITIONS = {
     "fee_cap_pesewas": Definition("Lifetime platform-fee cap per vendor (pesewas; blank = no cap)", None, True, 1, 10**12),
     "verification_overdue_hours": Definition(
@@ -50,6 +52,9 @@ DEFINITIONS = {
     "service_auto_accept_hours": Definition("Hours after a service is marked done before it is accepted automatically (the customer may accept sooner)", 48, False, 1, 720),
     "stay_issue_window_hours": Definition("Hours after a stay's check-in time in which the guest can report a problem; money releases when it ends", 24, False, 1, 168),
     "event_release_delay_hours": Definition("Hours after an event ends before its ticket money is released", 48, False, 1, 720),
+    # Re-delivery at the customer's request (plan 7F-E Task 7, Ruling R5, proposed): a flat charge, copied onto the request
+    # when it is made. GH₵ 15.00 is a placeholder (the example delivery fee); the owner sets the real value.
+    REDELIVERY_FEE: Definition("Re-delivery fee a customer pays to have an order delivered again after they were not available (pesewas)", 1500, False, 0, 20_000),
     # Low-stock alerts (catalogue plan 6; spec §1 row 15, §10). Not money, but governed the same way (§3.3): Accounting
     # proposes, a Super Admin approves.
     STOCK_COVER_DAYS: Definition("Low stock: alert when an offer has fewer than this many days of sales left", 7, False, 1, 90),

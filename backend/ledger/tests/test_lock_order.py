@@ -237,3 +237,37 @@ class LockOrderRaceTests(TransactionTestCase):
         self.assertEqual(posting.balance_of(Account.CUSTOMER_WALLET, self.customer), 11500)     # no pickup: the fee goes back
         self.assertEqual(posting.balance_of(Account.RIDER_BALANCE, self.swift.staff), 0)
         self.assertEqual(OrderRefund.objects.get(order=self.order).delivery_kept_pesewas, 0)
+
+    def test_redelivery_request_and_whole_refund_do_not_deadlock(self):
+        """Support asks for a re-delivery at the customer's request (delivery.redelivery.request: the order row, the
+        assignment row, then the new Redelivery row) while a whole refund starts (order, snapshots, assignment, the open
+        re-delivery row, rider, accounts). Plan 7F-E Task 7. The request commits first; the refund then sees the request
+        waiting for payment, cancels it, and pays the first rider the original fee (the trip was completed)."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from delivery import redelivery
+        from delivery.models import Redelivery
+
+        self.order, self.customer, kofi = paid_order("1501")
+        self.swift = rider_helpers.rider()
+        now = timezone.now()
+        assignment = job(self.order, self.swift, kofi, status=DeliveryAssignment.FAILED, stop_status=PickupStop.COLLECTED)
+        DeliveryAssignment.objects.filter(pk=assignment.pk).update(
+            failed_reason="no_answer", failed_at=now, arrived_drop_at=now - timedelta(minutes=12),
+            picked_up_at=now - timedelta(minutes=30), picked_up_by=self.swift.staff,
+        )
+        support = make_staff("support", "esi@example.com")
+
+        def ask():
+            redelivery.request(Order.objects.get(pk=self.order.pk), support, "The customer asked to have it brought again")
+
+        errors, times = self.race(ask, redelivery, seam_attr="_refusal")
+        self.assertEqual(errors, [])
+        self.assertLess(times["a_done"], times["b_past_order"])      # the refund passed the Order lock only after the request
+        row = Redelivery.objects.get(order=self.order)
+        self.assertEqual(row.status, Redelivery.CANCELLED)
+        self.assertEqual(posting.balance_of(Account.CUSTOMER_WALLET, self.customer), 10000)     # the fee is the first rider's
+        self.assertEqual(posting.balance_of(Account.RIDER_BALANCE, self.swift.staff), 1350)
+        self.assertEqual(OrderRefund.objects.get(order=self.order).delivery_kept_pesewas, 1500)

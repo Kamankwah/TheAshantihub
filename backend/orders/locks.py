@@ -6,6 +6,8 @@ skipping any it does not need, and never goes back for an earlier one:
     2. the Order row (lock_order),
     3. its OrderFeeSnapshot rows (by pk),
     4. its DeliveryAssignment row (lock_assignment / lock_job),
+    4b. the order's open Redelivery row (delivery.redelivery: request, payment, cancel, the assign gate, completion and a
+       whole refund; Plan 7F-E Task 7),
     5. the assignment's PickupStop rows,
     6. the Rider row (of=("self",), never the staff row),
     7. every ledger Account row, in one sorted pass (ledger.posting.lock),
