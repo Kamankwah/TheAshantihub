@@ -1,4 +1,4 @@
-import { D } from "../theme.js";
+import { D, tint } from "../theme.js";
 
 // The grouped staff nav (Overview — "Today" for a scout — pinned first, then permission-filtered
 // groups). Shared by the desktop sidebar, the tablet icon rail (collapsed),
@@ -7,7 +7,7 @@ import { D } from "../theme.js";
 export default function StaffNavList({ navGroups, activeTab, onSelect, collapsed, badgeFor, roleColor, itemMinHeight, overviewLabel = "Overview", noteFor, countOnly }) {
   const itemStyle = (active) => ({
     display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: itemMinHeight,
-    background: active ? `${roleColor}22` : "none",
+    background: active ? tint(roleColor, "22") : "none",
     border: "none", borderLeft: active ? `3px solid ${roleColor}` : "3px solid transparent",
     color: D.text, padding: "10px 12px", fontSize: "0.78rem",
     fontWeight: active ? 800 : 600, cursor: "pointer", textAlign: "left", fontFamily: "inherit",
@@ -40,7 +40,7 @@ export default function StaffNavList({ navGroups, activeTab, onSelect, collapsed
                 </span>
                 {!collapsed && <span style={{ flex: 1 }}>{item.label}</span>}
                 {!collapsed && note && badgeCount === 0 && (
-                  <span style={{ background: "#FBF3DC", color: "#6A4A00", borderRadius: 10, height: 18, fontSize: "0.62rem", fontWeight: 800, display: "flex", alignItems: "center", padding: "0 7px", flexShrink: 0 }}>{note}</span>
+                  <span style={{ background: D.warnBg, color: D.warnInk, borderRadius: 10, height: 18, fontSize: "0.62rem", fontWeight: 800, display: "flex", alignItems: "center", padding: "0 7px", flexShrink: 0 }}>{note}</span>
                 )}
                 {!collapsed && badgeCount > 0 && countOnly?.has(item.id) && (
                   <span aria-label={`${badgeCount} open`} style={{ color: D.textDim, fontSize: "0.7rem", fontWeight: 700, flexShrink: 0 }}>{badgeCount > 99 ? "99+" : badgeCount}</span>

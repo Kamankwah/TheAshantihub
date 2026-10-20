@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { C } from "../../theme.js";
+import { C, tint } from "../../theme.js";
 import { useActiveHero } from "../../hooks/useActiveHero.js";
 import usePrefersReducedMotion from "../../hooks/usePrefersReducedMotion.js";
 import { BODY_FONT, HEADING_FONT } from "./storefrontType.js";
@@ -130,7 +130,7 @@ export default function HeroSlider({ onNavigate, autoplayMs = AUTOPLAY_MS }) {
         </div>
       )}
       <style>{`
-        .ah-hero-arrow:hover { background: ${C.white} !important; }
+        .ah-hero-arrow:hover { background: ${C.surface} !important; }
         @media (max-width: 640px) { .ah-hero-arrow { display: none !important; } }
       `}</style>
     </section>
@@ -139,6 +139,6 @@ export default function HeroSlider({ onNavigate, autoplayMs = AUTOPLAY_MS }) {
 
 const arrowStyle = {
   position: "absolute", top: "50%", transform: "translateY(-50%)", width: 44, height: 64, borderRadius: 10,
-  border: "none", background: "rgba(255,255,255,0.85)", color: C.darkBrown, fontSize: 28, lineHeight: 1,
+  border: "none", background: tint(C.surface, "d9"), color: C.ink, fontSize: 28, lineHeight: 1,
   cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
 };

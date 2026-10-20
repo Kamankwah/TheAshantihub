@@ -2,6 +2,7 @@ import { useState } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { C } from "../theme.js";
 
 const iconBase = "https://unpkg.com/leaflet@1.9.4/dist/images/";
 L.Icon.Default.mergeOptions({
@@ -75,12 +76,12 @@ export default function LocationPicker({ lat, lng, onChange, onAddress, height =
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <span style={{ fontSize: "0.7rem", color: "#666" }}>{resolving ? "🔎 Finding your address…" : hasPin ? "📍 Pin set — tap to move it" : "Tap the map to set your location"}</span>
+        <span style={{ fontSize: "0.7rem", color: C.inkDim }}>{resolving ? "🔎 Finding your address…" : hasPin ? "📍 Pin set — tap to move it" : "Tap the map to set your location"}</span>
         {showLocateButton && (
           <button
             type="button"
             onClick={useMyLocation}
-            style={{ background: "#f0f0f0", border: "none", borderRadius: 14, padding: "4px 10px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+            style={{ background: C.surface2, border: "none", borderRadius: 14, padding: "4px 10px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
           >
             📡 Use my location
           </button>
@@ -94,7 +95,7 @@ export default function LocationPicker({ lat, lng, onChange, onAddress, height =
         <ClickToSetPin onSet={setLocation} />
         {hasPin && <Marker position={[lat, lng]} />}
       </MapContainer>
-      {geoError && <div style={{ color: "#dc2626", fontSize: "0.66rem", marginTop: 4 }}>{geoError}</div>}
+      {geoError && <div style={{ color: C.errInk, fontSize: "0.66rem", marginTop: 4 }}>{geoError}</div>}
     </div>
   );
 }

@@ -96,6 +96,7 @@ export default function SlideCarousel({ slides, renderSlide, height = 300, scrol
                   padding: 0,
                   borderRadius: 4,
                   border: "none",
+                  // dark-mode-ok: inactive dots are drawn over the slide photo, not on a page surface
                   background: i === index ? C.gold : "rgba(255,255,255,0.5)",
                   cursor: "pointer",
                   transition: reducedMotion ? "none" : "width 200ms ease-out, background 200ms ease-out",

@@ -3,8 +3,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiPut } from "../../../apiClient.js";
 import BusinessHoursEditor from "../../BusinessHoursEditor.jsx";
 import { useBusinessProfile } from "../../../hooks/useBusinessProfile.js";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, tint } from "../theme.js";
 import MarketingConsentCard from "../../MarketingConsentCard.jsx";
+import DetailChangeRequest from "../DetailChangeRequest.jsx";
 
 // "Profile & Settings" — reachable from the header's avatar dropdown. Read-only:
 // GET /api/accounts/business-owners/me/profile/ (the same hook AnalyticsPanel's
@@ -53,7 +54,7 @@ export default function ProfilePanel({ user }) {
         </div>
         <div>
           <div style={{ fontWeight: 900, fontSize: "1.05rem", color: D.text }}>{user?.fullName || "Your Business"}</div>
-          <span style={{ background: `${D.green}20`, color: D.green, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>✓ KYC Verified</span>
+          <span style={{ background: tint(D.green, "20"), color: D.green, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>✓ KYC Verified</span>
         </div>
       </div>
 
@@ -92,6 +93,8 @@ export default function ProfilePanel({ user }) {
           <BusinessHoursEditor key={profile?.has_hours ? "saved" : "blank"} initialDays={profile?.hours} onSave={saveHours} saving={hoursSaving} error={hoursError} />
         </div>
       )}
+
+      <DetailChangeRequest />
 
       <MarketingConsentCard />
 

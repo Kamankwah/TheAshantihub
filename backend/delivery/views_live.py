@@ -13,6 +13,7 @@ from activity.models import ActivityEvent
 from activity.services import record
 from accounts.phones import mask_phone
 from disputes.models import Dispute
+from orders import locks
 from orders.models import DeliveryAssignment
 
 from . import board, files, payloads, services, stops, tracking
@@ -107,7 +108,7 @@ class FlagDecisionView(ManageView):
 
     def post(self, request, pk):
         with transaction.atomic():
-            assignment = get_object_or_404(DeliveryAssignment.objects.select_for_update(of=("self",)), pk=pk)
+            assignment = locks.lock_job_or_404(pk)  # the order row first (orders/locks.py)
             if not assignment.events.filter(flagged=True).exists():
                 return Response({"detail": "This delivery has no flagged tap.", "code": "no_flag"}, status=409)
             decision = request.data.get("decision")
@@ -149,7 +150,7 @@ class UnlockCodeView(ManageView):
         if not note:
             return Response({"detail": "Say why you are unlocking this code."}, status=400)
         with transaction.atomic():
-            assignment = get_object_or_404(DeliveryAssignment.objects.select_for_update(of=("self",)), pk=pk)
+            assignment = locks.lock_job_or_404(pk)  # the order row first (orders/locks.py)
             stop = None
             if which == "pickup":
                 rows = stops.ensure_stops(assignment)
@@ -188,7 +189,7 @@ class StopSkipView(ManageView):
         from notifications.services import notify_staff
 
         with transaction.atomic():
-            assignment = get_object_or_404(DeliveryAssignment.objects.select_for_update(of=("self",)), pk=pk)
+            assignment = locks.lock_job_or_404(pk)  # the order row first (orders/locks.py)
             rows = stops.ensure_stops(assignment)  # a job from before multi-stop delivery has no saved stop until now
             # A GET never writes, so the record names such a job's one unsaved stop as id 0: it means the first stop.
             stop = next((s for s in rows if s.pk == stop_id or (stop_id == 0 and s.sequence == 1)), None)

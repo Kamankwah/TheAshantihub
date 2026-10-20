@@ -316,27 +316,38 @@ def refund_apply(request):
     """Records the approved refund. With the ledger on, the money goes back to the customer's AshantiHub wallet
     (ledger.refunds, source dispute-<id>: the same source dispute resolution uses, so never twice); a skipped shop's case
     refunds that shop's lines only, and the payment-processing charge too when the rider or the business was at fault.
-    A refund the ledger cannot give raises ApprovalError, so the request stays pending. With the ledger off nothing
+    A whole-order request (payload `whole`, made when nothing was left to give the customer) refunds the whole order
+    with no amount, re-checked here (ledger.refunds.check_whole). A refund the ledger cannot give raises ApprovalError, so the request stays pending. With the ledger off nothing
     moves: payments are simulated until a payment provider is connected."""
     from activity.services import record
     from disputes.models import Dispute
     from ledger import refunds
+    from ledger.models import OrderRefund
     from ledger.money import from_pesewas, to_pesewas
 
     decider = request.decided_by or request.maker
     dispute_id, amount = request.payload.get("dispute_id"), request.payload.get("amount")
+    whole = request.payload.get("whole") is True
     dispute = Dispute.objects.select_related("order").filter(pk=dispute_id).first()
     refund = None
     if dispute is not None and dispute.order_id:
+        source = f"dispute-{dispute.pk}"
         try:
+            ledger_order = refunds.refundable(dispute.order) is not None    # None: ledger off or paid before it (nothing moves)
+            if whole and ledger_order and not OrderRefund.objects.filter(order=dispute.order, source=source).exists():
+                # Still nothing to give the customer and not yet refunded whole (a retry of this source returns its refund).
+                refunds.check_whole(dispute.order, owner_ids=refunds.scope_for_dispute(dispute))
             refund = refunds.refund_order(
-                dispute.order, to_pesewas(amount), source=f"dispute-{dispute.pk}", by=decider,
+                dispute.order, None if whole else to_pesewas(amount), source=source, by=decider,
                 owner_ids=refunds.scope_for_dispute(dispute), refund_processing=dispute.fault in ("rider", "business"),
                 note=f"Delivery case #{dispute.pk}",
             )
         except refunds.RefundError as exc:
             raise ApprovalError(exc.message) from exc
-    if refund is not None:
+    if refund is not None and whole:
+        summary = (f"Whole-order refund for case #{dispute_id} approved: GH₵ {from_pesewas(refund.wallet_pesewas)} returned to "
+                   "the customer's AshantiHub wallet (the delivery fee is kept for the rider)")
+    elif refund is not None:
         summary = (f"Refund of GH₵ {from_pesewas(refund.wallet_pesewas)} for case #{dispute_id} approved "
                    "and returned to the customer's AshantiHub wallet")
     else:
@@ -357,7 +368,10 @@ REFUND_KIND = ApprovalKind(
     key=REFUND, label="Refund asked for a delivery case", pool_permission="", current_state=refund_current_state, apply=refund_apply, response_hours=48,
     resolve_approver=lambda request: [(ApprovalRequest.SUPER_ADMIN, None)], chain_note="Super Admin only", requires_sudo=True,
     consequences=refund_consequences,
-    render_diff=lambda request: [{"field": "Refund (GH₵)", "before": None, "after": str(request.payload.get("amount"))}],
+    render_diff=lambda request: [{"field": "Refund (GH₵)", "before": None, "after": (
+        f"{request.payload.get('amount')} (whole order: nothing is left to give the customer)" if request.payload.get("whole")
+        else str(request.payload.get("amount"))
+    )}],
 )
 
 KINDS = (AUTO_ASSIGN_KIND, TIME_LIMITS_KIND, RATE_CARD_KIND, REFUND_KIND)

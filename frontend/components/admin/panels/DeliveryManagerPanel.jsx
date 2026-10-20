@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { apiFetch, apiPost } from "../../../apiClient.js";
 import { useDeliveryManagerOrders } from "../../../hooks/useDeliveryManagerOrders.js";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, tint } from "../theme.js";
+import SendNow, { isHeld } from "./delivery/SendNow.jsx";
+import { dayTime } from "./delivery/deliveryParts.jsx";
 
 // Delivery Manager (punch-list item 11, delivery.manage): sees paid
 // door-to-door orders and assigns a dispatch to each. Store-pickup orders
@@ -9,7 +11,7 @@ import { D, glassCard } from "../theme.js";
 const pillBtn = { border: "none", borderRadius: 20, padding: "6px 13px", fontSize: "0.74rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
 const inputStyle = { padding: "7px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.76rem", fontFamily: "inherit", background: D.panelBg2, color: D.text };
 
-function OrderCard({ order, dispatches, onDone }) {
+function OrderCard({ order, dispatches, onDone, canSend }) {
   const [dispatchId, setDispatchId] = useState(order.delivery_assignment?.dispatch || "");
   const [actionError, setActionError] = useState(null);
   const assignment = order.delivery_assignment;
@@ -31,7 +33,7 @@ function OrderCard({ order, dispatches, onDone }) {
           <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 2 }}>🏠 {order.delivery_address} · 📞 {order.delivery_phone}</div>
         </div>
         {assignment && (
-          <span style={{ background: `${D.blue}22`, color: D.blue, borderRadius: 20, padding: "2px 10px", fontSize: "0.64rem", fontWeight: 800 }}>{assignment.status}</span>
+          <span style={{ background: tint(D.blue, "22"), color: D.blue, borderRadius: 20, padding: "2px 10px", fontSize: "0.64rem", fontWeight: 800 }}>{assignment.status}</span>
         )}
       </div>
 
@@ -43,6 +45,13 @@ function OrderCard({ order, dispatches, onDone }) {
           </div>
         ))}
       </div>
+
+      {isHeld(order.ready_not_before) && (
+        <div style={{ color: D.amber, fontSize: "0.74rem", marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+          <span>Held until the shop opens ({dayTime(order.ready_not_before)}). A rider cannot be assigned before then.</span>
+          <SendNow canSend={canSend} orderId={order.id} readyNotBefore={order.ready_not_before} onDone={onDone} />
+        </div>
+      )}
 
       {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
 
@@ -60,7 +69,8 @@ function OrderCard({ order, dispatches, onDone }) {
   );
 }
 
-export default function DeliveryManagerPanel() {
+export default function DeliveryManagerPanel({ auth }) {
+  const canSend = Boolean(auth?.hasPermission?.("delivery.manage"));
   const { data, isLoading, isError, refetch } = useDeliveryManagerOrders();
   const [dispatches, setDispatches] = useState([]);
 
@@ -79,7 +89,7 @@ export default function DeliveryManagerPanel() {
       <div style={{ color: D.text, fontWeight: 800, fontSize: "0.95rem", marginBottom: 4 }}>Door-to-door deliveries</div>
       <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>{data?.count ?? orders.length} order{(data?.count ?? orders.length) === 1 ? "" : "s"} to coordinate.</div>
       {orders.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem" }}>No door-to-door orders to deliver right now.</div>}
-      {orders.map(o => <OrderCard key={o.id} order={o} dispatches={dispatches} onDone={refetch} />)}
+      {orders.map(o => <OrderCard key={o.id} order={o} dispatches={dispatches} onDone={refetch} canSend={canSend} />)}
     </div>
   );
 }

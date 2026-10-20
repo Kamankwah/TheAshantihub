@@ -2,7 +2,7 @@ import { useState } from "react";
 import { apiDelete, apiPatch, apiPost } from "../../../../apiClient.js";
 import { apiErrorMessage } from "../../../../lib/apiErrorMessage.js";
 import { useTemplates } from "../../../../hooks/useMarketingCampaigns.js";
-import { D } from "../../theme.js";
+import { D, tint } from "../../theme.js";
 import { Honest, Loading, PageHead, STATE_WORD, Section, button, chip, dim, errorStyle, inputStyle, labelStyle, linkStyle, page, scroll, table, td, th } from "./mkParts.jsx";
 
 // ─── 05 Templates ────────────────────────────────────────────────────────────
@@ -77,7 +77,7 @@ export default function TemplatesPanel({ onNavigate }) {
                 <div style={{ background: D.panelBg2, borderRadius: 10, padding: 10, fontSize: "0.82rem", lineHeight: 1.5 }}>{t.body}
                   <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>{t.buttons.map((b) => <span key={b} style={chip(D.blue)}>{b}</span>)}</div></div>
                 <div style={dim}>{t.meta_recorded_by ? `Recorded by ${t.meta_recorded_by} on ${day(t.meta_recorded_at)}` : "Nothing recorded from Meta yet"} · used in {t.used} campaign{t.used === 1 ? "" : "s"}</div>
-                {t.meta_status === "rejected" && t.meta_note && <div role="note" style={{ fontSize: "0.8rem", border: `1px solid ${D.red}55`, borderRadius: 8, padding: "6px 8px" }}>{t.meta_note}</div>}
+                {t.meta_status === "rejected" && t.meta_note && <div role="note" style={{ fontSize: "0.8rem", border: `1px solid ${tint(D.red, "55")}`, borderRadius: 8, padding: "6px 8px" }}>{t.meta_note}</div>}
                 {t.meta_status === "approved" && t.meta_note && <div style={dim}>{t.meta_note}</div>}
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   {t.meta_status === "approved" || t.meta_status === "waiting" ? null : <button type="button" onClick={() => edit(t)} style={linkStyle}>Edit</button>}

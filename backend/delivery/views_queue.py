@@ -5,10 +5,11 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import HasRolePermission
+from accounts.permissions import HasAnyRolePermission, HasRolePermission
 from orders.models import DeliveryAssignment, Order
 from routing import service as routing_service
 
@@ -89,7 +90,10 @@ class OfferToRiderView(ManageView):
         data.is_valid(raise_exception=True)
         order = get_object_or_404(board.waiting_orders(), pk=order_id)
         rider = get_object_or_404(Rider.objects.select_related("staff"), pk=data.validated_data["rider"], staff__is_active=True, staff__is_suspended=False)
-        offer = dispatching.make_offer(order, rider, source=Offer.MANAGER, by=request.user)
+        try:
+            offer = dispatching.make_offer(order, rider, source=Offer.MANAGER, by=request.user)
+        except services.DeliveryError as exc:
+            return Response(exc.body(), status=exc.status_code)
         return Response({"offer_id": offer.pk, "expires_at": offer.expires_at}, status=201)
 
 
@@ -125,6 +129,39 @@ class ScheduleView(ManageView):
             return Response({"detail": "Choose a time in the future."}, status=400)
         QueueHold.objects.update_or_create(order=order, defaults={"release_at": when, "by": request.user})
         return Response({"held_until": when})
+
+
+class SendEarlyView(ManageView):
+    """POST orders/<order_id>/send-early/ {reason} — release a held order before its vendors open (delivery.manage)."""
+
+    def post(self, request, order_id):
+        get_object_or_404(Order, pk=order_id)
+        try:
+            order = services.send_early(order_id, request.user, request.data.get("reason"), request=request)
+        except services.DeliveryError as exc:
+            return Response(exc.body(), status=exc.status_code)
+        return Response({"order_id": order.pk, "ready_not_before": order.ready_not_before})
+
+
+class ScheduledPagination(PageNumberPagination):
+    page_size = 20
+
+
+class ScheduledView(ManageView):
+    """GET scheduled/ — readable by delivery.manage or orders.manage_delivery (the delivery-management
+    panel's permission); sending early (SendEarlyView) stays delivery.manage only.
+
+    Paginated ({count, next, previous, results}) paid orders held until their vendors open, soonest
+    opening first. The same queryset as the queue's scheduled_count (board.scheduled_orders)."""
+
+    def get_permissions(self):
+        return [HasAnyRolePermission("delivery.manage", "orders.manage_delivery")]
+
+    def get(self, request):
+        now = timezone.now()
+        paginator = ScheduledPagination()
+        page = paginator.paginate_queryset(board.scheduled_orders(), request, view=self)
+        return paginator.get_paginated_response([board.scheduled_row(o, now) for o in page])
 
 
 class SwitchView(APIView):

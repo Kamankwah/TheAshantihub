@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTransactionsReport } from "../../../hooks/useTransactionsReport.js";
-import { D, glassCard, ghs } from "../theme.js";
+import { D, glassCard, ghs, tint } from "../theme.js";
 import KpiCard from "../../dashboard/charts/KpiCard.jsx";
 import ChartFrame from "../../dashboard/charts/ChartFrame.jsx";
 import SpendAreaChart from "../../dashboard/charts/SpendAreaChart.jsx";
@@ -76,7 +76,7 @@ export default function TransactionsReportPanel() {
                 {statusEntries.map(([status, row]) => {
                   const meta = STATUS_META[status] || { label: status, color: D.textDim };
                   return (
-                    <div key={status} style={{ background: `${meta.color}14`, border: `1px solid ${meta.color}33`, borderRadius: 12, padding: "8px 14px", minWidth: 130 }}>
+                    <div key={status} style={{ background: tint(meta.color, "14"), border: `1px solid ${tint(meta.color, "33")}`, borderRadius: 12, padding: "8px 14px", minWidth: 130 }}>
                       <div style={{ color: meta.color, fontWeight: 800, fontSize: "0.72rem" }}>{meta.label}</div>
                       <div style={{ color: D.text, fontWeight: 900, fontSize: "1rem", marginTop: 2 }}>{row.count}</div>
                       <div style={{ color: D.textDim, fontSize: "0.65rem" }}>{ghs(row.amount)}</div>

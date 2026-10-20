@@ -71,6 +71,9 @@ export const NAV_ITEMS = [
   { id: "subscriptions-due", icon: "⏳", label: "Subscriptions due", show: (auth) => auth.hasPermission("portfolio.manage") },
   { id: "fraud-cases", icon: "🚩", label: "Fraud cases", show: (auth) => auth.hasPermission("fraud.manage") || auth.hasPermission("fraud.flag") },
   { id: "delivery-coordination", icon: "🚚", label: "Delivery Coordination", show: (auth) => auth.hasPermission("delivery.manage") },
+  // The Scheduled list for whoever manages deliveries without the Delivery Manager menu (orders.manage_delivery reads it;
+  // Send now inside it still needs delivery.manage). The Delivery Manager has dm-scheduled instead.
+  { id: "delivery-scheduled", icon: "🕒", label: "Scheduled orders", show: (auth) => (auth.hasPermission("orders.manage_delivery") || auth.hasPermission("delivery.manage")) && auth.user?.role !== "delivery_manager" },
   { id: "my-deliveries", icon: "📦", label: "My Deliveries", show: (auth) => auth.hasPermission("delivery.dispatch") },
   { id: "categories-zones", icon: "🗂️", label: "Categories & Zones", show: (auth) => auth.hasPermission("categories.manage") || auth.hasPermission("zones.manage") },
   { id: "promotions", icon: "🎯", label: "Promotions", show: (auth) => auth.hasPermission("promotions.manage") },
@@ -92,6 +95,7 @@ export const NAV_ITEMS = [
   // Delivery Manager canvas screens (2026-10-07, 20 screens). Each is the manager's alone: it needs the
   // permission the server checks, so a Super Admin (who holds all) sees them too.
   { id: "dm-queue", icon: "📥", label: "Dispatch queue", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
+  { id: "dm-scheduled", icon: "🕒", label: "Scheduled", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
   { id: "dm-active", icon: "🚚", label: "Active deliveries", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
   { id: "dm-cases", icon: "⚖️", label: "Disputes & returns", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
   { id: "dm-riders", icon: "🛵", label: "Riders & drivers", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
@@ -204,7 +208,7 @@ const DEFAULT_GROUPS = [
   ["users-roles", "Users & Roles", ["users", "staff", "sessions"]],
   ["field-ops", "Field Operations", ["scout-assignments", "field-verification", "visits", "targets", "commission", "leaderboard", "prospects", "register-business", "delivery-coordination", "my-deliveries", "portfolio", "all-portfolios", "at-risk", "subscriptions-due"]],
   ["content", "Content", ["categories-zones", "promotions", "site-settings"]],
-  ["system", "System", ["delivery", "contact-messages", "messaging", "analytics"]],
+  ["system", "System", ["delivery", "delivery-scheduled", "contact-messages", "messaging", "analytics"]],
   ["my-work", "My Work", ["approvals", "tasks", "calls", "reports", "team-reports", "activity", "my-team", "security"]],
 ];
 
@@ -294,7 +298,7 @@ const ROLE_MENUS = {
     ["account", "Account", ["security", "activity"]],
   ],
   delivery_manager: [
-    ["live", "Live", ["dm-queue", "dm-active"]],
+    ["live", "Live", ["dm-queue", "dm-scheduled", "dm-active"]],
     ["issues", "Issues", ["dm-cases"]],
     ["fleet", "Fleet", ["dm-riders", "dm-documents", "dm-vehicles", "dm-invite", "my-team"]],
     ["planning", "Planning", ["dm-shifts", "dm-zones"]],

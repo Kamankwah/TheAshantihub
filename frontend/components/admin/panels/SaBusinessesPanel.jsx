@@ -21,7 +21,7 @@ const HEALTH_RULES = [
 ];
 const KYC = [["", "Any"], ["verified", "Verified"], ["pending", "Waiting"], ["suspended", "Suspended"]];
 const HEALTH = [["", "Any"], ["healthy", "Healthy"], ["needs_attention", "Needs attention"], ["at_risk", "At risk"], ["new", "New · KYC waiting"]];
-const FLAGS = [["", "Any"], ["fraud", "Fraud case"], ["dispute", "Open dispute"], ["no_login", "No owner login"]];
+const FLAGS = [["", "Any"], ["fraud", "Fraud case"], ["dispute", "Open dispute"], ["no_login", "No owner login"], ["no_hours", "Hours not set"]];
 const SUBSCRIPTION = [["", "Any"], ["active", "Active"], ["trial", "Trial"], ["overdue", "Overdue"], ["paused", "Paused"], ["none", "No plan"]];
 const EMPTY = { kyc: "", subscription: "", health: "", scout: "", zone: "", flag: "", unassigned: "" };
 
@@ -37,6 +37,7 @@ function flagsOf(b) {
   if (flagCount(b.open_fraud_flags) > 0) flags.push("🚩 Fraud case open");
   if ((b.health?.reasons || []).includes("Open dispute")) flags.push("Open dispute");
   if (b.needs_claim) flags.push("Owner hasn't set a login");
+  if (b.has_hours === false) flags.push("Hours not set");
   return flags;
 }
 

@@ -64,10 +64,13 @@ def account_kinds(holder):
     raise TypeError(f"{type(holder).__name__} holds no wallet")
 
 
-def held_topups(holder, now=None):
+def held_topups(holder, now=None, balance=None):
     """(held pesewas, free_at) for a customer: the top-ups credited less than `wallet_topup_hold_minutes` ago cannot be
     withdrawn yet, and `free_at` is when the last of them is free (None when nothing is held). A top-up is free at exactly
-    credited_at + hold. Only `wallet_top_up` journals are held: sale proceeds and other credits never are."""
+    credited_at + hold. Only `wallet_top_up` journals are held: sale proceeds and other credits never are.
+    Money is treated as spent free-first, so a spend followed by a refund leaves the top-up held: the hold is the in-window
+    top-ups, capped at the balance when the caller passes it (a half-spent top-up cannot hold more than is left). `now` is the
+    caller's clock; the credit time is the journal's, and nothing here reads the wall clock when `now` is given."""
     if not isinstance(holder, Customer):
         return 0, None
     now = now or timezone.now()
@@ -81,15 +84,20 @@ def held_topups(holder, now=None):
         held += line.amount
         at = line.journal.created_at + hold
         free_at = at if free_at is None or at > free_at else free_at
+    if balance is not None:
+        held = min(held, max(balance, 0))
+        if not held:
+            free_at = None
     return held, free_at
 
 
 def summary(holder):
     """A customer's wallet balance, or a vendor's Pending and Available (Available may be negative after a late refund)."""
     if isinstance(holder, Customer):
-        held, free_at = held_topups(holder)
+        balance = posting.balance_of(Account.CUSTOMER_WALLET, holder)
+        held, free_at = held_topups(holder, balance=balance)
         return {
-            "kind": "customer", "balance": money(posting.balance_of(Account.CUSTOMER_WALLET, holder)),
+            "kind": "customer", "balance": money(balance),
             "held_topup_pesewas": held, "topup_free_at": free_at.isoformat() if free_at else None,
         }
     return {

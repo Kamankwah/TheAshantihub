@@ -68,6 +68,15 @@ class EventOversightTests(MarketplaceTestCase):
         self.assertEqual(len(self.rows(f"?business={self.business.pk}")), 3)
         self.assertEqual(len(self.rows("?business=999999")), 0)
 
+    def test_cancelled_event_sits_under_ended_with_its_own_label(self):
+        now = timezone.now()
+        self.make_event("Cancelled concert", status=Event.CANCELLED, cancelled_at=now, event_date=now + timedelta(days=4), paid_at=now)
+        row = self.rows()["Cancelled concert"]
+        self.assertEqual((row["state"], row["state_label"]), ("cancelled", "Cancelled by the organiser"))
+        self.assertEqual(set(self.rows("?show=ended")), {"Kente Festival day trip", "Cancelled concert"})
+        self.assertNotIn("Cancelled concert", self.rows("?show=on_sale"))
+        self.assertNotIn("Cancelled concert", self.rows("?show=not_live"))
+
     def test_header_counts(self):
         body = self.client.get("/api/marketplace/events/counts/").json()
         self.assertEqual(body["on_sale"], 1)

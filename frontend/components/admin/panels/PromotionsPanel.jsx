@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { usePromotionsQueue } from "../../../hooks/usePromotionsQueue.js";
-import { D } from "../theme.js";
+import { D, tint } from "../theme.js";
 import ModerationQueueTabs from "../ModerationQueueTabs.jsx";
 import PromotionsMarketing from "./marketing/PromotionsMarketing.jsx";
 
@@ -45,7 +45,7 @@ function PromotionRow({ promotion, state, canManage, onDone }) {
         <div>
           <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>
             {promotion.listing_name}
-            <span style={{ background: `${kind.color}22`, color: kind.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>{kind.label}</span>
+            <span style={{ background: tint(kind.color, "22"), color: kind.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>{kind.label}</span>
           </div>
           <div style={{ color: D.textDim, fontSize: "0.68rem", marginTop: 2 }}>
             🏢 {promotion.business_owner_name} • GHS {promotion.amount_paid} • {fmtDate(promotion.starts_at)} → {fmtDate(promotion.ends_at)}

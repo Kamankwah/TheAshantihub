@@ -50,7 +50,7 @@ function TargetRow({ measure, week, month, monthName }) {
       </div>
       {hasTarget && measure.today_target > 0 && (
         <div role="progressbar" aria-label={`${measure.label} today`} aria-valuemin={0} aria-valuemax={measure.today_target} aria-valuenow={Math.min(measure.today_done, measure.today_target)}
-          style={{ height: 6, borderRadius: 999, background: "#EADFC6", overflow: "hidden" }}>
+          style={{ height: 6, borderRadius: 999, background: D.panelBg3, overflow: "hidden" }}>
           <div style={{ height: 6, width: `${pct}%`, background: complete ? D.green : D.text, borderRadius: 999 }} />
         </div>
       )}
@@ -107,7 +107,7 @@ function DueRow({ task, section, onOpenBusiness }) {
     <>
       <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <span style={{ background: bg, color: fg, borderRadius: 999, padding: "2px 8px", fontSize: "0.68rem", fontWeight: 800 }}>{label}</span>
-        <span style={{ fontSize: "0.75rem", fontWeight: 700, color: urgent ? "#A33A00" : D.textDim, ...figures }}>{dueLabel(task, section)}</span>
+        <span style={{ fontSize: "0.75rem", fontWeight: 700, color: urgent ? D.warnInk : D.textDim, ...figures }}>{dueLabel(task, section)}</span>
       </span>
       <span style={{ fontWeight: 700, fontSize: "0.88rem", color: D.text }}>{name}</span>
       {task.title && task.title !== name && <span style={{ ...dim, lineHeight: 1.4 }}>{task.title}</span>}

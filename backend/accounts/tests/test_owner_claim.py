@@ -13,7 +13,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts import claims
+from accounts import claims, hours
 from accounts.models import BusinessOwner, BusinessOwnerProfile, OwnerClaimToken, OwnerConsent
 from accounts.testing import make_staff, session_of, staff_token
 from activity.models import ActivityEvent
@@ -42,6 +42,7 @@ def scout_owner(scout, *, phone="+233241234567", email=None):
         business_owner=owner, business_name="Asafo Hair & Beauty", business_kind="service",
         gps_address="AK-112-0384", business_contact_phone=phone, zone=Zone.objects.get_or_create(name="Asafo")[0],
     )
+    hours.set_week(owner, [{"weekday": d, "closed": d == 6, "opens": "08:00", "closes": "18:00"} for d in range(7)])
     return owner
 
 

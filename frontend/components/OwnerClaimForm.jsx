@@ -15,22 +15,22 @@ import { BUSINESS_TERMS_COPY, BUSINESS_TERMS_VERSION } from "./businessTerms.js"
 // form goes away.
 
 const when = (iso) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
-const labelStyle = { fontSize: "0.78rem", fontWeight: 800, color: C.darkBrown };
-const hintStyle = { fontSize: "0.72rem", color: C.darkBrown, opacity: 0.72, lineHeight: 1.45 };
+const labelStyle = { fontSize: "0.78rem", fontWeight: 800, color: C.ink };
+const hintStyle = { fontSize: "0.72rem", color: C.ink, opacity: 0.72, lineHeight: 1.45 };
 const inputStyle = {
   width: "100%", boxSizing: "border-box", minHeight: 44, padding: "10px 12px", borderRadius: 10,
-  border: `1.5px solid ${C.darkBrown}33`, background: C.white, color: C.darkBrown, fontSize: "1rem", fontFamily: "inherit",
+  border: `1.5px solid ${C.darkBrown}33`, background: C.surface, color: C.ink, fontSize: "1rem", fontFamily: "inherit",
 };
 const primaryStyle = {
   minHeight: 48, width: "100%", background: C.gold, color: C.darkBrown, border: "none", borderRadius: 24,
   padding: "12px 18px", fontWeight: 900, fontSize: "0.9rem", cursor: "pointer", fontFamily: "inherit",
 };
 const toggleStyle = {
-  alignSelf: "flex-start", minHeight: 44, background: "none", border: "none", padding: 0, color: C.darkBrown,
+  alignSelf: "flex-start", minHeight: 44, background: "none", border: "none", padding: 0, color: C.ink,
   textDecoration: "underline", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit",
 };
 const problemStyle = {
-  background: `${C.kente1}12`, border: `1px solid ${C.kente1}`, color: C.darkBrown, borderRadius: 10,
+  background: `${C.kente1}12`, border: `1px solid ${C.kente1}`, color: C.ink, borderRadius: 10,
   padding: "10px 12px", fontSize: "0.82rem", fontWeight: 700,
 };
 
@@ -43,13 +43,13 @@ export function ClaimSummary({ preview }) {
     ["Registered by", [preview.registered_by_name, when(preview.registered_at)].filter(Boolean).join(" · ")],
   ].filter(([, value]) => value);
   return (
-    <section aria-label="Your business" style={{ background: C.white, border: `1px solid ${C.gold}55`, borderRadius: 16, padding: 16 }}>
-      <div style={{ fontWeight: 900, fontSize: "1rem", color: C.darkBrown }}>{preview.business_name}</div>
+    <section aria-label="Your business" style={{ background: C.surface, border: `1px solid ${C.gold}55`, borderRadius: 16, padding: 16 }}>
+      <div style={{ fontWeight: 900, fontSize: "1rem", color: C.ink }}>{preview.business_name}</div>
       <dl style={{ margin: "8px 0 0", display: "grid", gridTemplateColumns: "minmax(96px, auto) 1fr", gap: "4px 12px", fontSize: "0.82rem" }}>
         {rows.map(([label, value]) => (
           <div key={label} style={{ display: "contents" }}>
-            <dt style={{ color: C.darkBrown, opacity: 0.7 }}>{label}</dt>
-            <dd style={{ margin: 0, color: C.darkBrown, fontWeight: 700, overflowWrap: "anywhere" }}>{value}</dd>
+            <dt style={{ color: C.ink, opacity: 0.7 }}>{label}</dt>
+            <dd style={{ margin: 0, color: C.ink, fontWeight: 700, overflowWrap: "anywhere" }}>{value}</dd>
           </div>
         ))}
       </dl>
@@ -106,10 +106,10 @@ export default function OwnerClaimForm({ preview, token, onClaimed, submitLabel 
   };
 
   return (
-    <form onSubmit={submit} noValidate style={{ display: "flex", flexDirection: "column", gap: 12, color: C.darkBrown }}>
+    <form onSubmit={submit} noValidate style={{ display: "flex", flexDirection: "column", gap: 12, color: C.ink }}>
       <div style={{ fontWeight: 900, fontSize: "1rem" }}>Set up your login</div>
       {preview?.login_phone && <div style={hintStyle}>You'll sign in with your phone number ending {preview.login_phone.slice(-3)} and the password you set here.</div>}
-      <details style={{ background: C.white, borderRadius: 10, padding: "10px 12px", border: `1px solid ${C.darkBrown}1f` }}>
+      <details style={{ background: C.surface, borderRadius: 10, padding: "10px 12px", border: `1px solid ${C.darkBrown}1f` }}>
         <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: "0.8rem" }}>Read the AshantiHub Business Agreement</summary>
         <div style={{ whiteSpace: "pre-line", fontSize: "0.76rem", lineHeight: 1.6, marginTop: 8, maxHeight: 260, overflowY: "auto" }}>{BUSINESS_TERMS_COPY}</div>
       </details>
@@ -128,7 +128,7 @@ export default function OwnerClaimForm({ preview, token, onClaimed, submitLabel 
         <input id={confirmId} ref={confirmRef} type={show ? "text" : "password"} value={confirm}
           onChange={(e) => setConfirm(e.target.value)} autoComplete={handover ? "off" : "new-password"} style={inputStyle} />
         {confirm.length > 0 && (matches
-          ? <div style={{ ...hintStyle, opacity: 1, color: C.kente2, fontWeight: 800 }}><span aria-hidden="true">✓ </span>Passwords match</div>
+          ? <div style={{ ...hintStyle, opacity: 1, color: C.trust, fontWeight: 800 }}><span aria-hidden="true">✓ </span>Passwords match</div>
           : <div style={hintStyle}>Passwords don't match yet</div>)}
       </div>
       <button type="button" onClick={() => setShow((s) => !s)} aria-pressed={show} style={toggleStyle}>{show ? "Hide password" : "Show password"}</button>

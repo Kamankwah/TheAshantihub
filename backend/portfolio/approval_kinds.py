@@ -1,6 +1,6 @@
 """Approval kinds owned by the portfolio app (plan 2A). PortfolioConfig.ready()
 registers every kind in KINDS. Task 5 adds business.kyc; Task 9 appends the
-three scout change kinds."""
+three scout change kinds; plan 7F-C Task 8 adds business.detail_change."""
 from datetime import timedelta
 
 from django.utils import timezone
@@ -13,6 +13,7 @@ from approvals.services import ApprovalError
 from staff_tasks.models import Task
 from staff_tasks.services import create_task
 
+from . import detail_changes
 from .proposals import (
     BUSINESS_UPDATE_KEY,
     LISTING_CREATE_KEY,
@@ -191,4 +192,26 @@ LISTING_PHOTOS = ApprovalKind(
     on_rejected=returned_task,
 )
 
-KINDS = (BUSINESS_KYC, BUSINESS_UPDATE, LISTING_CREATE, LISTING_PHOTOS)
+# A business's own change of its owner's name, sign-in phone or email (plan 7F-C, ruling R3; spec §13 (xxxiv)), verified
+# on site by a scout who is its maker. Two people with the password: never applied by one person, a Super Admin's own
+# request included.
+BUSINESS_DETAIL_CHANGE = ApprovalKind(
+    key=detail_changes.APPROVAL_KIND,
+    label="Business name or contact change",
+    pool_permission=detail_changes.OPERATIONS_PERMISSION,
+    current_state=detail_changes.approval_state,
+    apply=detail_changes.approval_apply,
+    response_hours=24,
+    resolve_approver=detail_changes.approval_chain,
+    render_diff=detail_changes.approval_diff,
+    validate=detail_changes.approval_validate,  # still verified; clean(..., detailed=True) again
+    on_rejected=detail_changes.approval_closed,
+    on_cancelled=detail_changes.approval_closed,
+    consequences=detail_changes.approval_consequences,
+    public_payload=detail_changes.approval_public_payload,
+    requires_sudo=True,
+    two_people=True,
+    chain_note="One approval from another holder of portfolio.manage, or a Super Admin; never the scout who verified",
+)
+
+KINDS = (BUSINESS_KYC, BUSINESS_UPDATE, LISTING_CREATE, LISTING_PHOTOS, BUSINESS_DETAIL_CHANGE)

@@ -29,7 +29,7 @@ export default function DealsRow({ onOpen }) {
               <button
                 type="button"
                 onClick={() => onOpen(row.id)}
-                style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", padding: 0, border: `1px solid ${C.gold}33`, borderRadius: 16, overflow: "hidden", background: C.white, color: C.darkBrown, textAlign: "left", cursor: "pointer", fontFamily: BODY_FONT, boxShadow: "0 4px 14px rgba(44,24,16,0.08)" }}
+                style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", padding: 0, border: `1px solid ${C.gold}33`, borderRadius: 16, overflow: "hidden", background: C.surface, color: C.ink, textAlign: "left", cursor: "pointer", fontFamily: BODY_FONT, boxShadow: "0 4px 14px rgba(44,24,16,0.08)" }}
               >
                 {row.photo
                   ? <img src={row.photo} alt="" style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", display: "block" }} />
@@ -41,15 +41,15 @@ export default function DealsRow({ onOpen }) {
                     </span>
                   ) : null}
                   <span style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0 8px" }}>
-                    {price && <span style={{ fontSize: 17, fontWeight: 700, color: C.darkBrown, ...TABULAR }}>{price}</span>}
+                    {price && <span style={{ fontSize: 17, fontWeight: 700, color: C.price, ...TABULAR }}>{price}</span>}
                     {was && (
-                      <s style={{ fontSize: 13, color: "rgba(44,24,16,0.62)", ...TABULAR }}>
+                      <s style={{ fontSize: 13, color: C.inkDim, ...TABULAR }}>
                         <span className="ah-sr-only">Was </span>{was}
                       </s>
                     )}
                   </span>
                   <span style={{ fontSize: 14, lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{row.name}</span>
-                  {row.sponsored && <span style={{ fontSize: 12, color: "rgba(44,24,16,0.62)" }}>Sponsored</span>}
+                  {row.sponsored && <span style={{ fontSize: 12, color: C.inkDim }}>Sponsored</span>}
                 </span>
               </button>
             </li>

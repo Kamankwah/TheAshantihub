@@ -14,6 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import HasRolePermission
+from orders import locks
 from orders.models import DeliveryAssignment
 
 from ledger import escrow
@@ -37,13 +38,14 @@ class RiderView(APIView):
         return rider
 
     def job(self, request, pk, *, lock=False):
+        if lock:
+            # The order row, then the assignment row (orders/locks.py: the refund takes them in that order). The order is
+            # the locked instance, not selected with the assignment. Never prefetch the stops on the write path: a step
+            # may create them (ensure_stops) during the request.
+            return locks.lock_job_or_404(pk, dispatch_id=request.user.pk, select_related=("dispatch", "dispatch__manager"))
         queryset = DeliveryAssignment.objects.select_related("order", "order__customer", "dispatch", "dispatch__manager")
         queryset = queryset.prefetch_related("order__items__listing__business_owner__profile", "order__items__listing__category", "events", "calls", "photos")
-        if lock:
-            # Never prefetch the stops on the write path: a step may create them (ensure_stops) during the request.
-            queryset = queryset.select_for_update(of=("self",))
-        else:
-            queryset = queryset.prefetch_related("stops__business_owner__profile")
+        queryset = queryset.prefetch_related("stops__business_owner__profile")
         return get_object_or_404(queryset, pk=pk, dispatch=request.user)
 
     @staticmethod

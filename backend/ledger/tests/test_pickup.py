@@ -38,7 +38,8 @@ class PickupBase(OrderPaymentBase):
 class RoleTests(PickupBase):
     def test_the_role_exists_with_its_permission_and_super_admin_holds_it_too(self):
         role = Role.objects.get(name="pickup_desk")
-        self.assertEqual(list(role.permissions.values_list("codename", flat=True)), ["pickup.confirm"])
+        # Plan 7F-E Task 7 added orders.redeliver: the desk may ask for a re-delivery at the customer's request.
+        self.assertEqual(sorted(role.permissions.values_list("codename", flat=True)), ["orders.redeliver", "pickup.confirm"])
         self.assertTrue(Role.objects.get(name="super_admin").permissions.filter(codename="pickup.confirm").exists())
 
 

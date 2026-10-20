@@ -2,7 +2,7 @@ import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { useMyScoutAssignments } from "../../../hooks/useMyScoutAssignments.js";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, tint } from "../theme.js";
 
 // A scout's field-verification queue (punch-list item 11, scouts.verify). The
 // scout visits each assigned business and submits a field report — was the
@@ -73,7 +73,7 @@ function AssignmentCard({ assignment, onDone }) {
           </div>
         </div>
         {done
-          ? <span style={{ background: `${D.green}22`, color: D.green, borderRadius: 20, padding: "3px 10px", fontSize: "0.66rem", fontWeight: 800 }}>✓ Visited</span>
+          ? <span style={{ background: tint(D.green, "22"), color: D.green, borderRadius: 20, padding: "3px 10px", fontSize: "0.66rem", fontWeight: 800 }}>✓ Visited</span>
           : <button onClick={() => setOpen(o => !o)} style={{ ...pillBtn, background: D.gold, color: "#1a1205" }}>{open ? "Close" : "📋 Submit report"}</button>}
       </div>
 

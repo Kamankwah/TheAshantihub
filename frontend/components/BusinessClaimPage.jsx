@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useClaimPreview } from "../hooks/useClaimPreview.js";
 import { apiErrorMessage } from "../lib/apiErrorMessage.js";
-import { C } from "../theme.js";
+import { C, tint } from "../theme.js";
 import OwnerClaimForm, { ClaimSummary } from "./OwnerClaimForm.jsx";
 
 // ─── /business/claim?token=… ──────────────────────────────────────────────────
@@ -17,10 +17,10 @@ import OwnerClaimForm, { ClaimSummary } from "./OwnerClaimForm.jsx";
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "");
 const pageStyle = { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: `linear-gradient(135deg, ${C.kente1}, ${C.kente3})`, padding: 16, boxSizing: "border-box" };
-const sheetStyle = { background: C.white, borderRadius: 22, width: "100%", maxWidth: 460, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", overflow: "hidden" };
-const bodyStyle = { padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14, color: C.darkBrown };
+const sheetStyle = { background: C.surface, borderRadius: 22, width: "100%", maxWidth: 460, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", overflow: "hidden" };
+const bodyStyle = { padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14, color: C.ink };
 const primaryStyle = { minHeight: 48, width: "100%", background: C.gold, color: C.darkBrown, border: "none", borderRadius: 24, padding: "12px 18px", fontWeight: 900, fontSize: "0.9rem", cursor: "pointer", fontFamily: "inherit" };
-const noticeStyle = (color) => ({ background: `${color}12`, border: `1px solid ${color}`, color: C.darkBrown, borderRadius: 10, padding: "10px 12px", fontSize: "0.85rem", fontWeight: 700, lineHeight: 1.5 });
+const noticeStyle = (color) => ({ background: tint(color, "12"), border: `1px solid ${color}`, color: C.ink, borderRadius: 10, padding: "10px 12px", fontSize: "0.85rem", fontWeight: 700, lineHeight: 1.5 });
 const mutedStyle = { fontSize: "0.76rem", opacity: 0.75, lineHeight: 1.5 };
 
 export default function BusinessClaimPage({ onSignIn }) {

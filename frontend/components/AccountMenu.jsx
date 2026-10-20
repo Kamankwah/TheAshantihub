@@ -31,10 +31,10 @@ export default function AccountMenu({
         {children}
       </button>
       {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, background: "white", borderRadius: 14, boxShadow: "0 10px 40px rgba(0,0,0,0.25)", padding: 10, display: "flex", flexDirection: "column", gap: 6, minWidth: 210, zIndex: 200 }}>
-          <div style={{ padding: "4px 8px 8px", borderBottom: "1px solid #f0f0f0", marginBottom: 2 }}>
-            <div style={{ fontWeight: 800, color: C.darkBrown, fontSize: "0.82rem" }}>{user.fullName}</div>
-            <div style={{ color: "#999", fontSize: "0.68rem" }}>{accountLabel}</div>
+        <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, background: C.surface, borderRadius: 14, boxShadow: "0 10px 40px rgba(0,0,0,0.25)", padding: 10, display: "flex", flexDirection: "column", gap: 6, minWidth: 210, zIndex: 200 }}>
+          <div style={{ padding: "4px 8px 8px", borderBottom: `1px solid ${C.line}`, marginBottom: 2 }}>
+            <div style={{ fontWeight: 800, color: C.ink, fontSize: "0.82rem" }}>{user.fullName}</div>
+            <div style={{ color: C.inkFaint, fontSize: "0.68rem" }}>{accountLabel}</div>
           </div>
           {isBusiness ? (
             <>
@@ -44,7 +44,7 @@ export default function AccountMenu({
           ) : !isStaff ? (
             <button onClick={act(onAccount)} style={menuItemStyle}>👤 My Account</button>
           ) : null}
-          <button onClick={act(onSignOut)} style={{ ...menuItemStyle, color: "#dc2626" }}>⏻ Sign Out</button>
+          <button onClick={act(onSignOut)} style={{ ...menuItemStyle, color: C.errInk }}>⏻ Sign Out</button>
         </div>
       )}
     </div>
@@ -52,9 +52,9 @@ export default function AccountMenu({
 }
 
 const menuItemStyle = {
-  background: "#f6f6f6",
-  color: C.darkBrown,
-  border: "1px solid #e5e5e5",
+  background: C.surface2,
+  color: C.ink,
+  border: `1px solid ${C.line}`,
   borderRadius: 12,
   padding: "8px 12px",
   fontSize: "0.78rem",

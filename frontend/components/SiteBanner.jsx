@@ -39,7 +39,7 @@ function BannerBody({ banner, slot, onNavigate }) {
       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "18px 16px 12px", background: "linear-gradient(transparent, rgba(0,0,0,0.65))", color: "#fff", textAlign: "left", fontWeight: 800, fontSize: slot === "home_hero" ? "1.5rem" : "1rem" }}>
         {banner.title}
       </div>
-      {banner.sponsored && <span style={{ position: "absolute", top: 8, right: 8, background: "#fff", color: C.darkBrown, borderRadius: 6, padding: "2px 8px", fontSize: "0.65rem", fontWeight: 800, letterSpacing: "0.04em" }}>Sponsored</span>}
+      {banner.sponsored && <span style={{ position: "absolute", top: 8, right: 8, background: C.surface, color: C.ink, borderRadius: 6, padding: "2px 8px", fontSize: "0.65rem", fontWeight: 800, letterSpacing: "0.04em" }}>Sponsored</span>}
     </>
   );
   const frame = { position: "relative", display: "block", width: "100%", padding: 0, border: 0, overflow: "hidden", background: C.darkBrown, borderRadius: 0 };

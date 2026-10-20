@@ -6,7 +6,7 @@ refused by validation leaves it usable for the retry.
 
 While settings.OTP_STEP_UP_ENFORCED is off, require() does nothing; force=True asks for it anyway: the authenticator
 settings, and - while LEDGER_ENABLED is on - adding a customer recovery contact and the wallet actions (withdrawal,
-payout_destination, contact_change), so a code can be sent for those whatever the OTP switches say. Only customers,
+payout_destination, contact_change, and a business's detail_change request), so a code can be sent for those whatever the OTP switches say. Only customers,
 business owners and third-party riders (withdrawal and payout_destination) can get a token (otp.views_step_up); other
 staff use sudo. A rider's wrong wallet codes count toward the 15-minute account lock, which also blocks texted sign-in
 codes when OTP sign-in is enforced and the rider has no authenticator app."""
@@ -26,12 +26,14 @@ CONTACT_CHANGE = "contact_change"
 AUTHENTICATOR_CHANGE = "authenticator_change"
 PASSWORD_CHANGE = "password_change"
 WITHDRAWAL = "withdrawal"
+DETAIL_CHANGE = "detail_change"  # a business asking to change its name, sign-in phone or email (portfolio.detail_changes)
 ACTIONS = {
     PAYOUT_DESTINATION: "Change where your money is paid",
     CONTACT_CHANGE: "Add or change a phone number or email",
     AUTHENTICATOR_CHANGE: "Turn the authenticator app on or off",
     PASSWORD_CHANGE: "Change your password",
     WITHDRAWAL: "Withdraw money",
+    DETAIL_CHANGE: "Ask to change your name, sign-in phone or email",
 }
 TOKEN_TTL = timedelta(minutes=5)
 HEADER = "HTTP_X_STEP_UP_TOKEN"

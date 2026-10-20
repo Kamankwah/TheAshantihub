@@ -94,3 +94,12 @@ Builder's calls (the owner may overrule):
 - **Chatbot:** reuses the existing messaging conversations, with no business attached. A business owner who opens it is still handled by Support only.
 - **Hero slider:** business hero-ad submission belongs in Plan 1; Marketing adds the day-one slides.
 - **Owner confirmation link:** the system texts the link, so the scout never sees it; staff approval still follows and the approver sees the number the link went to.
+
+Decisions recorded at launch (Plan M1B):
+- **Category mapping:** confirmed as built.
+- **Hero video:** 25 MB cap for launch.
+- **Notify-me SMS:** the text reads "AshantiHub is open! Shop now: <FRONTEND_BASE_URL host>". There is no stop link in the SMS; opt-out is by the link in the email. When `FRONTEND_BASE_URL` is unset or localhost, the host falls back to theashantihub.com.
+- **Fonts:** self-hosted via @fontsource (Fraunces, Plus Jakarta Sans, JetBrains Mono); no Google hosts.
+- **Business contact phone:** removed from all public responses; the owner and staff keep it.
+- **Dark mode:** on every page via the `--ah-*` tokens. The listing and event detail pages remain fixed-dark in both themes; the owner may want a light variant.
+- **AshantiHub's own support contacts:** unchanged.

@@ -403,3 +403,80 @@ describe('EventSubmissionPanel edit + renew (business item 3)', () => {
     await waitFor(() => expect(renewBody).toEqual({ additional_days: 30 }))
   })
 })
+
+describe('EventSubmissionPanel cancel (Plan 7F-C)', () => {
+  const liveEvent = {
+    id: 9, name: 'Akwasidae', description: 'Durbar.', address: 'Palace', status: 'approved',
+    access_level: 'public', paid_at: '2026-07-01T00:00:00Z', expires_at: '2099-01-01T00:00:00Z',
+    visibility_days: 30, event_date: '2099-08-01T18:00',
+  }
+
+  it('shows Cancel event for a live event', async () => {
+    server.use(http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([liveEvent, { ...liveEvent, id: 10, name: 'Pending one', status: 'pending', paid_at: null, expires_at: null }])))
+    renderPanel()
+    await screen.findByText('Akwasidae')
+    expect(screen.getAllByText('Cancel event')).toHaveLength(2)
+  })
+
+  it('confirm names the full-refund consequence', async () => {
+    server.use(http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([liveEvent])))
+    renderPanel()
+    await screen.findByText('Akwasidae')
+    fireEvent.click(screen.getByText('Cancel event'))
+    expect(screen.getByText('Every ticket is refunded in full from your account, including tickets already scanned. This cannot be undone.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Why are you cancelling?')).toBeInTheDocument()
+    expect(screen.getByText('Cancel event and refund every ticket')).toBeDisabled()
+  })
+
+  it('posts reason and refetches', async () => {
+    let body = null
+    let cancelled = false
+    server.use(
+      http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([cancelled ? { ...liveEvent, status: 'cancelled', cancel_reason: 'The venue flooded' } : liveEvent])),
+      http.post('http://localhost:8000/api/events/mine/9/cancel/', async ({ request }) => {
+        body = await request.json()
+        cancelled = true
+        return HttpResponse.json({ status: 'cancelled', tickets_refunded: 3, tickets_left: 0 })
+      }),
+    )
+    renderPanel()
+    await screen.findByText('Akwasidae')
+    fireEvent.click(screen.getByText('Cancel event'))
+    fireEvent.change(screen.getByLabelText('Why are you cancelling?'), { target: { value: '  The venue flooded ' } })
+    fireEvent.click(screen.getByText('Cancel event and refund every ticket'))
+    await waitFor(() => expect(body).toEqual({ reason: 'The venue flooded' }))
+    expect(await screen.findByText('Cancelled')).toBeInTheDocument()
+    expect(screen.getByText('3 tickets refunded')).toBeInTheDocument()
+    expect(screen.queryByText('Cancel event')).not.toBeInTheDocument()
+  })
+
+  it('cancelled row has no actions', async () => {
+    server.use(http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([{ ...liveEvent, status: 'cancelled', cancel_reason: 'Rain' }])))
+    renderPanel()
+    await screen.findByText('Akwasidae')
+    expect(screen.getByText('Cancelled')).toBeInTheDocument()
+    for (const label of ['Cancel event', '✏️ Edit', '👥 Attendees', '🎟️ Tickets', '✅ Check-in', '💳 Pay to publish']) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument()
+    }
+    expect(screen.queryByText(/🔄 \+/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Live ·/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/tickets? refunded/)).not.toBeInTheDocument()
+  })
+
+  it('shows API error and keeps the row', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([liveEvent])),
+      http.post('http://localhost:8000/api/events/mine/9/cancel/', () =>
+        HttpResponse.json({ detail: 'This event has already taken place. Contact AshantiHub Support to cancel it.', code: 'event_already_held' }, { status: 409 }),
+      ),
+    )
+    renderPanel()
+    await screen.findByText('Akwasidae')
+    fireEvent.click(screen.getByText('Cancel event'))
+    fireEvent.change(screen.getByLabelText('Why are you cancelling?'), { target: { value: 'The venue flooded' } })
+    fireEvent.click(screen.getByText('Cancel event and refund every ticket'))
+    expect(await screen.findByRole('alert')).toHaveTextContent('This event has already taken place.')
+    expect(screen.getByText('Akwasidae')).toBeInTheDocument()
+    expect(screen.getByText('approved')).toBeInTheDocument()
+  })
+})

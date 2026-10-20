@@ -43,6 +43,8 @@ class DeliveryWaiver(models.Model):
     source = models.CharField(max_length=5, default=OWNER)
     # Who pays for the waived fee. Copied onto each WaivedFeeCharge at checkout, so editing it later changes no order.
     funded_by = models.CharField(max_length=8, choices=FUNDER_CHOICES, default=FUNDER_BUSINESS)
+    # AshantiHub-funded promos only: the most the promo may cost AshantiHub (Ruling R2). Null for a business-funded promo.
+    budget_cap = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     created_by = models.ForeignKey("accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     reviewed_by = models.ForeignKey("accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     reviewed_at = models.DateTimeField(null=True, blank=True)

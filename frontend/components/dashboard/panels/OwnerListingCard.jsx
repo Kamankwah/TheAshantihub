@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { apiPatch, apiPost, apiPostForm, apiDelete } from "../../../apiClient.js";
-import { D, glassCard, sectionTitle } from "../theme.js";
+import { D, glassCard, sectionTitle, tint } from "../theme.js";
 
 // Shared owner-facing listing management card (business item 2 + pre-prod bug
 // fixes 3/4). One card renders a single approved listing and lets the owner
@@ -24,7 +24,7 @@ function ExpiryBadge({ listing }) {
   const soon = days >= 0 && days <= 14;
   if (!expired && !soon) return null;
   return (
-    <span style={{ background: expired ? `${D.red}22` : `${D.amber}22`, color: expired ? D.red : D.amber, borderRadius: 20, padding: "2px 9px", fontSize: "0.62rem", fontWeight: 800 }}>
+    <span style={{ background: expired ? tint(D.red, "22") : `${D.amber}22`, color: expired ? D.red : D.amber, borderRadius: 20, padding: "2px 9px", fontSize: "0.62rem", fontWeight: 800 }}>
       {expired ? `⚠️ Expired ${-days}d ago` : `⏳ Expires in ${days}d`}
     </span>
   );
@@ -100,7 +100,7 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <ExpiryBadge listing={listing} />
           {isProduct && (
-            <span style={{ background: lowStock ? `${D.red}22` : `${D.green}22`, color: lowStock ? D.red : D.green, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>
+            <span style={{ background: lowStock ? tint(D.red, "22") : tint(D.green, "22"), color: lowStock ? D.red : D.green, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>
               {listing.stock_quantity == null ? "Stock not tracked" : `${listing.stock_quantity} in stock`}
             </span>
           )}
@@ -155,7 +155,7 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
             <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
               <input value={s.label || ""} onChange={e => setSpec(i, "label", e.target.value)} placeholder="Label" style={{ ...inputStyle, flex: 1 }} />
               <input value={s.value || ""} onChange={e => setSpec(i, "value", e.target.value)} placeholder="Value" style={{ ...inputStyle, flex: 1 }} />
-              <button onClick={() => setSpecs(prev => prev.filter((_, idx) => idx !== i))} style={{ ...btn, background: `${D.red}22`, color: D.red }}>✕</button>
+              <button onClick={() => setSpecs(prev => prev.filter((_, idx) => idx !== i))} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>✕</button>
             </div>
           ))}
           <button onClick={() => setSpecs(prev => [...prev, { label: "", value: "" }])} style={{ ...btn, background: D.panelBg2, color: D.text, border: `1px solid ${D.divider}`, marginBottom: 10 }}>+ Add spec</button>

@@ -421,6 +421,8 @@ REST_FRAMEWORK = {
         "owner_claim": "10/min",
         # A staff member emailing owners claim links (portfolio.views.ClaimLinkView).
         "claim_link": "5/hour",
+        # A business asking to change its name, sign-in phone or email (portfolio.detail_changes).
+        "owner_detail_change": "10/hour",
         # The Hubtel webhook is a public, unauthenticated endpoint (Hubtel
         # calls it from the internet, not a logged-in app user) — generous
         # but not unlimited, since it's dark/unexercised until HUBTEL_* env
@@ -616,6 +618,10 @@ CELERY_BEAT_SCHEDULE = {
     "ledger-release-due-booking-sales": {
         "task": "ledger.tasks.release_due_booking_sales",
         "schedule": crontab(minute=40),  # hourly: services, stays and tickets past their release time; a no-op while the ledger is off
+    },
+    "ledger-finish-cancelled-event-refunds": {
+        "task": "ledger.tasks.finish_cancelled_event_refunds",
+        "schedule": crontab(minute=50),  # hourly: tickets of a cancelled event a cancel left unrefunded; a no-op when none are
     },
     "ledger-post-rider-commission": {
         "task": "ledger.tasks.post_rider_commission",

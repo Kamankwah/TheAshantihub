@@ -26,10 +26,10 @@ export default function UnsubscribePage({ token, onHome }) {
   }
 
   return (
-    <main style={{ minHeight: "100vh", background: C.cream, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: "#fff", borderRadius: 18, padding: "28px 24px", maxWidth: 440, width: "100%", border: `1px solid ${C.gold}55` }}>
-        <h1 style={{ margin: "0 0 10px", fontSize: "1.25rem", color: C.darkBrown }}>Stop offers from AshantiHub</h1>
-        {error && <p role="alert" style={{ color: "#b00020" }}>{error}</p>}
+    <main style={{ minHeight: "100vh", background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: C.surface, borderRadius: 18, padding: "28px 24px", maxWidth: 440, width: "100%", border: `1px solid ${C.gold}55` }}>
+        <h1 style={{ margin: "0 0 10px", fontSize: "1.25rem", color: C.ink }}>Stop offers from AshantiHub</h1>
+        {error && <p role="alert" style={{ color: C.errInk }}>{error}</p>}
         {!error && !info && <p role="status">Loading…</p>}
         {info && !done && (
           <>

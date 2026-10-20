@@ -7,7 +7,7 @@ import HeroSlideForm from "../HeroSlideForm.jsx";
 import { useCategories } from "../../../hooks/useCategories.js";
 import { CategoryOptions } from "../../../lib/categoryOptions.jsx";
 import { useZones } from "../../../hooks/useZones.js";
-import { D, glassCard, LISTING_STATUS_META, HERO_STATUS_META } from "../theme.js";
+import { D, glassCard, LISTING_STATUS_META, HERO_STATUS_META, tint } from "../theme.js";
 
 // Listings & Prices panel — ported from App.jsx's BusinessDashboard "listings"
 // tab, re-themed dark. Owns its own listing create / edit / hero-submit /
@@ -91,7 +91,7 @@ function SpecsEditor({ specs, onChange }) {
         <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
           <input value={spec.label || ""} placeholder="Label (e.g. Material)" onChange={e => onChange(list.map((s, si) => si === i ? { ...s, label: e.target.value } : s))} style={inputStyle} />
           <input value={spec.value || ""} placeholder="Value (e.g. Cotton)" onChange={e => onChange(list.map((s, si) => si === i ? { ...s, value: e.target.value } : s))} style={inputStyle} />
-          <button onClick={() => onChange(list.filter((_, si) => si !== i))} style={{ background: `${D.red}26`, color: D.red, border: "none", borderRadius: 8, padding: "0 10px", fontWeight: 700, cursor: "pointer" }}>✕</button>
+          <button onClick={() => onChange(list.filter((_, si) => si !== i))} style={{ background: tint(D.red, "26"), color: D.red, border: "none", borderRadius: 8, padding: "0 10px", fontWeight: 700, cursor: "pointer" }}>✕</button>
         </div>
       ))}
       <button onClick={() => onChange([...list, { label: "", value: "" }])} style={{ background: "none", border: `1.5px dashed ${D.cardBorderStrong}`, color: D.gold, borderRadius: 8, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ Add spec</button>
@@ -447,7 +447,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         </div>
       </div>
 
-      {actionError && <div style={{ background: `${D.red}1f`, color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
+      {actionError && <div style={{ background: tint(D.red, "1f"), color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
 
       {showCreate && (
         <div style={{ ...glassCard, padding: "16px", marginBottom: 14, border: `2px solid ${D.cardBorderStrong}` }}>
@@ -640,8 +640,8 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                     {item.photos?.[0]?.image ? <img src={item.photos[0].image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "🏷️"}
                   </div>
                   <div style={{ flex: 1, minWidth: 160 }}>
-                    <div style={{ fontWeight: 800, fontSize: "0.85rem", color: D.text }}>{item.name} <span style={{ background: `${statusMeta.color}22`, color: statusMeta.color, borderRadius: 20, padding: "2px 7px", fontSize: "0.6rem", fontWeight: 700 }}>{statusMeta.label}</span></div>
-                    <div style={{ fontWeight: 900, color: D.green, fontSize: "0.95rem", marginTop: 2 }}>{item.price_amount != null ? `GHS ${item.price_amount}` : "No price set"} <span style={{ color: D.textFaint, fontWeight: 400, fontSize: "0.72rem" }}>{item.price_unit}</span></div>
+                    <div style={{ fontWeight: 800, fontSize: "0.85rem", color: D.text }}>{item.name} <span style={{ background: tint(statusMeta.color, "22"), color: statusMeta.color, borderRadius: 20, padding: "2px 7px", fontSize: "0.6rem", fontWeight: 700 }}>{statusMeta.label}</span></div>
+                    <div style={{ fontWeight: 900, color: D.price, fontSize: "0.95rem", marginTop: 2 }}>{item.price_amount != null ? `GHS ${item.price_amount}` : "No price set"} <span style={{ color: D.textFaint, fontWeight: 400, fontSize: "0.72rem" }}>{item.price_unit}</span></div>
                     {item.updated_at && (
                       <>
                         <div style={{ fontSize: "0.62rem", color: freshnessColor(item.updated_at), fontWeight: 700, marginTop: 2 }}>🕐 {freshnessLabel(item.updated_at)}</div>
@@ -672,7 +672,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                       units_total: item.units_total ?? "",
                     }); }} style={{ background: D.goldSoft, color: D.gold, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>✏️ Edit</button>}
                     {(item.status === "draft" || item.status === "rejected") && <button onClick={() => submitForReview(item.id)} style={{ background: D.kente2, color: "#fff", border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📤 Submit for Review</button>}
-                    {item.status === "published" && <button onClick={() => { setPromoteListingId(item.id); setPromoteKind("featured"); setPromoteDays(7); setPromoteKeywords(""); setPromoteActionError(null); }} style={{ background: `${D.red}18`, color: D.kente1, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📣 Promote</button>}
+                    {item.status === "published" && <button onClick={() => { setPromoteListingId(item.id); setPromoteKind("featured"); setPromoteDays(7); setPromoteKeywords(""); setPromoteActionError(null); }} style={{ background: tint(D.red, "18"), color: D.red, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📣 Promote</button>}
                   </div>
                 </div>
               )}

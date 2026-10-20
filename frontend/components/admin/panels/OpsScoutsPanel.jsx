@@ -25,7 +25,7 @@ export function MeasureCell({ row, metric }) {
   if (row.state !== "working") return <span style={{ color: D.textDim }} aria-label="Not a working day">—</span>;
   if (m.target == null) return <span>{m.done}<span style={{ ...dim, display: "block" }}>No target set</span></span>;
   const behind = m.done < m.target;
-  return <span style={{ fontWeight: 700, color: behind && metric === "registrations" ? "#A33A00" : D.text, ...figures }}>{`${m.done} / ${m.target}`}</span>;
+  return <span style={{ fontWeight: 700, color: behind && metric === "registrations" ? D.warnInk : D.text, ...figures }}>{`${m.done} / ${m.target}`}</span>;
 }
 
 export function MonthCell({ row, label }) {
@@ -37,7 +37,7 @@ export function MonthCell({ row, label }) {
     <div style={{ minWidth: 110 }}>
       <div style={{ fontWeight: 700, ...figures }}>{`${month.done} / ${month.target}`}</div>
       <Bar pct={pct} label={`${label} registrations this month`} color={month.on_pace ? D.green : D.text} />
-      <div style={{ ...dim, color: month.on_pace ? "#00500A" : "#A33A00", ...figures }}>{pace}</div>
+      <div style={{ ...dim, color: month.on_pace ? D.okInk : D.warnInk, ...figures }}>{pace}</div>
       {month.leave_cut > 0 && <div style={dim}>{`Leave cuts ${month.leave_cut} from the month`}</div>}
     </div>
   );
@@ -67,7 +67,7 @@ export function CheckInCell({ row }) {
   return (
     <div style={{ minWidth: 150 }}>
       {c ? (
-        <div style={{ color: c.outside_radius ? "#A33A00" : D.text, ...figures }}>
+        <div style={{ color: c.outside_radius ? D.warnInk : D.text, ...figures }}>
           {c.outside_radius && c.distance_m != null ? `${c.place} · ${c.distance_m} m outside the business radius · ${timeShort(c.at)}` : `${c.place} · ${timeShort(c.at)}`}
         </div>
       ) : <span style={dim}>No check-in today</span>}
@@ -120,7 +120,7 @@ export default function OpsScoutsPanel({ auth, onNavigate, onOpenScout }) {
   const grouped = scope === "all" && others.length > 0;
 
   const renderRow = (row) => (
-    <tr key={row.id} style={{ color: row.mine ? D.text : "rgba(44,24,16,0.85)" }}>
+    <tr key={row.id} style={{ color: row.mine ? D.text : D.text }}>
       <td style={td}>
         <div style={{ fontWeight: 800 }}>{row.name}</div>
         <div style={dim}>{row.areas.length ? row.areas.join(" · ") : "No area yet"}</div>

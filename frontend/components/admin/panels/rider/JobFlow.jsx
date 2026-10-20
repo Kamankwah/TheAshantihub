@@ -134,7 +134,7 @@ function ToPickup({ job, step, onChanged, onSkip }) {
         <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 12px", fontSize: "0.9rem" }}>
           <dt style={{ color: D.textDim }}>Shop</dt><dd style={{ margin: 0, fontWeight: 700 }}>{p?.business_name || "Not set"}</dd>
           <dt style={{ color: D.textDim }}>Then to</dt><dd style={{ margin: 0, fontWeight: 700 }}>{next ? next.business_name : (job.delivery_address || "No address")}</dd>
-          {p?.late && <><dt style={{ color: D.textDim }}>Timing</dt><dd style={{ margin: 0, fontWeight: 700, color: "#A33A00" }}>Running late for this shop</dd></>}
+          {p?.late && <><dt style={{ color: D.textDim }}>Timing</dt><dd style={{ margin: 0, fontWeight: 700, color: D.warnInk }}>Running late for this shop</dd></>}
           <dt style={{ color: D.textDim }}>Deliver by</dt><dd style={{ margin: 0, fontWeight: 700 }}>{job.deadline_at ? hhmm(job.deadline_at) : "No time limit set"}</dd>
           <dt style={{ color: D.textDim }}>Payment</dt><dd style={{ margin: 0, fontWeight: 700 }}>{job.payment.label}</dd>
         </dl>
@@ -242,7 +242,7 @@ function AtCustomer({ job, step, onChanged, onCant }) {
       <section aria-label="Waiting" style={card}>
         <div style={{ fontSize: "0.86rem", color: D.text }}>{job.customer_name} · {job.delivery_address} · outside since {hhmm(job.arrived_drop_at)}</div>
         <div style={{ textAlign: "center" }}>
-          <div role="timer" aria-label={`Waiting ${mmss(started)} of ${mmss(limit)}`} style={{ ...mono, fontSize: "2.6rem", fontWeight: 800, color: started >= limit ? "#A33A00" : D.text }}>{mmss(started)}</div>
+          <div role="timer" aria-label={`Waiting ${mmss(started)} of ${mmss(limit)}`} style={{ ...mono, fontSize: "2.6rem", fontWeight: 800, color: started >= limit ? D.warnInk : D.text }}>{mmss(started)}</div>
           <div style={dim}>of {mmss(limit)}</div>
         </div>
         <span style={dim}>The customer was told you are outside, in the app. SMS and push are not connected. After {mmss(limit)}, waiting pay starts and &quot;No answer&quot; becomes a reason you can choose.</span>
@@ -360,7 +360,7 @@ export function Delivered({ job, onNext }) {
       <section aria-label="Delivered" style={{ ...card, alignItems: "center", textAlign: "center" }}>
         <h1 style={{ ...h2, fontSize: "1.6rem" }}>Delivered</h1>
         <div style={{ color: D.text }}>Order #{job.order_id} · {job.customer_name}, {job.delivery_address} · {hhmm(job.delivered_at)}</div>
-        <div role="status" style={{ background: "#E3F1E3", borderRadius: 12, padding: "8px 14px", color: "#00400A", fontWeight: 800 }}>{job.deadline_at ? (new Date(job.delivered_at) <= new Date(job.deadline_at) ? "On time" : "After the deliver-by time") : "No deliver-by time was set"}</div>
+        <div role="status" style={{ background: D.okBg, borderRadius: 12, padding: "8px 14px", color: D.okInk, fontWeight: 800 }}>{job.deadline_at ? (new Date(job.delivered_at) <= new Date(job.deadline_at) ? "On time" : "After the deliver-by time") : "No deliver-by time was set"}</div>
       </section>
       <section aria-label="What you earned" style={card}>
         <h2 style={h2}>You earned on this job</h2>

@@ -15,7 +15,7 @@ const STATE = {
   ok: ["Working", D.green], configured: ["Set up", D.green], simulated: ["Simulated", D.amber],
   down: ["Down", D.red], not_connected: ["Not connected", D.textFaint], not_tracked: ["Not tracked yet", D.textFaint],
 };
-const warn = "#A33A00";
+const warn = D.warnInk;
 const linkStyle = { background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", fontWeight: 800, color: D.deepGold, textDecoration: "underline" };
 
 function Kpi({ label, value, sub, subColor, onClick }) {

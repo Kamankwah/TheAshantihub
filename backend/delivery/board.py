@@ -55,13 +55,44 @@ def waiting_orders():
     )
 
 
-def scheduled_count():
-    """Paid door-to-door orders held until their vendor opens (not yet due), so the manager knows they exist."""
+def scheduled_orders():
+    """Paid door-to-door orders held until their vendor opens (not yet due), soonest opening first. The one definition
+    behind both the manager's count and the Scheduled list, so the two always agree."""
     return (
         Order.objects.filter(status=Order.PAID, delivery_method=Order.DOOR_TO_DOOR, ready_not_before__gt=timezone.now())
         .exclude(delivery_status=Order.DELIVERED).exclude(refunds__whole=True)
-        .filter(Q(delivery_assignment__isnull=True) | Q(delivery_assignment__status=DeliveryAssignment.FAILED)).count()
+        .filter(Q(delivery_assignment__isnull=True) | Q(delivery_assignment__status=DeliveryAssignment.FAILED))
+        .select_related("customer").prefetch_related("items__listing__business_owner__profile")
+        .order_by("ready_not_before", "pk")
     )
+
+
+def scheduled_count():
+    """How many orders scheduled_orders() holds, so the manager knows they exist."""
+    return scheduled_orders().count()
+
+
+def scheduled_row(order, now):
+    """One held order for the Scheduled list: when it is held until, and each vendor's own next opening (null when that
+    vendor is open now or has no opening time; nothing is guessed)."""
+    from accounts import hours
+
+    vendors, seen = [], set()
+    for item in order.items.all():
+        owner = item.listing.business_owner
+        if owner.pk in seen:
+            continue
+        seen.add(owner.pk)
+        try:
+            opening = hours.next_open(owner, now)
+        except hours.HoursError:
+            opening = None
+        vendors.append({"business_id": owner.pk, "business_name": owner.display_name, "next_open": None if opening is None or opening <= now else opening})
+    return {
+        "order_id": order.pk, "placed_at": order.placed_at, "ready_not_before": order.ready_not_before,
+        "customer_name": order.customer.full_name if order.customer_id else None, "delivery_address": order.delivery_address or None,
+        "vendors": vendors,
+    }
 
 
 def _route(order, assignment=None, point=None):

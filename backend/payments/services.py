@@ -122,6 +122,12 @@ def _finalize_event_renew(session):
     if meta.get("renewed"):
         return  # idempotency belt-and-suspenders
     event = Event.objects.select_for_update().get(id=meta["event_id"])
+    if event.status == Event.CANCELLED:
+        # Never reopen a cancelled event (Plan 7F-C): the renewal paid for nothing and is left for Support to refund.
+        logger.warning("Renewal %s paid for cancelled event %s: not applied", session.reference, event.pk)
+        session.metadata = {**meta, "renewed": True, "not_applied": "event_cancelled"}
+        session.save(update_fields=["metadata", "updated_at"])
+        return
     now = timezone.now()
     base = event.expires_at if (event.expires_at and event.expires_at > now) else now
     event.expires_at = base + timedelta(days=meta["renew_days"])
@@ -140,13 +146,24 @@ def _finalize_ticket_purchase(session):
     for the rollback path when a session instead fails/expires.
 
     With the ledger on it also records the purchase's ledger.BookingSale (ledger.sales.record_payment), and can refuse
-    (raise) when the paid amount is not the price, rolling the payment back.
+    (raise) when the paid amount is not the price, rolling the payment back. Whatever the ledger, it raises
+    events.cancellation.EventCancelledError, rolling the payment back, when the event was cancelled meanwhile (Plan
+    7F-C): the event row is locked, so a cancel either sees these tickets or this sees the cancel.
     """
-    from events.models import Ticket
+    from events.cancellation import EventCancelledError
+    from events.models import Event, Ticket
 
     meta = session.metadata
     if meta.get("ticket_ids"):
         return  # already finalized — idempotency belt-and-suspenders
+
+    with db_transaction.atomic():  # a savepoint inside the caller's transaction, which then keeps the lock until commit
+        event_status = (
+            Event.objects.select_for_update(no_key=True, of=("self",)).filter(ticket_types__id=meta["ticket_type_id"])
+            .values_list("status", flat=True).first()
+        )
+    if event_status == Event.CANCELLED:
+        raise EventCancelledError(f"Tickets {session.reference}: the event was cancelled")
 
     # session.transaction must already be set by the time this runs — see
     # process_payment()'s immediate branch and views.HubtelWebhookView's
@@ -172,8 +189,7 @@ def _finalize_ticket_purchase(session):
     from ledger.models import BookingSale
 
     if not escrow.enabled():
-        return  # with the ledger off this finalizer is exactly as before (no event lookup either)
-    from events.models import Event
+        return  # with the ledger off this finalizer is exactly as before, bar the cancelled-event check above
 
     event = Event.objects.select_related("submitted_by_business").get(pk=meta["event_id"])
     if event.submitted_by_business_id is not None:  # a customer-organised event has no business to hold money for (Plan 1b S10)
@@ -331,6 +347,22 @@ def _finalize_booking(session):
     sales.record_payment(session, BookingSale.STAY, booking, booking.business_owner)
 
 
+def _finalize_redelivery(session):
+    """A paid re-delivery fee (Plan 7F-E Task 7): the request becomes paid and the payment journal is posted
+    (delivery.redelivery.record_payment; idempotent on the session, fails closed on a wrong amount). Posted whatever
+    LEDGER_ENABLED says now, as a top-up is: a session exists only if the ledger was on when it was created."""
+    from delivery import redelivery
+
+    redelivery.record_payment(session)
+
+
+def _fail_redelivery(session):
+    """Nothing was reserved before payment: the request stays waiting for payment (only its link to the session goes)."""
+    from delivery import redelivery
+
+    redelivery.payment_failed(session)
+
+
 FINALIZERS = {
     CheckoutSession.ORDER_CHECKOUT: _finalize_order_checkout,
     CheckoutSession.EVENT_PAY: _finalize_event_pay,
@@ -340,17 +372,21 @@ FINALIZERS = {
     CheckoutSession.SERVICE_REQUEST: _finalize_service_request,
     CheckoutSession.BOOKING: _finalize_booking,
     CheckoutSession.WALLET_TOPUP: _finalize_wallet_topup,
+    CheckoutSession.REDELIVERY_FEE: _finalize_redelivery,
 }
 
 FAILURE_HANDLERS = {
     CheckoutSession.TICKET_PURCHASE: _fail_ticket_purchase,
     CheckoutSession.ORDER_CHECKOUT: _fail_order_checkout,
+    CheckoutSession.REDELIVERY_FEE: _fail_redelivery,
 }
 
 # What a customer may pay from their AshantiHub wallet: orders (wallets plan 3a) and, since ledger Plan 1b, services,
-# stays and event tickets. Everything else (subscriptions, event listing fees, top-ups) goes through the provider.
+# stays and event tickets, and since plan 7F-E a re-delivery fee. Everything else (subscriptions, event listing fees,
+# top-ups) goes through the provider.
 WALLET_KINDS = (
     CheckoutSession.ORDER_CHECKOUT, CheckoutSession.SERVICE_REQUEST, CheckoutSession.BOOKING, CheckoutSession.TICKET_PURCHASE,
+    CheckoutSession.REDELIVERY_FEE,
 )
 
 

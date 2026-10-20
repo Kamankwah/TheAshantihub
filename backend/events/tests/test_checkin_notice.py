@@ -41,6 +41,12 @@ class CheckinNoticeTests(BookingBase):
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.owner), pending)
         self.assertEqual(sales.release_due(timezone.now()), 0)  # nor does the clock release it early
 
+    def test_scan_of_ledger_sale_ticket_unchanged(self):
+        self.scan(self.tickets[0])
+        self.assertEqual(self.tickets[0].escrow_status, Ticket.HELD)
+        self.assertIsNotNone(self.tickets[0].delivered_at)
+        self.assertEqual(TicketScanNotice.objects.count(), 1)
+
     def test_scan_queues_one_notice(self):
         self.scan(self.tickets[0])
         notice = TicketScanNotice.objects.get()
@@ -62,6 +68,12 @@ class CheckinNoticeTests(BookingBase):
         body = scan_notice.body_for(Named, timezone.now(), timezone.now())
         self.assertNotIn("0241234567", body)
         self.assertIn("567", body)
+
+    def test_the_times_in_the_notice_are_labelled_utc(self):
+        self.scan(self.tickets[0])
+        body = TicketScanNotice.objects.get().body
+        self.assertRegex(body, r"was scanned at \d{2} \w{3} \d{4} \d{2}:\d{2} UTC\.")
+        self.assertRegex(body, r"before \d{2} \w{3} \d{4} \d{2}:\d{2} UTC\.$")
 
     def test_rescan_no_second_notice(self):
         self.scan(self.tickets[0])

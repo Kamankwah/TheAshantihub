@@ -7,12 +7,23 @@
     <title>AshantiHub 👑 — The Marketplace of Ashanti</title>
     <meta name="description" content="AshantiHub — Kumasi's premier marketplace. Find hotels, restaurants, tours, kente crafts, transport and more in Kumasi, Ghana." />
     <meta name="theme-color" content="#2C1810" />
-    <!-- DESIGN.md typography: Fraunces (headings), Plus Jakarta Sans (body/UI, tabular figures), JetBrains Mono (codes).
-         Only components that name these stacks change; everything else keeps its current font. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" />
-    <style>html,body{margin:0;padding:0;}</style>
+    <!-- Fonts (Fraunces, Plus Jakarta Sans, JetBrains Mono) are self-hosted via @fontsource in index.css. -->
+    <style>html,body{margin:0;padding:0;}html[data-theme="dark"]{background:#160E08;color-scheme:dark;}</style>
+    <!-- Light/dark before the first paint: the stored toggle (useTheme's
+         ashantihub.theme key) wins, else the device setting. Mirrors
+         hooks/useTheme.js applyInitialTheme(); #160E08 is THEME_TOKENS.dark
+         ah-canvas (checked by __tests__/theme.test.jsx). -->
+    <script>
+      (function () {
+        var t = null;
+        try { t = localStorage.getItem('ashantihub.theme'); } catch (e) {}
+        if (t !== 'light' && t !== 'dark') {
+          try { t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch (e) { t = 'light'; }
+        }
+        document.documentElement.setAttribute('data-theme', t);
+        if (t === 'dark') document.documentElement.classList.add('dark');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

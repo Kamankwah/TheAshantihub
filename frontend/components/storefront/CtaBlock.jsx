@@ -21,7 +21,7 @@ export default function CtaBlock({ user, onSignIn, onSell }) {
         <div style={card}>
           <h2 style={title}>Sell on AshantiHub</h2>
           <p style={copy}>Register your Kumasi business and list your products, services, stays or events. Every listing is reviewed by AshantiHub before it goes live.</p>
-          <button type="button" onClick={onSell} style={{ ...button, background: "transparent", color: C.darkBrown, border: `1.5px solid ${C.darkBrown}` }}>Register your business</button>
+          <button type="button" onClick={onSell} style={{ ...button, background: "transparent", color: C.ink, border: `1.5px solid ${C.ink}` }}>Register your business</button>
         </div>
       </div>
     </section>
@@ -30,9 +30,9 @@ export default function CtaBlock({ user, onSignIn, onSell }) {
 
 const card = {
   display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 10, padding: "20px 20px 22px",
-  borderRadius: 16, background: C.white, color: C.darkBrown, border: `1px solid ${C.gold}33`,
+  borderRadius: 16, background: C.surface, color: C.ink, border: `1px solid ${C.gold}33`,
   boxShadow: "0 10px 28px rgba(44,24,16,0.12)", fontFamily: BODY_FONT,
 };
-const title = { margin: 0, fontFamily: HEADING_FONT, fontWeight: 600, fontSize: 22, lineHeight: 1.15, letterSpacing: "-0.02em", color: C.darkBrown };
-const copy = { margin: 0, fontSize: 15, lineHeight: 1.5, color: "rgba(44,24,16,0.72)", maxWidth: 440 };
+const title = { margin: 0, fontFamily: HEADING_FONT, fontWeight: 600, fontSize: 22, lineHeight: 1.15, letterSpacing: "-0.02em", color: C.ink };
+const copy = { margin: 0, fontSize: 15, lineHeight: 1.5, color: C.inkDim, maxWidth: 440 };
 const button = { minHeight: 44, padding: "10px 22px", borderRadius: 12, fontFamily: BODY_FONT, fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 4 };

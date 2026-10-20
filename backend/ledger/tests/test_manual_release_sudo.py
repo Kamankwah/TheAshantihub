@@ -8,7 +8,7 @@ from django.test import override_settings
 from django.utils import timezone
 
 from accounts.testing import make_staff
-from ledger import escrow
+from ledger import escrow, sales
 from ledger.models import Account, FulfilmentCheck, Journal
 from services.models import ServiceRequest
 
@@ -84,3 +84,17 @@ class ManualBookingReleaseSudoTests(BookingBase):
         sale = self.ready()
         self.as_staff(self.support, sudo=False)
         self.assertEqual(self.verify(sale, outcome="unreachable").status_code, 200)
+
+    def test_booking_release_due_manual_door_needs_sudo(self):
+        """A booking whose release time has passed is still released by the clock alone: the manual door asks for the
+        password, the hourly job (sales.release_due) has no session and asks for nothing."""
+        sale = self.ready()
+        self.as_staff(self.support, sudo=False)
+        refused = self.verify(sale, outcome="matches", customer_confirmed_by_phone=True)
+        self.assertEqual((refused.status_code, refused.json()["code"]), (403, "sudo_required"))
+        sale.refresh_from_db()
+        self.assertIsNone(sale.released_at)
+        self.assertEqual(sales.release_due(sales.release_at(sale) + timedelta(minutes=1)), 1)
+        sale.refresh_from_db()
+        self.assertIsNotNone(sale.released_at)
+        self.assertIsNone(sale.outcome_by)

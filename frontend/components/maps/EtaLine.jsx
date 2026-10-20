@@ -18,7 +18,7 @@ export default function EtaLine({ leg, stale = false, ageS = null, prefix = "" }
   return (
     <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: D.text }}>
       {parts.join(" · ")}
-      {staleNote && <span style={{ display: "block", fontWeight: 500, color: "#A33A00" }}>{staleNote}</span>}
+      {staleNote && <span style={{ display: "block", fontWeight: 500, color: D.warnInk }}>{staleNote}</span>}
     </p>
   );
 }

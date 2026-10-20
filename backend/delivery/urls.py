@@ -2,9 +2,15 @@ from django.urls import path
 
 from wallets import views_rider_wallet
 
-from . import views_cash, views_cases, views_fleet, views_live, views_queue, views_rider, views_rider_money, views_rules, views_shifts
+from . import (
+    views_cash, views_cases, views_fleet, views_live, views_queue, views_redelivery, views_rider, views_rider_money, views_rules,
+    views_shifts,
+)
 
 urlpatterns = [
+    # ── Re-delivery at the customer's request (orders.redeliver: Support, the Pickup Desk; Plan 7F-E Task 7) ──────────
+    path("redeliveries/", views_redelivery.RedeliveryListCreateView.as_view(), name="delivery-redeliveries"),
+    path("redeliveries/<int:pk>/cancel/", views_redelivery.RedeliveryCancelView.as_view(), name="delivery-redelivery-cancel"),
     # ── Rider (delivery.dispatch): the rider app is built on these ──────────────────────────────────
     path("rider/me/", views_rider.MeView.as_view(), name="delivery-rider-me"),
     path("rider/shift/start/", views_rider.ShiftStartView.as_view(), name="delivery-rider-shift-start"),
@@ -83,6 +89,8 @@ urlpatterns = [
     path("queue/<int:order_id>/force-assign/", views_queue.ForceAssignView.as_view(), name="delivery-queue-force-assign"),
     path("queue/<int:order_id>/schedule/", views_queue.ScheduleView.as_view(), name="delivery-queue-schedule"),
     path("queue/<int:order_id>/map/", views_queue.QueueMapView.as_view(), name="delivery-queue-map"),
+    path("scheduled/", views_queue.ScheduledView.as_view(), name="delivery-scheduled"),
+    path("orders/<int:order_id>/send-early/", views_queue.SendEarlyView.as_view(), name="delivery-send-early"),
     path("auto-assign/switch/", views_queue.SwitchView.as_view(), name="delivery-auto-assign-switch"),
     # ── Settings: rules, limits, rate card (delivery.rates) ────────────────────────────────────────
     path("rules/auto-assign/", views_rules.AutoAssignRulesView.as_view(), name="delivery-rules-auto-assign"),

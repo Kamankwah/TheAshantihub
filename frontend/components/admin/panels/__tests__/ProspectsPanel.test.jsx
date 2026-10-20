@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
+import { D } from '../../theme.js'
 import { server } from '../../../../mocks/server.js'
 import ProspectsPanel, { nextLine } from '../ProspectsPanel.jsx'
 
@@ -222,7 +223,8 @@ describe('ProspectsPanel', () => {
     renderPanel()
     const card = await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
     expect(within(card).getByText('Pinned')).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: 'Register' })).toHaveStyle({ background: '#FDF6E3' })
+    // ghost = the page colour (cream in light mode, follows the theme)
+    expect(within(card).getByRole('button', { name: 'Register' }).style.background).toBe(D.pageBg)
     expect(card.textContent).not.toContain('📞')
   })
 

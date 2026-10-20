@@ -124,22 +124,53 @@ class SendTests(NotifyBase):
         self.assertEqual(len(senders.sms_outbox), 1)
         self.assertEqual(len(mail.outbox), 1)
 
-    def test_text_is_short_gsm7_and_carries_the_stop_link(self):
-        row = notify.subscribe(phone="0244123456")
-        notify.send_batch(now=self.after)
-        text = senders.sms_outbox[0]
-        self.assertEqual(text.to, "+233244123456")
-        self.assertLessEqual(len(text.body), 160)
-        self.assertTrue(text.body.isascii())
-        self.assertIn(f"https://www.example.com/notify/stop/{row.token}", text.body)
-        self.assertIn("open", text.body.lower())
-
-    @override_settings(FRONTEND_BASE_URL="https://staging.theashantihub.com")
-    def test_text_fits_160_for_the_longest_host(self):
+    def _sms(self):
         notify.subscribe(phone="0244123456")
         notify.send_batch(now=self.after)
-        self.assertLessEqual(len(senders.sms_outbox[0].body), 160)
-        self.assertIn("https://staging.theashantihub.com/notify/stop/", senders.sms_outbox[0].body)
+        return senders.sms_outbox[0]
+
+    def test_text_is_the_agreed_wording_with_the_site_host(self):
+        text = self._sms()
+        self.assertEqual(text.to, "+233244123456")
+        self.assertEqual(text.body, "AshantiHub is open! Shop now: www.example.com")
+
+    @override_settings(FRONTEND_BASE_URL="https://staging.theashantihub.com/")
+    def test_text_is_one_segment_gsm7(self):
+        body = self._sms().body
+        self.assertLessEqual(len(body), 160)
+        self.assertTrue(body.isascii())
+        self.assertEqual(body, "AshantiHub is open! Shop now: staging.theashantihub.com")
+
+    def test_unset_frontend_base_url_uses_safe_default_and_never_a_broken_link(self):
+        for bad in ("", None, "   ", "http://", "localhost", "http://localhost:5173", "not a url"):
+            with self.subTest(bad=bad), override_settings(FRONTEND_BASE_URL=bad):
+                senders.sms_outbox.clear()
+                NotifyRequest.objects.all().delete()
+                body = self._sms().body
+                self.assertEqual(body, f"AshantiHub is open! Shop now: {notify.DEFAULT_SITE_HOST}")
+                self.assertNotIn("None", body)
+                self.assertNotIn("localhost", body)
+
+    def test_email_links_use_safe_default_when_base_url_unusable(self):
+        for bad in ("", None, "   ", "http://", "localhost", "http://localhost:5173", "not a url"):
+            with self.subTest(bad=bad), override_settings(FRONTEND_BASE_URL=bad):
+                subject, body = notify.email_parts("tok")
+                self.assertIn(f"Start shopping: https://{notify.DEFAULT_SITE_HOST}\n", body)
+                self.assertIn(f"https://{notify.DEFAULT_SITE_HOST}/notify/stop/tok", body)
+                self.assertNotIn("localhost", body)
+
+    @override_settings(FRONTEND_BASE_URL="https://staging.example.com/app/")
+    def test_email_links_keep_configured_scheme_and_path(self):
+        _, body = notify.email_parts("tok")
+        self.assertIn("Start shopping: https://staging.example.com/app\n", body)
+        self.assertIn("https://staging.example.com/app/notify/stop/tok", body)
+
+    def test_email_body_contains_the_same_link(self):
+        row = notify.subscribe(email="a@example.com")
+        notify.send_batch(now=self.after)
+        body = mail.outbox[0].body
+        self.assertIn("https://www.example.com", body)
+        self.assertIn(f"https://www.example.com/notify/stop/{row.token}", body)
 
     def test_a_claim_taken_over_mid_batch_is_not_sent_by_the_first_worker(self):
         first = notify.subscribe(phone="0244123456")

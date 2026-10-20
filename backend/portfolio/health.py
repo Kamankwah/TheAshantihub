@@ -14,12 +14,12 @@ fine for thousands of businesses; past that, sort on the snapshot table.
 from collections import namedtuple
 from datetime import timedelta
 
-from django.db.models import CharField, IntegerField, OuterRef, Q, Subquery
+from django.db.models import CharField, Exists, IntegerField, OuterRef, Q, Subquery
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast, Greatest
 from django.utils import timezone
 
-from accounts.models import BusinessOwner
+from accounts.models import BusinessHours, BusinessOwner
 from approvals.models import ApprovalRequest
 from billing.clock import subscription_state
 from bookings.models import Booking
@@ -143,6 +143,7 @@ def with_health_inputs(queryset, now):
         open_fraud_flags=_count(flags.filter(status=FraudFlag.OPEN)),
         last_call_at=Subquery(calls.values("started_at")[:1]),
         last_visit_at=Subquery(visits.values("checked_out_at")[:1]),
+        has_hours=Exists(BusinessHours.objects.filter(business_owner=OuterRef("pk"))),
     )
 
 

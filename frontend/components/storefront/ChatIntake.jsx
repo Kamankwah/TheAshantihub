@@ -19,7 +19,7 @@ export function isGhanaPhone(value) {
 const STEPS = ["name", "email", "phone", "issue"];
 const field = {
   width: "100%", boxSizing: "border-box", minHeight: 44, padding: "10px 12px", borderRadius: 10,
-  border: `1px solid ${C.gold}66`, background: C.white, color: C.darkBrown, fontFamily: BODY_FONT, fontSize: 16,
+  border: `1px solid ${C.gold}66`, background: C.surface, color: C.ink, fontFamily: BODY_FONT, fontSize: 16,
 };
 const btn = {
   minHeight: 44, padding: "10px 20px", borderRadius: 12, border: "none", background: C.gold, color: C.darkBrown,
@@ -81,7 +81,7 @@ export default function ChatIntake({ user, onClose, onContinue, bottom = 92 }) {
   return (
     <div
       role="dialog" aria-label="Contact AshantiHub Support"
-      style={{ position: "fixed", bottom, right: 20, zIndex: 2000, width: 360, maxWidth: "calc(100vw - 40px)", background: C.cream, color: C.darkBrown, borderRadius: 16, boxShadow: "0 16px 48px rgba(0,0,0,0.28)", fontFamily: BODY_FONT, overflow: "hidden" }}
+      style={{ position: "fixed", bottom, right: 20, zIndex: 2000, width: 360, maxWidth: "calc(100vw - 40px)", background: C.canvas, color: C.ink, borderRadius: 16, boxShadow: "0 16px 48px rgba(0,0,0,0.28)", fontFamily: BODY_FONT, overflow: "hidden" }}
     >
       <div style={{ background: C.darkBrown, color: C.cream, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
@@ -108,7 +108,7 @@ export default function ChatIntake({ user, onClose, onContinue, bottom = 92 }) {
               Your message
               <textarea rows={4} value={values.issue} onChange={set("issue")} style={{ ...field, marginTop: 4, resize: "vertical" }} />
             </label>
-            {error && <p role="alert" style={{ margin: "8px 0 0", fontSize: 13, color: C.kente1 }}>{error}</p>}
+            {error && <p role="alert" style={{ margin: "8px 0 0", fontSize: 13, color: C.danger }}>{error}</p>}
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               <button type="button" style={ghost} onClick={back}>Back</button>
               <button type="submit" style={{ ...btn, cursor: busy ? "wait" : "pointer" }} disabled={busy}>{busy ? "Sending…" : "Send"}</button>
@@ -120,7 +120,7 @@ export default function ChatIntake({ user, onClose, onContinue, bottom = 92 }) {
               {labels[step]}
               <input {...inputProps[step]} value={values[step]} onChange={set(step)} style={{ ...field, marginTop: 4 }} />
             </label>
-            {error && <p role="alert" style={{ margin: "8px 0 0", fontSize: 13, color: C.kente1 }}>{error}</p>}
+            {error && <p role="alert" style={{ margin: "8px 0 0", fontSize: 13, color: C.danger }}>{error}</p>}
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               {step !== "name" && <button type="button" style={ghost} onClick={back}>Back</button>}
               <button type="submit" style={btn}>Next</button>

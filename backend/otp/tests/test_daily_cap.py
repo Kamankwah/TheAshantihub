@@ -127,6 +127,20 @@ class DailyCapTests(TestCase):
         self.assertEqual(service.daily_failures(self.customer, after), 0)
         self.assertFalse(service.is_locked(self.customer, after))
 
+    def test_a_cap_lowered_mid_day_locks_the_next_wrong_code_with_its_notice(self):
+        start = DAY + timedelta(hours=1)
+        self.fail(12, start)
+        at = start + 12 * GAP
+        MoneySetting.objects.create(key="otp_daily_failure_cap", value=10, effective_from=start)
+        # The guess path (verify) is not refused before it counts; note_failure must lock at >= cap, not == cap.
+        with service.guessing(self.customer):
+            outcome = service.note_failure(self.customer, purpose=SIGN_IN, channel=SMS, now=at)
+        self.assertEqual(outcome, service.DAILY_LOCK)
+        notices.account_locked(self.customer, purpose=SIGN_IN, now=at, until_tomorrow=True)
+        self.assertEqual(notice_rows(notices.DAILY_LOCKED_NOTE).count(), 2)  # one text and one email, once
+        self.assertEqual(service.daily_failures(self.customer, at), 13)
+        self.assertEqual(OtpEvent.objects.filter(kind=OtpEvent.LOCKED).count(), 1)
+
     def test_the_cap_is_the_governed_setting(self):
         MoneySetting.objects.create(key="otp_daily_failure_cap", value=8, effective_from=DAY - timedelta(days=1))
         last = self.fail(7, DAY + timedelta(hours=1))

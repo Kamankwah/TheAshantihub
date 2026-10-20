@@ -113,7 +113,7 @@ export default function FlashSaleEditor({ id, onBack, onOpenDetail }) {
                   <tbody>
                     {data.listings.map((l) => (
                       <tr key={l.id}>
-                        <th scope="row" style={{ ...td, textAlign: "left" }}>{l.name}{l.problem && <div style={{ ...dim, color: "#A33A00" }}>{l.problem}</div>}</th>
+                        <th scope="row" style={{ ...td, textAlign: "left" }}>{l.name}{l.problem && <div style={{ ...dim, color: D.warnInk }}>{l.problem}</div>}</th>
                         <td style={td}>{l.business}</td><td style={td}>{money(l.normal_price)}</td><td style={td}>{money(l.sale_price)}</td><td style={td}>{l.in_stock}</td>
                         <td style={td}>{STATE_WORD[l.state]}</td>
                         <td style={td}>{editable && <button type="button" disabled={busy} aria-label={`Remove ${l.name}`} onClick={() => run(() => removeFlashListing(id, l.id))} style={linkStyle}>Remove</button>}</td>
@@ -138,7 +138,7 @@ export default function FlashSaleEditor({ id, onBack, onOpenDetail }) {
             {!isNew && editable && <button type="button" disabled={busy || data.listing_count === 0} onClick={() => run(() => flashSaleAction(id, "ask"), "Sellers have been asked.")} style={button(D.gold, D.text, busy || data.listing_count === 0)}>{data.status === "draft" ? "Ask the sellers" : "Ask the sellers who haven't answered"}</button>}
           </Section>
           <Section id="fe-prev" title="Preview on the site">
-            <div style={{ border: `1px solid ${D.cardBorder}`, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8, background: "#fff" }}>
+            <div style={{ border: `1px solid ${D.cardBorder}`, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8, background: D.panelBg }}>
               <strong>{form.name || "Your sale"} · {form.discount_pct}% off</strong>
               {form.starts_at && form.ends_at && new Date(form.ends_at) > new Date() ? <PromoCountdown startsAt={new Date(form.starts_at).toISOString()} endsAt={new Date(form.ends_at).toISOString()} /> : <span style={dim}>Pick future dates to see the countdown.</span>}
               {previewListing && <div style={{ fontSize: "0.82rem" }}><div style={{ fontWeight: 700 }}>{previewListing.name}</div><div><span style={{ fontWeight: 800 }}>{money(previewListing.sale_price)}</span> <s style={{ color: D.textDim }}>{money(previewListing.normal_price)}</s></div><div style={dim}>Up to {form.per_customer_limit} per customer · no coupons on sale items</div></div>}

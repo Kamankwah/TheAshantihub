@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { apiPost, apiPatch } from "../../../apiClient.js";
 import { useSubscriptionPlansManageQueue } from "../../../hooks/useSubscriptionPlansManageQueue.js";
-import { D, glassCard, SUBSCRIPTION_PLAN_STATUS_META } from "../theme.js";
+import { D, glassCard, SUBSCRIPTION_PLAN_STATUS_META, tint } from "../theme.js";
 
 const EMPTY_SUBSCRIPTION_PLAN_FORM = {
   tier: "", name: "", kind: "product", monthly_price: "",
@@ -165,7 +165,7 @@ export default function SubscriptionPlansManagePanel() {
                     <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>
                       {p.name} <span style={{ color: D.textDim, fontWeight: 400 }}>({p.tier})</span>
                       {p.is_recommended && <span style={{ background: `${D.gold}33`, color: D.gold, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>★ Recommended</span>}
-                      <span style={{ background: `${statusMeta.color}22`, color: statusMeta.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>{statusMeta.label}</span>
+                      <span style={{ background: tint(statusMeta.color, "22"), color: statusMeta.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>{statusMeta.label}</span>
                     </div>
                     <div style={{ color: D.textDim, fontSize: "0.72rem", margin: "3px 0" }}>{p.kind === "product" ? "Product" : "Service"} · GHS {p.monthly_price}/mo · Max listings: {p.max_active_listings ?? "Unlimited"} · Hero days: {p.hero_days} · Boost credits: {p.boost_credits_per_month}</div>
                     <div style={{ color: D.textDim, fontSize: "0.72rem" }}>{p.paying_businesses == null ? "" : `${p.paying_businesses} paying business${p.paying_businesses === 1 ? "" : "es"} (active, not on a free trial)`}</div>
