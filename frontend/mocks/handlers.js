@@ -9,6 +9,13 @@ function proposalReply(body) {
 }
 
 export const handlers = [
+  // OTP security overview and authenticator status (Plan 2F): every switch off, nothing on file.
+  http.get('http://localhost:8000/api/otp/me/', () => HttpResponse.json({
+    channels: [], authenticator: null, trusted_devices: [], switches: { sign_in: false, step_up: false, sign_up: false }, customer_gap_days: 30,
+  })),
+  http.get('http://localhost:8000/api/otp/authenticator/', () => HttpResponse.json({
+    enabled: false, enabled_at: null, recovery_codes_left: 0, available: false,
+  })),
   // What a customer is told before paying (cancellation policies and release hours): the server's defaults.
   http.get('http://localhost:8000/api/ledger/booking-terms/', () => {
     return HttpResponse.json({
