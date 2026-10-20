@@ -36,8 +36,10 @@ monolith holding most components, with extractions living in `components/`,
   `__tests__/darkModeLiterals.test.js` fails on any hardcoded white/cream background; QR codes use
   `C.paper` (allowlisted). `__tests__/darkModeSmoke.test.jsx` renders key pages in dark mode.
 - **Exception, new work only:** `components/ui/*.tsx` use real Tailwind + shadcn CSS-variable
-  tokens. `index.css` deliberately has **no global `body`/`html` reset** so it doesn't fight the
-  inline-styled UI — which means **every Tailwind/shadcn component's root must be wrapped in
+  tokens. `index.css` deliberately has **no global `body`/`html` reset** (no font/margin/background
+  reset) so it doesn't fight the inline-styled UI. It does carry two global `html, body` pieces: tabular
+  figures (`font-variant-numeric: tabular-nums`) and, under `:root[data-theme="dark"]`, the themed
+  canvas/ink (`--ah-canvas`/`--ah-ink`; light mode sets no background) — which means **every Tailwind/shadcn component's root must be wrapped in
   `<div className="shadcn-scope">`** or it picks up no theme tokens at all. This exception is
   additive, not a migration; existing `C`-palette surfaces stay inline-styled.
 - **Read `DESIGN.md` (repo root) before any visual or UI decision.** It is the source of truth

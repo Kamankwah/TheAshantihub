@@ -78,7 +78,7 @@ describe('BusinessRegistrationFlow', () => {
     uploadFile(/Ghana Card — front/i)
     uploadFile(/Ghana Card — back/i)
     fireEvent.change(screen.getByPlaceholderText('Ghana Post GPS address (e.g. AK-039-5028)'), { target: { value: 'AK-123-4567' } })
-    fireEvent.change(screen.getByPlaceholderText('Business contact phone (public)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Business contact phone (AshantiHub support only, not shown to shoppers)'), { target: { value: '+233201112233' } })
     fireEvent.submit(screen.getByRole('button', { name: 'Continue' }).closest('form'))
 
     await waitFor(() => expect(auth.submitBusinessInfo).toHaveBeenCalledWith(
@@ -96,7 +96,7 @@ describe('BusinessRegistrationFlow', () => {
     uploadFile(/Ghana Card — front/i)
     uploadFile(/Ghana Card — back/i)
     fireEvent.change(screen.getByPlaceholderText('Ghana Post GPS address (e.g. AK-039-5028)'), { target: { value: 'AK-123-4567' } })
-    fireEvent.change(screen.getByPlaceholderText('Business contact phone (public)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Business contact phone (AshantiHub support only, not shown to shoppers)'), { target: { value: '+233201112233' } })
     fireEvent.submit(screen.getByRole('button', { name: 'Continue' }).closest('form'))
 
     await waitFor(() => expect(setShowBizDash).toHaveBeenCalledWith(true))

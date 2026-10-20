@@ -28,7 +28,7 @@ DEFAULT_SITE_HOST = "theashantihub.com"
 
 
 def stop_link(token):
-    return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/notify/stop/{token}"
+    return f"{base_url()}/notify/stop/{token}"
 
 
 def clean_phone(raw):
@@ -113,13 +113,24 @@ def site_host():
     return host
 
 
+def base_url():
+    """FRONTEND_BASE_URL (scheme and path kept, no trailing slash) for the email links; when site_host() would
+    fall back (unset/localhost/unusable) it is https://DEFAULT_SITE_HOST, never a localhost or relative link."""
+    raw = str(getattr(settings, "FRONTEND_BASE_URL", "") or "").strip()
+    if site_host() == DEFAULT_SITE_HOST and DEFAULT_SITE_HOST not in raw:
+        return f"https://{DEFAULT_SITE_HOST}"
+    if "//" not in raw:
+        raw = f"https://{raw}"
+    return raw.rstrip("/")
+
+
 def sms_body(token=None):
     # One GSM-7 segment, no emoji. No stop link: the email carries it and a reply STOP is handled by the carrier.
     return f"AshantiHub is open! Shop now: {site_host()}"
 
 
 def email_parts(token):
-    base = settings.FRONTEND_BASE_URL.rstrip("/")
+    base = base_url()
     subject = "The AshantiHub marketplace is open"
     body = (
         "Good news: the AshantiHub marketplace is now open.\n\n"

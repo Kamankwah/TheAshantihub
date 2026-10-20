@@ -240,7 +240,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
             </label>
             <input value={gpsAddress} onChange={e=>setGpsAddress(e.target.value)} placeholder="Ghana Post GPS address (e.g. AK-039-5028)" required style={inputStyle}/>
             <div style={{color:C.warnInk,fontSize:"0.68rem",margin:"-6px 0 10px",lineHeight:1.4}}>📍 Ashanti Region only — your Ghana Post address must be an Ashanti Region address (it begins with “A”).</div>
-            <input value={businessContactPhone} onChange={e=>setBusinessContactPhone(e.target.value)} placeholder="Business contact phone (public)" required style={inputStyle}/>
+            <input value={businessContactPhone} onChange={e=>setBusinessContactPhone(e.target.value)} placeholder="Business contact phone (AshantiHub support only, not shown to shoppers)" required style={inputStyle}/>
             <label style={{...labelStyle,display:"flex",alignItems:"center",gap:8}}>
               <input type="checkbox" checked={isFormal} onChange={e=>setIsFormal(e.target.checked)}/>
               My business is formally registered with the Registrar General's Department

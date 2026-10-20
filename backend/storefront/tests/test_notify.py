@@ -151,6 +151,20 @@ class SendTests(NotifyBase):
                 self.assertNotIn("None", body)
                 self.assertNotIn("localhost", body)
 
+    def test_email_links_use_safe_default_when_base_url_unusable(self):
+        for bad in ("", None, "   ", "http://", "localhost", "http://localhost:5173", "not a url"):
+            with self.subTest(bad=bad), override_settings(FRONTEND_BASE_URL=bad):
+                subject, body = notify.email_parts("tok")
+                self.assertIn(f"Start shopping: https://{notify.DEFAULT_SITE_HOST}\n", body)
+                self.assertIn(f"https://{notify.DEFAULT_SITE_HOST}/notify/stop/tok", body)
+                self.assertNotIn("localhost", body)
+
+    @override_settings(FRONTEND_BASE_URL="https://staging.example.com/app/")
+    def test_email_links_keep_configured_scheme_and_path(self):
+        _, body = notify.email_parts("tok")
+        self.assertIn("Start shopping: https://staging.example.com/app\n", body)
+        self.assertIn("https://staging.example.com/app/notify/stop/tok", body)
+
     def test_email_body_contains_the_same_link(self):
         row = notify.subscribe(email="a@example.com")
         notify.send_batch(now=self.after)
