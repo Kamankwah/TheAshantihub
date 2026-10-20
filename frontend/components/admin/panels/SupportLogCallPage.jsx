@@ -21,7 +21,7 @@ const CHANNELS = [["phone", "Phone call"], ["whatsapp", "WhatsApp call to the su
 const FEELINGS = [["positive", "Happy"], ["neutral", "Neutral"], ["negative", "Upset"]];
 const label = { display: "flex", flexDirection: "column", gap: 4, fontSize: "0.78rem", fontWeight: 800, color: D.text };
 const input = { ...field, width: "100%", boxSizing: "border-box", minHeight: 42, fontSize: "0.95rem", resize: "none" };
-const seg = (on) => ({ minHeight: 40, padding: "0 14px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: "0.82rem", background: on ? D.text : D.panelBg, color: on ? "#FDF6E3" : D.text, border: `1px solid ${on ? D.text : D.cardBorder}` });
+const seg = (on) => ({ minHeight: 40, padding: "0 14px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: "0.82rem", background: on ? D.text : D.panelBg, color: on ? D.pageBg : D.text, border: `1px solid ${on ? D.text : D.cardBorder}` });
 
 function Choice({ legend, value, options, onChange, allowClear }) {
   return (

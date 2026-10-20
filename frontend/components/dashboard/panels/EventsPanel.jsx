@@ -9,8 +9,8 @@ import EventSubmissionPanel from "../../EventSubmissionPanel.jsx";
 // always-dark palette (see App.jsx's MyEventsTab comment — it was written for
 // the always-dark public Events page and the Command Center's former dark
 // theme, and UserPanel already carries this as a known limitation in light
-// mode). Since the Command Center is light now, this tab wraps it in a dark
-// card here — chrome only, EventSubmissionPanel itself is untouched — so its
+// mode). The Command Center follows the site's light/dark theme, so this tab
+// wraps it in a fixed dark card here — chrome only, EventSubmissionPanel itself is untouched — so its
 // white/light text stays legible instead of rendering white-on-cream.
 export default function EventsPanel({ user, PaymentComponent }) {
   const { data: categories } = useCategories();

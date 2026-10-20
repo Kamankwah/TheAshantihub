@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch, apiPost } from "../../../apiClient.js";
 import { useDeliveryManagerOrders } from "../../../hooks/useDeliveryManagerOrders.js";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, tint } from "../theme.js";
 import SendNow, { isHeld } from "./delivery/SendNow.jsx";
 import { dayTime } from "./delivery/deliveryParts.jsx";
 
@@ -33,7 +33,7 @@ function OrderCard({ order, dispatches, onDone, canSend }) {
           <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 2 }}>🏠 {order.delivery_address} · 📞 {order.delivery_phone}</div>
         </div>
         {assignment && (
-          <span style={{ background: `${D.blue}22`, color: D.blue, borderRadius: 20, padding: "2px 10px", fontSize: "0.64rem", fontWeight: 800 }}>{assignment.status}</span>
+          <span style={{ background: tint(D.blue, "22"), color: D.blue, borderRadius: 20, padding: "2px 10px", fontSize: "0.64rem", fontWeight: 800 }}>{assignment.status}</span>
         )}
       </div>
 

@@ -42,7 +42,7 @@ export default function FlashStrip({ onNavigate }) {
     <>
       <span style={{ flex: 1, minWidth: 0, fontWeight: 600 }}>{message}</span>
       {live && (
-        <span data-testid="flash-countdown" role="timer" style={{ flexShrink: 0, fontWeight: 700, color: C.darkBrown, whiteSpace: "nowrap", ...TABULAR }}>
+        <span data-testid="flash-countdown" role="timer" style={{ flexShrink: 0, fontWeight: 700, color: C.ink, whiteSpace: "nowrap", ...TABULAR }}>
           {countdownText(remaining)}
         </span>
       )}
@@ -51,7 +51,7 @@ export default function FlashStrip({ onNavigate }) {
   const row = {
     display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 16px", width: "100%", boxSizing: "border-box",
     padding: "12px 16px", borderRadius: 12, border: `1px solid ${C.gold}33`, borderLeft: `5px solid ${C.gold}`,
-    background: C.white, color: C.darkBrown, fontFamily: BODY_FONT, fontSize: 15, lineHeight: 1.4, textAlign: "left",
+    background: C.surface, color: C.ink, fontFamily: BODY_FONT, fontSize: 15, lineHeight: 1.4, textAlign: "left",
   };
 
   return (

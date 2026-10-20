@@ -5,7 +5,7 @@ import { useMySubscription } from "../../../hooks/useMySubscription.js";
 import { useMyHeroSubmission } from "../../../hooks/useMyHeroSubmission.js";
 import { useOwnerReviews } from "../../../hooks/useOwnerReviews.js";
 import { useBusinessProfile } from "../../../hooks/useBusinessProfile.js";
-import { D, glassCard, LISTING_STATUS_META, CREDIT_FACTOR_META, getScoreColor, ghs } from "../theme.js";
+import { D, glassCard, LISTING_STATUS_META, CREDIT_FACTOR_META, getScoreColor, ghs, tint } from "../theme.js";
 import KpiCard from "../charts/KpiCard.jsx";
 import ChartFrame from "../charts/ChartFrame.jsx";
 import SpendAreaChart from "../charts/SpendAreaChart.jsx";
@@ -185,13 +185,13 @@ export default function AnalyticsPanel({ user, onNavigate }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
                       <span style={{ fontWeight: 700, fontSize: "0.8rem", color: D.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
-                      <span style={{ fontWeight: 900, color: D.green, fontSize: "0.8rem", whiteSpace: "nowrap" }}>{item.price_amount != null ? `GHS ${item.price_amount}` : "No price set"}</span>
+                      <span style={{ fontWeight: 900, color: D.price, fontSize: "0.8rem", whiteSpace: "nowrap" }}>{item.price_amount != null ? `GHS ${item.price_amount}` : "No price set"}</span>
                     </div>
                     <div style={{ marginTop: 4, height: 6, background: D.panelBg2, borderRadius: 10, overflow: "hidden" }}>
                       <div style={{ height: "100%", width: item.status === "published" ? "100%" : item.status === "pending_review" ? "60%" : "25%", background: statusMeta.color, borderRadius: 10 }} />
                     </div>
                   </div>
-                  <span style={{ background: `${statusMeta.color}20`, color: statusMeta.color, borderRadius: 20, padding: "3px 9px", fontSize: "0.6rem", fontWeight: 800, whiteSpace: "nowrap" }}>{statusMeta.label}</span>
+                  <span style={{ background: tint(statusMeta.color, "20"), color: statusMeta.color, borderRadius: 20, padding: "3px 9px", fontSize: "0.6rem", fontWeight: 800, whiteSpace: "nowrap" }}>{statusMeta.label}</span>
                 </div>
               );
             })}

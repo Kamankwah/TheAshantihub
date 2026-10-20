@@ -59,7 +59,7 @@ export default function SaSessionsPanel() {
     { label: "Signed in with 2-step", value: k.with_two_step, sub: `Of ${plural(k.people, "person", "people")} signed in` },
     { label: "Idle sign-out", value: `${rules.idle_minutes} min`, sub: "No activity, signed out" },
     { label: "Longest session", value: `${rules.longest_hours} h`, sub: "Then sign in again" },
-    { label: "New devices today", value: k.new_devices_today, sub: k.new_device_people.join(", ") || "None", tone: k.new_devices_today ? "#A33A00" : undefined },
+    { label: "New devices today", value: k.new_devices_today, sub: k.new_device_people.join(", ") || "None", tone: k.new_devices_today ? D.warnInk : undefined },
   ] : [];
 
   return (

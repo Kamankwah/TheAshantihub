@@ -4,7 +4,7 @@ import { useMyDeliveries } from "../../../hooks/useMyDeliveries.js";
 import { useDispatchMap } from "../../../hooks/useTracking.js";
 import DeliveryRouteMap from "../../DeliveryRouteMap.jsx";
 import EtaLine from "../../maps/EtaLine.jsx";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, tint } from "../theme.js";
 
 // A Dispatch's assigned deliveries (punch-list item 11, delivery.dispatch).
 // Each shows the pickup(s) and drop-off with a route map, and the two actions
@@ -55,7 +55,7 @@ function DeliveryCard({ delivery, onDone }) {
     <div style={{ ...glassCard, padding: 16, marginBottom: 14, maxWidth: 560 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem" }}>Order #{delivery.order_id}</div>
-        <span style={{ background: `${meta.color}22`, color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.label}</span>
+        <span style={{ background: tint(meta.color, "22"), color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.label}</span>
       </div>
 
       {/* Pickups */}

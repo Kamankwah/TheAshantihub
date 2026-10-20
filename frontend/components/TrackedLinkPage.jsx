@@ -16,7 +16,7 @@ export default function TrackedLinkPage({ token, onGo }) {
     return () => { alive = false; };
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <main style={{ minHeight: "100vh", background: C.cream, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, color: C.darkBrown }}>
+    <main style={{ minHeight: "100vh", background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, color: C.ink }}>
       {error ? <p role="alert">This link is not valid. <a href="/" style={{ color: C.deepGold }}>Go to AshantiHub</a></p> : <p role="status">Taking you to AshantiHub…</p>}
     </main>
   );

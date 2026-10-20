@@ -79,7 +79,8 @@ class LaunchFlowTests(CheckoutTestsBase):
             self.assertEqual(send_opening_notices(), 1)
             self.assertEqual(len(senders.sms_outbox), 1)
             self.assertEqual(len(mail.outbox), 1)
-            self.assertIn("https://staging.example.com/notify/stop/", senders.sms_outbox[0].body)
+            self.assertEqual(senders.sms_outbox[0].body, "AshantiHub is open! Shop now: staging.example.com")
+            self.assertIn("https://staging.example.com/notify/stop/", mail.outbox[0].body)
 
             self.assertEqual(self.checkout(self.customer).status_code, 201)  # the earlier cart add (merged) now checks out
 

@@ -1,6 +1,6 @@
 import FlashPriceTag from "./FlashPriceTag.jsx";
 import { useState } from "react";
-import { C } from "../theme.js";
+import { C, tint } from "../theme.js";
 import { apiPost } from "../apiClient.js";
 import { useListing } from "../hooks/useListing.js";
 import { useCartGuard } from "../hooks/useCartGuard.js";
@@ -172,7 +172,7 @@ export default function ListingDetailPage({
       <div style={{ display: "flex", gap: 28, flexWrap: "wrap", marginTop: 16 }}>
         {/* Gallery */}
         <div style={{ flex: "1 1 380px", minWidth: 300 }}>
-          <div style={{ height: 340, borderRadius: 16, overflow: "hidden", position: "relative", background: `linear-gradient(135deg,${accentColor}22,${accentColor}44)` }}>
+          <div style={{ height: 340, borderRadius: 16, overflow: "hidden", position: "relative", background: `linear-gradient(135deg,${tint(accentColor, "22")},${tint(accentColor, "44")})` }}>
             {gallery.length > 0 ? (
               <img src={gallery[galleryIndex]} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             ) : (
@@ -893,7 +893,7 @@ function MoreOptionsSection({ related, onOpenListing, label }) {
                 <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.7rem" }}>{r.zone?.name}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {r.price_amount != null && <span style={{ color: C.gold, fontWeight: 800, fontSize: "0.82rem" }}>GHS {r.price_amount}{r.price_unit || ""}</span>}
+                {r.price_amount != null && <span style={{ color: C.lightGold, fontWeight: 800, fontSize: "0.82rem" }}>GHS {r.price_amount}{r.price_unit || ""}</span>}
                 <button onClick={() => onOpenListing && onOpenListing(r.id)} style={viewBtnStyle}>View</button>
               </div>
             </div>

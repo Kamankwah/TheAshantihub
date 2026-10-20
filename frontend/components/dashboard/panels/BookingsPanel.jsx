@@ -3,7 +3,7 @@ import { useIncomingBookings } from "../../../hooks/useIncomingBookings.js";
 import { useMyListings } from "../../../hooks/useMyListings.js";
 import { useCategories } from "../../../hooks/useCategories.js";
 import { useState } from "react";
-import { D, glassCard, sectionTitle } from "../theme.js";
+import { D, glassCard, sectionTitle, tint } from "../theme.js";
 import OwnerListingCard from "./OwnerListingCard.jsx";
 
 // Accommodation booking management (business item 2 / Wave H3): an
@@ -39,7 +39,7 @@ function BookingCard({ booking, onChanged }) {
           </div>
           <div style={{ color: D.textFaint, fontSize: "0.72rem", marginTop: 2 }}>GHS {booking.total_price}</div>
         </div>
-        <span style={{ background: `${meta.color}22`, color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.label}</span>
+        <span style={{ background: tint(meta.color, "22"), color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.label}</span>
       </div>
 
       {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}

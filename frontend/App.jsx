@@ -32,6 +32,7 @@ import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
 import { C } from "./theme.js";
+import ThemeToggle from "./components/ThemeToggle.jsx";
 import Flag from "./components/Flag.jsx";
 import { formatAccraDayTime } from "./lib/accraTime.js";
 import OrderTrackingMap from "./components/OrderTrackingMap.jsx";
@@ -73,7 +74,7 @@ import BusinessCommandCenter from "./components/dashboard/BusinessCommandCenter.
 import AdminCommandCenter from "./components/admin/AdminCommandCenter.jsx";
 import StaffInstallPage from "./components/admin/StaffInstallPage.jsx";
 import StaffTwoStepSignIn from "./components/admin/StaffTwoStepSignIn.jsx";
-import { D, glassCard, ghs } from "./components/dashboard/theme.js";
+import { D, glassCard, ghs, tint } from "./components/dashboard/theme.js";
 import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
 import { ensureStaffHead, isStaffPathname, isStandaloneDisplay, startStaffPwa } from "./lib/staffPwa.js";
@@ -191,7 +192,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
       onClick={e => { if(e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background:"white", borderRadius:24, width:"100%", maxWidth:400, boxShadow:"0 24px 64px rgba(0,0,0,0.4)", overflow:"hidden" }}>
+      <div style={{ background:C.surface, borderRadius:24, width:"100%", maxWidth:400, boxShadow:"0 24px 64px rgba(0,0,0,0.4)", overflow:"hidden" }}>
 
         {/* Header */}
         <div style={{ background:`linear-gradient(135deg,${C.darkBrown},${C.kente2})`, padding:"20px 24px", position:"relative" }}>
@@ -215,17 +216,17 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
           {/* Step 1 — Select Network */}
           {step === 1 && (
             <div>
-              <div style={{ fontWeight:800, color:C.darkBrown, marginBottom:14, fontSize:"0.88rem" }}>Select your mobile network</div>
+              <div style={{ fontWeight:800, color:C.ink, marginBottom:14, fontSize:"0.88rem" }}>Select your mobile network</div>
               <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:16 }}>
                 {MOMO_NETWORKS.map(n => (
                   <button key={n.id} onClick={() => { setNetwork(n.id); setStep(2); }}
-                    style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 16px", borderRadius:14, border:`2px solid ${n.color}33`, background:`${n.color}08`, cursor:"pointer", textAlign:"left", transition:"all 0.2s" }}
+                    style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 16px", borderRadius:14, border:`2px solid ${tint(n.color, "33")}`, background:tint(n.color, "08"), cursor:"pointer", textAlign:"left", transition:"all 0.2s" }}
                     onMouseEnter={e => e.currentTarget.style.borderColor = n.color}
-                    onMouseLeave={e => e.currentTarget.style.borderColor = `${n.color}33`}>
+                    onMouseLeave={e => e.currentTarget.style.borderColor = tint(n.color, "33")}>
                     <div style={{ width:40, height:40, borderRadius:"50%", background:n.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.2rem", flexShrink:0 }}>{n.logo}</div>
                     <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:800, fontSize:"0.88rem", color:C.darkBrown }}>{n.name}</div>
-                      <div style={{ fontSize:"0.68rem", color:"#888" }}>Dial {n.ussd} • {n.fee} transaction fee</div>
+                      <div style={{ fontWeight:800, fontSize:"0.88rem", color:C.ink }}>{n.name}</div>
+                      <div style={{ fontSize:"0.68rem", color:C.inkDim }}>Dial {n.ussd} • {n.fee} transaction fee</div>
                     </div>
                     <div style={{ color:"#ccc", fontSize:"1.2rem" }}>›</div>
                   </button>
@@ -233,14 +234,14 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
               </div>
               {/* Amount summary */}
               <div style={{ background:`${C.gold}12`, border:`1px solid ${C.gold}33`, borderRadius:12, padding:"12px 14px", fontSize:"0.78rem" }}>
-                <div style={{ display:"flex", justifyContent:"space-between", color:"#555", marginBottom:4 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", color:C.inkDim, marginBottom:4 }}>
                   <span>Amount</span><span style={{ fontWeight:700 }}>GHS {amount.toFixed(2)}</span>
                 </div>
-                <div style={{ display:"flex", justifyContent:"space-between", color:"#888", marginBottom:6 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", color:C.inkDim, marginBottom:6 }}>
                   <span>Transaction fee (1.5%)</span><span>GHS {fee.toFixed(2)}</span>
                 </div>
-                <div style={{ display:"flex", justifyContent:"space-between", fontWeight:900, color:C.darkBrown, borderTop:`1px solid ${C.gold}33`, paddingTop:6 }}>
-                  <span>Total</span><span style={{ color:C.kente2 }}>GHS {total.toFixed(2)}</span>
+                <div style={{ display:"flex", justifyContent:"space-between", fontWeight:900, color:C.ink, borderTop:`1px solid ${C.gold}33`, paddingTop:6 }}>
+                  <span>Total</span><span style={{ color:C.price }}>GHS {total.toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -251,13 +252,13 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
             <div>
               <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
                 <div style={{ width:36, height:36, borderRadius:"50%", background:selectedNetwork.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.1rem" }}>{selectedNetwork.logo}</div>
-                <div style={{ fontWeight:800, color:C.darkBrown, fontSize:"0.88rem" }}>{selectedNetwork.name}</div>
+                <div style={{ fontWeight:800, color:C.ink, fontSize:"0.88rem" }}>{selectedNetwork.name}</div>
               </div>
 
               <div style={{ marginBottom:14 }}>
-                <label style={{ fontSize:"0.78rem", fontWeight:700, color:C.darkBrown, marginBottom:6, display:"block" }}>📱 {selectedNetwork.name} Number</label>
+                <label style={{ fontSize:"0.78rem", fontWeight:700, color:C.ink, marginBottom:6, display:"block" }}>📱 {selectedNetwork.name} Number</label>
                 <div style={{ display:"flex", gap:0, borderRadius:12, overflow:"hidden", border:`1.5px solid ${phone.length>=10?"#22c55e":"#ddd"}` }}>
-                  <div style={{ background:"#f0f0f0", padding:"11px 12px", fontSize:"0.82rem", fontWeight:700, color:"#555", borderRight:"1px solid #ddd" }}>+233</div>
+                  <div style={{ background:C.surface2, padding:"11px 12px", fontSize:"0.82rem", fontWeight:700, color:C.inkDim, borderRight:`1px solid ${C.line}` }}>+233</div>
                   <input value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g,"").slice(0,10))}
                     placeholder="0244 000 000" maxLength={10}
                     style={{ flex:1, padding:"11px 12px", border:"none", fontSize:"0.88rem", outline:"none", fontFamily:"inherit", letterSpacing:1 }}/>
@@ -266,22 +267,22 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
               </div>
 
               {/* Payment summary */}
-              <div style={{ background:"#f9f9f9", borderRadius:12, padding:"12px 14px", marginBottom:16, fontSize:"0.76rem", lineHeight:1.8 }}>
-                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:"#888" }}>Purpose</span><span style={{ fontWeight:700 }}>{purpose}</span></div>
-                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:"#888" }}>Network</span><span style={{ fontWeight:700 }}>{selectedNetwork.name}</span></div>
-                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:"#888" }}>Amount</span><span style={{ fontWeight:700 }}>GHS {amount}</span></div>
-                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:"#888" }}>Fee</span><span>GHS {fee.toFixed(2)}</span></div>
-                <div style={{ display:"flex", justifyContent:"space-between", borderTop:`1px solid #e0e0e0`, paddingTop:4, marginTop:2 }}><span style={{ fontWeight:800 }}>Total</span><span style={{ fontWeight:900, color:C.kente2 }}>GHS {total.toFixed(2)}</span></div>
+              <div style={{ background:C.surface2, borderRadius:12, padding:"12px 14px", marginBottom:16, fontSize:"0.76rem", lineHeight:1.8 }}>
+                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Purpose</span><span style={{ fontWeight:700 }}>{purpose}</span></div>
+                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Network</span><span style={{ fontWeight:700 }}>{selectedNetwork.name}</span></div>
+                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Amount</span><span style={{ fontWeight:700 }}>GHS {amount}</span></div>
+                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Fee</span><span>GHS {fee.toFixed(2)}</span></div>
+                <div style={{ display:"flex", justifyContent:"space-between", borderTop:`1px solid ${C.line}`, paddingTop:4, marginTop:2 }}><span style={{ fontWeight:800 }}>Total</span><span style={{ fontWeight:900, color:C.price }}>GHS {total.toFixed(2)}</span></div>
               </div>
 
-              <div style={{ background:"#eff6ff", border:"1px solid #bfdbfe", borderRadius:10, padding:"10px 12px", fontSize:"0.7rem", color:"#1e40af", marginBottom:16, lineHeight:1.6 }}>
+              <div style={{ background:tint(C.info, "14"), border:`1px solid ${tint(C.info, "40")}`, borderRadius:10, padding:"10px 12px", fontSize:"0.7rem", color:C.info, marginBottom:16, lineHeight:1.6 }}>
                 📲 After tapping Pay, you will receive a <strong>prompt on your phone</strong>. Enter your {selectedNetwork.name} PIN to approve the payment.
               </div>
 
               <div style={{ display:"flex", gap:8 }}>
-                <button onClick={() => setStep(1)} style={{ flex:1, background:"#f0f0f0", color:"#666", border:"none", borderRadius:20, padding:"11px", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>← Back</button>
+                <button onClick={() => setStep(1)} style={{ flex:1, background:C.surface2, color:C.inkDim, border:"none", borderRadius:20, padding:"11px", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>← Back</button>
                 <button onClick={() => { if(phone.length>=10) setStep(3); }}
-                  style={{ flex:2, background:phone.length>=10?selectedNetwork.color:"#ddd", color:phone.length>=10?selectedNetwork.textColor:"#aaa", border:"none", borderRadius:20, padding:"11px", fontWeight:900, cursor:phone.length>=10?"pointer":"default", fontFamily:"inherit", fontSize:"0.85rem" }}>
+                  style={{ flex:2, background:phone.length>=10?selectedNetwork.color:C.surface3, color:phone.length>=10?selectedNetwork.textColor:C.inkFaint, border:"none", borderRadius:20, padding:"11px", fontWeight:900, cursor:phone.length>=10?"pointer":"default", fontFamily:"inherit", fontSize:"0.85rem" }}>
                   Pay GHS {total.toFixed(2)} →
                 </button>
               </div>
@@ -301,8 +302,8 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                   <div style={{ fontSize:"3rem", marginBottom:14 }}>
                     <div style={{ display:"inline-block", animation:"spin 1s linear infinite" }}>⏳</div>
                   </div>
-                  <div style={{ fontWeight:900, color:C.darkBrown, fontSize:"1rem", marginBottom:6 }}>Redirecting to secure payment…</div>
-                  <div style={{ color:"#555", fontSize:"0.78rem", lineHeight:1.6 }}>
+                  <div style={{ fontWeight:900, color:C.ink, fontSize:"1rem", marginBottom:6 }}>Redirecting to secure payment…</div>
+                  <div style={{ color:C.inkDim, fontSize:"0.78rem", lineHeight:1.6 }}>
                     You're being taken to Hubtel to complete your GHS {amount.toFixed(2)} payment.
                   </div>
                 </>
@@ -311,30 +312,30 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                   <div style={{ fontSize:"3rem", marginBottom:14 }}>
                     <div style={{ display:"inline-block", animation:"spin 1s linear infinite" }}>⏳</div>
                   </div>
-                  <div style={{ fontWeight:900, color:C.darkBrown, fontSize:"1rem", marginBottom:6 }}>Processing Payment...</div>
-                  <div style={{ color:"#555", fontSize:"0.78rem", marginBottom:16, lineHeight:1.6 }}>
+                  <div style={{ fontWeight:900, color:C.ink, fontSize:"1rem", marginBottom:6 }}>Processing Payment...</div>
+                  <div style={{ color:C.inkDim, fontSize:"0.78rem", marginBottom:16, lineHeight:1.6 }}>
                     Please approve the payment prompt on your phone.<br/>
                     <strong>Do not close this screen.</strong>
                   </div>
                   {/* Progress bar */}
-                  <div style={{ background:"#f0f0f0", borderRadius:20, height:8, marginBottom:8, overflow:"hidden" }}>
+                  <div style={{ background:C.surface2, borderRadius:20, height:8, marginBottom:8, overflow:"hidden" }}>
                     <div style={{ height:"100%", borderRadius:20, background:`linear-gradient(90deg,${C.kente2},${C.gold})`, width:`${((30-countdown)/30)*100}%`, transition:"width 0.1s" }}/>
                   </div>
-                  <div style={{ fontSize:"0.68rem", color:"#aaa" }}>Waiting for approval... {countdown}s</div>
-                  <div style={{ marginTop:16, background:`${selectedNetwork?.color}15`, border:`1px solid ${selectedNetwork?.color}33`, borderRadius:12, padding:"10px 14px" }}>
-                    <div style={{ fontSize:"0.72rem", color:"#444" }}>📱 Check your phone for the {selectedNetwork?.name} payment prompt</div>
-                    <div style={{ fontSize:"0.68rem", color:"#888", marginTop:3 }}>Ref: <strong>{txnRef}</strong></div>
+                  <div style={{ fontSize:"0.68rem", color:C.inkFaint }}>Waiting for approval... {countdown}s</div>
+                  <div style={{ marginTop:16, background:tint(selectedNetwork?.color, "15"), border:`1px solid ${tint(selectedNetwork?.color, "33")}`, borderRadius:12, padding:"10px 14px" }}>
+                    <div style={{ fontSize:"0.72rem", color:C.inkDim }}>📱 Check your phone for the {selectedNetwork?.name} payment prompt</div>
+                    <div style={{ fontSize:"0.68rem", color:C.inkDim, marginTop:3 }}>Ref: <strong>{txnRef}</strong></div>
                   </div>
                 </>
               ) : (
                 <>
                   <div style={{ fontSize:"3.5rem", marginBottom:12 }}>✅</div>
                   <div style={{ fontWeight:900, color:"#22c55e", fontSize:"1.1rem", marginBottom:6 }}>Payment Successful!</div>
-                  <div style={{ color:"#555", fontSize:"0.78rem", marginBottom:16, lineHeight:1.6 }}>
+                  <div style={{ color:C.inkDim, fontSize:"0.78rem", marginBottom:16, lineHeight:1.6 }}>
                     Your payment of <strong>GHS {total.toFixed(2)}</strong> has been received.<br/>
                     A receipt has been sent to your WhatsApp.
                   </div>
-                  <div style={{ background:"#f0fdf4", border:"1px solid #22c55e33", borderRadius:14, padding:"14px", marginBottom:16, textAlign:"left" }}>
+                  <div style={{ background:C.okBg, border:"1px solid #22c55e33", borderRadius:14, padding:"14px", marginBottom:16, textAlign:"left" }}>
                     <div style={{ fontWeight:800, color:"#22c55e", marginBottom:8, fontSize:"0.82rem" }}>📋 Payment Receipt</div>
                     {[
                       ["Transaction Ref", txnRef],
@@ -345,8 +346,8 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                       ["Status", "✅ Confirmed"],
                     ].map(([k,v]) => (
                       <div key={k} style={{ display:"flex", justifyContent:"space-between", fontSize:"0.72rem", marginBottom:4 }}>
-                        <span style={{ color:"#888" }}>{k}</span>
-                        <span style={{ fontWeight:700, color:C.darkBrown }}>{v}</span>
+                        <span style={{ color:C.inkDim }}>{k}</span>
+                        <span style={{ fontWeight:700, color:C.ink }}>{v}</span>
                       </div>
                     ))}
                   </div>
@@ -379,14 +380,14 @@ const KUMASI_PHOTOS = {
   kumasi: "https://www.ghanatravel.com/wp-content/uploads/kumasi-aerial-ashanti.jpg",
 };
 
-const iStyle = { width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.88rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box" };
-const lStyle = { fontSize:"0.78rem",fontWeight:700,color:C.darkBrown,marginBottom:5,display:"block" };
-const btnP = (on=true) => ({ background:on?C.gold:"#ddd",color:on?C.darkBrown:"#aaa",border:"none",borderRadius:30,padding:"12px",fontWeight:900,fontSize:"0.88rem",cursor:on?"pointer":"default",fontFamily:"inherit",width:"100%" });
+const iStyle = { width:"100%",padding:"11px 14px",borderRadius:10,border:`1.5px solid ${C.line}`,fontSize:"0.88rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box" };
+const lStyle = { fontSize:"0.78rem",fontWeight:700,color:C.ink,marginBottom:5,display:"block" };
+const btnP = (on=true) => ({ background:on?C.gold:C.surface3,color:on?C.darkBrown:C.inkFaint,border:"none",borderRadius:30,padding:"12px",fontWeight:900,fontSize:"0.88rem",cursor:on?"pointer":"default",fontFamily:"inherit",width:"100%" });
 
 function Stars({rating,size="0.85rem"}) {
   return <span style={{color:C.gold,fontSize:size}}>
     {"★".repeat(Math.floor(rating))}{"☆".repeat(5-Math.floor(rating))}
-    <span style={{color:"#888",marginLeft:4,fontSize:"0.75rem"}}>{rating}</span>
+    <span style={{color:C.inkDim,marginLeft:4,fontSize:"0.75rem"}}>{rating}</span>
   </span>;
 }
 
@@ -559,8 +560,8 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
       ? {position:"fixed",bottom:92,left:12,right:12,zIndex:2000,height:640,maxHeight:"calc(100vh - 120px)"}
       : {position:"fixed",bottom:92,right:20,zIndex:2000,width:380,maxWidth:"calc(100vw - 40px)",height:600,maxHeight:"calc(100vh - 120px)"};
   const panelStyle = embedded
-    ? {background:"white",borderRadius:20,width:"100%",height:"70vh",display:"flex",overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.14)"}
-    : {background:"white",borderRadius:20,width:"100%",height:"100%",display:"flex",overflow:"hidden",boxShadow:"0 16px 48px rgba(0,0,0,0.28)"};
+    ? {background:C.surface,borderRadius:20,width:"100%",height:"70vh",display:"flex",overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.14)"}
+    : {background:C.surface,borderRadius:20,width:"100%",height:"100%",display:"flex",overflow:"hidden",boxShadow:"0 16px 48px rgba(0,0,0,0.28)"};
 
   return (
     <div style={wrapperStyle}>
@@ -570,7 +571,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
             (380px total) than the embedded dashboard-tab layout (fills its
             container), so the chat pane itself still has usable room. */}
         {showList && (
-        <div style={{width:isPhone?"100%":embedded?260:120,borderRight:isPhone?"none":`1px solid #f0f0f0`,display:"flex",flexDirection:"column",flexShrink:0}}>
+        <div style={{width:isPhone?"100%":embedded?260:120,borderRight:isPhone?"none":`1px solid ${C.line}`,display:"flex",flexDirection:"column",flexShrink:0}}>
           {/* Header */}
           <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,padding:"16px",position:"relative"}}>
             <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
@@ -598,32 +599,32 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
           {/* Conversation list */}
           <div style={{flex:1,overflowY:"auto"}}>
             {filteredConvs.length===0&&(
-              <div style={{padding:"20px",textAlign:"center",color:"#aaa",fontSize:"0.76rem"}}>No conversations found</div>
+              <div style={{padding:"20px",textAlign:"center",color:C.inkFaint,fontSize:"0.76rem"}}>No conversations found</div>
             )}
             {filteredConvs.map(conv=>{
               const lastMsg = conv.messages?.[conv.messages.length-1];
               const attention = needsCustomerAttention(conv);
               return (
               <div key={conv.id} onClick={()=>{setActiveConvId(conv.id);setPhonePane("chat");}}
-                style={{padding:"12px 14px",cursor:"pointer",borderBottom:"1px solid #f5f5f5",background:activeConvId===conv.id?`${C.gold}12`:"white",transition:"background 0.2s"}}
-                onMouseEnter={e=>{ if(activeConvId!==conv.id) e.currentTarget.style.background="#fafafa"; }}
-                onMouseLeave={e=>{ if(activeConvId!==conv.id) e.currentTarget.style.background="white"; }}>
+                style={{padding:"12px 14px",cursor:"pointer",borderBottom:`1px solid ${C.line}`,background:activeConvId===conv.id?`${C.gold}12`:C.surface,transition:"background 0.2s"}}
+                onMouseEnter={e=>{ if(activeConvId!==conv.id) e.currentTarget.style.background=C.surface2; }}
+                onMouseLeave={e=>{ if(activeConvId!==conv.id) e.currentTarget.style.background=C.surface; }}>
                 <div style={{display:"flex",gap:10,alignItems:"center"}}>
                   {/* Avatar */}
                   <div style={{position:"relative",flexShrink:0}}>
                     <div style={{width:44,height:44,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.4rem",border:activeConvId===conv.id?`2px solid ${C.gold}`:"2px solid transparent"}}>
                       🎧
                     </div>
-                    <div style={{position:"absolute",bottom:1,right:1,width:11,height:11,borderRadius:"50%",background:"#22c55e",border:"2px solid white"}}/>
+                    <div style={{position:"absolute",bottom:1,right:1,width:11,height:11,borderRadius:"50%",background:"#22c55e",border:`2px solid ${C.surface}`}}/>
                   </div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
-                      <span style={{fontWeight:800,fontSize:"0.78rem",color:C.darkBrown,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>AshantiHub Support</span>
-                      <span style={{fontSize:"0.6rem",color:"#aaa",flexShrink:0,marginLeft:4}}>{formatConvTime(lastMsg?.created_at||conv.updated_at)}</span>
+                      <span style={{fontWeight:800,fontSize:"0.78rem",color:C.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>AshantiHub Support</span>
+                      <span style={{fontSize:"0.6rem",color:C.inkFaint,flexShrink:0,marginLeft:4}}>{formatConvTime(lastMsg?.created_at||conv.updated_at)}</span>
                     </div>
                     {conv.subject&&<div style={{fontSize:"0.64rem",color:C.deepGold,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{subjectLine(conv.subject)}</div>}
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{fontSize:"0.68rem",color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{lastMsg?.body||"No messages yet"}</span>
+                      <span style={{fontSize:"0.68rem",color:C.inkDim,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{lastMsg?.body||"No messages yet"}</span>
                       {attention&&<span style={{width:10,height:10,borderRadius:"50%",background:C.kente2,flexShrink:0,marginLeft:4}}/>}
                     </div>
                   </div>
@@ -634,12 +635,12 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
           </div>
 
           {/* User info */}
-          <div style={{padding:"10px 14px",borderTop:"1px solid #f0f0f0",background:"#fafafa",display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{padding:"10px 14px",borderTop:`1px solid ${C.line}`,background:C.surface2,display:"flex",gap:8,alignItems:"center"}}>
             <div style={{width:30,height:30,borderRadius:"50%",background:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.darkBrown,fontSize:"0.75rem"}}>
               {user?.fullName?.[0]?.toUpperCase()||"?"}
             </div>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:"0.72rem",color:C.darkBrown,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.fullName||"Guest"}</div>
+              <div style={{fontWeight:700,fontSize:"0.72rem",color:C.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.fullName||"Guest"}</div>
               <div style={{fontSize:"0.6rem",color:"#22c55e",fontWeight:600}}>● Online</div>
             </div>
           </div>
@@ -658,17 +659,17 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
           {(
             <>
               {/* Chat Header */}
-              <div style={{padding:"14px 18px",borderBottom:"1px solid #f0f0f0",display:"flex",alignItems:"center",gap:12,background:"white"}}>
+              <div style={{padding:"14px 18px",borderBottom:`1px solid ${C.line}`,display:"flex",alignItems:"center",gap:12,background:C.surface}}>
                 {isPhone && (
                   <button type="button" aria-label="Back to conversations" onClick={()=>setPhonePane("list")}
-                    style={{background:"#f0f0f0",border:"none",borderRadius:"50%",width:36,height:36,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1.2rem",color:C.darkBrown,fontFamily:"inherit"}}>‹</button>
+                    style={{background:C.surface2,border:"none",borderRadius:"50%",width:36,height:36,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1.2rem",color:C.ink,fontFamily:"inherit"}}>‹</button>
                 )}
                 <div style={{position:"relative"}}>
                   <div style={{width:42,height:42,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.3rem"}}>🎧</div>
-                  <div style={{position:"absolute",bottom:1,right:1,width:10,height:10,borderRadius:"50%",background:"#22c55e",border:"2px solid white"}}/>
+                  <div style={{position:"absolute",bottom:1,right:1,width:10,height:10,borderRadius:"50%",background:"#22c55e",border:`2px solid ${C.surface}`}}/>
                 </div>
                 <div style={{flex:1}}>
-                  <div style={{fontWeight:900,fontSize:"0.88rem",color:C.darkBrown}}>AshantiHub Support</div>
+                  <div style={{fontWeight:900,fontSize:"0.88rem",color:C.ink}}>AshantiHub Support</div>
                   <div style={{fontSize:"0.68rem",color:C.deepGold,fontWeight:700,marginBottom:1}}>{activeConv?.subject ? subjectLine(activeConv.subject) : "New conversation"}</div>
                   {/* "Starts once staff replies" status (messaging fixes work) —
                       an open conversation with zero staff messages yet is
@@ -682,15 +683,15 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                   )}
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={onClose} style={{background:"#f0f0f0",border:"none",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#666",fontSize:"0.9rem"}}>✕</button>
+                  <button onClick={onClose} style={{background:C.surface2,border:"none",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:C.inkDim,fontSize:"0.9rem"}}>✕</button>
                 </div>
               </div>
 
               {/* Messages */}
-              <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:10,background:"#f8f9fa"}}>
+              <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:10,background:C.surface2}}>
                 {activeConv&&activeConv.messages.length>0&&(
                   <div style={{textAlign:"center",margin:"4px 0"}}>
-                    <span style={{background:"#e0e0e0",color:"#888",borderRadius:20,padding:"3px 12px",fontSize:"0.62rem",fontWeight:600}}>Conversation started {formatConvTime(activeConv.created_at)}</span>
+                    <span style={{background:C.surface3,color:C.inkDim,borderRadius:20,padding:"3px 12px",fontSize:"0.62rem",fontWeight:600}}>Conversation started {formatConvTime(activeConv.created_at)}</span>
                   </div>
                 )}
                 {/* Auto-welcome (messaging fixes work) — a purely client-side
@@ -706,12 +707,12 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                     <div style={{display:"flex",justifyContent:"flex-start",alignItems:"flex-end",gap:8}}>
                       <div style={{width:28,height:28,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem",flexShrink:0}}>🎧</div>
                       <div style={{maxWidth:"72%"}}>
-                        <div style={{background:"white",color:C.darkBrown,borderRadius:"18px 18px 18px 4px",padding:"10px 14px",fontSize:"0.78rem",lineHeight:1.5,boxShadow:"0 1px 4px rgba(0,0,0,0.1)"}}>
+                        <div style={{background:C.surface,color:C.ink,borderRadius:"18px 18px 18px 4px",padding:"10px 14px",fontSize:"0.78rem",lineHeight:1.5,boxShadow:"0 1px 4px rgba(0,0,0,0.1)"}}>
                           👋 Welcome to AshantiHub! Hello {user?.fullName || "Guest"}, how can I assist you today?
                         </div>
                       </div>
                     </div>
-                    <div style={{textAlign:"center",color:"#aaa",fontSize:"0.7rem",lineHeight:1.6,padding:"0 24px"}}>
+                    <div style={{textAlign:"center",color:C.inkFaint,fontSize:"0.7rem",lineHeight:1.6,padding:"0 24px"}}>
                       Send a message below to start a new conversation{initialBusiness?` about ${initialBusiness.name}`:""}.
                     </div>
                   </div>
@@ -725,8 +726,8 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                     )}
                     <div style={{maxWidth:"72%"}}>
                       <div style={{
-                        background:isSelf?`linear-gradient(135deg,${C.kente3},${C.darkBrown})`:"white",
-                        color:isSelf?"white":C.darkBrown,
+                        background:isSelf?`linear-gradient(135deg,${C.kente3},${C.darkBrown})`:C.surface,
+                        color:isSelf?"white":C.ink,
                         borderRadius:isSelf?"18px 18px 4px 18px":"18px 18px 18px 4px",
                         padding:"10px 14px",
                         fontSize:"0.78rem",
@@ -735,7 +736,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                       }}>
                         {msg.body}
                       </div>
-                      <div style={{fontSize:"0.58rem",color:"#aaa",marginTop:3,textAlign:isSelf?"right":"left"}}>
+                      <div style={{fontSize:"0.58rem",color:C.inkFaint,marginTop:3,textAlign:isSelf?"right":"left"}}>
                         {formatConvTime(msg.created_at)}
                       </div>
                     </div>
@@ -752,7 +753,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
 
               {/* Quick Replies */}
               {showQuickReplies&&(
-                <div style={{padding:"8px 14px",borderTop:"1px solid #f0f0f0",display:"flex",gap:6,flexWrap:"wrap",background:"white"}}>
+                <div style={{padding:"8px 14px",borderTop:`1px solid ${C.line}`,display:"flex",gap:6,flexWrap:"wrap",background:C.surface}}>
                   {QUICK_REPLIES.map(r=>(
                     <button key={r} onClick={()=>{setNewMessage(r);setShowQuickReplies(false);inputRef.current?.focus();}}
                       style={{background:`${C.gold}15`,color:C.deepGold,border:`1px solid ${C.gold}33`,borderRadius:20,padding:"4px 10px",fontSize:"0.68rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
@@ -768,23 +769,23 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                   staff session loses the composer — its inbox is the admin
                   MessagingPanel, and posting here would 403. */}
               {!isStaff ? (
-              <div style={{padding:"12px 14px",borderTop:"1px solid #f0f0f0",background:"white"}}>
+              <div style={{padding:"12px 14px",borderTop:`1px solid ${C.line}`,background:C.surface}}>
                 {actionError&&(
-                  <div style={{background:`${C.kente1}12`,border:`1px solid ${C.kente1}33`,borderRadius:10,padding:"8px 12px",marginBottom:10,fontSize:"0.72rem",color:C.kente1,fontWeight:600,textAlign:"center"}}>
+                  <div style={{background:`${C.kente1}12`,border:`1px solid ${C.kente1}33`,borderRadius:10,padding:"8px 12px",marginBottom:10,fontSize:"0.72rem",color:C.danger,fontWeight:600,textAlign:"center"}}>
                     {actionError}
                   </div>
                 )}
                 <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
                   {/* Emoji/Quick Reply toggle */}
                   <button onClick={()=>setShowQuickReplies(q=>!q)}
-                    style={{background:showQuickReplies?`${C.gold}20`:"#f0f0f0",border:"none",borderRadius:"50%",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1rem",flexShrink:0}}>
+                    style={{background:showQuickReplies?`${C.gold}20`:C.surface2,border:"none",borderRadius:"50%",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1rem",flexShrink:0}}>
                     ⚡
                   </button>
                   {/* minWidth:0 on both the pill and the input lets them
                       shrink inside the narrow 380px widget — without it the
                       input's intrinsic min-width pushes the send button out
                       of the panel entirely (worse once the ✕ appears). */}
-                  <div style={{flex:1,minWidth:0,background:"#f5f5f5",borderRadius:20,padding:"8px 14px",display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{flex:1,minWidth:0,background:C.surface2,borderRadius:20,padding:"8px 14px",display:"flex",alignItems:"center",gap:8}}>
                     <input
                       ref={inputRef}
                       value={newMessage}
@@ -792,26 +793,26 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                       onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!sending)sendMessage();}}}
                       placeholder="Type a message..."
                       disabled={sending}
-                      style={{flex:1,minWidth:0,border:"none",background:"transparent",outline:"none",fontSize:"0.82rem",fontFamily:"inherit",color:C.darkBrown}}/>
+                      style={{flex:1,minWidth:0,border:"none",background:"transparent",outline:"none",fontSize:"0.82rem",fontFamily:"inherit",color:C.ink}}/>
                     {newMessage&&(
-                      <button onClick={()=>setNewMessage("")} style={{background:"none",border:"none",color:"#aaa",cursor:"pointer",fontSize:"0.9rem",padding:0}}>✕</button>
+                      <button onClick={()=>setNewMessage("")} style={{background:"none",border:"none",color:C.inkFaint,cursor:"pointer",fontSize:"0.9rem",padding:0}}>✕</button>
                     )}
                   </div>
                   <button
                     onClick={()=>{if(!sending)sendMessage();}}
                     disabled={!newMessage.trim()||sending}
-                    style={{background:newMessage.trim()&&!sending?C.kente2:"#ddd",color:"white",border:"none",borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:newMessage.trim()&&!sending?"pointer":"default",fontSize:"1rem",flexShrink:0,transition:"background 0.2s"}}>
+                    style={{background:newMessage.trim()&&!sending?C.kente2:C.surface3,color:"white",border:"none",borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:newMessage.trim()&&!sending?"pointer":"default",fontSize:"1rem",flexShrink:0,transition:"background 0.2s"}}>
                     ➤
                   </button>
                 </div>
-                <div style={{fontSize:"0.6rem",color:"#aaa",marginTop:6,textAlign:"center"}}>
+                <div style={{fontSize:"0.6rem",color:C.inkFaint,marginTop:6,textAlign:"center"}}>
                   {user
                     ? "💡 Messages are stored on AshantiHub • Handled by AshantiHub Support, who relay to the business on your behalf"
                     : "Chatting as Guest — your conversation is saved to this browser; create an account to keep it on all your devices"}
                 </div>
               </div>
               ) : (
-              <div style={{padding:"14px",borderTop:"1px solid #f0f0f0",background:"white",textAlign:"center",fontSize:"0.74rem",color:"#888",lineHeight:1.6}}>
+              <div style={{padding:"14px",borderTop:`1px solid ${C.line}`,background:C.surface,textAlign:"center",fontSize:"0.74rem",color:C.inkDim,lineHeight:1.6}}>
                 Staff replies to support threads live in the Messaging tab of the staff dashboard.
               </div>
               )}
@@ -861,7 +862,7 @@ function ReviewsModal({item,user,onClose}) {
   };
 
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:520,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:520,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
       <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,borderRadius:"22px 22px 0 0",padding:"20px 24px",position:"relative"}}>
         <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
         <div style={{color:C.gold,fontWeight:900,fontSize:"1rem",marginBottom:4}}>{item.name}</div>
@@ -874,13 +875,13 @@ function ReviewsModal({item,user,onClose}) {
         {/* Write Review */}
         {!submitted ? (
           <div style={{background:`${C.gold}12`,border:`1.5px solid ${C.gold}33`,borderRadius:14,padding:"16px",marginBottom:20}}>
-            <div style={{fontWeight:800,color:C.darkBrown,marginBottom:10,fontSize:"0.85rem"}}>✍️ Write a Review</div>
+            <div style={{fontWeight:800,color:C.ink,marginBottom:10,fontSize:"0.85rem"}}>✍️ Write a Review</div>
             {!user ? (
-              <div style={{fontSize:"0.7rem",color:"#aaa",textAlign:"center"}}>Sign in to leave a review</div>
+              <div style={{fontSize:"0.7rem",color:C.inkFaint,textAlign:"center"}}>Sign in to leave a review</div>
             ) : staffSession ? (
               <StaffGateNotice passive/>
             ) : eligibility.isLoading ? (
-              <div style={{fontSize:"0.75rem",color:"#aaa",textAlign:"center"}}>Checking your eligibility…</div>
+              <div style={{fontSize:"0.75rem",color:C.inkFaint,textAlign:"center"}}>Checking your eligibility…</div>
             ) : eligibility.data?.eligible ? (
               <>
                 <div style={{display:"flex",gap:4,marginBottom:12}}>
@@ -891,27 +892,27 @@ function ReviewsModal({item,user,onClose}) {
                 </div>
                 <textarea value={newText} onChange={e=>setNewText(e.target.value)} placeholder="Share your experience..."
                   style={{...iStyle,height:80,resize:"vertical",marginBottom:10}}/>
-                {actionError&&<div style={{color:"#dc2626",fontSize:"0.75rem",marginBottom:8}}>{actionError}</div>}
+                {actionError&&<div style={{color:C.errInk,fontSize:"0.75rem",marginBottom:8}}>{actionError}</div>}
                 <button onClick={handleSubmit} style={{...btnP(!!newRating&&newText.length>10),padding:"9px"}}>Submit Review</button>
               </>
             ) : eligibility.data?.already_reviewed ? (
-              <div style={{fontSize:"0.75rem",color:"#aaa",textAlign:"center"}}>You've already reviewed this.</div>
+              <div style={{fontSize:"0.75rem",color:C.inkFaint,textAlign:"center"}}>You've already reviewed this.</div>
             ) : (
-              <div style={{fontSize:"0.75rem",color:"#aaa",textAlign:"center"}}>You can review this after a completed purchase.</div>
+              <div style={{fontSize:"0.75rem",color:C.inkFaint,textAlign:"center"}}>You can review this after a completed purchase.</div>
             )}
           </div>
         ) : (
-          <div style={{background:"#f0fdf4",border:"1.5px solid #22c55e44",borderRadius:14,padding:"16px",marginBottom:20,textAlign:"center"}}>
+          <div style={{background:C.okBg,border:"1.5px solid #22c55e44",borderRadius:14,padding:"16px",marginBottom:20,textAlign:"center"}}>
             <div style={{fontSize:"2rem",marginBottom:6}}>🎉</div>
             <div style={{fontWeight:800,color:"#22c55e"}}>Review submitted! Thank you.</div>
           </div>
         )}
         {/* Existing Reviews */}
-        <div style={{fontWeight:800,color:C.darkBrown,marginBottom:12,fontSize:"0.85rem"}}>Customer Reviews ({reviewCount})</div>
-        {reviewsQuery.isLoading&&<div style={{color:"#aaa",fontSize:"0.8rem",textAlign:"center",padding:"20px"}}>Loading reviews…</div>}
-        {!reviewsQuery.isLoading&&reviews.length===0&&<div style={{color:"#aaa",fontSize:"0.8rem",textAlign:"center",padding:"20px"}}>No reviews yet. Be the first!</div>}
+        <div style={{fontWeight:800,color:C.ink,marginBottom:12,fontSize:"0.85rem"}}>Customer Reviews ({reviewCount})</div>
+        {reviewsQuery.isLoading&&<div style={{color:C.inkFaint,fontSize:"0.8rem",textAlign:"center",padding:"20px"}}>Loading reviews…</div>}
+        {!reviewsQuery.isLoading&&reviews.length===0&&<div style={{color:C.inkFaint,fontSize:"0.8rem",textAlign:"center",padding:"20px"}}>No reviews yet. Be the first!</div>}
         {reviews.map(r=>(
-          <div key={r.id} style={{borderBottom:"1px solid #f0f0f0",paddingBottom:14,marginBottom:14}}>
+          <div key={r.id} style={{borderBottom:`1px solid ${C.line}`,paddingBottom:14,marginBottom:14}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <div style={{width:30,height:30,borderRadius:"50%",background:`${C.gold}22`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.deepGold,fontSize:"0.8rem"}}>{r.author_name?.[0]}</div>
@@ -920,12 +921,12 @@ function ReviewsModal({item,user,onClose}) {
                   <Stars rating={r.rating} size="0.7rem"/>
                 </div>
               </div>
-              <div style={{fontSize:"0.65rem",color:"#aaa",display:"flex",alignItems:"center",gap:5}}>
+              <div style={{fontSize:"0.65rem",color:C.inkFaint,display:"flex",alignItems:"center",gap:5}}>
                 {r.created_at?.slice(0,10)}
                 {r.verified&&<span style={{background:"#22c55e22",color:"#22c55e",borderRadius:20,padding:"2px 7px",fontSize:"0.58rem",fontWeight:700}}>✓ Verified Purchase</span>}
               </div>
             </div>
-            <div style={{fontSize:"0.78rem",color:"#444",lineHeight:1.6}}>{r.comment}</div>
+            <div style={{fontSize:"0.78rem",color:C.inkDim,lineHeight:1.6}}>{r.comment}</div>
           </div>
         ))}
       </div>
@@ -949,7 +950,7 @@ function MoMoModal({item,user,onClose}) {
   };
 
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
       <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente2})`,borderRadius:"22px 22px 0 0",padding:"20px 24px",position:"relative"}}>
         <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
         <div style={{color:C.gold,fontWeight:900,fontSize:"0.95rem"}}>💰 Mobile Money Payment</div>
@@ -959,9 +960,9 @@ function MoMoModal({item,user,onClose}) {
         {done ? (
           <div style={{textAlign:"center",padding:"20px 0"}}>
             <div style={{fontSize:"3.5rem",marginBottom:12}}>✅</div>
-            <div style={{fontWeight:900,color:C.kente2,fontSize:"1rem",marginBottom:6}}>Payment Successful!</div>
-            <div style={{fontSize:"0.78rem",color:"#555",lineHeight:1.6,marginBottom:16}}>Your booking for <strong>{item.name}</strong> is confirmed. A receipt has been sent to your WhatsApp.</div>
-            <div style={{background:`${C.gold}15`,border:`1px solid ${C.gold}33`,borderRadius:12,padding:"12px",fontSize:"0.74rem",color:"#444",marginBottom:16,lineHeight:1.7}}>
+            <div style={{fontWeight:900,color:C.trust,fontSize:"1rem",marginBottom:6}}>Payment Successful!</div>
+            <div style={{fontSize:"0.78rem",color:C.inkDim,lineHeight:1.6,marginBottom:16}}>Your booking for <strong>{item.name}</strong> is confirmed. A receipt has been sent to your WhatsApp.</div>
+            <div style={{background:`${C.gold}15`,border:`1px solid ${C.gold}33`,borderRadius:12,padding:"12px",fontSize:"0.74rem",color:C.inkDim,marginBottom:16,lineHeight:1.7}}>
               <div>📋 <strong>Booking Ref:</strong> AH-{Math.floor(Math.random()*90000+10000)}</div>
               <div>💳 <strong>Network:</strong> {network} MoMo</div>
               <div>📱 <strong>Number:</strong> {momoNum}</div>
@@ -975,27 +976,27 @@ function MoMoModal({item,user,onClose}) {
               <label style={lStyle}>Select Network</label>
               <div style={{display:"flex",gap:8}}>
                 {["MTN","Telecel","AirtelTigo"].map(n=>(
-                  <button key={n} onClick={()=>setNetwork(n)} style={{flex:1,background:network===n?(n==="MTN"?"#FCD116":n==="Telecel"?"#e31837":"#e87722"):"#f0f0f0",color:network===n?"white":C.darkBrown,border:"none",borderRadius:12,padding:"10px 6px",fontWeight:800,fontSize:"0.72rem",cursor:"pointer"}}>{n}</button>
+                  <button key={n} onClick={()=>setNetwork(n)} style={{flex:1,background:network===n?(n==="MTN"?"#FCD116":n==="Telecel"?"#e31837":"#e87722"):C.surface2,color:network===n?"white":C.ink,border:"none",borderRadius:12,padding:"10px 6px",fontWeight:800,fontSize:"0.72rem",cursor:"pointer"}}>{n}</button>
                 ))}
               </div>
             </div>
             {/* Amount */}
             <div style={{background:`${C.gold}12`,borderRadius:12,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{fontSize:"0.78rem",color:"#555"}}>Amount to Pay</div>
-              <div style={{fontWeight:900,color:C.darkBrown,fontSize:"1.1rem"}}>{item.price}</div>
+              <div style={{fontSize:"0.78rem",color:C.inkDim}}>Amount to Pay</div>
+              <div style={{fontWeight:900,color:C.ink,fontSize:"1.1rem"}}>{item.price}</div>
             </div>
             {/* MoMo Number */}
             <div>
               <label style={lStyle}>📱 {network} MoMo Number</label>
               <input style={iStyle} placeholder="0244 000 000" value={momoNum} onChange={e=>setMomoNum(e.target.value)}/>
             </div>
-            <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:"10px 12px",fontSize:"0.72rem",color:"#0369a1",lineHeight:1.6}}>
+            <div style={{background:tint(C.info, "14"),border:`1px solid ${tint(C.info, "40")}`,borderRadius:10,padding:"10px 12px",fontSize:"0.72rem",color:C.info,lineHeight:1.6}}>
               📲 You will receive a <strong>prompt on your phone</strong> to approve this payment. Enter your {network} MoMo PIN when prompted.
             </div>
             <button onClick={pay} style={{...btnP(momoNum.length>=10),background:processing?"#aaa":C.kente2,color:"white"}}>
               {processing?"⏳ Processing...":"Pay Now →"}
             </button>
-            <div style={{fontSize:"0.68rem",color:"#aaa",textAlign:"center"}}>🔒 Secured by AshantiHub • Powered by Hubtel</div>
+            <div style={{fontSize:"0.68rem",color:C.inkFaint,textAlign:"center"}}>🔒 Secured by AshantiHub • Powered by Hubtel</div>
           </div>
         )}
       </div>
@@ -1034,12 +1035,12 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
 
   return <>
     {showReviews&&<ReviewsModal item={item} user={user} onClose={()=>setShowReviews(false)}/>}
-    <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(6px)",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",border:`1.5px solid ${accentColor}55`,transition:"transform 0.2s"}}
+    <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(6px)",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",border:`1.5px solid ${tint(accentColor, "55")}`,transition:"transform 0.2s"}}
       onMouseEnter={e=>e.currentTarget.style.transform="translateY(-4px)"}
       onMouseLeave={e=>e.currentTarget.style.transform=""}>
       {/* Photo strip — clicking it opens the PDP (ListingDetailPage) when onOpen is provided;
           the favourite/share buttons inside it stopPropagation so they don't also trigger it. */}
-      <div onClick={()=>onOpen&&onOpen(item.id)} style={{height:140,position:"relative",overflow:"hidden",background:`linear-gradient(135deg,${accentColor}22,${accentColor}44)`,cursor:onOpen?"pointer":"default"}}>
+      <div onClick={()=>onOpen&&onOpen(item.id)} style={{height:140,position:"relative",overflow:"hidden",background:`linear-gradient(135deg,${tint(accentColor, "22")},${tint(accentColor, "44")})`,cursor:onOpen?"pointer":"default"}}>
         {/* Real photo if available (main_photo or first gallery photo), fallback to category emoji */}
         {cardPhoto ? (
           <img src={cardPhoto} alt={item.name}
@@ -1058,7 +1059,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
           <div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:2}}>
             {item.photos.map((p,i)=>(
               <img key={p.id} src={p.image} alt="" onClick={(e)=>{e.stopPropagation();setPhotoIdx(i);}}
-                style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",border:photoIdx===i?"2px solid white":"1px solid rgba(255,255,255,0.6)",cursor:"pointer"}}/>
+                style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",border:photoIdx===i?`2px solid ${C.surface}`:"1px solid rgba(255,255,255,0.6)",cursor:"pointer"}}/>
             ))}
           </div>
         )}
@@ -1069,11 +1070,11 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
           <span style={{position:"absolute",top:8,left:40,background:"linear-gradient(90deg,#f59e0b,#d97706)",color:"white",fontSize:"0.58rem",fontWeight:800,padding:"2px 8px",borderRadius:20,zIndex:2,boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>⭐ Promoted</span>
         )}
         <span style={{position:"absolute",top:8,right:8,background:accentColor,color:"white",fontSize:"0.6rem",fontWeight:700,padding:"2px 7px",borderRadius:20,zIndex:2}}>{item.tag}</span>
-        <button onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:8,left:8,background:"rgba(255,255,255,0.9)",border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
+        <button onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:8,left:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
           {isFav?"❤️":"🤍"}
         </button>
         <button onClick={(e)=>{e.stopPropagation();if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
-          style={{position:"absolute",bottom:8,right:8,background:"rgba(255,255,255,0.9)",border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.8rem",zIndex:2}}>
+          style={{position:"absolute",bottom:8,right:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.8rem",zIndex:2}}>
           📤
         </button>
       </div>
@@ -1120,7 +1121,7 @@ function ReferralModal({user,onClose}) {
   const copy = ()=>{navigator.clipboard?.writeText(code);setCopied(true);setTimeout(()=>setCopied(false),2000);};
 
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,borderRadius:"22px 22px 0 0",padding:"24px",textAlign:"center",position:"relative"}}>
         <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
         <div style={{fontSize:"2.5rem",marginBottom:8}}>🎁</div>
@@ -1129,19 +1130,19 @@ function ReferralModal({user,onClose}) {
       </div>
       <div style={{padding:"24px"}}>
         <div style={{background:`${C.gold}15`,border:`1.5px solid ${C.gold}33`,borderRadius:14,padding:"16px",marginBottom:16,textAlign:"center"}}>
-          <div style={{fontSize:"0.72rem",color:"#888",marginBottom:6}}>Your Referral Code</div>
-          <div style={{fontWeight:900,fontSize:"1.4rem",color:C.darkBrown,letterSpacing:3,marginBottom:10}}>{code}</div>
+          <div style={{fontSize:"0.72rem",color:C.inkDim,marginBottom:6}}>Your Referral Code</div>
+          <div style={{fontWeight:900,fontSize:"1.4rem",color:C.ink,letterSpacing:3,marginBottom:10}}>{code}</div>
           <button onClick={copy} style={{background:copied?C.kente2:C.gold,color:copied?"white":C.darkBrown,border:"none",borderRadius:20,padding:"8px 20px",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem"}}>
             {copied?"✓ Copied!":"Copy Code"}
           </button>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
           {[["👥","Your friend signs up with your code","They get GHS 5 welcome credit"],["💰","They make their first booking","You earn GHS 10 MoMo credit"],["🔁","No limit on referrals","Keep earning with every friend"]].map(([icon,step,reward])=>(
-            <div key={step} style={{display:"flex",gap:12,alignItems:"flex-start",background:"#f9f9f9",borderRadius:10,padding:"10px 12px"}}>
+            <div key={step} style={{display:"flex",gap:12,alignItems:"flex-start",background:C.surface2,borderRadius:10,padding:"10px 12px"}}>
               <span style={{fontSize:"1.2rem"}}>{icon}</span>
               <div>
-                <div style={{fontWeight:700,fontSize:"0.78rem",color:C.darkBrown}}>{step}</div>
-                <div style={{fontSize:"0.68rem",color:C.kente2,fontWeight:600}}>{reward}</div>
+                <div style={{fontWeight:700,fontSize:"0.78rem",color:C.ink}}>{step}</div>
+                <div style={{fontSize:"0.68rem",color:C.trust,fontWeight:600}}>{reward}</div>
               </div>
             </div>
           ))}
@@ -1163,7 +1164,7 @@ function ReferralModal({user,onClose}) {
   </div>;
 }
 
-const authInputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:"1.5px solid #ddd",marginBottom:10,fontSize:"0.82rem",fontFamily:"inherit"};
+const authInputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.line}`,marginBottom:10,fontSize:"0.82rem",fontFamily:"inherit"};
 const authSubmitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"12px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",marginTop:4};
 
 // `onGoToMarketplace` is passed only for the required /staff sign-in in a
@@ -1256,26 +1257,26 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   };
 
   return <div data-testid="auth-modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,borderRadius:"22px 22px 0 0",padding:"20px 24px",position:"relative"}}>
         <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
         <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>{mode==="forgot"?"Reset your password":lockedAccountType==="staff"?"Staff Sign In":mode==="login"?"Welcome back":"Create your account"}</div>
       </div>
       <div style={{padding:"20px 24px"}}>
         {!lockedAccountType && mode!=="forgot" && <div style={{display:"flex",gap:8,marginBottom:16}}>
-          <button type="button" onClick={()=>setMode("login")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="login"?C.gold:"#eee",color:mode==="login"?C.darkBrown:"#666"}}>Sign In</button>
-          <button type="button" onClick={()=>setMode("signup")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="signup"?C.gold:"#eee",color:mode==="signup"?C.darkBrown:"#666"}}>Sign Up</button>
+          <button type="button" onClick={()=>setMode("login")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="login"?C.gold:C.surface2,color:mode==="login"?C.darkBrown:C.inkDim}}>Sign In</button>
+          <button type="button" onClick={()=>setMode("signup")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="signup"?C.gold:C.surface2,color:mode==="signup"?C.darkBrown:C.inkDim}}>Sign Up</button>
         </div>}
 
-        {signedOutNotice && <div role="status" style={{background:C.cream,border:`1px solid ${C.gold}`,color:C.darkBrown,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{signedOutNotice}</div>}
-        {error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+        {signedOutNotice && <div role="status" style={{background:C.canvas,border:`1px solid ${C.gold}`,color:C.ink,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{signedOutNotice}</div>}
+        {error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
         {mode==="login" && twoStep && <StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/>}
-        {mode==="login" && !twoStep && twoStepNotice && <div role="status" style={{background:"#fff8e1",color:"#5d4037",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{twoStepNotice}</div>}
+        {mode==="login" && !twoStep && twoStepNotice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{twoStepNotice}</div>}
         {mode==="login" && !twoStep && <form onSubmit={handleLogin}>
           {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:12}}>
-            <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:"white"}}>Customer</button>
-            <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:"white"}}>Business Owner</button>
+            <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
+            <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
           </div>}
           <input value={identifier} onChange={e=>setIdentifier(e.target.value)} placeholder="Phone or email" required style={authInputStyle}/>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password" required style={authInputStyle}/>
@@ -1288,7 +1289,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
         {mode==="forgot" && <div>
           <button type="button" onClick={()=>{setMode("login");setResetSubmitted(false);}} style={{background:"none",border:"none",color:C.deepGold,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",marginBottom:14,padding:0,fontFamily:"inherit"}}>← Back to Sign In</button>
           {resetSubmitted ? (
-            <div style={{background:"#eafaf0",color:"#1b7a43",borderRadius:10,padding:"12px 14px",fontSize:"0.8rem",lineHeight:1.6}}>
+            <div style={{background:C.okBg,color:C.okInk,borderRadius:10,padding:"12px 14px",fontSize:"0.8rem",lineHeight:1.6}}>
               If an account exists for that email, we've sent a password reset link. Please check your inbox (and spam folder).
             </div>
           ) : (
@@ -1297,7 +1298,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
                   every account type for a match and the emailed link carries
                   the type; a visible "Staff" option on a public form would
                   advertise which account classes exist. */}
-              <div style={{fontSize:"0.76rem",color:"#666",marginBottom:12,lineHeight:1.5}}>Enter your account email and we'll send you a link to reset your password.</div>
+              <div style={{fontSize:"0.76rem",color:C.inkDim,marginBottom:12,lineHeight:1.5}}>Enter your account email and we'll send you a link to reset your password.</div>
               <input value={resetEmail} onChange={e=>setResetEmail(e.target.value)} type="email" placeholder="Email" required style={authInputStyle}/>
               <button type="submit" disabled={resetSubmitting} style={authSubmitStyle}>{resetSubmitting?"Sending…":"Send Reset Link"}</button>
             </form>
@@ -1306,14 +1307,14 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
 
         {mode==="signup" && <form onSubmit={handleSignup}>
           <div style={{display:"flex",gap:8,marginBottom:12}}>
-            <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:"white"}}>Customer</button>
-            <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:"white"}}>Business Owner</button>
+            <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
+            <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
           </div>
           <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={authInputStyle}/>
           <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" style={authInputStyle}/>
           <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" style={authInputStyle}/>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
-          <fieldset style={{border:"1px solid #eee",borderRadius:10,padding:"8px 12px",margin:"0 0 12px"}}>
+          <fieldset style={{border:`1px solid ${C.line}`,borderRadius:10,padding:"8px 12px",margin:"0 0 12px"}}>
             <legend style={{fontSize:"0.72rem",fontWeight:800,padding:"0 4px"}}>Offers from AshantiHub (optional)</legend>
             {[["sms","SMS"],["whatsapp","WhatsApp"],["email","Email"],["inapp","In the app"]].map(([key,label])=>(
               <label key={key} style={{display:"flex",gap:8,alignItems:"center",fontSize:"0.76rem",padding:"3px 0"}}>
@@ -1325,7 +1326,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
         </form>}
 
         {lockedAccountType==="staff" && onGoToMarketplace && <div style={{textAlign:"center",marginTop:16,paddingTop:12,borderTop:`1px solid ${C.gold}33`}}>
-          <button type="button" onClick={onGoToMarketplace} style={{background:"none",border:"none",color:C.darkBrown,opacity:0.7,fontSize:"0.74rem",fontWeight:600,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit",padding:"6px 8px"}}>Go to marketplace</button>
+          <button type="button" onClick={onGoToMarketplace} style={{background:"none",border:"none",color:C.ink,opacity:0.7,fontSize:"0.74rem",fontWeight:600,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit",padding:"6px 8px"}}>Go to marketplace</button>
         </div>}
       </div>
     </div>
@@ -1380,16 +1381,16 @@ function StaffActivatePage({auth,onSuccess}) {
   };
 
   return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:16}}>
-    <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden"}}>
+    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"20px 24px"}}>
         <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Activate Your Staff Account</div>
       </div>
       <div style={{padding:"20px 24px"}}>
         {twoStep && <StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setConfirmPassword("");if(typeof message==="string"){setNotice(message);}else{setAccountActive(true);}}}/>}
-        {!twoStep && accountActive && <div role="status" style={{background:"#fff8e1",color:"#5d4037",borderRadius:10,padding:"10px 12px",fontSize:"0.78rem"}}>Your account is active. Sign in at the <a href="/staff" style={{color:"inherit",fontWeight:700}}>staff sign-in</a> to finish setting up 2-step sign-in.</div>}
-        {!twoStep && !accountActive && notice && <div role="status" style={{background:"#fff8e1",color:"#5d4037",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{notice}</div>}
-        {!twoStep && error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
-        {!twoStep && !accountActive && !token && !error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No activation token found in this link. Please use the exact link from your invite email.</div>}
+        {!twoStep && accountActive && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",fontSize:"0.78rem"}}>Your account is active. Sign in at the <a href="/staff" style={{color:"inherit",fontWeight:700}}>staff sign-in</a> to finish setting up 2-step sign-in.</div>}
+        {!twoStep && !accountActive && notice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{notice}</div>}
+        {!twoStep && error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+        {!twoStep && !accountActive && !token && !error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No activation token found in this link. Please use the exact link from your invite email.</div>}
         {!twoStep && !accountActive && <form onSubmit={handleSubmit}>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
           <input value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} type="password" placeholder="Confirm password" required minLength={8} style={authInputStyle}/>
@@ -1438,20 +1439,20 @@ function ResetPasswordPage({auth,setPage,setAuthModal}) {
   };
 
   return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:16}}>
-    <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden"}}>
+    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"20px 24px"}}>
         <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Reset Your Password</div>
       </div>
       <div style={{padding:"20px 24px"}}>
         {success ? (
           <>
-            <div style={{background:"#eafaf0",color:"#1b7a43",borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:"0.8rem",lineHeight:1.6}}>Your password has been reset. You can now sign in with your new password.</div>
+            <div style={{background:C.okBg,color:C.okInk,borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:"0.8rem",lineHeight:1.6}}>Your password has been reset. You can now sign in with your new password.</div>
             <button onClick={()=>{setAuthModal("login");setPage("home");}} style={authSubmitStyle}>Sign In</button>
           </>
         ) : (
           <>
-            {error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
-            {!token && !error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No reset token found in this link. Please request a new one from the sign-in screen.</div>}
+            {error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+            {!token && !error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No reset token found in this link. Please request a new one from the sign-in screen.</div>}
             <form onSubmit={handleSubmit}>
               <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="New password (min 8 characters)" required minLength={8} style={authInputStyle}/>
               <input value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} type="password" placeholder="Confirm new password" required minLength={8} style={authInputStyle}/>
@@ -1513,37 +1514,37 @@ function PaymentReturnPage({setPage}) {
   const isDone = status && status !== "pending";
 
   return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:16}}>
-    <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden",textAlign:"center"}}>
+    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden",textAlign:"center"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"20px 24px"}}>
         <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Payment Status</div>
       </div>
       <div style={{padding:"28px 24px"}}>
         {error ? (
-          <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"12px 14px",fontSize:"0.8rem",lineHeight:1.6}}>{error}</div>
+          <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"12px 14px",fontSize:"0.8rem",lineHeight:1.6}}>{error}</div>
         ) : !session ? (
-          <div style={{color:"#555",fontSize:"0.82rem"}}>Confirming your payment…</div>
+          <div style={{color:C.inkDim,fontSize:"0.82rem"}}>Confirming your payment…</div>
         ) : status === "success" ? (
           <>
             <div style={{fontSize:"3rem",marginBottom:10}}>✅</div>
             <div style={{fontWeight:900,color:"#22c55e",fontSize:"1rem",marginBottom:8}}>Payment Successful!</div>
-            <div style={{color:"#555",fontSize:"0.8rem",lineHeight:1.6}}>Your payment of GHS {session.amount} for "{session.purpose}" has been confirmed.</div>
+            <div style={{color:C.inkDim,fontSize:"0.8rem",lineHeight:1.6}}>Your payment of GHS {session.amount} for "{session.purpose}" has been confirmed.</div>
           </>
         ) : status === "failed" ? (
           <>
             <div style={{fontSize:"3rem",marginBottom:10}}>❌</div>
-            <div style={{fontWeight:900,color:"#dc2626",fontSize:"1rem",marginBottom:8}}>Payment Failed</div>
-            <div style={{color:"#555",fontSize:"0.8rem",lineHeight:1.6}}>Your payment could not be completed. Please try again.</div>
+            <div style={{fontWeight:900,color:C.errInk,fontSize:"1rem",marginBottom:8}}>Payment Failed</div>
+            <div style={{color:C.inkDim,fontSize:"0.8rem",lineHeight:1.6}}>Your payment could not be completed. Please try again.</div>
           </>
         ) : status === "expired" ? (
           <>
             <div style={{fontSize:"3rem",marginBottom:10}}>⏰</div>
             <div style={{fontWeight:900,color:"#d97706",fontSize:"1rem",marginBottom:8}}>Payment Expired</div>
-            <div style={{color:"#555",fontSize:"0.8rem",lineHeight:1.6}}>This checkout session expired before payment was completed. Please try again.</div>
+            <div style={{color:C.inkDim,fontSize:"0.8rem",lineHeight:1.6}}>This checkout session expired before payment was completed. Please try again.</div>
           </>
         ) : timedOut ? (
-          <div style={{color:"#555",fontSize:"0.82rem",lineHeight:1.6}}>Still confirming your payment — this is taking longer than expected. Check "My Account" shortly for the latest status.</div>
+          <div style={{color:C.inkDim,fontSize:"0.82rem",lineHeight:1.6}}>Still confirming your payment — this is taking longer than expected. Check "My Account" shortly for the latest status.</div>
         ) : (
-          <div style={{color:"#555",fontSize:"0.82rem"}}>Confirming your payment…</div>
+          <div style={{color:C.inkDim,fontSize:"0.82rem"}}>Confirming your payment…</div>
         )}
         {(isDone || error || timedOut) && (
           <button onClick={()=>setPage("home")} style={{...authSubmitStyle,marginTop:16}}>Back to AshantiHub</button>
@@ -1616,23 +1617,23 @@ function NotificationsPanel({ user, onClose }) {
   };
 
   return <div style={{position:"fixed",inset:0,zIndex:999}} onClick={onClose}>
-    <div style={{position:"absolute",top:65,right:16,background:"white",borderRadius:16,width:320,maxHeight:400,overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.2)",border:"1px solid #f0f0f0"}} onClick={e=>e.stopPropagation()}>
-      <div style={{padding:"14px 16px",borderBottom:"1px solid #f0f0f0",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-        <div style={{fontWeight:800,color:C.darkBrown,fontSize:"0.88rem"}}>🔔 Notifications</div>
+    <div style={{position:"absolute",top:65,right:16,background:C.surface,borderRadius:16,width:320,maxHeight:400,overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.2)",border:`1px solid ${C.line}`}} onClick={e=>e.stopPropagation()}>
+      <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.line}`,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+        <div style={{fontWeight:800,color:C.ink,fontSize:"0.88rem"}}>🔔 Notifications</div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{background:`${C.kente1}20`,color:C.kente1,borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:800}}>{unreadCount} new</span>
+          <span style={{background:`${C.kente1}20`,color:C.danger,borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:800}}>{unreadCount} new</span>
           {user&&unreadCount>0&&<button onClick={markAllRead} style={{background:"none",border:"none",color:C.gold,fontSize:"0.62rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit",padding:0}}>Mark all read</button>}
         </div>
       </div>
-      {!user&&<div style={{padding:"20px",textAlign:"center",color:"#aaa",fontSize:"0.78rem"}}>Sign in to see your notifications</div>}
-      {user&&notifs.length===0&&<div style={{padding:"20px",textAlign:"center",color:"#aaa",fontSize:"0.78rem"}}>You have no notifications yet.</div>}
+      {!user&&<div style={{padding:"20px",textAlign:"center",color:C.inkFaint,fontSize:"0.78rem"}}>Sign in to see your notifications</div>}
+      {user&&notifs.length===0&&<div style={{padding:"20px",textAlign:"center",color:C.inkFaint,fontSize:"0.78rem"}}>You have no notifications yet.</div>}
       {notifs.map(n=>(
-        <div key={n.id} onClick={()=>onItemClick(n)} style={{padding:"12px 16px",borderBottom:"1px solid #f9f9f9",background:!n.is_read?`${C.gold}08`:"white",display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer"}}>
+        <div key={n.id} onClick={()=>onItemClick(n)} style={{padding:"12px 16px",borderBottom:`1px solid ${C.line}`,background:!n.is_read?`${C.gold}08`:C.surface,display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer"}}>
           <span style={{fontSize:"1.2rem",flexShrink:0}}>{n.icon||"🔔"}</span>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:700,fontSize:"0.78rem",color:C.darkBrown,marginBottom:2}}>{n.title}</div>
-            {n.body&&<div style={{fontSize:"0.7rem",color:"#666",lineHeight:1.4,marginBottom:2}}>{n.body}</div>}
-            <div style={{fontSize:"0.62rem",color:"#aaa"}}>{relativeTime(n.created_at)}</div>
+            <div style={{fontWeight:700,fontSize:"0.78rem",color:C.ink,marginBottom:2}}>{n.title}</div>
+            {n.body&&<div style={{fontSize:"0.7rem",color:C.inkDim,lineHeight:1.4,marginBottom:2}}>{n.body}</div>}
+            <div style={{fontSize:"0.62rem",color:C.inkFaint}}>{relativeTime(n.created_at)}</div>
           </div>
           {!n.is_read&&<div style={{width:8,height:8,borderRadius:"50%",background:C.kente1,flexShrink:0,marginTop:4}}/>}
         </div>
@@ -1650,7 +1651,7 @@ const TRANSLATIONS = {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 // The staff dashboard is the Admin Command Center (frontend/components/
-// admin/*), the light "artisan" restyle of the old inline-in-App.jsx
+// admin/*), the "artisan" restyle (light/dark theme tokens) of the old inline-in-App.jsx
 // StaffDashboard — matching the Business Command Center's visual system
 // (frontend/components/dashboard/*) while keeping every panel's behavior/
 // text unchanged (see frontend/StaffDashboard.test.jsx, the behavioral
@@ -1661,8 +1662,8 @@ const TRANSLATIONS = {
 // `onExit` signs the staffer out (labelled "Sign out" everywhere);
 // `onViewSite`, when given, is the browser-only "View site" that keeps the
 // session and opens the view-only marketplace.
-export function StaffDashboard({auth,onExit,onViewSite,activeTab,activeDetail,onTabChange}) {
-  return <AdminCommandCenter auth={auth} onExit={onExit} onViewSite={onViewSite} activeTab={activeTab} activeDetail={activeDetail} onTabChange={onTabChange} NotificationsSlot={StaffNotificationsSlot} />;
+export function StaffDashboard({auth,onExit,onViewSite,activeTab,activeDetail,onTabChange,theme,toggleTheme}) {
+  return <AdminCommandCenter auth={auth} onExit={onExit} onViewSite={onViewSite} activeTab={activeTab} activeDetail={activeDetail} onTabChange={onTabChange} theme={theme} toggleTheme={toggleTheme} NotificationsSlot={StaffNotificationsSlot} />;
 }
 
 // The staff header's notification bell. Lives here (not in components/admin)
@@ -1676,13 +1677,13 @@ function StaffNotificationsSlot({ user }) {
     <button type="button" onClick={()=>setOpen(v=>!v)} aria-haspopup="dialog" aria-expanded={open} aria-label={unread>0?`Notifications (${unread} unread)`:"Notifications"} title="Notifications"
       style={{position:"relative",background:"none",border:`1px solid ${D.divider}`,borderRadius:10,minWidth:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text,fontFamily:"inherit"}}>
       🔔
-      {unread>0&&<span aria-hidden="true" style={{position:"absolute",top:-6,right:-6,background:D.red,color:D.panelBg,borderRadius:20,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>{unread}</span>}
+      {unread>0&&<span aria-hidden="true" style={{position:"absolute",top:-6,right:-6,background:D.red,color:D.cream,borderRadius:20,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>{unread}</span>}
     </button>
     {open&&<NotificationsPanel user={user} onClose={()=>setOpen(false)}/>}
   </>;
 }
 
-// The business-owner dashboard is the unified light "artisan" Business
+// The business-owner dashboard is the unified "artisan" Business
 // Command Center (frontend/components/dashboard/*), which replaced the three
 // former inline-styled dashboards (BusinessDashboard / PaymentDashboard /
 // CreditDashboard) — folding Payments and Credit in as tabs and adding the
@@ -1695,7 +1696,7 @@ export function BusinessDashboard({ onExit, user, auth }) {
 
 // ─── Account Center (customer "My Account" dashboard) ─────────────────────────
 // Redesigned to match the business-owner side's Business Command Center
-// (frontend/components/dashboard/*) — the same always-light "artisan"
+// (frontend/components/dashboard/*) — the same "artisan"
 // shell language, reusing its `D` palette, `glassCard`, and the shared
 // KpiCard/ChartFrame/SpendAreaChart/ListingsDonut chart primitives directly
 // rather than duplicating them, plus a `.command-center.account-grid` square-
@@ -1707,10 +1708,9 @@ export function BusinessDashboard({ onExit, user, auth }) {
 // module-top-level in this file — App.jsx importing components/dashboard/* is
 // the established one-directional convention (already done for
 // BusinessCommandCenter/EventSubmissionPanel above); components/ itself never
-// imports back into App.jsx. Always-light — no light/dark toggle of its own,
-// matching BusinessCommandCenter's own "one consistent dashboard visual
-// language" choice; this also resolves MyEventsTab's old "known limitation"
-// note below, since EventSubmissionPanel was already hardcoded always-dark.
+// imports back into App.jsx. Follows the site's light/dark theme through `D`
+// (theme tokens), with a toggle in its header like the business and staff
+// shells. EventSubmissionPanel (My Events) keeps its own fixed-dark palette.
 const ACCOUNT_NAV_ITEMS = [
   { id: "overview", icon: "📊", label: "Overview", group: "main" },
   { id: "orders", icon: "📦", label: "Orders & Delivery", group: "main" },
@@ -1736,7 +1736,7 @@ const ACCOUNT_SEARCHABLE_TABS = new Set(["orders", "tickets"]);
 
 const accountMenuItemStyle = { display: "block", width: "100%", textAlign: "left", background: "none", border: "none", color: D.textDim, padding: "8px 10px", borderRadius: 8, fontSize: "0.76rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
 
-export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, setLang, PaymentComponent }) {
+export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, setLang, PaymentComponent, theme, toggleTheme }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [searchQuery, setSearchQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1814,7 +1814,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     </div>
 
     <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
-      <div style={{background:"rgba(253,246,227,0.9)",backdropFilter:"blur(8px)",borderBottom:`1px solid ${D.divider}`,padding:"0 16px",display:"flex",alignItems:"center",gap:12,height:64,position:"sticky",top:0,zIndex:80}}>
+      <div style={{background:tint(D.pageBg, "e6"),backdropFilter:"blur(8px)",borderBottom:`1px solid ${D.divider}`,padding:"0 16px",display:"flex",alignItems:"center",gap:12,height:64,position:"sticky",top:0,zIndex:80}}>
         <button className="ah-account-hamburger" onClick={()=>setSidebarOpen(true)} style={{display:"none",background:"none",border:`1px solid ${D.divider}`,borderRadius:8,color:D.text,width:34,height:34,cursor:"pointer",fontSize:"1rem",flexShrink:0}}>☰</button>
 
         {/* Label only (no icon) — MessagingCenter renders its own "💬 Messages"
@@ -1857,6 +1857,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
           )}
         </div>
 
+        <ThemeToggle theme={theme} onToggle={toggleTheme}/>
         <button onClick={onExit} style={{background:"none",border:`1px solid ${D.divider}`,color:D.textDim,borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← Exit</button>
       </div>
 
@@ -2058,7 +2059,7 @@ export function ServiceRequestsTab({ PaymentComponent }) {
         <div key={sr.id} style={{...glassCard,padding:18}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
             <div style={{color:D.text,fontWeight:800,fontSize:"0.85rem"}}>{sr.listing_name}</div>
-            <span style={{background:`${meta.color}22`,color:meta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{meta.label}</span>
+            <span style={{background:tint(meta.color, "22"),color:meta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{meta.label}</span>
           </div>
           <div style={{color:D.textDim,fontSize:"0.74rem",marginTop:6}}>"{sr.message}"</div>
           <div style={{color:D.textDim,fontSize:"0.72rem",marginTop:4}}>
@@ -2113,10 +2114,10 @@ function MyBookingsTab() {
         <div key={b.id} style={{...glassCard,padding:18}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
             <div style={{color:D.text,fontWeight:800,fontSize:"0.85rem"}}>{b.listing_name}</div>
-            <span style={{background:`${meta.color}22`,color:meta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{meta.label}</span>
+            <span style={{background:tint(meta.color, "22"),color:meta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{meta.label}</span>
           </div>
           <div style={{color:D.textDim,fontSize:"0.74rem",marginTop:6}}>{b.check_in} → {b.check_out} · {b.nights} night{b.nights===1?"":"s"} · {b.units} unit{b.units===1?"":"s"} · GHS {b.total_price}</div>
-          {cancellable && <button onClick={()=>cancel(b.id)} style={{marginTop:10,background:`${D.red}22`,color:D.red,border:"none",borderRadius:20,padding:"7px 14px",fontWeight:700,fontSize:"0.74rem",cursor:"pointer",fontFamily:"inherit"}}>Cancel booking</button>}
+          {cancellable && <button onClick={()=>cancel(b.id)} style={{marginTop:10,background:tint(D.red, "22"),color:D.red,border:"none",borderRadius:20,padding:"7px 14px",fontWeight:700,fontSize:"0.74rem",cursor:"pointer",fontFamily:"inherit"}}>Cancel booking</button>}
         </div>
       );
     })}
@@ -2152,7 +2153,7 @@ function OrdersDeliveryTab({ searchQuery }) {
           <div style={{color:D.text,fontWeight:800,fontSize:"0.85rem"}}>Order #{o.id}</div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{color:D.textDim,fontSize:"0.7rem"}}>{o.placed_at?.slice(0,10)}</span>
-            <span style={{background:`${statusMeta.color}22`,color:statusMeta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{statusMeta.label}</span>
+            <span style={{background:tint(statusMeta.color, "22"),color:statusMeta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{statusMeta.label}</span>
           </div>
         </div>
         <div style={{marginTop:10}}>
@@ -2201,7 +2202,7 @@ function OrdersDeliveryTab({ searchQuery }) {
 function SavedBusinessesTab({ favourites, toggleFav }) {
   return <div>
     {favourites.length===0 && <div style={{padding:"20px",textAlign:"center",color:D.textFaint,fontSize:"0.78rem"}}>No saved businesses yet.<br/>Tap ❤️ on any listing to save it.</div>}
-    {favourites.length>0 && <div style={{background:"white",borderRadius:16,overflow:"hidden",maxWidth:420,boxShadow:"0 4px 24px rgba(0,0,0,0.35)"}}>
+    {favourites.length>0 && <div style={{background:C.surface,borderRadius:16,overflow:"hidden",maxWidth:420,boxShadow:"0 4px 24px rgba(0,0,0,0.35)"}}>
       {favourites.map(id=><FavDrawerItem key={id} id={id} onRemove={toggleFav}/>)}
     </div>}
   </div>;
@@ -2210,9 +2211,8 @@ function SavedBusinessesTab({ favourites, toggleFav }) {
 // Mounts the same self-contained EventSubmissionPanel used on the public
 // Events page (form + "My Events" list + ticket management) — an organizer
 // submits and manages events straight from their account. Its own hardcoded
-// always-dark styling now matches this panel's always-dark shell exactly
-// (previously a known mismatch against UserPanel's old light/dark toggle,
-// resolved by dropping that toggle).
+// fixed-dark styling sits on the account shell, which follows the site
+// theme (in light mode it reads as a dark card on cream).
 function MyEventsTab({ user, categories, zones }) {
   return <EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/>;
 }
@@ -2263,7 +2263,7 @@ function TicketsTab({ searchQuery }) {
               <div style={{fontSize:"0.68rem",color:D.textFaint}}>{formatEventDate(t.event?.event_date)}</div>
               <div style={{fontSize:"0.74rem",color:D.textDim,marginTop:3}}>{t.ticket_type?.name} · GHS {t.price}</div>
             </div>
-            <span style={{background:`${status.color}22`,color:status.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:800,whiteSpace:"nowrap"}}>{status.label}</span>
+            <span style={{background:tint(status.color, "22"),color:status.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:800,whiteSpace:"nowrap"}}>{status.label}</span>
           </div>
           <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontFamily:"monospace",fontSize:"0.8rem",fontWeight:800,color:D.text,background:D.panelBg2,borderRadius:8,padding:"4px 10px"}}>{t.code}</span>
@@ -2289,7 +2289,7 @@ function NotificationToggleRow({ label, checked, onToggle, disabled }) {
       aria-label={label}
       style={{width:40,height:22,borderRadius:20,border:"none",cursor:disabled?"wait":"pointer",background:checked?D.gold:D.divider,position:"relative",flexShrink:0,padding:0}}
     >
-      <span style={{position:"absolute",top:2,left:checked?20:2,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .15s ease"}}/>
+      <span style={{position:"absolute",top:2,left:checked?20:2,width:18,height:18,borderRadius:"50%",background:C.surface,transition:"left .15s ease"}}/>
     </button>
   </div>;
 }
@@ -2428,7 +2428,7 @@ function OfflineBanner() {
 // ─── 404 Not Found Page ───────────────────────────────────────────────────────
 function NotFoundPage({ onHome, user }) {
   return (
-    <div style={{fontFamily:"'Georgia',serif",background:C.cream,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+    <div style={{fontFamily:"'Georgia',serif",background:C.canvas,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{textAlign:"center",maxWidth:400}}>
         <div style={{fontSize:"4rem",marginBottom:12}}>👑</div>
         <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,borderRadius:20,padding:"28px 24px",marginBottom:20,color:"white"}}>
@@ -2442,7 +2442,7 @@ function NotFoundPage({ onHome, user }) {
           <button onClick={onHome} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"12px 28px",fontWeight:900,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit"}}>
             🏠 Back to AshantiHub
           </button>
-          <button onClick={()=>window.history.back()} style={{background:"transparent",color:C.darkBrown,border:`1.5px solid ${C.darkBrown}`,borderRadius:30,padding:"11px 28px",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
+          <button onClick={()=>window.history.back()} style={{background:"transparent",color:C.ink,border:`1.5px solid ${C.darkBrown}`,borderRadius:30,padding:"11px 28px",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
             ← Go Back
           </button>
           {/* WhatsApp support is an account-holder channel — guests use the
@@ -2516,29 +2516,29 @@ function FavDrawerItem({id,onRemove}) {
   const {data:item,isLoading,isError} = useListing(id);
 
   if(isLoading){
-    return <div style={{padding:"10px 14px",borderBottom:"1px solid #f9f9f9",display:"flex",gap:10,alignItems:"center"}}>
-      <div style={{width:24,height:24,borderRadius:"50%",background:"#eee"}}/>
+    return <div style={{padding:"10px 14px",borderBottom:`1px solid ${C.line}`,display:"flex",gap:10,alignItems:"center"}}>
+      <div style={{width:24,height:24,borderRadius:"50%",background:C.surface2}}/>
       <div style={{flex:1}}>
-        <div style={{height:10,width:"60%",background:"#eee",borderRadius:4,marginBottom:6}}/>
-        <div style={{height:8,width:"35%",background:"#f0f0f0",borderRadius:4}}/>
+        <div style={{height:10,width:"60%",background:C.surface2,borderRadius:4,marginBottom:6}}/>
+        <div style={{height:8,width:"35%",background:C.surface2,borderRadius:4}}/>
       </div>
     </div>;
   }
 
   if(isError||!item){
-    return <div style={{padding:"10px 14px",borderBottom:"1px solid #f9f9f9",display:"flex",gap:10,alignItems:"center"}}>
-      <div style={{flex:1,fontSize:"0.7rem",color:"#aaa",fontStyle:"italic"}}>No longer available</div>
-      <button onClick={()=>onRemove(id)} style={{background:"none",border:"none",cursor:"pointer",color:C.kente1,fontSize:"1rem"}}>✕</button>
+    return <div style={{padding:"10px 14px",borderBottom:`1px solid ${C.line}`,display:"flex",gap:10,alignItems:"center"}}>
+      <div style={{flex:1,fontSize:"0.7rem",color:C.inkFaint,fontStyle:"italic"}}>No longer available</div>
+      <button onClick={()=>onRemove(id)} style={{background:"none",border:"none",cursor:"pointer",color:C.danger,fontSize:"1rem"}}>✕</button>
     </div>;
   }
 
-  return <div style={{padding:"10px 14px",borderBottom:"1px solid #f9f9f9",display:"flex",gap:10,alignItems:"center"}}>
+  return <div style={{padding:"10px 14px",borderBottom:`1px solid ${C.line}`,display:"flex",gap:10,alignItems:"center"}}>
     <span style={{fontSize:"1.5rem"}}>{item.category?.icon}</span>
     <div style={{flex:1}}>
       <div style={{fontWeight:700,fontSize:"0.78rem"}}>{item.name}</div>
-      <div style={{fontSize:"0.65rem",color:"#888"}}>GHS {item.price_amount}{item.price_unit||""}</div>
+      <div style={{fontSize:"0.65rem",color:C.inkDim}}>GHS {item.price_amount}{item.price_unit||""}</div>
     </div>
-    <button onClick={()=>onRemove(id)} style={{background:"none",border:"none",cursor:"pointer",color:C.kente1,fontSize:"1rem"}}>✕</button>
+    <button onClick={()=>onRemove(id)} style={{background:"none",border:"none",cursor:"pointer",color:C.danger,fontSize:"1rem"}}>✕</button>
   </div>;
 }
 
@@ -2546,12 +2546,12 @@ function FavDrawerItem({id,onRemove}) {
 function ListingsSkeleton() {
   return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
     {Array.from({length:6}).map((_,i)=>(
-      <div key={i} style={{background:"white",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.10)"}}>
-        <div style={{height:140,background:"#eee"}}/>
+      <div key={i} style={{background:C.surface,borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.10)"}}>
+        <div style={{height:140,background:C.surface2}}/>
         <div style={{padding:"12px 14px"}}>
-          <div style={{height:14,width:"70%",background:"#eee",borderRadius:4,marginBottom:8}}/>
-          <div style={{height:10,width:"40%",background:"#f0f0f0",borderRadius:4,marginBottom:8}}/>
-          <div style={{height:10,width:"90%",background:"#f0f0f0",borderRadius:4}}/>
+          <div style={{height:14,width:"70%",background:C.surface2,borderRadius:4,marginBottom:8}}/>
+          <div style={{height:10,width:"40%",background:C.surface2,borderRadius:4,marginBottom:8}}/>
+          <div style={{height:10,width:"90%",background:C.surface2,borderRadius:4}}/>
         </div>
       </div>
     ))}
@@ -2701,12 +2701,12 @@ export default function AshantiHub() {
   const auth=useAuth();
   const queryClient=useQueryClient();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;
-  // Site-wide light/dark toggle, shown in the public Navbar. useTheme()
-  // follows the device until the user toggles, and sets `data-theme` + the
-  // `dark` class on <html>: the class drives the Tailwind/shadcn tokens, and
-  // `data-theme` drives the --ah-* variables (index.css) that only the header
-  // and the StorefrontHome wrapper read. The app root stays cream: the other
-  // public pages are inline-`C` dark-brown text and must not go dark under it.
+  // Site-wide light/dark theme for every page. useTheme() follows the device
+  // until the user toggles, and sets `data-theme` + the `dark` class on
+  // <html>: the class drives the Tailwind/shadcn tokens, and `data-theme`
+  // drives the --ah-* variables (index.css) behind C's theme tokens and `D`.
+  // The toggle is threaded as props to the Navbar/StorefrontHeader and the
+  // business, staff and account top bars.
   const {theme,toggleTheme} = useTheme();
   const [legalDoc,setLegalDoc]=useState(null);
   // showBizDash/showPayments/showCredit — same "derive from the URL, wrap the
@@ -3123,13 +3123,14 @@ export default function AshantiHub() {
         if(location.pathname!==path) navigate(path,{replace});
       }}
       onExit={staffSignOut}
+      theme={theme} toggleTheme={toggleTheme}
       onViewSite={isStandaloneDisplay() ? undefined : ()=>navigate("/")}/>;
   }
-  if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment}/>;
+  if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment} theme={theme} toggleTheme={toggleTheme}/>;
   if(showBizDash||showPayments||showCredit) return <BusinessCommandCenter
     initialTab={showPayments?"payments":showCredit?"credit":"analytics"}
     onExit={()=>{setShowBizDash(false);setShowPayments(false);setShowCredit(false);}}
-    user={user} auth={auth} PaymentComponent={MoMoPayment}/>;
+    user={user} auth={auth} PaymentComponent={MoMoPayment} theme={theme} toggleTheme={toggleTheme}/>;
   // Staff onboarding + account-recovery work — two more standalone early
   // returns, same convention as showAccount/showBizDash above.
   if(page==="staff-activate") return <StaffActivatePage auth={auth} onSuccess={handleAuthSuccess}/>;
@@ -3156,9 +3157,9 @@ export default function AshantiHub() {
   // anymore, and no Favourite backend model to batch-fetch them from either).
   const FavsDrawer=()=>{
     return <div style={{position:"fixed",inset:0,zIndex:999}} onClick={()=>setShowFavs(false)}>
-      <div style={{position:"absolute",top:65,right:16,background:"white",borderRadius:16,width:300,maxHeight:400,overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}} onClick={e=>e.stopPropagation()}>
-        <div style={{padding:"14px 16px",borderBottom:"1px solid #f0f0f0",fontWeight:800,color:C.darkBrown,fontSize:"0.85rem"}}>❤️ Saved Businesses ({favourites.length})</div>
-        {favourites.length===0&&<div style={{padding:"20px",textAlign:"center",color:"#aaa",fontSize:"0.78rem"}}>No saved businesses yet.<br/>Tap ❤️ on any listing to save it.</div>}
+      <div style={{position:"absolute",top:65,right:16,background:C.surface,borderRadius:16,width:300,maxHeight:400,overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.line}`,fontWeight:800,color:C.ink,fontSize:"0.85rem"}}>❤️ Saved Businesses ({favourites.length})</div>
+        {favourites.length===0&&<div style={{padding:"20px",textAlign:"center",color:C.inkFaint,fontSize:"0.78rem"}}>No saved businesses yet.<br/>Tap ❤️ on any listing to save it.</div>}
         {favourites.map(id=><FavDrawerItem key={id} id={id} onRemove={toggleFav}/>)}
       </div>
     </div>;
@@ -3171,7 +3172,7 @@ export default function AshantiHub() {
   const showStaffBar = staffSession && !onStaffDashboardPath;
 
   return (
-    <div style={{fontFamily:"'Georgia',serif",background:C.cream,minHeight:"100vh",
+    <div style={{fontFamily:"'Georgia',serif",background:C.canvas,minHeight:"100vh",
       ...(showStaffBar ? {"--ah-top-offset":`${STAFF_VIEW_ONLY_BAR_HEIGHT}px`,paddingTop:STAFF_VIEW_ONLY_BAR_HEIGHT} : {})}}>
       {showStaffBar&&<StaffViewOnlyBar onBackToDashboard={()=>navigate("/staff")} onSignOut={staffSignOut}/>}
       {appStaffGate.shownFor&&<StaffGateNotice floating onDismiss={appStaffGate.dismiss}/>}
@@ -3292,7 +3293,7 @@ export default function AshantiHub() {
               mobile-only (ah-filter-trigger-bar media query below); on mobile
               it opens Sidebar as a slide-in panel. */}
           <div className="ah-filter-trigger-bar" style={{background:C.darkBrown,padding:"12px 16px"}}>
-            <button onClick={() => setShowFilters((f) => !f)} style={{ background: "#f5f5f5", border: "none", borderRadius: 30, padding: "10px 20px", cursor: "pointer", fontSize: "0.8rem", fontWeight: 700, fontFamily: "inherit" }}>
+            <button onClick={() => setShowFilters((f) => !f)} style={{ background: C.surface2, border: "none", borderRadius: 30, padding: "10px 20px", cursor: "pointer", fontSize: "0.8rem", fontWeight: 700, fontFamily: "inherit" }}>
               ⚙️ Filters & Search
             </button>
             <style>{`
@@ -3342,13 +3343,13 @@ export default function AshantiHub() {
             />
             <div style={{flex:1,minWidth:0}}>
             {filters.category==="grocery"?(
-              <div style={{background:"white",borderRadius:16,padding:"24px",textAlign:"center",boxShadow:"0 2px 12px rgba(0,0,0,0.07)"}}>
+              <div style={{background:C.surface,borderRadius:16,padding:"24px",textAlign:"center",boxShadow:"0 2px 12px rgba(0,0,0,0.07)"}}>
                 <div style={{fontSize:"2.5rem",marginBottom:10}}>🛒</div>
-                <div style={{fontWeight:900,color:C.darkBrown,marginBottom:6}}>Grocery Concierge</div>
-                <div style={{color:"#555",fontSize:"0.82rem",marginBottom:16,lineHeight:1.6}}>We shop Kejetia Market for you. Fresh groceries delivered to your hotel, home or office in Kumasi.</div>
+                <div style={{fontWeight:900,color:C.ink,marginBottom:6}}>Grocery Concierge</div>
+                <div style={{color:C.inkDim,fontSize:"0.82rem",marginBottom:16,lineHeight:1.6}}>We shop Kejetia Market for you. Fresh groceries delivered to your hotel, home or office in Kumasi.</div>
                 <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
                   {["🍌 Plantain","🍅 Tomatoes","🍗 Chicken","🍚 Rice","🐟 Tilapia","🥚 Eggs"].map(item=>(
-                    <span key={item} style={{background:`${C.kente2}15`,color:C.kente2,borderRadius:20,padding:"4px 12px",fontSize:"0.72rem",fontWeight:600}}>{item}</span>
+                    <span key={item} style={{background:`${C.kente2}15`,color:C.trust,borderRadius:20,padding:"4px 12px",fontSize:"0.72rem",fontWeight:600}}>{item}</span>
                   ))}
                 </div>
                 {/* WhatsApp ordering is an account-holder channel; a guest
@@ -3372,7 +3373,7 @@ export default function AshantiHub() {
                     <span style={{color:"#999",fontWeight:400,fontSize:"0.72rem",marginLeft:6}}>{listings.length} results</span>
                   </h2>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    <span style={{background:`${(activeCatObj?.color)||C.gold}15`,border:`1px solid ${(activeCatObj?.color)||C.gold}44`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:(activeCatObj?.color)||C.darkBrown,fontWeight:700}}>📍 Kumasi</span>
+                    <span style={{background:tint((activeCatObj?.color)||C.gold, "15"),border:`1px solid ${tint((activeCatObj?.color)||C.gold, "44")}`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:(activeCatObj?.color)||C.lightGold,fontWeight:700}}>📍 Kumasi</span>
                   </div>
                 </div>
 

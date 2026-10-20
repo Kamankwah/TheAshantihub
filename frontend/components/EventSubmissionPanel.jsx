@@ -336,7 +336,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                 >
                   {uploadingMedia ? "Uploading…" : "Upload Photo"}
                 </button>
-                {mediaUploaded && <span style={{ color: C.kente2, fontSize: "0.76rem" }}>Photo added ✓</span>}
+                {mediaUploaded && <span style={{ color: C.trust, fontSize: "0.76rem" }}>Photo added ✓</span>}
               </div>
               {mediaError && <div style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.74rem" }}>{mediaError}</div>}
               <button
@@ -437,7 +437,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
         {isLoading && <div style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.78rem" }}>Loading your events…</div>}
         {isError && (
           <div style={{ color: "#ffb4b4", fontSize: "0.78rem" }}>
-            Could not load your events. <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.kente1, borderRadius: 20, padding: "2px 10px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button>
+            Could not load your events. <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "2px 10px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button>
           </div>
         )}
         {!isLoading && !isError && (myEvents?.length ?? 0) === 0 && (
@@ -608,7 +608,7 @@ function EventAttendeesPanel({ eventId }) {
     return (
       <div style={{ color: "#ffb4b4", fontSize: "0.74rem", marginTop: 8 }}>
         Could not load attendees.{" "}
-        <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.kente1, borderRadius: 20, padding: "1px 8px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
+        <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "1px 8px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
           Retry
         </button>
       </div>

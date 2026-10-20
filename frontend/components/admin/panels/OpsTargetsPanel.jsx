@@ -37,7 +37,7 @@ function whatHappens(scout, changes, previewRow, state) {
   if (!text && pending) text = `Cut sent to Super Admin${pending.requested_at ? ` on ${dayShort(pending.requested_at)}` : ""} — the current target stays until it is decided`;
   if (!text) text = "No change";
   if (state === "leave") text += " · zero while on leave";
-  return { text, tone: cutNames.length || (!changes.length && pending) ? "#A33A00" : parts.length ? "#00500A" : D.textDim };
+  return { text, tone: cutNames.length || (!changes.length && pending) ? D.warnInk : parts.length ? D.okInk : D.textDim };
 }
 
 function historyText(event) {
@@ -202,8 +202,8 @@ export default function OpsTargetsPanel() {
                             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                               <input type="number" aria-label={`${label} a day for ${scout.full_name.split(" ")[0]}`} inputMode="numeric" min={limits[metric]?.min_daily} max={limits[metric]?.max_daily} value={text} aria-invalid={bad || undefined}
                                 onChange={(e) => set(scout, metric, e.target.value)}
-                                style={{ ...field, width: 72, ...figures, border: bad ? `2px solid ${D.red}` : cut ? `2px solid ${ORANGE}` : raised ? `2px solid ${D.green}` : field.border, background: cut ? "#FFF4E5" : raised ? "#EEF7EE" : D.panelBg }} />
-                              <span style={{ ...dim, color: bad ? D.red : cut ? "#A33A00" : "#00500A" }}>
+                                style={{ ...field, width: 72, ...figures, border: bad ? `2px solid ${D.red}` : cut ? `2px solid ${ORANGE}` : raised ? `2px solid ${D.green}` : field.border, background: cut ? D.warnBg : raised ? D.okBg : D.panelBg }} />
+                              <span style={{ ...dim, color: bad ? D.red : cut ? D.warnInk : D.okInk }}>
                                 {bad ? `Use ${limits[metric]?.min_daily}–${limits[metric]?.max_daily}` : pending ? `was ${scout.daily[metric]} · waiting for approval` : change?.before != null ? `was ${change.before}${cut ? " · will need approval" : ""}` : change ? "new" : ""}
                               </span>
                             </div>
@@ -215,13 +215,13 @@ export default function OpsTargetsPanel() {
                   );
                 })}
                 <tr>
-                  <th scope="row" style={{ ...td, textAlign: "left", background: "#FDF6E3" }}>Team a day</th>
+                  <th scope="row" style={{ ...td, textAlign: "left", background: D.pageBg }}>Team a day</th>
                   {teamDay.map((t) => (
-                    <td key={t.metric} style={{ ...td, background: "#FDF6E3", fontWeight: 800, ...figures }}>
+                    <td key={t.metric} style={{ ...td, background: D.pageBg, fontWeight: 800, ...figures }}>
                       {t.next}{t.next !== t.now && <span style={{ ...dim, fontWeight: 600 }}>{` (was ${t.now})`}</span>}
                     </td>
                   ))}
-                  <td style={{ ...td, background: "#FDF6E3", ...dim }}>Sum of your scouts on a full working day</td>
+                  <td style={{ ...td, background: D.pageBg, ...dim }}>Sum of your scouts on a full working day</td>
                 </tr>
               </tbody>
             </table>
@@ -261,14 +261,14 @@ export default function OpsTargetsPanel() {
                     const [wb, wa] = row.week[measure]; const [mb, ma] = row.month[measure];
                     const changed = wb !== wa || mb !== ma;
                     return (
-                      <tr key={s.id} style={{ background: changed ? "#FFF4E5" : "transparent" }}>
+                      <tr key={s.id} style={{ background: changed ? D.warnBg : "transparent" }}>
                         <th scope="row" style={{ ...td, textAlign: "left" }}>{s.full_name}</th>
                         <td style={{ ...td, ...figures }}>{`${wb} → ${wa}`}</td>
                         <td style={{ ...td, ...figures }}>{`${mb} → ${ma}`}</td>
                       </tr>
                     );
                   })}
-                  <tr style={{ background: "#FDF6E3", fontWeight: 800 }}>
+                  <tr style={{ background: D.pageBg, fontWeight: 800 }}>
                     <th scope="row" style={{ ...td, textAlign: "left" }}>Your team</th>
                     <td style={{ ...td, ...figures }}>{`${preview.rows.reduce((n, r) => n + r.week[measure][0], 0)} → ${preview.rows.reduce((n, r) => n + r.week[measure][1], 0)}`}</td>
                     <td style={{ ...td, ...figures }}>{`${preview.rows.reduce((n, r) => n + r.month[measure][0], 0)} → ${preview.rows.reduce((n, r) => n + r.month[measure][1], 0)}`}</td>

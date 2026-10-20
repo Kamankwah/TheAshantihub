@@ -2,7 +2,7 @@ import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useSubscriptionPlans } from "../../../hooks/useSubscriptionPlans.js";
 import { useMySubscription } from "../../../hooks/useMySubscription.js";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, tint } from "../theme.js";
 
 // Cycle-length options a business owner can pick — SubscriptionPlan no longer
 // has a separate annual_price, so every cycle's price is a flat multiple of
@@ -93,7 +93,7 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast, b
         <PaymentComponent amount={Number(selectedPlan.monthly_price) * cycleMonths} purpose={`AshantiHub ${selectedPlan.name} Plan`} businessName={user?.fullName || "Your Business"} onSuccess={recordSubscriptionPayment} onClose={() => setShowPayModal(false)} />
       )}
       <h2 style={{ margin: "0 0 14px", color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>💳 Subscription</h2>
-      {actionError && <div style={{ background: `${D.red}1f`, color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
+      {actionError && <div style={{ background: tint(D.red, "1f"), color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
       {subLoading && <div style={{ color: D.textDim, fontSize: "0.8rem", marginBottom: 16 }}>Loading your subscription…</div>}
       {subError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 16 }}>Could not load your subscription. Make sure you're signed in as a business owner.</div>}
       {!subLoading && !subError && (

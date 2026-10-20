@@ -77,7 +77,7 @@ export default function HeroApprovalMarketing({ auth }) {
                         <span style={dim}>{h.listing_name}</span>
                         {h.caption && <span style={{ fontSize: "0.78rem" }}>“{h.caption}”</span>}
                         <span style={dim}>{slideWindow(h)}</span>
-                        {tab === "pending" && <span style={{ fontSize: "0.72rem", fontWeight: 800, color: flagged ? "#A30000" : "#00500A" }}>{flagged ? `Needs attention: ${flagged.label}` : "All checks pass"}</span>}
+                        {tab === "pending" && <span style={{ fontSize: "0.72rem", fontWeight: 800, color: flagged ? D.errInk : D.okInk }}>{flagged ? `Needs attention: ${flagged.label}` : "All checks pass"}</span>}
                         <span style={dim}>Submitted {dayWord(h.submitted_at)}{tab === "pending" ? ` · waiting ${ageWord(h.submitted_at)}` : ""}</span>
                       </span>
                     </button>
@@ -92,7 +92,7 @@ export default function HeroApprovalMarketing({ auth }) {
                 {(recent.data || []).map((r) => (
                   <li key={r.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: "0.78rem", color: D.text }}>
                     <span><b>{slideMaker(r)}</b> {"·"} “{r.caption}” {"·"} by you, {dayWord(r.reviewed_at)}</span>
-                    <span style={{ fontWeight: 800, color: r.status === "approved" ? "#00500A" : "#A30000" }}>{r.status === "approved" ? "Approved" : "Rejected"}</span>
+                    <span style={{ fontWeight: 800, color: r.status === "approved" ? D.okInk : D.errInk }}>{r.status === "approved" ? "Approved" : "Rejected"}</span>
                   </li>
                 ))}
               </ul>
@@ -123,7 +123,7 @@ export default function HeroApprovalMarketing({ auth }) {
                     </label>
                     {!selected.can_approve && <Honest tone="warn">Approval is blocked: a caption with contact details cannot go live. Reject it with a reason so the business can send it again.</Honest>}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button type="button" disabled={busy} onClick={reject} style={button(D.panelBg, "#A30000", busy)}>Reject with reason</button>
+                      <button type="button" disabled={busy} onClick={reject} style={button(D.panelBg, D.errInk, busy)}>Reject with reason</button>
                       <button type="button" disabled={busy || !selected.can_approve} onClick={approve} style={button(D.text, D.panelBg, busy || !selected.can_approve)}>
                         {selected.can_approve ? "Approve" : "Approve — blocked by the caption check"}
                       </button>

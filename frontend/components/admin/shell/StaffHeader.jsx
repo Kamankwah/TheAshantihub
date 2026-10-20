@@ -1,4 +1,4 @@
-import { D, ROLE_BADGE_TEXT } from "../theme.js";
+import { D, ROLE_BADGE_TEXT, tint } from "../theme.js";
 
 export function RoleChip({ role, roleColor }) {
   return (
@@ -20,7 +20,7 @@ export default function StaffHeader({ title, role, roleColor, fullName, onExit, 
   const showMenu = breakpoint !== "desktop";
   return (
     <header style={{
-      background: "rgba(253,246,227,0.9)", paddingLeft: isPhone ? 12 : 20, paddingRight: isPhone ? 12 : 20,
+      background: tint(D.pageBg, "e6"), paddingLeft: isPhone ? 12 : 20, paddingRight: isPhone ? 12 : 20,
       paddingTop: "env(safe-area-inset-top, 0px)",
       position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 12px rgba(44,24,16,0.08)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${D.cardBorder}`,
     }}>
@@ -41,7 +41,7 @@ export default function StaffHeader({ title, role, roleColor, fullName, onExit, 
           <RoleChip role={role} roleColor={roleColor} />
           {!isPhone && <span style={{ color: D.text, fontSize: "0.78rem", fontWeight: 700, whiteSpace: "nowrap" }}>{fullName}</span>}
           {!isPhone && onViewSite && <button type="button" onClick={onViewSite} style={{ background: "transparent", border: `1px solid ${D.divider}`, color: D.textDim, borderRadius: 20, padding: "5px 13px", fontSize: "0.68rem", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>View site</button>}
-          {!isPhone && <button type="button" onClick={onExit} style={{ background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.textDim, borderRadius: 20, padding: "5px 13px", fontSize: "0.68rem", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Sign out</button>}
+          {!isPhone && <button type="button" onClick={onExit} style={{ background: tint(D.text, "0d"), border: `1px solid ${D.divider}`, color: D.textDim, borderRadius: 20, padding: "5px 13px", fontSize: "0.68rem", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Sign out</button>}
         </div>
       </div>
       {children}

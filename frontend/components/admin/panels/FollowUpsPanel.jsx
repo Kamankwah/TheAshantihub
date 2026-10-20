@@ -4,7 +4,7 @@ import { apiPost } from "../../../apiClient.js";
 import { useMyTasks } from "../../../hooks/useMyTasks.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { dateInputValue, followUpIso, shortDay } from "../../../lib/followUp.js";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, tint } from "../theme.js";
 import { button, dim, field } from "./panelStyles.js";
 import { errorStyle, eyebrow } from "./portfolioParts.jsx";
 
@@ -13,15 +13,15 @@ import { errorStyle, eyebrow } from "./portfolioParts.jsx";
 // overdue subscriptions, delivery problems, returned approvals, call follow-up
 // dates and prospect follow-up dates, plus a lead's follow-ups and your own.
 export const SOURCE = {
-  subscription_overdue: ["Subscription overdue", "#FFF4E5", "#6B2E07"],
-  delivery_problem: ["Delivery problem", "#FBF3DC", "#6A4A00"],
-  returned_approval: ["Returned approval", "#FDE8E8", "#A30000"],
-  call_follow_up: ["Call follow-up", "#E8EAF6", "#000060"],
-  prospect_follow_up: ["Prospect follow-up", "#F1ECE4", "rgba(44,24,16,0.78)"],
-  ops_follow_up: ["From your lead", "#E3F1E3", "#00500A"],
-  manual: ["Your reminder", "#F1ECE4", "rgba(44,24,16,0.78)"],
+  subscription_overdue: ["Subscription overdue", D.warnBg, D.warnInk],
+  delivery_problem: ["Delivery problem", D.warnBg, D.warnInk],
+  returned_approval: ["Returned approval", D.errBg, D.errInk],
+  call_follow_up: ["Call follow-up", tint(D.blue, "22"), D.blue],
+  prospect_follow_up: ["Prospect follow-up", D.panelBg2, D.text],
+  ops_follow_up: ["From your lead", D.okBg, D.okInk],
+  manual: ["Your reminder", D.panelBg2, D.text],
 };
-const OVERDUE_COLOR = "#A33A00";
+const OVERDUE_COLOR = D.warnInk;
 const figures = { fontVariantNumeric: "tabular-nums" };
 const timeOf = (value) => new Date(value).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
@@ -78,7 +78,7 @@ export default function FollowUpsPanel({ onOpenBusiness, onOpenProspects, leadNa
   const [busy, setBusy] = useState(false);
 
   const sections = [
-    ["overdue", "Overdue", overdue, OVERDUE_COLOR, `${OVERDUE_COLOR}80`],
+    ["overdue", "Overdue", overdue, OVERDUE_COLOR, tint(OVERDUE_COLOR, "80")],
     ["today", "Today", today, D.text, D.cardBorder],
     ["upcoming", "Coming up", upcoming, D.text, D.cardBorder],
   ];

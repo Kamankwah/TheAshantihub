@@ -2,7 +2,7 @@ import { useState } from "react";
 import { apiDelete, apiPatch, apiPost } from "../../../../apiClient.js";
 import { apiErrorMessage } from "../../../../lib/apiErrorMessage.js";
 import { useProviders } from "../../../../hooks/useMarketingCampaigns.js";
-import { D } from "../../theme.js";
+import { D, tint } from "../../theme.js";
 import { Honest, Loading, PageHead, STATE_TONE, STATE_WORD, Section, button, chip, dim, errorStyle, inputStyle, labelStyle, linkStyle, page, scroll, table, td, th } from "./mkParts.jsx";
 
 // ─── 19 Sender IDs & providers ───────────────────────────────────────────────
@@ -106,7 +106,7 @@ export default function SenderIdsPanel() {
                 const [mark, word, color] = STEP[s.status];
                 return (
                   <li key={s.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: "0.8rem" }}>
-                    <span aria-hidden="true" style={{ minWidth: 22, height: 22, borderRadius: 99, background: `${color}22`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>{mark}</span>
+                    <span aria-hidden="true" style={{ minWidth: 22, height: 22, borderRadius: 99, background: tint(color, "22"), display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>{mark}</span>
                     <span style={{ flex: 1 }}><b>{s.title}</b> <span style={dim}>{s.detail}{s.note ? ` · ${s.note}` : ""}{s.recorded_by ? ` · ${s.recorded_by}` : ""}</span></span>
                     <button type="button" onClick={() => setStep({ id: s.id, title: s.title, status: s.status, note: s.note })} aria-label={`Update ${s.title}`} style={linkStyle}>{word}</button>
                   </li>

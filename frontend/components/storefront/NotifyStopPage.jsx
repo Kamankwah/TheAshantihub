@@ -18,12 +18,12 @@ export default function NotifyStopPage({ token, onHome }) {
   }, [token]);
 
   return (
-    <main style={{ minHeight: "100vh", background: C.cream, color: C.darkBrown, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: BODY_FONT, boxSizing: "border-box" }}>
-      <div style={{ background: C.white, borderRadius: 16, padding: "28px 24px", maxWidth: 440, width: "100%", border: `1px solid ${C.gold}55`, boxSizing: "border-box" }}>
+    <main style={{ minHeight: "100vh", background: C.canvas, color: C.ink, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: BODY_FONT, boxSizing: "border-box" }}>
+      <div style={{ background: C.surface, borderRadius: 16, padding: "28px 24px", maxWidth: 440, width: "100%", border: `1px solid ${C.gold}55`, boxSizing: "border-box" }}>
         <h1 style={{ margin: "0 0 10px", fontFamily: HEADING_FONT, fontWeight: 600, fontSize: "1.5rem", letterSpacing: "-0.02em" }}>Opening message</h1>
         {state === "working" && <p role="status">Saving…</p>}
         {state === "done" && <p role="status" style={{ lineHeight: 1.5 }}>You will not get the opening message.</p>}
-        {state === "failed" && <p role="alert" style={{ color: C.kente1 }}>Something went wrong. Please open the link again.</p>}
+        {state === "failed" && <p role="alert" style={{ color: C.danger }}>Something went wrong. Please open the link again.</p>}
         {onHome && (
           <p style={{ marginBottom: 0 }}>
             <button type="button" onClick={onHome} style={{ background: "none", border: 0, padding: 0, color: C.deepGold, textDecoration: "underline", cursor: "pointer", fontFamily: "inherit", fontSize: 15 }}>Go to AshantiHub</button>

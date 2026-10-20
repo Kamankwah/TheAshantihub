@@ -30,7 +30,7 @@ function OffFirst({ me, onGo, busy, error }) {
     <div style={screen}>
       <div>
         <div style={dim}>{longDay(new Date().toISOString())}</div>
-        <h1 style={{ margin: "2px 0 0", fontFamily: "Fraunces, Georgia, serif", fontWeight: 600, fontSize: "1.7rem", color: D.text }}>Hello, {name}</h1>
+        <h1 style={{ margin: "2px 0 0", fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif", fontWeight: 600, fontSize: "1.7rem", color: D.text }}>Hello, {name}</h1>
         <div style={dim}>You&apos;re off shift. Your location is not being shared.</div>
       </div>
       {me.rider.suspended && <Warn><b>Your account is suspended.</b> {me.rider.suspension_reason || ""} Call your manager.</Warn>}
@@ -87,7 +87,7 @@ function Waiting({ me, offers, onBreak, onEnd, busy, error }) {
       </section>
       <section aria-label="Waiting for jobs" style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <h2 style={{ ...h2, fontFamily: "Fraunces, Georgia, serif", fontSize: "1.3rem" }}>{onBreakNow ? "On a break" : "Waiting for jobs"}</h2>
+          <h2 style={{ ...h2, fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif", fontSize: "1.3rem" }}>{onBreakNow ? "On a break" : "Waiting for jobs"}</h2>
           <span style={chip(onBreakNow ? D.textDim : D.green)}>{onBreakNow ? "Offers paused" : "Open to offers"}</span>
         </div>
         <span style={{ fontSize: "0.88rem", color: D.text, lineHeight: 1.5 }}>{onBreakNow ? "You will get no new offers until you end the break. Your shift stays on." : `No offer right now. A new offer fills this screen and you have ${offers.data?.results?.[0] ? "" : "a short time"} to answer. Offers also reach this screen only while the app is open: push alerts are not connected.`}</span>
@@ -133,7 +133,7 @@ function Offer({ offer, onChanged }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <div>
             <div style={{ fontSize: "0.74rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: D.deepGold }}>Order #{offer.order_id}</div>
-            <h1 style={{ margin: 0, fontFamily: "Fraunces, Georgia, serif", fontWeight: 600, fontSize: "1.7rem", lineHeight: 1.1, color: D.text }}>New delivery offer</h1>
+            <h1 style={{ margin: 0, fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif", fontWeight: 600, fontSize: "1.7rem", lineHeight: 1.1, color: D.text }}>New delivery offer</h1>
           </div>
           <div role="timer" aria-label={`${left} seconds left to answer`} style={{ ...mono, width: 76, height: 76, borderRadius: "50%", border: `7px solid ${left <= 10 ? D.red : D.gold}`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: "1.1rem", color: D.text, flex: "none" }}>{mmss(left)}</div>
         </div>

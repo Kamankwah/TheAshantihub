@@ -11,7 +11,7 @@ import { toggleButton, toggleGroup } from "./opsPeopleParts.jsx";
 import { errorStyle, eyebrow } from "./portfolioParts.jsx";
 
 const OUTCOMES = [["connected", "Connected"], ["no_answer", "No answer"], ["busy", "Busy"], ["voicemail", "Voicemail"], ["wrong_number", "Wrong number"], ["promised_to_pay", "Promised to pay"], ["callback_requested", "Callback requested"]];
-const field = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", color: D.text, background: "#fff" };
+const field = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", color: D.text, background: D.panelBg };
 const labelStyle = { display: "flex", flexDirection: "column", gap: 4, fontSize: "0.72rem", fontWeight: 700, color: D.text };
 const nowLocal = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
 const blank = () => ({ direction: "out", channel: "phone", counterpart_type: "business_owner", counterpart_name: "", counterpart_phone: "", purpose: "other", outcome: "connected", sentiment: "", notes: "", started_at: nowLocal(), duration_minutes: "", follow_up_at: "" });
@@ -84,7 +84,7 @@ function DeskCallLog({ auth }) {
             <button type="button" aria-pressed={teamMode} onClick={() => setScope("team")} style={toggleButton(teamMode)}>My team's</button>
           </div>
         )}
-        {!form && <button type="button" onClick={() => setForm(blank())} style={{ background: D.gold, color: D.text, border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Log a call</button>}
+        {!form && <button type="button" onClick={() => setForm(blank())} style={{ background: D.gold, color: D.darkBrown, border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Log a call</button>}
       </div>
       {leadsTeam && today.data?.strip && <Strip strip={today.data.strip} />}
       {actionError && <div style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
@@ -103,8 +103,8 @@ function DeskCallLog({ auth }) {
           <label style={labelStyle}>Follow up on<input type="datetime-local" min={nowLocal()} value={form.follow_up_at} onChange={set("follow_up_at")} style={field} /></label>
           <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>Notes and feedback<textarea value={form.notes} onChange={set("notes")} rows={3} style={{ ...field, resize: "vertical" }} /></label>
           <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <button type="button" onClick={() => setForm(null)} style={{ background: "#fff", color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 14px", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-            <button type="submit" style={{ background: D.gold, color: D.text, border: "none", borderRadius: 10, padding: "8px 16px", fontWeight: 800, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Save call</button>
+            <button type="button" onClick={() => setForm(null)} style={{ background: D.panelBg, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 14px", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+            <button type="submit" style={{ background: D.gold, color: D.darkBrown, border: "none", borderRadius: 10, padding: "8px 16px", fontWeight: 800, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Save call</button>
           </div>
         </form>
       )}
@@ -124,10 +124,10 @@ function DeskCallLog({ auth }) {
 
 const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const OUTCOME_CHIP = {
-  connected: ["Connected", "#E3F1E3", "#00500A"], callback_requested: ["Callback requested", "#FBF3DC", "#6A4A00"],
-  promised_to_pay: ["Promised to pay", "#FBF3DC", "#6A4A00"], no_answer: ["No answer", "#F1ECE4", "rgba(44,24,16,0.78)"],
-  busy: ["Busy", "#F1ECE4", "rgba(44,24,16,0.78)"], voicemail: ["Voicemail", "#F1ECE4", "rgba(44,24,16,0.78)"],
-  wrong_number: ["Wrong number", "#F1ECE4", "rgba(44,24,16,0.78)"],
+  connected: ["Connected", D.okBg, D.okInk], callback_requested: ["Callback requested", D.warnBg, D.warnInk],
+  promised_to_pay: ["Promised to pay", D.warnBg, D.warnInk], no_answer: ["No answer", D.panelBg2, D.text],
+  busy: ["Busy", D.panelBg2, D.text], voicemail: ["Voicemail", D.panelBg2, D.text],
+  wrong_number: ["Wrong number", D.panelBg2, D.text],
 };
 const clock = (iso) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 const whoOf = (call) => call.related_label || call.counterpart_name || "Unknown";
@@ -138,7 +138,7 @@ const when = (call) => {
 const canEdit = (call) => Date.now() - new Date(call.created_at).getTime() < EDIT_WINDOW_MS;
 
 function CallRow({ call, onEdit, showDay }) {
-  const [label, bg, fg] = OUTCOME_CHIP[call.outcome] || [call.outcome, "#F1ECE4", D.text];
+  const [label, bg, fg] = OUTCOME_CHIP[call.outcome] || [call.outcome, D.panelBg2, D.text];
   const editable = canEdit(call);
   const body = (
     <>
