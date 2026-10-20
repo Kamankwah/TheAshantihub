@@ -3371,7 +3371,7 @@ export default function AshantiHub() {
                     <span style={{color:"#999",fontWeight:400,fontSize:"0.72rem",marginLeft:6}}>{listings.length} results</span>
                   </h2>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    <span style={{background:tint((activeCatObj?.color)||C.gold, "15"),border:`1px solid ${tint((activeCatObj?.color)||C.gold, "44")}`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:(activeCatObj?.color)||C.ink,fontWeight:700}}>📍 Kumasi</span>
+                    <span style={{background:tint((activeCatObj?.color)||C.gold, "15"),border:`1px solid ${tint((activeCatObj?.color)||C.gold, "44")}`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:(activeCatObj?.color)||C.lightGold,fontWeight:700}}>📍 Kumasi</span>
                   </div>
                 </div>
 

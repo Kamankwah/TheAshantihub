@@ -38,7 +38,7 @@ function isLightSurfaceHex(raw) {
   let h = raw.toLowerCase()
   if (h.length === 4) h = '#' + [...h.slice(1)].map((c) => c + c).join('')
   const c = rgb(h)
-  return Math.min(...c) >= 0xe6 // white, cream, near-white greys and pastels
+  return Math.min(...c) >= 0xe0 // white, cream, near-white greys and pastels
 }
 
 // A light surface in a background value: white, #fff/#ffffff, cream/near-white
@@ -52,18 +52,25 @@ function bannedIn(value) {
     for (const h of lit.matchAll(/#[0-9a-f]{6}\b|#[0-9a-f]{3}\b/gi)) if (isLightSurfaceHex(h[0])) hits.push(lit)
     for (const r of lit.matchAll(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)/g)) {
       const [R, G, B, A = 1] = [+r[1], +r[2], +r[3], r[4] === undefined ? 1 : +r[4]]
-      if (Math.min(R, G, B) >= 230 && A >= 0.5) hits.push(lit)
+      if (Math.min(R, G, B) >= 0xe0 && A >= 0.5) hits.push(lit)
     }
   }
   return hits
 }
 
 function offenders(file) {
-  const code = readFileSync(join(root, file), 'utf8')
+  return offendersIn(readFileSync(join(root, file), 'utf8'), file)
+}
+
+function offendersIn(code, file = 'inline') {
   const out = []
   code.split('\n').forEach((line, i) => {
     for (const m of line.matchAll(/\bbackground(?:Color)?\s*:\s*([^,}]+(?:\?[^,}]+)?)/g)) {
       for (const hit of bannedIn(m[1])) out.push(`${file}:${i + 1} background ${hit}`)
+    }
+    // CSS syntax inside <style> templates / html strings: background: #fff;
+    for (const m of line.matchAll(/\bbackground(?:-color)?\s*:\s*(#[0-9a-f]{3,6}\b|white\b|rgba?\([^)]*\))/gi)) {
+      for (const hit of bannedIn(`"${m[1]}"`)) out.push(`${file}:${i + 1} css background ${hit}`)
     }
   })
   return out
@@ -97,7 +104,10 @@ describe('dark mode source scan', () => {
     expect(bannedIn('C.paper')).toHaveLength(1)
     expect(bannedIn('active ? C.gold : "#f0f0f0"')).toHaveLength(1)
     expect(bannedIn('"rgba(255,255,255,0.9)"')).toHaveLength(1)
+    expect(bannedIn('"rgba(253,246,227,0.9)"')).toHaveLength(1)
+    expect(bannedIn('"#E3F1E3"')).toHaveLength(1)
     expect(bannedIn('C.surface')).toHaveLength(0)
+    expect(offendersIn('.x:hover { background: #fff; }')).toHaveLength(1)
     expect(bannedIn('"rgba(255,255,255,0.08)"')).toHaveLength(0)
     expect(bannedIn(`\`linear-gradient(135deg,\${C.darkBrown},\${C.black})\``)).toHaveLength(0)
   })
