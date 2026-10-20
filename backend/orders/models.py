@@ -152,6 +152,9 @@ class DeliveryAssignment(models.Model):
 
     assigned_at = models.DateTimeField(auto_now_add=True)
     picked_up_at = models.DateTimeField(null=True, blank=True)
+    # The rider on the job when the pickup was made (Plan 7F-E Task 6). A re-assignment clears both: the first rider's
+    # pickup ends with their leg and counts for no one (ledger.riders.pickup_made); it stays in the DeliveryEvent history.
+    picked_up_by = models.ForeignKey(StaffUser, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     delivered_at = models.DateTimeField(null=True, blank=True)
     confirmed_at = models.DateTimeField(null=True, blank=True)
 

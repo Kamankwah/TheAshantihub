@@ -347,6 +347,16 @@ export const handlers = [
   http.get('http://localhost:8000/api/listings/hero/pending/', () => {
     return HttpResponse.json([])
   }),
+  // Free-delivery promos (staff queue and the AshantiHub-paid create) - overridden per test.
+  http.get('http://localhost:8000/api/marketing/delivery-promos/', () => HttpResponse.json({ results: [] })),
+  http.post('http://localhost:8000/api/marketing/delivery-promos/platform/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json({
+      id: 90, name: body.name, business_id: body.business_owner, business: 'Business', starts_at: body.starts_at, ends_at: body.ends_at, all_items: true, listings: [],
+      status: 'pending', effective_status: 'pending', live: false, source: 'staff', rejection_reason: '', covered_orders: 0, covered_total: '0.00',
+      funded_by: 'platform', budget_cap: body.budget_cap, spent: '0.00', awaiting_approval: true, approval_id: 91, approval: { id: 91, status: 'pending' },
+    }, { status: 201 })
+  }),
   http.get('http://localhost:8000/api/accounts/customers/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),
@@ -717,5 +727,11 @@ export const handlers = [
   http.get('http://localhost:8000/api/orders/owner/:id/tracking/', () => HttpResponse.json({
     stage: 'assigned', pickup: { lat: 5.6037, lng: -0.187, name: 'Akosua Ntoma' }, rider: { lat: 5.605, lng: -0.19, age_s: 45, stale: false },
     leg: { to: 'pickup', distance_km: 1.1, duration_s: 240, basis: 'road route' }, route: [[5.605, -0.19], [5.6037, -0.187]],
+  })),
+  // Re-delivery at the customer's request (Plan 7F-E Task 7): no request by default; paying succeeds at once.
+  http.get('http://localhost:8000/api/delivery/redeliveries/', () => HttpResponse.json({ results: [] })),
+  http.post('http://localhost:8000/api/orders/:id/redelivery/pay/', () => HttpResponse.json({
+    mode: 'immediate', payment_method: 'wallet', payment_processing: '0.00',
+    redelivery: { id: 1, order: 7, attempt: 1, status: 'paid', status_label: 'Paid, waiting for a rider', fee: '15.00', fee_pesewas: 1500 },
   })),
 ]

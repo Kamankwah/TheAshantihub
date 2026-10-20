@@ -347,6 +347,22 @@ def _finalize_booking(session):
     sales.record_payment(session, BookingSale.STAY, booking, booking.business_owner)
 
 
+def _finalize_redelivery(session):
+    """A paid re-delivery fee (Plan 7F-E Task 7): the request becomes paid and the payment journal is posted
+    (delivery.redelivery.record_payment; idempotent on the session, fails closed on a wrong amount). Posted whatever
+    LEDGER_ENABLED says now, as a top-up is: a session exists only if the ledger was on when it was created."""
+    from delivery import redelivery
+
+    redelivery.record_payment(session)
+
+
+def _fail_redelivery(session):
+    """Nothing was reserved before payment: the request stays waiting for payment (only its link to the session goes)."""
+    from delivery import redelivery
+
+    redelivery.payment_failed(session)
+
+
 FINALIZERS = {
     CheckoutSession.ORDER_CHECKOUT: _finalize_order_checkout,
     CheckoutSession.EVENT_PAY: _finalize_event_pay,
@@ -356,17 +372,21 @@ FINALIZERS = {
     CheckoutSession.SERVICE_REQUEST: _finalize_service_request,
     CheckoutSession.BOOKING: _finalize_booking,
     CheckoutSession.WALLET_TOPUP: _finalize_wallet_topup,
+    CheckoutSession.REDELIVERY_FEE: _finalize_redelivery,
 }
 
 FAILURE_HANDLERS = {
     CheckoutSession.TICKET_PURCHASE: _fail_ticket_purchase,
     CheckoutSession.ORDER_CHECKOUT: _fail_order_checkout,
+    CheckoutSession.REDELIVERY_FEE: _fail_redelivery,
 }
 
 # What a customer may pay from their AshantiHub wallet: orders (wallets plan 3a) and, since ledger Plan 1b, services,
-# stays and event tickets. Everything else (subscriptions, event listing fees, top-ups) goes through the provider.
+# stays and event tickets, and since plan 7F-E a re-delivery fee. Everything else (subscriptions, event listing fees,
+# top-ups) goes through the provider.
 WALLET_KINDS = (
     CheckoutSession.ORDER_CHECKOUT, CheckoutSession.SERVICE_REQUEST, CheckoutSession.BOOKING, CheckoutSession.TICKET_PURCHASE,
+    CheckoutSession.REDELIVERY_FEE,
 )
 
 

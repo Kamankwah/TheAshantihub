@@ -6,9 +6,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from django.db.models import Q
+
 from accounts.models import BusinessOwner
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner
+
+from listings.visibility import hidden_business_q
 
 from . import waivers
 from .models_waivers import DeliveryWaiver
@@ -94,6 +98,42 @@ class StaffDeliveryPromosView(APIView):
         except waivers.WaiverError as exc:
             return _err(exc)
         return Response(_one(w.pk), status=201)
+
+
+class StaffPlatformDeliveryPromoView(APIView):
+    """POST creates an AshantiHub-funded promo for one business. It always waits for Operations or a Super Admin
+    (approvals engine); a Super Admin's own applies at once."""
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("delivery_promo.fund")]
+
+    def post(self, request):
+        raw = request.data.get("business_owner")
+        owner = BusinessOwner.objects.filter(pk=raw).first() if isinstance(raw, int) and not isinstance(raw, bool) else None
+        if owner is None:
+            return Response({"detail": "Choose a business."}, status=400)
+        try:
+            w, approval = waivers.create_platform_funded(request.user, owner, request.data, request=request)
+        except waivers.WaiverError as exc:
+            return _err(exc)
+        body = _one(w.pk)
+        return Response({**body, "approval": {"id": approval.pk, "status": approval.status}}, status=201)
+
+
+class StaffPlatformBusinessSearchView(APIView):
+    """GET ?q= (at least 2 characters) — businesses an AshantiHub-paid promo could be for, as {id, name} only.
+    Same bar as owner_blocker: verified and not suspended or hidden. No contact, owner or payout data."""
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("delivery_promo.fund")]
+
+    def get(self, request):
+        q = (request.query_params.get("q") or "").strip()
+        if len(q) < 2:
+            return Response({"results": []})
+        rows = (BusinessOwner.objects.select_related("profile").exclude(hidden_business_q("")).filter(kyc_status=BusinessOwner.VERIFIED)
+                .filter(Q(profile__business_name__icontains=q) | Q(full_name__icontains=q)).order_by("full_name", "id")[:10])
+        return Response({"results": [{"id": o.pk, "name": o.display_name} for o in rows]})
 
 
 class StaffDeliveryPromoActionView(APIView):

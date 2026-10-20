@@ -127,7 +127,7 @@ effective time. Super admin may edit directly in an emergency (logged). Added 20
 `digest_batch_size` (200; businesses per digest batch) and `digest_time_budget_seconds` (600; longest one digest batch may run), the three low-stock numbers
 `low_stock_cover_days` (7), `low_stock_fallback_units` (5) and `stock_cover_window_days` (28), and also: `service_auto_accept_hours` (48),
 `stay_issue_window_hours` (24) and `event_release_delay_hours` (48) for the booking milestones (§4.2); the verification-overdue
-window now covers products only. Added 2026-10-19 (plan 7F-D Task 3): `rider_withdrawals_per_day` (3; 1 to 20; riders' withdrawals per Accra day, on top of the amount limits).
+window now covers products only. Added 2026-10-19 (plan 7F-D Task 3): `rider_withdrawals_per_day` (3; 1 to 20; riders' withdrawals per Accra day, on top of the amount limits). Added 2026-10-19 (plan 7F-E Task 7): `redelivery_fee_pesewas` (1500, a placeholder GH₵ 15.00 to be confirmed by the owner; 0 to 20000; the fee the customer pays for a re-delivery, gate (cxxx)).
 
 ### 3.4 Subscriptions
 
@@ -204,7 +204,7 @@ A store-pickup order is collected at the AshantiHub office within 24 hours of pu
 
 ## 7. Third-party dispatch
 
-Per-delivery earnings shown to the rider; reserve and daily commission per §2.2 and §3.3. The delivery fee belongs to the rider once any pickup is done (gate (xciii)); riders are capped at `rider_withdrawals_per_day` withdrawals a day (gate (xcviii)). Company
+Per-delivery earnings shown to the rider; reserve and daily commission per §2.2 and §3.3. The delivery fee belongs to the rider once any pickup is done (gate (xciii)); riders are capped at `rider_withdrawals_per_day` withdrawals a day (gate (xcviii)). Round 3 (2026-10-19): a delivery re-assigned before completion pays the first rider nothing and is done by AshantiHub's own riders only (gate (cxxviii)); a re-delivery the customer pays for is gate (cxxix); a refund never returns a coupon-reduced fee beyond what the customer actually paid (gate (cxxv)). Company
 riders: wallet disabled by role.
 
 ## 8. Payout destinations
@@ -300,6 +300,9 @@ Follow-ups found in the final review; none is reachable while the flag stays off
   When `ledger/sales.py` lands the test also needs a cross-category case: an order payment and a booking payment for the same business racing the shared lifetime cap.
 - (iv) **Legacy vendor-shop store pickups** can never be marked collected once the ledger is on (the desk handles AshantiHub-office pickups), so their money would stay in Pending. A rollout/process decision for the owner.
 - (v) **Mismatch dispute.** The dispute created by `verification.record` sets `raised_by=customer` although it is staff-logged (the convention in `disputes/models.py` is `raised_by` null plus `logged_by`), and it neither notifies the customer nor tasks the account managers. Decide before Support uses it at volume.
+- (vi) **Round 3 (2026-10-19, plan 7F-E).** The Task 2 race tests (`ledger.tests.test_lock_order` and `PickupRaceTests`) pass 20 times in a row, run alone and serially.
+- (vii) **A coupon whole-refund journal balances (R1, gate (cxxv)):** pay the order with a coupon, pick up, refund whole, and check the journal and the customer, rider and subsidy balances.
+- (viii) **A re-delivery fee journal balances and reconciles (gate (cxxix)):** pay a re-delivery by wallet and by mobile money, complete it, and check the journals and that `wallets/reconciliation.LEDGER_KINDS` (which lists `CheckoutSession.REDELIVERY_FEE`) matches the provider lines.
 
 ### Stage 3 carry-forward
 
@@ -731,7 +734,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
   DECIDED 2026-10-18: a rider's withdrawal activity events show the amount (built by plan 7D Task 2; the payout number stays masked). Original text: Owner question (Task 6): a rider's withdrawal activity events carry the amount and are readable by Operations and line
   managers who lack `wallets.view`; decide whether to log only the reference. Owner question: `staff_row` returns the
   withdrawal's `provider_reference` to every `wallets.view` holder, riders' withdrawals included.
-- (xciii-open) **OPEN lock-order item (final review of plan 7F-D):** a rider's pickup locks the DeliveryAssignment row and then saves the order row (`DeliveryAssignment.sync_order`), while `refunds.refund_order` locks the order row then the assignment row. The two can deadlock (Postgres aborts one; no money is lost, the request fails and is retried). Not fixed: the delivery write paths that lock an assignment then save the order are many (`delivery/views_rider.py`, `delivery/views_live.py`, `delivery/services.py`, `orders/views.py`); the fix is to lock the Order row first on each.
+- (xciii-open) **CLOSED by plan 7F-E Task 2 (2026-10-19, round 3):** `orders/locks.py` is the one canonical lock order; the race is covered by `ledger/tests/test_lock_order.py` (see (cxxvi)). Original text, kept as history: **OPEN lock-order item (final review of plan 7F-D):** a rider's pickup locks the DeliveryAssignment row and then saves the order row (`DeliveryAssignment.sync_order`), while `refunds.refund_order` locks the order row then the assignment row. The two can deadlock (Postgres aborts one; no money is lost, the request fails and is retried). Not fixed: the delivery write paths that lock an assignment then save the order are many (`delivery/views_rider.py`, `delivery/views_live.py`, `delivery/services.py`, `orders/views.py`); the fix is to lock the Order row first on each.
 - (xciii) **DECIDED 2026-10-19 (round 2), supersedes 2026-10-18:** the delivery fee belongs to the rider once any pickup is done; goods refunds never return it, and with no pickup a whole refund returns it to the customer. The rider is paid through the usual 90/10 split. A promo-covered fee is paid by the promo's owner (a business promo is debited from the business, an AshantiHub promo from the promo subsidy account). A coupon shortfall is covered by AshantiHub (7D ruling 5 kept). `OrderRefund.delivery_kept_pesewas` replaces `rider_pesewas`. For multi-stop jobs "any pickup" replaces 7D ruling 7, and the 7D final-review note on the promo-funded rider pay gap is closed. The vendor sales view and the paid text count only business-funded promos. Built by plan 7F-D Tasks 1-2. Open questions: (a) an in-house rider who picked up: the fee is kept as platform income (assumed). (b) A failed delivery re-assigned to a second rider: the fee is paid once, to the rider on the assignment when it is settled (the current `assignment.dispatch_id`, see (d)), never twice. (c) A staff-created AshantiHub-funded free-delivery promo (the field exists, there is no screen). (d) A failed delivery re-assigned to a second rider: `stops.reopen_for_new_rider` clears every stop's `collected_at` while a single-stop `picked_up_at` survives, so the earned-fee evidence can disappear for multi-stop jobs and the payee is the current rider (pre-existing at release). Superseded text (2026-10-18): a third-party rider whose delivery was picked up (`picked_up_at` set) before a whole refund is paid, net of the rider commission split (90% of the delivery fee to the rider, 10% commission), and the remainder, including the 10% commission, goes to the customer; a rider who was only assigned (no pickup) gets nothing. If a coupon leaves the customer less than the rider share, the customer's credit floors at 0 and AshantiHub bears the shortfall. `OrderRefund.rider_pesewas` records the share, the posting is keyed `rider-refund-{order.pk}` (idempotent), and pay waits for Support's decision on the refund. Built by plan 7D Task 1. Original text, superseded: **Owner question: a rider is paid nothing for a delivery whose order is refunded whole,** before release (the fee
   goes back to the customer, W4) or after it (the earning is taken back and the balance may go below zero), even when the
   business was at fault and the rider did the work. The alternative is for AshantiHub to pay the rider from its own
@@ -742,6 +745,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
   to go negative for that one posting (`allow_negative`, as the rider's balance does), or gate the refund and tell
   Support. Not built.
   **DECIDED 2026-10-19, closed by plan 7F-D ((xciii)): the promo's owner pays the rider when the delivery was done; nothing moves otherwise. Original question (found in final review, 2026-10-18):** before release, Delivery payable holds only the fee the customer paid; a delivery fee covered by the free-delivery promo is taken from the business only at release, so on a pre-release refund after pickup the rider gets nothing (`backend/ledger/riders.py` `refund_trip`, since deleted, returned None when `delivery_pesewas == 0`). With delivery fees off by default ((xcvii)) this is the common case today. Who funds rider pay for a promo-covered fee on a refund: the business, AshantiHub, or nobody? Not built; decision needed.
+  **Round 3 (2026-10-19):** (a) CLOSED, an in-house rider who picked up leaves the fee as platform income (owner: yes). (b) and (d) CLOSED by R3/R4 (gates (cxxviii), (cxxix)): the first rider is unpaid when a delivery is re-assigned before completion and the pickup rule is evaluated on the current leg; the first rider keeps the fee when the trip was completed and the customer was away. (c) CLOSED by plan 7F-E Tasks 4-5 (gate (cxxiv)). Coupon shortfall refinement: stays: a whole refund pays the rider in full when the coupon left the customer less than the fee, AshantiHub covering the gap from the subsidy; changed: R1 (gate (cxxv)).
 - (xciv) **A rider switched back to AshantiHub's own can still owe money later.** The switch is refused while money is
   open. (Superseded by (xciii): a refund no longer reverses a rider's earning, so this can no longer arise from a refund.) Originally, a whole refund after release of an older third-party delivery reversed its earning (it works on the
   earning, not on the current flag), leaving a negative balance on a closed wallet with no way to recover it in the app
@@ -761,6 +765,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
   A flagged rider gets `409 otp_off` for step-up codes with the ledger off. The Ghana Card expiry date is required at upload
   and approval only while the ledger is on; `id_verified` (the money gate) always needs it, so cards approved before
   switch-on without one must be re-reviewed.
+  Round 3 (2026-10-19): re-deliveries are done by in-house riders (gate (cxxix)), so this note is unaffected; a rider switched to in-house is still refused while money is open.
 - (xcv) **The end-of-day commission job is a no-op while the ledger is off** (like (xxxix)). The switch is one-way ((x)),
   so a reserve is stranded only if the ledger is switched off, which it must never be. A missed night is caught up by the
   next run (built).
@@ -1125,3 +1130,98 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   queue with other jobs; a slow provider can hold a worker for up to the send budget (75 s) per run. A circuit breaker
   (3 failures in a row opens it for 120 s, across workers) and the beat entry's 280 s expiry limit the harm, but route
   `wallets.tasks.send_vendor_text` and `send_due_vendor_texts` to their own queue and worker first.
+- (cxxiv) **Ruling R2 (owner, round 3 follow-up): AshantiHub-funded free-delivery promos.** Marketing creates them (new
+  permission `delivery_promo.fund`, held by Marketing and Super Admin); every one needs approval from Operations or a Super
+  Admin through the approvals engine (kind `marketing.delivery_promo_funding`, pool permission `delivery_promo.approve`
+  seeded to `operations` and `super_admin`, chain pool then Super Admin, password again to approve); the maker never
+  approves their own, a Super Admin's own applies at once, and there is no threshold shortcut. A required budget cap
+  bounds the spend: `live_waivers` stops waiving once the owed charges reach the cap (derived, not a status change). The
+  cap is SOFT: the spend is an unlocked count of OWED charges, so concurrent checkouts can overshoot it by about one fee
+  each, and the last order waives a full fee even when less of the cap is left. A promo covers one named business's items.
+  Coupons, campaigns, banners and the send policy stay Super Admin only; the owner-submitted promo review by
+  `site_promo.manage` staff is business-funded only. Also: a blocked business (KYC not verified) answers 403 on the platform
+  endpoint, as `create_for_staff` does (not 400); spend counts OWED charges only; a cap above the co-sign threshold
+  (`approvals/rules.py`) on a staged request needs two approvals (approver plus co-signer), as any large request does;
+  and Marketing, who lacks `users.view`, finds a business through a read-only search endpoint gated by
+  `delivery_promo.fund` that returns the business id and name only (`delivery-promos/business-search/`). Built by plan 7F-E
+  Tasks 4-5; closes (xciii)(c).
+
+- (cxxv) **Ruling R1 (owner, round 3): a refund never gives back more than the customer paid (plan 7F-E Task 1).** When a
+  coupon leaves the customer less than the delivery fee, a partial refund is capped so the held fee is never taken from the
+  customer's credit: `refunds.Left.partial = max(0, N - done.customer - fee_held)`, shared by `refund_order` and `check`, and a scoped
+  refund with no amount takes the smaller of the shop items and `partial`. Reconciliation with 7F-D: **stays** (7D ruling 5,
+  (xciii)): when the customer paid less than the fee kept (N < kept), a whole refund gives the customer's credit 0, the rider
+  is still paid in full, and AshantiHub covers the gap from the promo subsidy (`_post` credits `subsidy - shortfall`);
+  **changes**: (a) a partial or scoped refund can no longer hand back customer money the fee needs; (b) the fee is reserved
+  from the first refund, before any pickup exists; (c) processing money is no longer eaten by the kept fee; (d) the staff
+  "can still be refunded" figure is the real credit. In the data, `OrderRefund.amount_pesewas` is now the real credit and never
+  includes the kept fee, so `wallet_pesewas = amount_pesewas + processing_pesewas`, and the old floor at 0 and the `unfunded`
+  figure are gone. `OrderRefund.subsidy_pesewas` still records the whole coupon share closed off (so
+  `left()` reaches 0). Staff see "can still be refunded" (`refundable`) on the dispute and the order screen. Known limits:
+  `OrderRefund` rows written under the old rule (staging test data only) read `wallet_pesewas` too high by the kept fee;
+  when the order total N is at or below the fee F after a pickup, `refundable` is 0 and every door refuses an amount of 0, so
+  dispute resolution (unscoped only) and the delivery-case refund ask for that whole refund with an explicit `whole_refund`
+  flag and no amount (7F-E fix wave: `refunds.whole_at_zero_refusal` / `check_whole`; ledger on, payment recorded, not already
+  refunded whole, `refundable` 0; the approval re-checks at apply). It runs `refund_order(order, None)`: the rider is paid in
+  full, the vendor's money, the Delivery payable and the subsidy (D - (F - N)) are reversed, the customer's credit is 0
+  (`Dispute.refund_amount` 0.00) and the order is cancelled. The dispute payload's `order_whole_refund_at_zero` drives a
+  checkbox in the staff DisputesPanel; the delivery-case screen has no control for it yet (API only).
+- (cxxvi) **CLOSED (xciii-open): one canonical lock order (plan 7F-E Task 2).** `orders/locks.py` holds it: the approval or
+  dispute row, the Order row, its OrderFeeSnapshot rows (by pk), its DeliveryAssignment row, the order's open Redelivery row
+  (level 4b, Task 7), the PickupStop rows, the Rider row (`of=("self",)`), every ledger Account in one sorted pass
+  (`posting.lock`), then the activity-chain lock. A DeliveryAssignment row is locked only through `lock_assignment` (needs the
+  order from `lock_order`, else `LockOrderError`) or `lock_job` / `lock_job_or_404`; `ledger/tests/test_lock_order.py` fails if
+  any other module locks the assignment, and holds the three race tests (rider pickup, legacy dispatch pickup, re-assign
+  against a whole refund). Note: `delivery.dispatching.Offer` rows are not named in the order (a pre-existing theoretical
+  Offer-to-Order cycle; `accept_offer` and `force_assign` call `lock_order`).
+- (cxxvii) **Support's cancel keeps the pickup evidence (plan 7F-E Task 3).** After a pickup, `orders.support._cancel` keeps
+  the assignment row (status FAILED, `order_cancelled`, `failed_at`) so the rider is still paid and the fee is not returned;
+  with no pickup the row is deleted as before. The DeliveryEvent step for the note is `CANT_DELIVER` ("Order cancelled by
+  Support after pickup"), since no cancel step exists and a new one needs a choices migration. `_cancel` locks the order, the fee
+  snapshots, then the assignment (gate (cxxvi)).
+- (cxxviii) **Ruling R3 (owner, round 3): re-assignment (plan 7F-E Task 6).** A re-assignment is a job that is accepted or
+  further along, or has failed, and is given to a different rider; a swap of a still-`assigned` job is ordinary dispatch.
+  A re-assigned delivery is done by AshantiHub's own riders only (409 `redelivery_in_house_only`: "A re-assigned delivery is
+  done by AshantiHub's own riders."), enforced in `assign`, in the dispatch ranking (reason "Re-assigned: AshantiHub's own
+  riders only") and in a manager's manual offer. The 7F-D pickup rule is refined (see its Global Constraints): it is evaluated
+  on the current leg. A pickup counts only when `collected_by` / `picked_up_by` is the assignment's current rider, or is null on
+  rows older than this change; every reset of the job clears `picked_up_at` / `picked_up_by` and the reopened stops'
+  `collected_at` / `collected_by` (history stays in the append-only `DeliveryEvent` rows). So a refund after re-assignment and
+  before the new rider's pickup returns the fee to the customer; after the new rider's pickup the fee is kept as platform income
+  (the rider is in-house); completion pays the current rider; the first rider gets nothing. A failed job given again to the
+  same rider is allowed and starts a new leg. `Rider.employment` is read without a rider lock in `assign` (a rider lock there
+  would invert gate (cxxvi); release pays the completer anyway), so an employment switch racing an assign could let a
+  third-party rider through, and the money gate at release still holds. Owner awareness: the in-house-only rule is not a
+  money rule and is not behind `LEDGER_ENABLED`, so it applies in production on deploy even with the ledger off: a failed or
+  accepted job cannot be given to a third-party rider, and if no in-house rider is on shift the job stalls. Mid-route swap: stops the first rider collected stay
+  done and count for no one; if the second rider skips all the rest, the pickup stamp names the earlier stop's collector, not
+  the manager who skipped; a null stamp (older row) counts for whoever is on the job, which matters only for an in-flight swap
+  during the deploy.
+- (cxxix) **Ruling R4 (owner, round 3): re-delivery at the customer's request (plan 7F-E Task 7).** A `Redelivery` row (one
+  open request per order; statuses `awaiting_payment`, `paid`, `assigned`, `completed`, `cancelled`, `refunded`) is opened by
+  staff holding `orders.redeliver` (Support, Pickup Desk, Super Admin). "Customer not available" is case (b):
+  `CUSTOMER_UNAVAILABLE_REASONS = ("no_answer",)` with `arrived_drop_at` set; any other failure reason is case (a), where the
+  first trip's fee is handled by the pickup rule. In case (b) the first rider keeps the original fee: the payee is
+  `Redelivery.first_rider` tested at `first_leg_ended_at`, the fee is earned once a request exists, an in-house first rider
+  leaves it as platform income, and a third-party first rider is paid once at release or at a whole refund's settle. The
+  re-delivery fee is paid by the customer, from the wallet or by mobile money (the provider's processing charge goes on top
+  via `booking_pay.pay`), in the Account `redelivery_payable` (per order); the fee is not in `Order.total_amount`, so R1 and
+  `refunds.left` are untouched. The second rider is in-house and has no wallet: the fee is booked to platform delivery income
+  at completion and the amount owed to that rider for payroll outside the app is recorded on the `Redelivery` row (rider, fee,
+  completed time); no payroll screen shows it yet. Refunds: a whole refund before the second rider's pickup returns the fee,
+  after it settles it; partial refunds never touch it; cancel is allowed while awaiting payment and while paid but not
+  assigned (a paid fee returns to the customer's wallet) and refused once assigned (409 `redelivery_not_cancellable`); a second
+  trip that fails after the rider collected the goods settles the fee and marks the request completed, so an attempt 2 can be
+  opened (the customer pays again); a GH₵ 0.00 fee marks the request paid at once with no journal; a payment arriving for a
+  request no longer waiting is credited to the customer's wallet (journal `redelivery-stray-<ref>`). Journals: pay, settle,
+  refund, stray; reconciliation reads the session's `metadata.journal_key`. Errors: 409 `not_redeliverable`, `redelivery_open`,
+  `redelivery_fee_unpaid`, `redelivery_in_house_only`, `redelivery_not_cancellable`, `nothing_to_pay`, `ledger_off`. With the
+  ledger off the POST endpoints answer 409 `ledger_off`, the list answers empty, and `assign` is unchanged; the assign gate
+  applies only to orders paid through the ledger (`redelivery.ledger_paid`) or with an open request, so orders paid before the
+  ledger was on are never held. The Super Admin holds `orders.redeliver` but has API access only (the Support panel is for the
+  `support` role). Lock order gains level 4b (gate (cxxvi)). Known limits: repeated mobile-money clicks open new sessions (a late
+  duplicate is credited to the wallet); a shop-scoped refund that refunds every item does not close a paid request.
+- (cxxx) **Ruling R5 (owner, round 3): the re-delivery fee is a governed setting (plan 7F-E Task 7).**
+  `redelivery_fee_pesewas`, default 1500 (GH₵ 15.00, **a placeholder to be confirmed by the owner**), bounds 0 to 20000, changed
+  by Super Admin with sudo, and copied onto the request when it is opened so a later change never reprices an open one. It is
+  not on the `RateCard` and works while `DELIVERY_FEE_ENABLED` is off. Listed in §3.3.

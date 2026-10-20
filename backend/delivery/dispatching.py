@@ -16,6 +16,7 @@ from django.utils import timezone
 
 from field.services import haversine_m
 from notifications.services import notify_staff
+from orders import locks
 from orders.models import DeliveryAssignment, Order
 from routing import service as routing_service
 
@@ -47,6 +48,26 @@ def deadline_for(order, *, express=False, limits=None):
     return start + timedelta(minutes=minutes)
 
 
+IN_HOUSE_ONLY = "Re-assigned: AshantiHub's own riders only"
+REDELIVERY_UNPAID = "Waiting for the customer to pay the re-delivery fee"
+REDELIVERY_IN_HOUSE = "Re-delivery: AshantiHub's own riders only"
+
+
+def redelivery_hold(order):
+    """For the queue (unlocked reads): "unpaid" while a customer-unavailable failure waits for the re-delivery fee,
+    "in_house" while a paid or assigned re-delivery limits the job to AshantiHub's riders, else None
+    (delivery.redelivery; services.assign enforces it under the locks)."""
+    from . import redelivery
+
+    if not redelivery.gate_applies(order):
+        return None
+    held = DeliveryAssignment.objects.filter(order_id=order.pk).first()
+    current = redelivery.open_row(order)
+    if redelivery.customer_unavailable(held):
+        return "in_house" if current is not None and current.status == current.PAID else "unpaid"
+    return "in_house" if current is not None and current.status == current.ASSIGNED else None
+
+
 def rank(order, rules=None, now=None):
     """{"eligible": [...best first], "left_out": [...], "pickup_located": bool, "rules": ..., "distance_basis": ...}.
     Every rider distance here (``km``, the radius check, the distance score) is the straight-line estimate, so the
@@ -67,6 +88,11 @@ def rank(order, rules=None, now=None):
         if delivered_at and (staff_id not in last_done or delivered_at > last_done[staff_id]):
             last_done[staff_id] = delivered_at
     refused = set(Offer.objects.filter(order=order, status__in=(Offer.DECLINED, Offer.EXPIRED)).values_list("rider_id", flat=True))
+    # An order whose job a rider had accepted or taken further (in the queue: a failed attempt) is re-assigned, and a
+    # re-assigned delivery is done by AshantiHub's own riders only (services.assign; Plan 7F-E Task 6). The rider who
+    # held it may still be given it again: that is not a re-assignment.
+    held = getattr(order, "delivery_assignment", None)
+    hold = redelivery_hold(order)
     stale_after = timedelta(seconds=int(rules["stale_s"]))
     eligible, left_out = [], []
     for rider in riders:
@@ -74,7 +100,9 @@ def rank(order, rules=None, now=None):
         shift = shifts.get(rider.pk)
         reason = None
         km = None
-        if staff.is_suspended:
+        if hold == "unpaid":                 # nobody can take it until the customer pays (services.assign refuses)
+            reason = REDELIVERY_UNPAID
+        elif staff.is_suspended:
             reason = "Suspended"
         elif shift is None:
             reason = "Not on shift"
@@ -90,6 +118,10 @@ def rank(order, rules=None, now=None):
             reason = "A required paper is missing or expired"
         elif cod_over_cap(rider, rules):
             reason = "Holds cash over the cap"
+        elif hold == "in_house" and rider.employment != Rider.ASHANTIHUB:
+            reason = REDELIVERY_IN_HOUSE
+        elif services.reassignment_refused(held, rider):
+            reason = IN_HOUSE_ONLY
         elif rider.pk in refused:
             reason = "Declined or timed out on this order"
         elif plat is None:
@@ -132,6 +164,18 @@ def live_offer(order):
 
 
 def make_offer(order, rider, *, source, by=None, score=None, rules=None, now=None):
+    """Offer the order to `rider`, withdrawing any live offer. A re-assigned order (services.reassignment_refused) is
+    offered to AshantiHub's own riders only: refused here (409 redelivery_in_house_only) before anything changes, so a
+    manager's offer can never stall waiting for an accept that services.assign would refuse."""
+    if services.reassignment_refused(DeliveryAssignment.objects.filter(order_id=order.pk).first(), rider):
+        raise services.in_house_only_error()
+    hold = redelivery_hold(order)
+    if hold == "unpaid":
+        from .redelivery import FEE_UNPAID
+
+        raise services.DeliveryError(FEE_UNPAID, 409, "redelivery_fee_unpaid")
+    if hold == "in_house" and rider.employment != Rider.ASHANTIHUB:
+        raise services.in_house_only_error()
     now = now or timezone.now()
     rules = rules or config.effective_rules()
     existing = live_offer(order)
@@ -158,7 +202,7 @@ def accept_offer(offer_id, staff):
             offer.status, offer.responded_at = Offer.EXPIRED, now
             offer.save(update_fields=["status", "responded_at"])
             raise services.DeliveryError("This offer timed out.", 409, "offer_expired")
-        order = Order.objects.select_for_update().get(pk=offer.order_id)
+        order = locks.lock_order(offer.order_id)
         held = DeliveryAssignment.objects.filter(order=order).exclude(status=DeliveryAssignment.FAILED).exists()
         if held or order.status != Order.PAID:
             offer.status, offer.responded_at = Offer.WITHDRAWN, now
@@ -191,7 +235,7 @@ def expire_offers(now=None):
 
 def force_assign(order, rider, by, *, mode=DeliveryAssignment.FORCED):
     with transaction.atomic():
-        order = Order.objects.select_for_update().get(pk=order.pk)
+        order = locks.lock_order(order.pk)
         existing = live_offer(order)
         if existing is not None:
             existing.status, existing.responded_at = Offer.WITHDRAWN, timezone.now()
@@ -220,8 +264,8 @@ def run_engine(now=None):
     rules = config.effective_rules()
     limits = config.effective_limits()
     for order in board.waiting_orders():
-        if held_for_manager(order):
-            continue
+        if held_for_manager(order) or redelivery_hold(order) == "unpaid":
+            continue                    # every shop skipped it, or the customer has not paid the re-delivery fee yet
         hold = getattr(order, "queue_hold", None)
         if hold is not None and hold.release_at > now:
             continue

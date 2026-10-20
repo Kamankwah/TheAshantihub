@@ -176,6 +176,8 @@ def setting_consequences(request):
         return ["Applies to every booking, service or ticket sale not yet released, including ones already paid."]
     if key in TEXT_SETTING_KEYS:
         return ["Changes which texts businesses receive and how the daily digest is sent. It moves no money."]
+    if key == settings_store.REDELIVERY_FEE:
+        return ["Applies to re-deliveries requested after it starts. A re-delivery already asked for keeps the fee it was given."]
     if key == "otp_daily_failure_cap":
         return ["Applies to wrong codes counted from today. An account already over the new limit stays locked until tomorrow."]
     return ["Applies only to orders paid after it starts."]

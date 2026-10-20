@@ -1,5 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { apiPost } from "../apiClient.js";
+import { apiErrorMessage } from "../lib/apiErrorMessage.js";
 import { useOrderTracking } from "../hooks/useTracking.js";
 import TrackMap from "./maps/TrackMap.jsx";
 import EtaLine from "./maps/EtaLine.jsx";
@@ -66,10 +68,47 @@ function StopsLine({ stops, full }) {
   );
 }
 
+// The rider reached the address and could not reach the customer; Support asked, at the customer's request,
+// for a second trip (Plan 7F-E Task 7). Until the customer pays the re-delivery fee nothing is given to a
+// rider. Wallet pays at once; mobile money goes to the provider's checkout (the server adds its processing
+// charge on top). Only the server's own figure is shown.
+function RedeliveryNotice({ orderId, redelivery }) {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const pay = async (method) => {
+    setError(null); setBusy(true);
+    try {
+      const res = await apiPost(`/api/orders/${orderId}/redelivery/pay/`, { method });
+      if (res?.mode === "redirect" && res.checkout_url) { window.location.assign(res.checkout_url); return; }
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    } catch (err) { setError(apiErrorMessage(err, "Could not take the payment. Please try again.")); }
+    setBusy(false);
+  };
+  const payButton = (primary) => ({
+    padding: "8px 14px", borderRadius: 10, border: `1px solid ${D.gold}`, cursor: busy ? "default" : "pointer", fontFamily: "inherit",
+    fontWeight: 700, fontSize: "0.78rem", background: primary ? D.gold : D.panelBg, color: D.text, opacity: busy ? 0.6 : 1,
+  });
+  return (
+    <section aria-label="Delivery again" style={{ marginTop: 10, padding: 12, borderRadius: 12, border: `1px solid ${D.cardBorder}`, background: D.panelBg }}>
+      <p style={{ margin: 0, color: D.text, fontSize: "0.8rem", fontWeight: 700 }}>
+        We could not reach you. Pay <span style={{ fontVariantNumeric: "tabular-nums" }}>{`GH₵ ${redelivery.fee}`}</span> to have it delivered again.
+      </p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+        <button type="button" disabled={busy} onClick={() => pay("wallet")} style={payButton(true)}>Pay from wallet</button>
+        <button type="button" disabled={busy} onClick={() => pay("momo")} style={payButton(false)}>Pay by mobile money</button>
+      </div>
+      <p style={note}>Mobile money adds the provider's payment processing charge on top.</p>
+      {error && <p role="alert" style={{ ...note, color: D.red }}>{error}</p>}
+    </section>
+  );
+}
+
 // `deliveryStatus` is the order's own delivery_status: the pre-pickup lines only show while it is
 // still "processing", so an order staff moved on directly never reads "Finding a rider".
-export default function OrderTrackingMap({ orderId, assignmentStatus, deliveryStatus, stops = null }) {
+export default function OrderTrackingMap({ orderId, assignmentStatus, deliveryStatus, stops = null, redelivery = null }) {
   const processing = deliveryStatus === "processing";
+  if (redelivery?.status === "awaiting_payment") return <RedeliveryNotice orderId={orderId} redelivery={redelivery} />;
   if (assignmentStatus == null) return processing ? <p style={note}>Finding a rider</p> : null;
   if (BEFORE_PICKUP.includes(assignmentStatus)) return processing ? <><p style={note}>{BEFORE_PICKUP_COPY[assignmentStatus]}</p><StopsLine stops={stops} full /></> : null;
   if (LIVE.includes(assignmentStatus)) return <><StopsLine stops={stops} full={false} /><LiveMap orderId={orderId} /></>;

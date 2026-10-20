@@ -69,6 +69,7 @@ COLLECTION_TYPES = [
     ("event_fees", "Event listings", (CheckoutSession.EVENT_PAY, CheckoutSession.EVENT_RENEW)),
     ("tickets", "Tickets", (CheckoutSession.TICKET_PURCHASE,)),
     ("topups", "Wallet top-ups", (CheckoutSession.WALLET_TOPUP,)),
+    ("redeliveries", "Re-delivery fees", (CheckoutSession.REDELIVERY_FEE,)),
 ]
 KIND_LABEL = {kind: label for _k, label, kinds in COLLECTION_TYPES for kind in kinds}
 KIND_TYPE = {kind: key for key, _l, kinds in COLLECTION_TYPES for kind in kinds}

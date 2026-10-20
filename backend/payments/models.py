@@ -42,6 +42,9 @@ class CheckoutSession(models.Model):
     EVENT_RENEW = "event_renew"
     # Money added to a customer's AshantiHub wallet by mobile money (wallets plan 3a; finalizer in services.py).
     WALLET_TOPUP = "wallet_topup"
+    # The fee a customer pays to have an order delivered again after they were not available (Plan 7F-E Task 7;
+    # finalizer in services.py, rules in delivery.redelivery).
+    REDELIVERY_FEE = "redelivery_fee"
     KIND_CHOICES = [
         (ORDER_CHECKOUT, "Order Checkout"),
         (EVENT_PAY, "Event Pay"),
@@ -53,6 +56,7 @@ class CheckoutSession(models.Model):
         (BOOKING, "Booking"),
         (EVENT_RENEW, "Event Renewal"),
         (WALLET_TOPUP, "Wallet Top-up"),
+        (REDELIVERY_FEE, "Re-delivery Fee"),
     ]
 
     # The `provider` of an order paid from the customer's AshantiHub wallet: no provider moved any money.

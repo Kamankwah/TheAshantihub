@@ -271,3 +271,27 @@ class WithdrawalResolutionTests(TestCase):
             ask.assert_not_called()
         self.assertEqual(self.wallet(), 20000)
 
+
+    def approved_event(self, outcome, request_id="req-res-0001"):
+        withdrawal = self.sent(request_id)
+        with provider_not_wired():
+            approval_id = self.propose(withdrawal, outcome=outcome).json()["approval_id"]
+            self.assertEqual(self.approve(approval_id).status_code, 200)
+        verb = "wallets.withdrawal_paid" if outcome == "paid" else "wallets.withdrawal_failed"
+        return ActivityEvent.objects.get(verb=verb, target_id=str(withdrawal.pk))
+
+    def test_staff_paid_approval_event_carries_amount(self):
+        event = self.approved_event("paid")
+        self.assertEqual((event.after["amount"], event.after["amount_label"]), ("50.00", "GH₵ 50.00"))
+
+    def test_staff_fail_approval_event_carries_amount(self):
+        event = self.approved_event("failed")
+        self.assertEqual((event.after["amount"], event.after["amount_label"]), ("50.00", "GH₵ 50.00"))
+
+    def test_approval_events_never_contain_payout_number(self):
+        from .helpers import MOMO_NUMBER
+        for outcome, request_id in (("paid", "req-res-0011"), ("failed", "req-res-0012")):
+            event = self.approved_event(outcome, request_id)
+            blob = repr((event.summary, event.before, event.after))
+            self.assertNotIn(MOMO_NUMBER, blob)
+            self.assertNotIn(MOMO_NUMBER[-9:], blob)
