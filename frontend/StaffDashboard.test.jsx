@@ -1548,7 +1548,8 @@ describe('StaffDashboard Disputes', () => {
     fireEvent.click(screen.getByText('✓ Resolve'))
     fireEvent.change(screen.getByPlaceholderText('Refund amount (optional)'), { target: { value: '50.00' } })
     fireEvent.click(screen.getByText('Confirm resolve'))
-    await waitFor(() => expect(resolveBody).toEqual({ outcome: 'resolved', refund_amount: '50.00', resolution_notes: '' }))
+    // A partial refund names its amount; whole_refund is only for "refund the whole order when nothing is left" (d4df5160).
+    await waitFor(() => expect(resolveBody).toEqual({ outcome: 'resolved', refund_amount: '50.00', whole_refund: false, resolution_notes: '' }))
   })
 
   it('shows no actions on a terminal (resolved) dispute', async () => {
