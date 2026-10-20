@@ -129,7 +129,7 @@ async function send(path, makeInit) {
       if (!(await sudoHandler())) break
     } else if (body.code === 'step_up_required' && stepUpHandler && !stepUpTried) {
       stepUpTried = true
-      lastStepUp = null
+      if (lastStepUp?.method === method && lastStepUp.path === path) lastStepUp = null
       token = null
       const answer = await stepUpHandler(body.action)
       if (!answer?.token) break
@@ -140,10 +140,13 @@ async function send(path, makeInit) {
     }
     response = await request(path, build())
   }
+  // Only an answer for the remembered method and path may clear it; an
+  // unrelated request (a background refetch) must not cost a second code.
+  const sameRequest = lastStepUp?.method === method && lastStepUp.path === path
   if (response.ok) {
-    lastStepUp = null
+    if (sameRequest) lastStepUp = null
   } else if ((await refusalCode(response)).code === 'step_up_required') {
-    lastStepUp = null
+    if (sameRequest) lastStepUp = null
   } else if (prompted) {
     lastStepUp = prompted
   }

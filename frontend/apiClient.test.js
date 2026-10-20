@@ -356,7 +356,6 @@ describe('second-person and password contracts of the staff APIs', () => {
   })
 })
 
-
 describe('setStepUpHandler', () => {
   const URL = 'http://localhost:8000/api/step/'
   const needStepUp = (action = 'withdrawal') => HttpResponse.json({ detail: 'Enter a code.', code: 'step_up_required', action }, { status: 403 })
@@ -510,13 +509,41 @@ describe('setStepUpHandler', () => {
       phase += 1
       return phase === 1 ? HttpResponse.json({ detail: 'Bad.' }, { status: 400 }) : needStepUp()
     }))
-    const off2 = setStepUpHandler(ok('tok1'))
+    const handler = ok('tok1')
+    const off2 = setStepUpHandler(handler)
     await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
     await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 403 })
+    // The up-front token was refused, so the handler is asked again for a fresh code.
+    expect(handler).toHaveBeenCalledTimes(2)
     const afterClear = seen.length
     await expect(apiPost('/api/step/', {})).rejects.toBeTruthy()
     off2()
     expect(seen[afterClear]).toBeNull()
+    expect(handler).toHaveBeenCalledTimes(3)
+  })
+
+  it('...an unrelated 2xx on another path leaves the token in place', async () => {
+    const seen = serve('post', { after: () => HttpResponse.json({ detail: 'Bad.' }, { status: 400 }) })
+    server.use(http.get('http://localhost:8000/api/poll/', () => HttpResponse.json({ ok: 1 })))
+    const off = setStepUpHandler(ok('tok1'))
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    await apiFetch('/api/poll/')
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    off()
+    expect(seen).toEqual([null, 'tok1', 'tok1'])
+  })
+
+  it('...an unrelated step_up_required on another path does not clear it', async () => {
+    const seen = serve('post', { after: () => HttpResponse.json({ detail: 'Bad.' }, { status: 400 }) })
+    server.use(http.post('http://localhost:8000/api/other/', () => needStepUp()))
+    const off = setStepUpHandler(ok('tok1'))
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    off()
+    await expect(apiPost('/api/other/', {})).rejects.toMatchObject({ status: 403 })
+    const off2 = setStepUpHandler(ok('tok1'))
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    off2()
+    expect(seen).toEqual([null, 'tok1', 'tok1'])
   })
 
   it('...cleared on sign-out', async () => {
