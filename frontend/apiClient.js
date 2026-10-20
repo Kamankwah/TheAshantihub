@@ -29,6 +29,7 @@ export function setStoredAuth(auth) {
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth))
   } else {
     localStorage.removeItem(AUTH_STORAGE_KEY)
+    lastStepUp = null
   }
 }
 
@@ -79,18 +80,72 @@ export function setSudoHandler(handler) {
   }
 }
 
+// Code step-up (OTP). A 403 {code: "step_up_required", action} asks the one
+// registered handler (StepUpPrompt) for a code; it resolves {token, expiresIn}
+// (seconds) or null when the person cancels. The request is then retried once
+// with X-Step-Up-Token. A cancel, a second step_up_required or no handler
+// leaves the 403 as it was. Independent of sudo: one request may need both.
+let stepUpHandler = null
+
+export function setStepUpHandler(handler) {
+  stepUpHandler = handler
+  return () => {
+    if (stepUpHandler === handler) stepUpHandler = null
+  }
+}
+
+// A token the retried request used but the server refused for another reason
+// (a 400 validation error keeps the token alive server-side) is remembered so
+// the person's corrected resubmit does not ask for a second code. It is only
+// ever sent to the same method and path, and is cleared by any 2xx, by a
+// step_up_required answer, on expiry and on sign-out.
+let lastStepUp = null
+
+async function refusalCode(response) {
+  if (response.status !== 403) return {}
+  try {
+    return (await response.clone().json()) || {}
+  } catch {
+    return {}
+  }
+}
+
 async function send(path, makeInit) {
-  let response = await request(path, makeInit())
-  if (response.status === 403 && sudoHandler) {
-    let body = null
-    try {
-      body = await response.clone().json()
-    } catch {
-      body = null
+  const method = makeInit().method || 'GET'
+  if (lastStepUp && Date.now() >= lastStepUp.expiresAt) lastStepUp = null
+  let token = lastStepUp?.method === method && lastStepUp.path === path ? lastStepUp.token : null
+  let prompted = null
+  const build = () => {
+    const init = makeInit()
+    return token ? { ...init, headers: { ...init.headers, 'X-Step-Up-Token': token } } : init
+  }
+  let response = await request(path, build())
+  let sudoTried = false
+  let stepUpTried = false
+  while (response.status === 403) {
+    const body = await refusalCode(response)
+    if (body.code === 'sudo_required' && sudoHandler && !sudoTried) {
+      sudoTried = true
+      if (!(await sudoHandler())) break
+    } else if (body.code === 'step_up_required' && stepUpHandler && !stepUpTried) {
+      stepUpTried = true
+      lastStepUp = null
+      token = null
+      const answer = await stepUpHandler(body.action)
+      if (!answer?.token) break
+      token = answer.token
+      prompted = { method, path, token, expiresAt: Date.now() + (answer.expiresIn || 300) * 1000 }
+    } else {
+      break
     }
-    if (body?.code === 'sudo_required' && (await sudoHandler())) {
-      response = await request(path, makeInit())
-    }
+    response = await request(path, build())
+  }
+  if (response.ok) {
+    lastStepUp = null
+  } else if ((await refusalCode(response)).code === 'step_up_required') {
+    lastStepUp = null
+  } else if (prompted) {
+    lastStepUp = prompted
   }
   return response
 }
