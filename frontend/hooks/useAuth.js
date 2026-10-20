@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch, apiPatch, apiPatchForm, apiPost, getStoredAuth, setStoredAuth } from '../apiClient.js'
+import { clearDeviceToken, getDeviceToken, isOtpChallenge, setDeviceToken } from '../lib/otp.js'
 import { getNetworkStatus, subscribeNetworkStatus } from '../lib/networkStatus.js'
 
 const LOGIN_PATHS = {
@@ -55,12 +56,44 @@ export function useAuth() {
   }, [])
 
   const login = useCallback(async (accountType, identifier, password) => {
-    const data = await apiPost(LOGIN_PATHS[accountType], { identifier, password })
-    // A staffer with 2-step sign-in (or a Super Admin who must set it up)
-    // gets a short-lived challenge instead of a token. Nothing is stored
-    // until the second step succeeds.
-    if (data?.two_factor_required || data?.two_factor_setup_required) return data
+    // Only customers carry a trusted-device token; the backend ignores it
+    // for owners and staff, so it is never sent for them.
+    const deviceToken = accountType === 'customer' ? getDeviceToken() : null
+    const data = await apiPost(
+      LOGIN_PATHS[accountType],
+      deviceToken ? { identifier, password, device_token: deviceToken } : { identifier, password },
+    )
+    // A code challenge (sign-in code or authenticator), a staffer's 2-step
+    // sign-in, or a Super Admin who must set it up, gets a short-lived
+    // challenge instead of a token. Nothing is stored until the last step
+    // succeeds.
+    if (data?.otp_required || data?.two_factor_required || data?.two_factor_setup_required) return data
     return completeSignIn(data)
+  }, [completeSignIn])
+
+  // Sign-in code calls: no local state side effects until verifyOtp finishes.
+  const sendOtpCode = useCallback(
+    (mfaToken, channel) => apiPost('/api/otp/sign-in/send/', { mfa_token: mfaToken, channel }),
+    [],
+  )
+
+  const verifyOtp = useCallback(async (mfaToken, { code, recoveryCode, trustDevice, registration } = {}) => {
+    const body = recoveryCode ? { mfa_token: mfaToken, recovery_code: recoveryCode } : { mfa_token: mfaToken, code }
+    const deviceToken = getDeviceToken()
+    if (deviceToken) body.device_token = deviceToken
+    if (trustDevice) body.trust_device = true
+    const data = await apiPost('/api/otp/sign-in/verify/', body)
+    // An authenticator still owed after a correct sign-up code: hand the
+    // new ticket back, store nothing.
+    if (isOtpChallenge(data)) return data
+    const { device_token: newDeviceToken, ...signedIn } = data
+    // Only a customer's sign-in settles the device token: a fresh one
+    // replaces the stored one, and none means the person did not (re)trust.
+    if (signedIn.account_type === 'customer') {
+      if (newDeviceToken) setDeviceToken(newDeviceToken)
+      else clearDeviceToken()
+    }
+    return completeSignIn(registration === 'business_owner' ? { ...signedIn, registration_step: 'business_info' } : signedIn)
   }, [completeSignIn])
 
   const verifyTwoFactor = useCallback(async (mfaToken, { code, recoveryCode } = {}) => {
@@ -90,6 +123,7 @@ export function useAuth() {
 
   const registerCustomer = useCallback(async (fields) => {
     const data = await apiPost('/api/accounts/customers/register/', fields)
+    if (data?.otp_required && !data.token) return data
     const auth = { token: data.token, account_type: 'customer', id: data.id, full_name: data.full_name }
     setStoredAuth(auth)
     setUser(auth)
@@ -98,6 +132,7 @@ export function useAuth() {
 
   const registerBusinessOwner = useCallback(async (fields) => {
     const data = await apiPost('/api/accounts/business-owners/register/', fields)
+    if (data?.otp_required && !data.token) return data
     const auth = {
       token: data.token, account_type: 'business_owner', id: data.id, full_name: data.full_name,
       kyc_status: data.kyc_status, registration_step: 'business_info',
@@ -267,6 +302,6 @@ export function useAuth() {
     updateProfile, hasPermission,
     requestSecondaryEmail, confirmSecondaryEmail, requestSecondaryPhone, confirmSecondaryPhone,
     activateStaff, requestPasswordReset, confirmPasswordReset,
-    completeSignIn, verifyTwoFactor, startTwoFactorEnrolment, confirmTwoFactorEnrolment,
+    completeSignIn, sendOtpCode, verifyOtp, verifyTwoFactor, startTwoFactorEnrolment, confirmTwoFactorEnrolment,
   }
 }
