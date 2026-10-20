@@ -34,6 +34,25 @@ function makeAuth(overrides = {}) {
   }
 }
 
+describe('BusinessDashboard opening hours', () => {
+  const owner = { fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }
+
+  it('dashboard shows "Hours not set" prompt that opens the hours editor', async () => {
+    mockDashboardData({ profile: { ghana_card_number: 'GHA-1', business_kind: 'product', hours: [], has_hours: false } })
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={owner} />)
+    expect(await screen.findByText('Hours not set')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Set opening hours' }))
+    expect(await screen.findByLabelText('Monday opens')).toBeInTheDocument()
+  })
+
+  it('shows no prompt for a business that has hours, or when the server does not say', async () => {
+    mockDashboardData({ profile: { ghana_card_number: 'GHA-1', hours: [], has_hours: true } })
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={owner} />)
+    await waitFor(() => expect(screen.getByText(/Akwaaba, Abena/)).toBeInTheDocument())
+    expect(screen.queryByText('Hours not set')).not.toBeInTheDocument()
+  })
+})
+
 describe('BusinessDashboard approval gating', () => {
   it('shows the normal tabs when verified', async () => {
     mockDashboardData()

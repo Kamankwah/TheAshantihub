@@ -12,6 +12,8 @@
 
 ## Global Constraints
 
+> Superseded for Task 1's pay rule by plan 7F-D, 2026-10-19 (delivery fee kept by the rider after any pickup; `delivery_kept_pesewas` replaces `rider_pesewas`).
+
 - "A trip" = the rider **picked up** the goods and was delivering (pickup with delivery). A rider merely assigned earns nothing. Rider pay still waits for Support's verification call (gate (c)); a refund before release pays the rider from the delivery fee at refund time, since the call will never happen.
 - The rider's share on refund = the delivery fee the rider earns under the existing 90/10 split (`ledger.riders.split`); the remainder of the delivery fee goes back to the customer with the refund.
 - A suspended business (`BusinessOwner.is_suspended`) gets no money texts; in-app notifications are unaffected.
@@ -29,6 +31,8 @@
 ---
 
 ### Task 1: Pay the rider for a trip made before a refund
+
+> Superseded for Task 1's pay rule by plan 7F-D, 2026-10-19.
 
 **Files:** Modify `backend/ledger/refunds.py` (`_delivery_made`, `_post`, ~200-310), `backend/ledger/riders.py` (add `credit_on_refund`); Test: `backend/ledger/tests/test_rider_refund_pay.py`
 

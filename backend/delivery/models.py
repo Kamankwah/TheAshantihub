@@ -517,11 +517,12 @@ class RiderCommissionPosting(models.Model):
 
 class RiderEarning(models.Model):
     """What a third-party rider earned for one order (spec §2.2 step 2(c), §7): the delivery fee AshantiHub took at the
-    order's release (`gross_pesewas`: the fee the customer paid plus a fee the business covered with its free-delivery
-    promo), split at `commission_bp` (the rate in force when the order was paid) into `reserve_pesewas`, held until the
+    order's release or, for a whole refund after a pickup, at that refund (`gross_pesewas`: the fee the customer paid plus
+    a fee the business covered with its free-delivery promo), split at `commission_bp` (the rate in force when the order was paid) into `reserve_pesewas`, held until the
     end of `earned_on` (Accra), and `net_pesewas`, withdrawable at once. Written in the release's transaction (journal
-    order-rider-<order>); afterwards only the end-of-day posting (`commission_posting`) and a reversal on a whole refund
-    after release (`reversed_at`, `reversal_journal`) are written to it."""
+    order-rider-<order>) or the refund's; afterwards only the end-of-day posting (`commission_posting`) is written to it.
+    `reversed_at` and `reversal_journal` are unused historical columns, always null: the delivery fee belongs to the rider
+    once a pickup is done, so no refund ever takes it back (Plan 7F-D)."""
 
     order = models.OneToOneField("orders.Order", on_delete=models.PROTECT, related_name="rider_earning")
     rider = models.ForeignKey(Rider, on_delete=models.PROTECT, related_name="earnings")

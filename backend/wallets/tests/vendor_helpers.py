@@ -87,14 +87,14 @@ def release(order):
     verification.record(order, make_staff("support", f"support-{order.pk}@example.com"), "matches")
 
 
-def waived(owner, order, amount):
+def waived(owner, order, amount, funded_by=DeliveryWaiver.FUNDER_BUSINESS):
     """The business's free-delivery promo covered this order's delivery (owed; charged from Available at release)."""
     now = timezone.now()
     waiver = DeliveryWaiver.objects.create(
         business_owner=owner, name="Free delivery week", starts_at=now - timedelta(days=1), ends_at=now + timedelta(days=1),
-        status=DeliveryWaiver.ACTIVE,
+        status=DeliveryWaiver.ACTIVE, funded_by=funded_by,
     )
-    return WaivedFeeCharge.objects.create(order=order, waiver=waiver, business_owner=owner, amount=Decimal(amount))
+    return WaivedFeeCharge.objects.create(order=order, waiver=waiver, business_owner=owner, amount=Decimal(amount), funded_by=funded_by)
 
 
 def hold(owner, pesewas, key):

@@ -83,3 +83,14 @@ class WalletRulingsSettingsTests(SimpleTestCase):
     def test_the_overdue_label_now_says_products_only(self):
         self.assertIn("product", store.DEFINITIONS["verification_overdue_hours"].label.lower())
         self.assertNotIn("hand-over", store.DEFINITIONS["verification_overdue_hours"].label)
+
+
+class RiderWithdrawalsPerDayTests(SimpleTestCase):
+    def test_rider_withdrawals_per_day_definition(self):
+        definition = store.DEFINITIONS["rider_withdrawals_per_day"]
+        self.assertEqual((definition.default, definition.nullable, definition.minimum, definition.maximum), (3, False, 1, 20))
+        self.assertEqual(store.clean("rider_withdrawals_per_day", 1), 1)
+        self.assertEqual(store.clean("rider_withdrawals_per_day", "20"), 20)
+        for raw in (0, 21):
+            with self.assertRaises(store.SettingError, msg=raw):
+                store.clean("rider_withdrawals_per_day", raw)

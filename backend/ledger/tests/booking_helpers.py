@@ -27,23 +27,31 @@ def fund(customer, pesewas, key):
 
 def product_ladder_for_all_categories():
     """Services and events have their own suggested ladders (migration 0009); these tests are about the booking
-    mechanics, so pin both to the product ladder and keep their expected amounts simple."""
+    mechanics, so pin both to the product ladder and keep their expected amounts simple. Returns the pinned rule sets.
+
+    Each pin starts exactly 1 ms after the newest existing set of its category, never at a wall-clock time: 0009's
+    sets start whenever the test database was migrated, so anything measured from `now` would order differently
+    depending on how long ago that was (a long run once put a test's own rule set above the pin)."""
     product = FeeRuleSet.objects.filter(category="product").order_by("-effective_from", "-id").first()
+    pinned = []
     for category in ("service", "event"):
-        newest = FeeRuleSet.objects.filter(category=category).order_by("-effective_from").first()
-        start = min(timezone.now(), newest.effective_from + timedelta(milliseconds=1)) if newest else timezone.now()
+        newest = FeeRuleSet.objects.filter(category=category).order_by("-effective_from", "-id").first()
+        start = newest.effective_from + timedelta(milliseconds=1)
+        assert start <= timezone.now(), f"the newest {category} fee rules are scheduled for later; a pin would not apply"
         rule_set = FeeRuleSet.objects.create(category=category, effective_from=start)
+        pinned.append(rule_set)
         for band in product.bands.all():
             FeeBand.objects.create(
                 rule_set=rule_set, lower_pesewas=band.lower_pesewas, upper_pesewas=band.upper_pesewas,
                 percent_bp=band.percent_bp, flat_pesewas=band.flat_pesewas,
             )
+    return pinned
 
 
 class BookingBase(TestCase):
     def setUp(self):
         cache.clear()
-        product_ladder_for_all_categories()
+        self.pinned_fee_rules = product_ladder_for_all_categories()
         self.client = APIClient()
         self.customer = Customer.objects.create(full_name="Ama Owusu", phone="+233200770001", password_hash="x")
         self.owner = BusinessOwner.objects.create(full_name="Kwame Mensah", login_phone="+233207770001", password_hash="x")

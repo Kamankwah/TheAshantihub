@@ -1,3 +1,7 @@
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiPut } from "../../../apiClient.js";
+import BusinessHoursEditor from "../../BusinessHoursEditor.jsx";
 import { useBusinessProfile } from "../../../hooks/useBusinessProfile.js";
 import { D, glassCard, tint } from "../theme.js";
 import MarketingConsentCard from "../../MarketingConsentCard.jsx";
@@ -22,6 +26,24 @@ function maskTail(value, keep = 4) {
 
 export default function ProfilePanel({ user }) {
   const { data: profile, isLoading, isError } = useBusinessProfile();
+  const queryClient = useQueryClient();
+  const [hoursSaving, setHoursSaving] = useState(false);
+  const [hoursError, setHoursError] = useState(null);
+  const [hoursSavedAt, setHoursSavedAt] = useState(0);
+
+  const saveHours = async (days) => {
+    setHoursError(null);
+    setHoursSaving(true);
+    try {
+      await apiPut("/api/accounts/business/hours/", { days });
+      await queryClient.invalidateQueries({ queryKey: ["business-profile"] });
+      setHoursSavedAt(Date.now());
+    } catch (err) {
+      setHoursError(err?.body?.detail || "Could not save your opening hours. Please try again.");
+    } finally {
+      setHoursSaving(false);
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -55,6 +77,19 @@ export default function ProfilePanel({ user }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {!isLoading && !isError && (
+        <div id="opening-hours" style={{ ...glassCard, padding: "20px 22px" }}>
+          <div style={{ fontWeight: 800, color: D.text, fontSize: "0.88rem", marginBottom: 6 }}>🕘 Opening hours</div>
+          {profile?.has_hours === false && (
+            <div role="status" style={{ background: `${D.amber}1f`, color: D.text, borderLeft: `4px solid ${D.amber}`, borderRadius: 8, padding: "10px 12px", fontSize: "0.78rem", marginBottom: 12 }}>
+              <strong>Hours not set.</strong> Enter your weekly opening hours below.
+            </div>
+          )}
+          {hoursSavedAt > 0 && <div role="status" style={{ color: D.green, fontSize: "0.78rem", fontWeight: 700, marginBottom: 8 }}>✓ Opening hours saved</div>}
+          <BusinessHoursEditor key={profile?.has_hours ? "saved" : "blank"} initialDays={profile?.hours} onSave={saveHours} saving={hoursSaving} error={hoursError} />
         </div>
       )}
 

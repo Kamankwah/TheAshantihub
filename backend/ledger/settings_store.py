@@ -33,6 +33,7 @@ DEFINITIONS = {
     ),
     "pickup_window_hours": Definition("Hours after purchase within which a store-pickup order is collected", 24, False, 1, 168),
     "rider_commission_bp": Definition("Third-party rider commission (basis points; 1000 = 10%)", 1000, False, 0, 10000),
+    "rider_withdrawals_per_day": Definition("Withdrawals a rider may make per day (the day resets at midnight, Accra)", 3, False, 1, 20),
     # Withdrawals and payout destinations (wallets plan 3b; spec §3.3, §8). The cooling period never goes below an hour,
     # so one approval cannot switch that control off.
     "withdrawal_per_tx_limit_pesewas": Definition("Largest single withdrawal (pesewas)", 500_000, False, 100, 10**10),

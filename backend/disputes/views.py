@@ -170,11 +170,14 @@ class DisputeResolveView(APIView):
                         transaction.set_rollback(True)
                         return Response({"refund_amount": exc.message}, status=exc.status_code)
             # A full refund of the order also reverses the delivery fee its business covered through a
-            # free-delivery promo; a partial one leaves that charge standing.
+            # free-delivery promo; a partial one leaves that charge standing. With the ledger on, a delivery already earned
+            # (a pickup was made) keeps its promo charge: the promo's owner pays the rider (ledger.refunds).
             if dispute.order_id and dispute.refund_amount and dispute.refund_amount >= dispute.order.total_amount:
+                from ledger import escrow, riders
                 from marketing.waivers import reverse_for_order
 
-                reverse_for_order(dispute.order, "order_refunded")
+                if not (escrow.enabled() and riders.delivery_earned(dispute.order)):
+                    reverse_for_order(dispute.order, "order_refunded")
         body = DisputeSerializer(dispute).data
         if refund is not None:
             from ledger.money import from_pesewas

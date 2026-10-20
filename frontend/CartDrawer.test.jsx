@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
@@ -519,35 +519,64 @@ describe('CartDrawer and the delivery limits', () => {
   })
 })
 
-// Before opening (gate on) checkout is greyed with the opening date; the cart itself still shows.
-describe('CartDrawer — before the marketplace opens', () => {
-  function gated(canBuy) {
-    server.use(
-      gatedOpening({ opensAt: '2026-11-06T06:00:00Z', serverNow: '2026-11-01T06:00:00Z' }),
-      http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({ id: 4, can_buy: canBuy })),
-      http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)),
-    )
-    setStoredAuth({ token: 't', account_type: 'customer' })
+describe('CartDrawer and the after-hours delivery notice', () => {
+  const preview = (body) => http.get('http://localhost:8000/api/orders/delivery-preview/', () => HttpResponse.json(body))
+  // 2026-10-20 is a Tuesday; Accra is UTC+0, so 08:00Z reads "Tue 08:00".
+  const DEFERRED = { delivery_from: '2026-10-20T08:00:00Z', delivered_from: '2026-10-20T08:00:00Z', deferred: true }
+  // A preview handler that tells the test when the request arrived, so absence is asserted after the answer was served.
+  const watchedPreview = (body, status = 200) => {
+    let seen
+    const hit = new Promise((resolve) => { seen = resolve })
+    const handler = http.get('http://localhost:8000/api/orders/delivery-preview/', () => { seen(); return HttpResponse.json(body, { status }) })
+    const settled = async () => {
+      await hit
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)) }) // let the served response reach the component
+    }
+    return { handler, settled }
+  }
+  const openDoorToDoor = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Checkout →' }))
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
   }
 
-  it('buy_disabled_with_opens_label_before_opening', async () => {
-    gated(false)
-    try {
-      renderDrawer()
-      await screen.findByText('Kente Cloth')
-      const btn = await screen.findByRole('button', { name: 'Opens 6 Nov' })
-      expect(btn).toBeDisabled()
-      fireEvent.click(btn)
-      expect(screen.queryByText('Confirm & Pay')).not.toBeInTheDocument()
-    } finally { setStoredAuth(null) }
+  it('says the shop is closed and when delivery starts (business hours)', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), preview({ ...DEFERRED, source: 'business_hours' }))
+    renderDrawer()
+    await openDoorToDoor()
+    expect(await screen.findByTestId('cart-after-hours')).toHaveTextContent('Shop is closed now. Delivery starts Tue 08:00.')
   })
 
-  it('enabled_when_can_buy_true', async () => {
-    gated(true)
-    try {
-      renderDrawer()
-      await screen.findByText('Kente Cloth')
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Checkout →' })).not.toBeDisabled())
-    } finally { setStoredAuth(null) }
+  it('never says the shop is closed when only platform hours defer it', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), preview({ ...DEFERRED, source: 'platform' }))
+    renderDrawer()
+    await openDoorToDoor()
+    const note = await screen.findByTestId('cart-after-hours')
+    expect(note).toHaveTextContent('Delivery starts Tue 08:00.')
+    expect(note).not.toHaveTextContent(/closed/i)
+  })
+
+  it('shows no notice when the shop is open', async () => {
+    const open = watchedPreview({ delivery_from: null, delivered_from: null, deferred: false, source: null })
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), open.handler)
+    renderDrawer()
+    await openDoorToDoor()
+    await open.settled()
+    expect(screen.queryByTestId('cart-after-hours')).not.toBeInTheDocument()
+  })
+
+  it('shows the notice with promotions off, and nothing when the preview fails or for store pickup', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), preview({ ...DEFERRED, source: 'business_hours' }))
+    const { unmount } = renderDrawer()
+    fireEvent.click(await screen.findByRole('button', { name: 'Checkout →' }))
+    expect(screen.queryByTestId('cart-after-hours')).not.toBeInTheDocument() // store pickup is the default
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+    expect(await screen.findByTestId('cart-after-hours')).toBeInTheDocument()
+    unmount()
+    const failing = watchedPreview({ detail: 'x' }, 500)
+    server.use(failing.handler)
+    renderDrawer()
+    await openDoorToDoor()
+    await failing.settled()
+    expect(screen.queryByTestId('cart-after-hours')).not.toBeInTheDocument()
   })
 })

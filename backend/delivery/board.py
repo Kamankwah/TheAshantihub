@@ -40,9 +40,11 @@ def routing_block(*, estimate_figures=False):
 
 
 def waiting_orders():
-    """Paid door-to-door orders no rider holds: never assigned, or the last attempt failed. Oldest first."""
+    """Paid door-to-door orders no rider holds: never assigned, or the last attempt failed. Oldest first. An order held
+    until its vendor opens (ready_not_before in the future) is not waiting yet: no queue, offer or engine pass sees it."""
     return (
         Order.objects.filter(status=Order.PAID, delivery_method=Order.DOOR_TO_DOOR)
+        .filter(Q(ready_not_before__isnull=True) | Q(ready_not_before__lte=timezone.now()))
         .exclude(delivery_status=Order.DELIVERED)
         .exclude(refunds__whole=True)  # a wholly refunded order must never be sent out (ledger.refunds.is_wholly_refunded)
         .filter(Q(delivery_assignment__isnull=True) | Q(delivery_assignment__status=DeliveryAssignment.FAILED))
@@ -50,6 +52,15 @@ def waiting_orders():
         .prefetch_related("items__listing__business_owner__profile", "items__listing__category",
                           "delivery_assignment__stops__business_owner__profile", "delivery_assignment__events")
         .order_by("placed_at")
+    )
+
+
+def scheduled_count():
+    """Paid door-to-door orders held until their vendor opens (not yet due), so the manager knows they exist."""
+    return (
+        Order.objects.filter(status=Order.PAID, delivery_method=Order.DOOR_TO_DOOR, ready_not_before__gt=timezone.now())
+        .exclude(delivery_status=Order.DELIVERED).exclude(refunds__whole=True)
+        .filter(Q(delivery_assignment__isnull=True) | Q(delivery_assignment__status=DeliveryAssignment.FAILED)).count()
     )
 
 
@@ -84,7 +95,7 @@ def queue_row(order, now, zones=None):
     info = services.dispatch_info(order)
     point = (info["lat"], info["lng"], info["name"], info["count"])
     return {
-        "order_id": order.pk, "placed_at": order.placed_at, "waiting_minutes": int((now - order.placed_at).total_seconds() // 60),
+        "order_id": order.pk, "placed_at": order.placed_at, "waiting_minutes": max(0, int((now - (max(order.placed_at, order.ready_not_before) if order.ready_not_before else order.placed_at)).total_seconds() // 60)),
         "route": _route(order, point=point), "zone": zone.name if zone else None, "unzoned": zone is None,
         "deadline_at": assignment.deadline_at if assignment else None,
         "returned": bool(assignment and assignment.status == DeliveryAssignment.FAILED),
@@ -230,7 +241,7 @@ def live(now=None):
     return {
         "now": now,
         "kpis": {
-            "on_the_road": len(act), "waiting": waiting_total, "late_now": len(late_now),
+            "on_the_road": len(act), "waiting": waiting_total, "scheduled_count": scheduled_count(), "late_now": len(late_now),
             "delivered_today": delivered.count(),
             "on_time_today": {"on_time": with_deadline.filter(delivered_at__lte=F("deadline_at")).count(), "of": with_deadline.count()},
             "riders": status_counts,

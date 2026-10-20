@@ -3,6 +3,8 @@
 from django.db import migrations, models
 
 
+# The ledger is off in production and Plan 7D was never pushed, so no OrderRefund recorded under the earlier 'rider_pesewas'
+# rule exists anywhere: this migration is edited in place (Plan 7F-D) instead of adding a rename.
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -12,7 +14,7 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name='orderrefund',
-            name='rider_pesewas',
+            name='delivery_kept_pesewas',
             field=models.BigIntegerField(default=0),
         ),
     ]
