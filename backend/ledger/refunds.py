@@ -43,7 +43,8 @@ A refund always goes to the customer's AshantiHub wallet and is recorded as an `
   that empties the order gives back whatever is left of it.
 
 Callers: Support's cancel (orders.support), the uncollected-pickup job (ledger.verification), dispute resolution
-(disputes.views) and the delivery-case refund approval (delivery.config). Lock order (the canonical one, orders/locks.py):
+(disputes.views) and the delivery-case refund approval (delivery.config); the last two can also ask for a whole refund
+with no amount when nothing is left to give the customer (whole_at_zero_refusal). Lock order (the canonical one, orders/locks.py):
 the order row, its fee snapshots, then the delivery assignment row, the order's open re-delivery row (a whole refund closes
 it: delivery.redelivery.for_whole_refund) and the rider's row (a whole refund before release of a picked-up order:
 ledger.riders.rider_for_settle), then every account the transaction posts to, in one sorted pass before the first posting
@@ -422,6 +423,33 @@ def scope_for_dispute(dispute):
         .values_list("stop__business_owner_id", flat=True)
     )
     return owners or None
+
+
+def whole_at_zero_refusal(order, owner_ids=None):
+    """Why a whole refund cannot be asked for without an amount, or None when it can. Every refund door takes an amount
+    above 0, and a whole refund is asked for by typing what is left (`Left.customer`). A coupon can leave that at 0 once
+    the delivery fee is kept for the rider (ruling R1: the customer paid no more than the fee), yet the whole refund must
+    still be possible (the rider paid in full, the vendor's money and the subsidy reversed, the order cancelled). So dispute
+    resolution and the delivery-case refund ask for it with an explicit whole-refund flag, allowed only here: the ledger
+    on and the payment recorded, the whole order (no shop scope), not already refunded whole, and nothing left to give the
+    customer. An unlocked read: refund_order(order, None) is correct whatever happened meanwhile."""
+    if not escrow.enabled() or not Journal.objects.filter(key=escrow.pay_key(order)).exists():
+        return "A whole-order refund with nothing to give back is only possible once the wallet ledger is on: enter the refund amount."
+    if owner_ids is not None:
+        return "This case refunds the skipped shop's items only, never the whole order: enter the amount for those items."
+    if is_wholly_refunded(order):
+        return "This order has already been refunded in full."
+    customer = left(order).customer
+    if customer:
+        return f"GH₵ {from_pesewas(customer)} can still be refunded: enter that amount for a whole-order refund."
+    return None
+
+
+def check_whole(order, *, owner_ids=None):
+    """Raise RefundError unless a whole refund may be asked for without an amount (whole_at_zero_refusal)."""
+    refusal = whole_at_zero_refusal(order, owner_ids)
+    if refusal:
+        raise RefundError(refusal)
 
 
 def check(order, amount_pesewas, *, owner_ids=None):

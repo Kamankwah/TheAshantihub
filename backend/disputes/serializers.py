@@ -16,12 +16,13 @@ class DisputeSerializer(serializers.ModelSerializer):
     order_total_amount = serializers.SerializerMethodField()
     order_status = serializers.SerializerMethodField()
     order_refundable_amount = serializers.SerializerMethodField()
+    order_whole_refund_at_zero = serializers.SerializerMethodField()
 
     class Meta:
         model = Dispute
         fields = [
             "id", "order", "order_total_amount", "order_status", "order_refundable_amount",
-            "raised_by", "raised_by_name", "reason", "description", "status",
+            "order_whole_refund_at_zero", "raised_by", "raised_by_name", "reason", "description", "status",
             "resolution_notes", "refund_amount",
             "flagged_by", "flagged_by_name", "resolved_by", "resolved_by_name",
             "created_at", "updated_at",
@@ -51,6 +52,16 @@ class DisputeSerializer(serializers.ModelSerializer):
         amount = refundable(obj.order, owner_ids=scope_for_dispute(obj))   # a skipped-stop case refunds only its shops
         return str(from_pesewas(amount)) if amount is not None else None
 
+    def get_order_whole_refund_at_zero(self, obj):
+        """True when nothing is left to give the customer (a coupon left them having paid no more than the delivery fee
+        kept for the rider) but the whole order can still be refunded with DisputeResolveView's `whole_refund`
+        (ledger.refunds.whole_at_zero_refusal): the rider is paid, the vendor's money reversed, the order cancelled."""
+        if not obj.order_id or obj.status in Dispute.FINAL_STATUSES:
+            return False
+        from ledger.refunds import scope_for_dispute, whole_at_zero_refusal
+
+        return whole_at_zero_refusal(obj.order, scope_for_dispute(obj)) is None
+
 
 class DisputeResolveSerializer(serializers.Serializer):
     """Input shape for POST /api/disputes/{id}/resolve/. `outcome` defaults
@@ -68,6 +79,9 @@ class DisputeResolveSerializer(serializers.Serializer):
     resolution_notes = serializers.CharField(required=False, allow_blank=True, default="")
     # With the ledger on: also give back the payment-processing charge, because AshantiHub or the business was at fault.
     refund_processing = serializers.BooleanField(required=False, default=False)
+    # With the ledger on: refund the whole order when nothing is left to give the customer (refund_amount must be empty;
+    # ledger.refunds.whole_at_zero_refusal says when it is allowed).
+    whole_refund = serializers.BooleanField(required=False, default=False)
 
 
 class DisputeEvidenceSerializer(serializers.ModelSerializer):

@@ -33,6 +33,9 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
   const [summary, setSummary] = useState("");
   const [confirmingReject, setConfirmingReject] = useState(false);
   const [refund, setRefund] = useState("");
+  // A coupon can leave nothing to give the customer once the rider keeps the delivery fee (the backend says so with
+  // order_whole_refund_at_zero): the whole order can still be refunded, with no amount (DisputeResolveView whole_refund).
+  const [wholeAtZero, setWholeAtZero] = useState(false);
   const [notes, setNotes] = useState("");
   const [actionError, setActionError] = useState(null);
 
@@ -48,7 +51,8 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
     try {
       await apiPost(`/api/disputes/${dispute.id}/resolve/`, {
         outcome,
-        refund_amount: outcome === "resolved" ? (refund || null) : null,
+        refund_amount: outcome === "resolved" && !wholeAtZero ? (refund || null) : null,
+        whole_refund: outcome === "resolved" && wholeAtZero,
         resolution_notes: notes || "",
       });
       setResolving(false);
@@ -135,8 +139,17 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
 
       {resolving && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          <input value={refund} onChange={e => setRefund(e.target.value)} placeholder="Refund amount (optional)" style={{ width: 160, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
+          <input value={wholeAtZero ? "" : refund} onChange={e => setRefund(e.target.value)} disabled={wholeAtZero} placeholder="Refund amount (optional)" style={{ opacity: wholeAtZero ? 0.5 : 1, width: 160, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
           <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Resolution notes (optional)" style={{ flex: 1, minWidth: 160, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
+          {dispute.order_whole_refund_at_zero && (
+            <label style={{ flexBasis: "100%", display: "flex", gap: 6, alignItems: "flex-start", color: D.text, fontSize: "0.72rem", cursor: "pointer" }}>
+              <input type="checkbox" checked={wholeAtZero} onChange={e => setWholeAtZero(e.target.checked)} />
+              <span>
+                Refund the whole order. The customer gets GHS 0.00 back: after the coupon, what they paid only covered the
+                delivery fee, which the rider keeps. The order is cancelled and the rider is paid.
+              </span>
+            </label>
+          )}
           <button onClick={() => resolve("resolved")} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm resolve</button>
         </div>
       )}
