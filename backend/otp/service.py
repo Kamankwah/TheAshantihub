@@ -60,6 +60,7 @@ WAIT = "Wait a minute before asking for another code."
 WRONG = "That code isn't right. Check the message and try again."
 EXPIRED = "That code has expired or was already used. Ask for a new one."
 CHANNEL_UNAVAILABLE = "We can't send a code that way. Choose another way."
+TEXTS_NOT_SENT = "Texts aren't being sent yet. Choose email instead."
 NOT_SENT = "We couldn't send the code. Try again, or choose another way."
 PURPOSE_WORDS = {SIGN_IN: "sign in", SIGN_UP: "confirm your phone or email", STEP_UP: "confirm a change to your account"}
 
@@ -234,6 +235,10 @@ def send(account, purpose, channel, *, action="", ticket="", request=None, now=N
     ip = _ip(request)
     details = {"account": account, "purpose": purpose, "action": action, "channel": channel,
                "destination": destination, "request": request, "now": now}
+    if channel == SMS and senders.texts_simulated():
+        # No SMS provider is connected: a "sent" text would reach nobody, so no screen may claim one was sent.
+        audit.log(OtpEvent.SEND_REFUSED, note="texts simulated", **details)
+        raise OtpError(TEXTS_NOT_SENT, "channel_unavailable")
     if is_locked(account, now):
         audit.log(OtpEvent.SEND_REFUSED, note="locked", **details)
         raise OtpError(TRY_LATER, "try_later", status_code=429)
