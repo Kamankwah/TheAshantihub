@@ -311,14 +311,19 @@ def assign(order, rider_staff, assigned_by, *, mode):
     rider = Rider.objects.filter(staff=rider_staff).select_related("vehicle").first()
     if reassignment_refused(existing, rider, order, now):
         raise in_house_only_error()
-    fallback = third_party_reassignment(existing, rider)   # allowed: no AshantiHub rider is available (Director ruling 2)
+    # Allowed: no AshantiHub rider is available (Director ruling 2). A swap of a paid re-delivery's second trip is one too.
+    fallback = third_party_reassignment(existing, rider)
     previous_rider_id, previous_status = (existing.dispatch_id, existing.status) if existing is not None else (None, None)
     from . import redelivery
 
     # Re-delivery at the customer's request (Plan 7F-E Task 7): a customer-unavailable failure waits for the paid fee
-    # (409 redelivery_fee_unpaid) and the second trip is an AshantiHub rider's (409 redelivery_in_house_only). Checked,
-    # with the request's row locked (after the assignment row), before anything below writes.
+    # (409 redelivery_fee_unpaid) and the second trip is an AshantiHub rider's while one is available (409
+    # redelivery_in_house_only; Director ruling 2). Checked, with the request's row locked (after the assignment row),
+    # before anything below writes.
     serving = redelivery.check_assign(order, existing, rider)
+    fallback = fallback or (
+        serving is not None and serving.rider_id != rider_staff.pk and rider is not None and rider.employment != Rider.ASHANTIHUB
+    )
     assignment = existing or DeliveryAssignment(order=order)
     assignment.dispatch = rider_staff
     assignment.assigned_by = assigned_by

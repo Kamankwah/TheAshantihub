@@ -6,9 +6,14 @@ per order, owner orders.order) and leaves it exactly once, in pesewas, by one of
     redelivery-pay-<id>     Dr provider clearing (mobile money, net of the processing charge) or customer wallet
                             Cr Re-delivery payable                       the fee
     redelivery-settle-<id>  Dr Re-delivery payable / Cr platform delivery income   the second trip's rider collected the
-                            goods (completed, failed after the pickup, or a whole refund after that pickup). The second
-                            rider is AshantiHub's own (no wallet): what is owed to them is recorded on the Redelivery row
-                            and paid outside the app, as an in-house rider's delivery fee is.
+                            goods (completed, failed after the pickup, or a whole refund after that pickup). An
+                            AshantiHub rider (no wallet) is owed it through payroll, recorded on the Redelivery row
+                            (rider, completed_at), as an in-house rider's delivery fee is.
+    redelivery-rider-<id>   Dr platform delivery income / Cr Rider balance (net) + Cr Rider reserve (commission)
+                            in the same transaction, when that rider is third-party (the fallback when no in-house rider
+                            was available, Director ruling 2, 2026-10-20): paid exactly as a delivery fee is
+                            (ledger.riders.credit_delivery), split at the rider commission rate in force when the fee was
+                            paid, with a RiderEarning for the re-delivery that the end-of-day job posts like any other.
     redelivery-refund-<id>  Dr Re-delivery payable / Cr customer wallet  cancelled after payment, or a whole refund of the
                             order before the second rider collected anything.
 
@@ -19,6 +24,8 @@ Dr provider clearing / Cr customer wallet, so no one is charged for nothing.
 The fee is not part of Order.total_amount, so the order's own refund figures (ledger.refunds.left, Ruling R1) never see
 it. Every posting locks its accounts in one sorted pass (posting.post); a caller that posts more than one journal in a
 transaction takes them up front with `accounts(...)`."""
+from django.utils import timezone
+
 from . import posting
 from .models import Account
 from .money import to_pesewas
@@ -42,6 +49,10 @@ def refund_key(redelivery):
 
 def stray_key(session):
     return f"redelivery-stray-{session.reference}"
+
+
+def rider_key(redelivery):
+    return f"redelivery-rider-{redelivery.pk}"
 
 
 def payable(order):
@@ -93,10 +104,14 @@ def record_stray(session):
     )
 
 
-def accounts(redelivery, action):
-    """The accounts `settle` ("settle") or `refund` ("refund") posts to, for a caller's up-front lock."""
+def accounts(redelivery, action, rider=None):
+    """The accounts `settle` ("settle", with `credit_rider` for a third-party `rider`) or `refund` ("refund") posts to,
+    for a caller's up-front lock."""
     if action == "settle":
-        return payable(redelivery.order), posting.account_for(Account.PLATFORM_DELIVERY_INCOME)
+        from . import riders
+
+        own = riders.accounts_of(rider) if rider is not None else ()
+        return payable(redelivery.order), posting.account_for(Account.PLATFORM_DELIVERY_INCOME), *own
     if action == "refund":
         return payable(redelivery.order), posting.account_for(Account.CUSTOMER_WALLET, redelivery.order.customer)
     return ()
@@ -129,4 +144,37 @@ def refund(redelivery):
         ],
         reference_type="delivery.redelivery", reference_id=str(redelivery.pk),
         memo=f"Re-delivery fee for order #{redelivery.order_id} returned (attempt {redelivery.attempt})",
+    )
+
+
+def credit_rider(redelivery, rider, now=None):
+    """Pay a third-party second-trip `rider` (a delivery.Rider) the re-delivery fee just settled, through their wallet, as
+    ledger.riders.credit_delivery pays a delivery fee: Dr platform delivery income gross / Cr Rider balance net and Cr
+    Rider reserve (AshantiHub's commission, posted by the end-of-day job), split at `rider_commission_bp` as it stood when
+    the customer paid this fee; and the RiderEarning for this re-delivery. Call right after `settle`, in its transaction,
+    with the rider's accounts in the up-front lock (`accounts(..., rider)`). Returns the earning, or None (no fee, never
+    paid, or already paid: one earning per re-delivery, and the journal is idempotent on its key)."""
+    from delivery.models import RiderEarning
+
+    from . import riders, settings_store
+
+    gross = redelivery.fee_pesewas
+    if gross <= 0 or redelivery.pay_journal_id is None or RiderEarning.objects.filter(redelivery_id=redelivery.pk).exists():
+        return None
+    now = now or timezone.now()
+    bp = settings_store.current(riders.COMMISSION_SETTING, redelivery.paid_at)
+    reserve, net = riders.split(gross, bp)
+    balance, held = riders.accounts_of(rider)
+    credits = [posting.credit(balance, net)] if net else []
+    if reserve:
+        credits.append(posting.credit(held, reserve))
+    journal = posting.post(
+        key=rider_key(redelivery), kind="rider_redelivery_earning",
+        lines=[posting.debit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), gross), *credits],
+        reference_type="delivery.redelivery", reference_id=str(redelivery.pk),
+        memo=f"Re-delivery of order #{redelivery.order_id} (attempt {redelivery.attempt}), paid to the rider",
+    )
+    return RiderEarning.objects.create(
+        redelivery=redelivery, rider=rider, gross_pesewas=gross, commission_bp=bp, reserve_pesewas=reserve, net_pesewas=net,
+        earned_at=now, earned_on=timezone.localdate(now), journal=journal,
     )

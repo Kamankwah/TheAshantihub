@@ -524,9 +524,18 @@ class RiderEarning(models.Model):
     end of `earned_on` (Accra), and `net_pesewas`, withdrawable at once. Written in the release's transaction (journal
     order-rider-<order>) or the refund's; afterwards only the end-of-day posting (`commission_posting`) is written to it.
     `reversed_at` and `reversal_journal` are unused historical columns, always null: the delivery fee belongs to the rider
-    once a pickup is done, so no refund ever takes it back (Plan 7F-D)."""
+    once a pickup is done, so no refund ever takes it back (Plan 7F-D).
 
-    order = models.OneToOneField("orders.Order", on_delete=models.PROTECT, related_name="rider_earning")
+    A row is for exactly one fee: an order's ORIGINAL delivery fee (`order`, journal order-rider-<order>), or the fee of a
+    re-delivery at the customer's request whose second trip a third-party rider made as the fallback when no in-house
+    rider was available (`redelivery`, journal redelivery-rider-<id>; Director ruling 2, 2026-10-20; ledger.redelivery).
+    So an order has at most one original-fee row (anything that asks "was a rider paid this order's delivery fee" reads
+    `order`) and one row per re-delivery, and the end-of-day commission posting takes both kinds alike."""
+
+    order = models.OneToOneField("orders.Order", null=True, blank=True, on_delete=models.PROTECT, related_name="rider_earning")
+    redelivery = models.OneToOneField(
+        "delivery.Redelivery", null=True, blank=True, on_delete=models.PROTECT, related_name="rider_earning",
+    )
     rider = models.ForeignKey(Rider, on_delete=models.PROTECT, related_name="earnings")
     gross_pesewas = models.BigIntegerField()
     commission_bp = models.PositiveIntegerField()
@@ -555,6 +564,10 @@ class RiderEarning(models.Model):
                 condition=models.Q(gross_pesewas=models.F("reserve_pesewas") + models.F("net_pesewas")),
                 name="delivery_rider_earning_adds_up",
             ),
+            models.CheckConstraint(
+                condition=models.Q(order__isnull=False, redelivery__isnull=True) | models.Q(order__isnull=True, redelivery__isnull=False),
+                name="delivery_rider_earning_one_fee",
+            ),
         ]
 
 
@@ -564,8 +577,10 @@ class Redelivery(models.Model):
     after `arrived_drop_at`), the goods came back, and Support or the Pickup Desk asked, at the customer's request, for
     the order to be delivered again. The customer pays `fee_pesewas` (the governed `redelivery_fee_pesewas` copied here
     when it was asked for) before the second trip can be assigned; that money waits in the order's Re-delivery payable
-    and becomes platform delivery income when the second trip's rider completes it (`rider`, `completed_at`: what
-    AshantiHub owes that in-house rider, paid outside the app). The first rider (`first_rider`, whose leg ended at
+    and becomes platform delivery income when the second trip's rider completes it (`rider`, `completed_at`). An in-house
+    rider is owed it through payroll, outside the app (`owed_through_payroll`); a third-party rider, who makes the second
+    trip only when no in-house rider is available (Director ruling 2), is paid it into their wallet at that moment
+    (`rider_earning`, ledger.redelivery.credit_rider). The first rider (`first_rider`, whose leg ended at
     `first_leg_ended_at`) keeps the order's original delivery fee (ledger.riders.fee_rider). Integer pesewas only."""
 
     AWAITING_PAYMENT, PAID, ASSIGNED, COMPLETED, CANCELLED, REFUNDED = (
@@ -611,3 +626,12 @@ class Redelivery(models.Model):
 
     def __str__(self):
         return f"Re-delivery {self.attempt} of order #{self.order_id} ({self.status})"
+
+    @property
+    def owed_through_payroll(self):
+        """True when AshantiHub owes the second trip's rider this fee outside the app: the trip is done, the fee was paid
+        and settled, and no third-party wallet payment was made for it (an in-house rider). Never both."""
+        return (
+            self.status == self.COMPLETED and self.rider_id is not None and self.settle_journal_id is not None
+            and not RiderEarning.objects.filter(redelivery_id=self.pk).exists()
+        )

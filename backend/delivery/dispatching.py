@@ -153,8 +153,8 @@ def rank(order, rules=None, now=None):
     """{"eligible": [...best first], "left_out": [...], "pickup_located": bool, "rules": ..., "distance_basis": ...,
     "third_party_fallback": bool}. Every rider distance here (``km``, the radius check, the distance score) is the
     straight-line estimate, so the payload says so in ``distance_basis`` whatever OSRM is doing; road legs arrive with
-    stage 2. ``third_party_fallback`` is true for a re-assigned order no in-house rider is available for, so third-party
-    riders are ranked too (Director ruling 2)."""
+    stage 2. ``third_party_fallback`` is true for a re-assigned order (or a paid re-delivery's second trip) no in-house rider
+    is available for, so third-party riders are ranked too (Director ruling 2)."""
     rules = rules or config.effective_rules()
     now = now or timezone.now()
     ctx = _context(order, rules, now)
@@ -171,7 +171,8 @@ def rank(order, rules=None, now=None):
     # Director ruling 2). The rider who held it may still be given it again: that is not a re-assignment.
     held = getattr(order, "delivery_assignment", None)
     hold = redelivery_hold(order)
-    fallback = hold is None and services.is_reassignment(held) and not _in_house_free(riders, ctx, rules, now)
+    in_house_first = hold == "in_house" or (hold is None and services.is_reassignment(held))
+    fallback = in_house_first and not _in_house_free(riders, ctx, rules, now)
     eligible, left_out = [], []
     for rider in riders:
         staff = rider.staff
@@ -180,7 +181,7 @@ def rank(order, rules=None, now=None):
             reason = REDELIVERY_UNPAID
         else:
             reason = _rider_reason(rider, ctx, rules, now)
-            if reason is None and hold == "in_house" and rider.employment != Rider.ASHANTIHUB:
+            if reason is None and hold == "in_house" and not fallback and rider.employment != Rider.ASHANTIHUB:
                 reason = REDELIVERY_IN_HOUSE
             elif reason is None and not fallback and services.third_party_reassignment(held, rider):
                 reason = IN_HOUSE_ONLY
@@ -236,7 +237,7 @@ def make_offer(order, rider, *, source, by=None, score=None, rules=None, now=Non
         from .redelivery import FEE_UNPAID
 
         raise services.DeliveryError(FEE_UNPAID, 409, "redelivery_fee_unpaid")
-    if hold == "in_house" and rider.employment != Rider.ASHANTIHUB:
+    if hold == "in_house" and rider.employment != Rider.ASHANTIHUB and in_house_available(order, rules, now):
         raise services.in_house_only_error()
     now = now or timezone.now()
     rules = rules or config.effective_rules()

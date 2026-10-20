@@ -1239,8 +1239,17 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   "assigned" `DeliveryEvent` and recorded as activity `delivery.reassigned_third_party` (after commit); the ranking reports
   `third_party_fallback` and the dispatch queue says so. The rider who completes the trip is paid (release pays the
   current rider; the first leg counts for no one). This closes the stall noted in (cxxviii). The second trip of a paid
-  re-delivery at the customer's request (gate (cxxix)) stays in-house only: its fee settles to platform delivery income
-  for an in-house rider's payroll, and paying a third-party rider that fee needs a ledger posting not built yet.
+  re-delivery at the customer's request (gate (cxxix)) follows the same rule (in-house first, a third-party fallback
+  only when none is available, logged the same way), and its fee goes to the rider who completes that trip: an in-house
+  rider through payroll (the Redelivery row; `owed_through_payroll`, `paid_through: "payroll"`), a third-party rider
+  through the wallet, posted in the settle's transaction as `redelivery-rider-<id>` (kind `rider_redelivery_earning`:
+  Dr platform delivery income / Cr Rider balance net + Cr Rider reserve at the `rider_commission_bp` in force when the
+  customer paid the fee) with a `RiderEarning` whose `redelivery` is set (`order` null; exactly one of the two, a check
+  constraint), which the end-of-day commission job posts like a delivery earning. Paid when the trip is done (delivered,
+  failed after the pickup, or a whole refund after that pickup), not at the order's release: the fee is outside the
+  order's escrow. Never twice (one earning per re-delivery, journal idempotent on its key), never both wallet and payroll,
+  and the first rider's original-fee earning (`RiderEarning.order`) is separate. A whole refund locks the second-trip
+  rider's row before the original fee rider's.
   (3) "Customer not available" (gate (cxxix)) is `CUSTOMER_UNAVAILABLE_REASONS = ("no_answer", "refused")`, both with
   `arrived_drop_at` set: a refusal reported before the rider reached the address is still a plain re-assignment.
   (4) Support may set any business's opening hours (permission `businesses.set_hours`, Support and Super Admin; same staff

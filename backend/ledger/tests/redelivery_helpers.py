@@ -94,6 +94,21 @@ class RedeliveryBase(RefundBase):
         services.cant_deliver(self.job(order), self.swift.staff, reason, "At the gate", *HERE, 10)
         return order
 
+    def on_shift(self, rider_row):
+        """The rider is on shift here with valid papers and a fresh fix: an AshantiHub rider on shift is "available"
+        (delivery.dispatching.in_house_available), so a third-party rider is refused a re-assigned job."""
+        from delivery.models import RiderDocument, ShiftSession
+        from delivery.services import REQUIRED_DOCUMENTS
+
+        for kind in REQUIRED_DOCUMENTS:
+            RiderDocument.objects.create(rider=rider_row, kind=kind, file=f"documents/{kind}.png", status=RiderDocument.APPROVED,
+                                         expires_on=timezone.localdate() + timedelta(days=200))
+        ShiftSession.objects.create(rider=rider_row, last_lat=HERE[0], last_lng=HERE[1], last_fix_at=timezone.now())
+
+    def third(self):
+        """Another third-party rider (Kwesi Owusu, Swift Riders Ltd), for a second trip given as the fallback."""
+        return rider_helpers.rider("other3p@example.com", name="Kwesi Owusu", phone="+233244000005")
+
     # --- the re-delivery -----------------------------------------------------------------------------------------------
     def ask(self, order, reason="The customer called: please bring it again tomorrow"):
         return redelivery.request(order, self.support, reason)
