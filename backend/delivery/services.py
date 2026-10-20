@@ -289,11 +289,11 @@ def assign(order, rider_staff, assigned_by, *, mode):
     that failed, given to a different rider: it goes to AshantiHub's own riders while one is available (409
     redelivery_in_house_only), and only when none is may a third-party rider take it (Director ruling 2: the fallback is
     noted on the assigned event and in the activity log, delivery.reassigned_third_party). It ends the first rider's leg,
-    and the rider who completes the trip is the one paid. A failure where the customer was not available (delivery.redelivery) is re-assigned
-    only once the customer paid the re-delivery fee, to an AshantiHub rider. Any reset of the job (a swap, or a failed
-    job given again) clears the assignment's pickup stamp and the reopened stops' collection stamps, so the first leg's
-    pickup counts for no one (ledger.riders.pickup_made); it stays in the append-only DeliveryEvent rows. A swap of a job
-    still waiting to be accepted is ordinary dispatch, open to any rider."""
+    and the rider who completes the trip is the one paid. A failure where the customer was not available
+    (delivery.redelivery) is re-assigned only once the customer paid the re-delivery fee, to an AshantiHub rider. Any
+    reset of the job (a swap, or a failed job given again) clears the assignment's pickup stamp and the reopened stops'
+    collection stamps, so the first leg's pickup counts for no one (ledger.riders.pickup_made); it stays in the
+    append-only DeliveryEvent rows. A swap of a job still waiting to be accepted is ordinary dispatch, open to any rider."""
     from orders import locks
     from orders.models import DeliveryAssignment
 

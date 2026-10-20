@@ -1136,8 +1136,8 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   seeded to `operations` and `super_admin`, chain pool then Super Admin, password again to approve); the maker never
   approves their own, a Super Admin's own applies at once, and there is no threshold shortcut. A required budget cap
   bounds the spend: `live_waivers` stops waiving once the owed charges reach the cap (derived, not a status change). The
-  cap is SOFT: the spend is an unlocked count of OWED charges, so concurrent checkouts can overshoot it by about one fee
-  each, and the last order waives a full fee even when less of the cap is left. A promo covers one named business's items.
+  cap was SOFT here (an unlocked count of OWED charges, so concurrent checkouts could overshoot it by about one fee each,
+  and the last order waived a full fee even when less of the cap was left); **it is HARD since gate (cxxxi)(5)**. A promo covers one named business's items.
   Coupons, campaigns, banners and the send policy stay Super Admin only; the owner-submitted promo review by
   `site_promo.manage` staff is business-funded only. Also: a blocked business (KYC not verified) answers 403 on the platform
   endpoint, as `create_for_staff` does (not 400); spend counts OWED charges only; a cap above the co-sign threshold
@@ -1224,4 +1224,32 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
 - (cxxx) **Ruling R5 (owner, round 3): the re-delivery fee is a governed setting (plan 7F-E Task 7).**
   `redelivery_fee_pesewas`, default 1500 (GH₵ 15.00, **a placeholder to be confirmed by the owner**), bounds 0 to 20000, changed
   by Super Admin with sudo, and copied onto the request when it is opened so a later change never reprices an open one. It is
-  not on the `RateCard` and works while `DELIVERY_FEE_ENABLED` is off. Listed in §3.3.
+  not on the `RateCard` and works while `DELIVERY_FEE_ENABLED` is off. Listed in §3.3. Who changes it: see gate (cxxxi)(1).
+- (cxxxi) **Director rulings (2026-10-20), branch `fix/director-rulings-1`.** The owner delegated these decisions.
+  (1) The re-delivery fee is changed by Operations as well as the Super Admin: permission `redelivery_fee.manage`
+  (Operations, Super Admin) and approval kind `ledger.redelivery_fee` (same payload, checks, apply and audit as
+  `ledger.setting`; pool `redelivery_fee.manage`, chain pool then Super Admin, sudo to approve, never the maker; a Super
+  Admin's own applies at once). Every change of that one key goes through this kind, whoever proposes it; an Operations
+  lead reads only that setting on `GET /api/ledger/settings/` and gets 403 for any other key. Operations has a "Re-delivery
+  fee" screen under Settings. Default GH₵ 15.00, bounds GH₵ 0 to 200, unchanged.
+  (2) A re-assigned delivery (gate (cxxviii)) goes to AshantiHub's own riders while one is available
+  (`delivery.dispatching.in_house_available`: on shift, not on a break, fresh fix, no job hold, not suspended, under the
+  active-job limit, papers valid, under the cash cap, not declined on the order, within the pickup radius, the radius
+  skipped when the pickup has no pin); when none is, a third-party rider may take it. The fallback is noted on the
+  "assigned" `DeliveryEvent` and recorded as activity `delivery.reassigned_third_party` (after commit); the ranking reports
+  `third_party_fallback` and the dispatch queue says so. The rider who completes the trip is paid (release pays the
+  current rider; the first leg counts for no one). This closes the stall noted in (cxxviii). The second trip of a paid
+  re-delivery at the customer's request (gate (cxxix)) stays in-house only: its fee settles to platform delivery income
+  for an in-house rider's payroll, and paying a third-party rider that fee needs a ledger posting not built yet.
+  (3) "Customer not available" (gate (cxxix)) is `CUSTOMER_UNAVAILABLE_REASONS = ("no_answer", "refused")`, both with
+  `arrived_drop_at` set: a refusal reported before the rider reached the address is still a plain re-assignment.
+  (4) Support may set any business's opening hours (permission `businesses.set_hours`, Support and Super Admin; same staff
+  endpoint and rules, recorded as `business.hours_set`), from the Support business profile. Send now
+  (`delivery/orders/<id>/send-early/`) takes `orders.manage_delivery` as well as `delivery.manage`; the reason stays
+  required and recorded (`delivery.early_send`). The Scheduled list is in the Super Admin (Marketplace) and Operations
+  (Service) menus.
+  (5) The budget cap of an AshantiHub-funded free-delivery promo is HARD: checkout decides the waiver under the promo's row
+  lock (`waivers.covering_waiver(..., fee=, lock=True)`, waivers in id order after the listing locks), counting the owed
+  charges after the lock, and waives a fee only when it fits in what is left (else the customer pays the fee). The cart
+  quote applies the same fit without a lock. Covered by `marketing/tests/test_platform_waivers.PlatformCapRaceTests`
+  (threaded, run on its own).
