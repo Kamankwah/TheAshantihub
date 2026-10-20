@@ -7,8 +7,8 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('accounts', '0055_seed_delivery_promo_permissions'),
-        ('orders', '0008_route_plan'),
+        ('accounts', '0058_seed_delivery_promo_permissions'),
+        ('orders', '0009_order_ready_not_before'),
     ]
 
     operations = [

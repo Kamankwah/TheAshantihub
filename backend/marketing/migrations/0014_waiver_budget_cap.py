@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('marketing', '0012_waiver_funded_by'),
+        ('marketing', '0013_merge_0012_slides_and_flash_0012_waiver_funded_by'),
     ]
 
     operations = [

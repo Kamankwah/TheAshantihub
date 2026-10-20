@@ -19,5 +19,5 @@ def unseed(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [("accounts", "0055_seed_delivery_promo_permissions")]
+    dependencies = [("accounts", "0058_seed_delivery_promo_permissions")]
     operations = [migrations.RunPython(seed, unseed)]

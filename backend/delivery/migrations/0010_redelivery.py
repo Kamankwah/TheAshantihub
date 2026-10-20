@@ -7,10 +7,10 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('accounts', '0056_seed_orders_redeliver_permission'),
+        ('accounts', '0059_seed_orders_redeliver_permission'),
         ('delivery', '0009_pickupstop_collected_by'),
         ('ledger', '0013_alter_account_kind'),
-        ('orders', '0009_deliveryassignment_picked_up_by'),
+        ('orders', '0010_deliveryassignment_picked_up_by'),
         ('payments', '0007_alter_checkoutsession_kind'),
     ]
 

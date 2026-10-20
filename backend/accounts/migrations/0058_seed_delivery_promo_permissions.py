@@ -27,5 +27,5 @@ def unseed(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [("accounts", "0054_seed_wallet_permissions")]
+    dependencies = [("accounts", "0057_merge_0055_business_hours_0056_seed_deals_permission")]
     operations = [migrations.RunPython(seed, unseed)]
