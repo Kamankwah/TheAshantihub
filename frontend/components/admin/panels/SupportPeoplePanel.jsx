@@ -5,12 +5,14 @@ import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D, glassCard } from "../theme.js";
 import { button, callout, chip, dim, field, pill } from "./panelStyles.js";
 import { formatDateTime, labelStyle, money } from "./portfolioParts.jsx";
+import StaffHoursSection from "./StaffHoursSection.jsx";
 
 // 14 Customers & businesses and 15 the profile (Support). Read-only: Support finds a person or business by
 // name, masked phone, order number or business name, reads what it may see, and can log a call or (for a
 // customer with an account) start a conversation as AshantiHub Support. Payout accounts, MoMo numbers, tax
 // IDs, Ghana Card numbers, passwords and saved payment details never reach this screen. Opening a profile is
-// recorded in the activity log (once an hour per profile).
+// recorded in the activity log (once an hour per profile). The one thing Support may change is a business's weekly
+// opening hours (businesses.set_hours, Director ruling 7), through the same staff editor; the change is logged.
 const STATUS_COLOR = { active: D.green, verified: D.green, dispute: D.amber, review: D.amber, suspended: D.red };
 const th = { padding: "8px 10px", fontSize: "0.7rem", fontWeight: 800, textAlign: "left", color: D.textDim };
 const td = { padding: "9px 10px", fontSize: "0.82rem", color: D.text };
@@ -82,7 +84,7 @@ function StartConversation({ profile, orders, onDone }) {
   );
 }
 
-function Profile({ kind, id, onBack, onLogCall, onNavigate }) {
+function Profile({ kind, id, auth, onBack, onLogCall, onNavigate }) {
   const q = usePersonProfile(kind, id);
   const [starting, setStarting] = useState(false);
   useEffect(() => { apiPost("/api/support/staff/profile-opened/", { kind, id }).catch(() => {}); }, [kind, id]);
@@ -90,6 +92,7 @@ function Profile({ kind, id, onBack, onLogCall, onNavigate }) {
   if (q.isError || !q.data) return <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load that profile.</div>;
   const { profile, kpis } = q.data;
   const customer = q.data.kind === "customer";
+  const canSetHours = !customer && Boolean(auth?.hasPermission?.("businesses.set_hours"));
   const convos = q.data.conversations || [];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -101,7 +104,7 @@ function Profile({ kind, id, onBack, onLogCall, onNavigate }) {
             <div style={dim}>{[customer ? `Customer since ${formatDateTime(profile.since)}` : `On AshantiHub since ${formatDateTime(profile.since)}`, profile.area, profile.phone && `phone ${profile.phone}`, profile.email && `email ${profile.email}`, !customer && profile.owner_name && `owner ${profile.owner_name}`].filter(Boolean).join(" · ")}</div>
             <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
               <span style={chip(STATUS_COLOR[profile.status?.key] || D.textDim)}>{profile.status?.label}</span>
-              <span style={chip(D.textDim)}>Read-only</span>
+              <span style={chip(D.textDim)}>{canSetHours ? "Read-only except opening hours" : "Read-only"}</span>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -137,6 +140,11 @@ function Profile({ kind, id, onBack, onLogCall, onNavigate }) {
           ) : <div style={dim}>No subscription on record.</div>}
           <div style={dim}>{profile.account_manager ? `Account manager: ${profile.account_manager}` : "No account manager set."}</div>
         </Section>
+      )}
+      {!customer && (
+        <div style={{ ...glassCard, padding: 16, minWidth: 0 }}>
+          <StaffHoursSection plain businessId={profile.id} days={q.data.hours} canEdit={canSetHours} onSaved={() => q.refetch()} />
+        </div>
       )}
       {customer && (
         <Section title="Orders">
@@ -177,13 +185,13 @@ function Profile({ kind, id, onBack, onLogCall, onNavigate }) {
   );
 }
 
-export default function SupportPeoplePanel({ profile, onOpenProfile, onBack, onLogCall, onNavigate }) {
+export default function SupportPeoplePanel({ profile, auth, onOpenProfile, onBack, onLogCall, onNavigate }) {
   const [q, setQ] = useState("");
   const [term, setTerm] = useState("");
   const [type, setType] = useState("all");
   const found = usePeopleLookup(term, type);
   const recent = usePeopleRecent();
-  if (profile) return <Profile kind={profile.kind} id={profile.id} onBack={onBack} onLogCall={onLogCall} onNavigate={onNavigate} />;
+  if (profile) return <Profile kind={profile.kind} id={profile.id} auth={auth} onBack={onBack} onLogCall={onLogCall} onNavigate={onNavigate} />;
   const searching = term.trim().length >= 2;
   const rows = searching ? found.data || [] : recent.data || [];
   return (

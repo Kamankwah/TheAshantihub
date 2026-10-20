@@ -71,8 +71,8 @@ export const NAV_ITEMS = [
   { id: "subscriptions-due", icon: "⏳", label: "Subscriptions due", show: (auth) => auth.hasPermission("portfolio.manage") },
   { id: "fraud-cases", icon: "🚩", label: "Fraud cases", show: (auth) => auth.hasPermission("fraud.manage") || auth.hasPermission("fraud.flag") },
   { id: "delivery-coordination", icon: "🚚", label: "Delivery Coordination", show: (auth) => auth.hasPermission("delivery.manage") },
-  // The Scheduled list for whoever manages deliveries without the Delivery Manager menu (orders.manage_delivery reads it;
-  // Send now inside it still needs delivery.manage). The Delivery Manager has dm-scheduled instead.
+  // The Scheduled list for whoever manages deliveries without the Delivery Manager menu (orders.manage_delivery reads it
+  // and, since Director ruling 7, may Send now as well). The Delivery Manager has dm-scheduled instead.
   { id: "delivery-scheduled", icon: "🕒", label: "Scheduled orders", show: (auth) => (auth.hasPermission("orders.manage_delivery") || auth.hasPermission("delivery.manage")) && auth.user?.role !== "delivery_manager" },
   { id: "my-deliveries", icon: "📦", label: "My Deliveries", show: (auth) => auth.hasPermission("delivery.dispatch") },
   { id: "categories-zones", icon: "🗂️", label: "Categories & Zones", show: (auth) => auth.hasPermission("categories.manage") || auth.hasPermission("zones.manage") },

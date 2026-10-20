@@ -9,7 +9,7 @@ from .test_dispatch import EngineCase
 
 
 class ScheduledAccessTests(EngineCase):
-    """The Scheduled list is readable with delivery.manage OR orders.manage_delivery; sending early needs delivery.manage."""
+    """The Scheduled list and Send now: delivery.manage OR orders.manage_delivery (Director ruling 7, 2026-10-20)."""
 
     LIST = "/api/delivery/scheduled/"
 
@@ -36,16 +36,23 @@ class ScheduledAccessTests(EngineCase):
         self.assertEqual([r["order_id"] for r in listed.data["results"]], [order.pk])
         self.assertEqual(self.send(staff, order).status_code, 200)
 
-    def test_read_only_user_can_list_but_not_send_early_403(self):
+    def test_manage_delivery_only_user_can_send_now_and_the_reason_is_logged(self):
+        # Director ruling 7 (2026-10-20): orders.manage_delivery alone may Send now (it used to need delivery.manage).
+        from activity.models import ActivityEvent
+
         staff = self.staffer("reader@example.com", "orders.manage_delivery")
         order = self.held()
         self.as_staff(staff)
         listed = self.client.get(self.LIST)
         self.assertEqual(listed.status_code, 200, listed.content)
         self.assertEqual([r["order_id"] for r in listed.data["results"]], [order.pk])
-        self.assertEqual(self.send(staff, order).status_code, 403)
+        sent = self.send(staff, order)
+        self.assertEqual(sent.status_code, 200, sent.content)
         order.refresh_from_db()
-        self.assertGreater(order.ready_not_before, timezone.now())
+        self.assertLessEqual(order.ready_not_before, timezone.now())
+        event = ActivityEvent.objects.filter(verb="delivery.early_send").get()
+        self.assertEqual((event.actor_id, event.target_id, event.after["reason"]), (staff.pk, str(order.pk), "Shop confirmed it is open"))
+        self.assertEqual(self.send(staff, order).status_code, 409)               # sent once; a second press changes nothing
 
     def test_user_with_neither_gets_403(self):
         staff = self.staffer("neither@example.com")
