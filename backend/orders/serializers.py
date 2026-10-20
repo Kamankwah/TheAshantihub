@@ -83,6 +83,15 @@ class OrderSerializer(serializers.ModelSerializer):
         if obj.coupon_id:
             data["discount_amount"] = str(obj.discount_amount)
             data["coupon_code"] = obj.coupon.code
+        # An open re-delivery at the customer's request (Plan 7F-E Task 7): the fee to pay and the state, so the order
+        # card can offer the payment. Only such an order carries it (no staff names, no reason).
+        from delivery import redelivery
+
+        if obj.delivery_method == Order.DOOR_TO_DOOR:
+            prefetched = getattr(obj, "open_redeliveries", None)      # orders.views._open_redeliveries
+            open_request = (prefetched[0] if prefetched else None) if prefetched is not None else redelivery.open_row(obj)
+            if open_request is not None:
+                data["redelivery"] = redelivery.customer_row(open_request)
         return data
 
 

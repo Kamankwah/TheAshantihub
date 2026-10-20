@@ -49,6 +49,23 @@ def deadline_for(order, *, express=False, limits=None):
 
 
 IN_HOUSE_ONLY = "Re-assigned: AshantiHub's own riders only"
+REDELIVERY_UNPAID = "Waiting for the customer to pay the re-delivery fee"
+REDELIVERY_IN_HOUSE = "Re-delivery: AshantiHub's own riders only"
+
+
+def redelivery_hold(order):
+    """For the queue (unlocked reads): "unpaid" while a customer-unavailable failure waits for the re-delivery fee,
+    "in_house" while a paid or assigned re-delivery limits the job to AshantiHub's riders, else None
+    (delivery.redelivery; services.assign enforces it under the locks)."""
+    from . import redelivery
+
+    if not redelivery.gate_applies(order):
+        return None
+    held = DeliveryAssignment.objects.filter(order_id=order.pk).first()
+    current = redelivery.open_row(order)
+    if redelivery.customer_unavailable(held):
+        return "in_house" if current is not None and current.status == current.PAID else "unpaid"
+    return "in_house" if current is not None and current.status == current.ASSIGNED else None
 
 
 def rank(order, rules=None, now=None):
@@ -75,6 +92,7 @@ def rank(order, rules=None, now=None):
     # re-assigned delivery is done by AshantiHub's own riders only (services.assign; Plan 7F-E Task 6). The rider who
     # held it may still be given it again: that is not a re-assignment.
     held = getattr(order, "delivery_assignment", None)
+    hold = redelivery_hold(order)
     stale_after = timedelta(seconds=int(rules["stale_s"]))
     eligible, left_out = [], []
     for rider in riders:
@@ -82,7 +100,9 @@ def rank(order, rules=None, now=None):
         shift = shifts.get(rider.pk)
         reason = None
         km = None
-        if staff.is_suspended:
+        if hold == "unpaid":                 # nobody can take it until the customer pays (services.assign refuses)
+            reason = REDELIVERY_UNPAID
+        elif staff.is_suspended:
             reason = "Suspended"
         elif shift is None:
             reason = "Not on shift"
@@ -98,6 +118,8 @@ def rank(order, rules=None, now=None):
             reason = "A required paper is missing or expired"
         elif cod_over_cap(rider, rules):
             reason = "Holds cash over the cap"
+        elif hold == "in_house" and rider.employment != Rider.ASHANTIHUB:
+            reason = REDELIVERY_IN_HOUSE
         elif services.reassignment_refused(held, rider):
             reason = IN_HOUSE_ONLY
         elif rider.pk in refused:
@@ -146,6 +168,13 @@ def make_offer(order, rider, *, source, by=None, score=None, rules=None, now=Non
     offered to AshantiHub's own riders only: refused here (409 redelivery_in_house_only) before anything changes, so a
     manager's offer can never stall waiting for an accept that services.assign would refuse."""
     if services.reassignment_refused(DeliveryAssignment.objects.filter(order_id=order.pk).first(), rider):
+        raise services.in_house_only_error()
+    hold = redelivery_hold(order)
+    if hold == "unpaid":
+        from .redelivery import FEE_UNPAID
+
+        raise services.DeliveryError(FEE_UNPAID, 409, "redelivery_fee_unpaid")
+    if hold == "in_house" and rider.employment != Rider.ASHANTIHUB:
         raise services.in_house_only_error()
     now = now or timezone.now()
     rules = rules or config.effective_rules()
@@ -235,8 +264,8 @@ def run_engine(now=None):
     rules = config.effective_rules()
     limits = config.effective_limits()
     for order in board.waiting_orders():
-        if held_for_manager(order):
-            continue
+        if held_for_manager(order) or redelivery_hold(order) == "unpaid":
+            continue                    # every shop skipped it, or the customer has not paid the re-delivery fee yet
         hold = getattr(order, "queue_hold", None)
         if hold is not None and hold.release_at > now:
             continue

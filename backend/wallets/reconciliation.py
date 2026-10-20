@@ -35,7 +35,7 @@ from .withdrawals import paid_key
 logger = logging.getLogger(__name__)
 # Services, stays and ticket purchases are recorded since ledger Plan 1b (booking-pay-<reference>).
 BOOKING_KINDS = (CheckoutSession.SERVICE_REQUEST, CheckoutSession.BOOKING, CheckoutSession.TICKET_PURCHASE)
-LEDGER_KINDS = (CheckoutSession.ORDER_CHECKOUT, CheckoutSession.WALLET_TOPUP, *BOOKING_KINDS)
+LEDGER_KINDS = (CheckoutSession.ORDER_CHECKOUT, CheckoutSession.WALLET_TOPUP, *BOOKING_KINDS, CheckoutSession.REDELIVERY_FEE)
 
 
 def _difference(reference, kind, problem, ledger, statement):
@@ -58,6 +58,10 @@ def expected_key(line):
         return topup_key(session.reference), None
     if session.kind in BOOKING_KINDS:
         return sales.pay_key(session), None
+    if session.kind == CheckoutSession.REDELIVERY_FEE:
+        # The finalizer names the journal it posted (redelivery-pay-<id>, or redelivery-stray-<reference> when the request
+        # no longer waited); a session never finalised is expected to have its payment journal (Plan 7F-E Task 7).
+        return session.metadata.get("journal_key") or f"redelivery-pay-{session.metadata.get('redelivery_id')}", None
     return escrow.pay_key(Order(pk=session.metadata.get("order_id"))), None
 
 
@@ -67,6 +71,12 @@ def provider_reference(journal):
         return journal.reference_id
     if journal.key.startswith("booking-pay-"):
         return journal.key[len("booking-pay-"):]
+    if journal.key.startswith("redelivery-stray-"):
+        return journal.reference_id
+    if journal.key.startswith("redelivery-pay-"):
+        return CheckoutSession.objects.filter(
+            kind=CheckoutSession.REDELIVERY_FEE, metadata__journal_key=journal.key,
+        ).values_list("reference", flat=True).first()
     if journal.key.startswith("order-pay-") and journal.reference_id.isdigit():
         session = CheckoutSession.objects.filter(
             kind=CheckoutSession.ORDER_CHECKOUT, metadata__order_id=int(journal.reference_id), status=CheckoutSession.SUCCESS,

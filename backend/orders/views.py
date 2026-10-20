@@ -306,7 +306,19 @@ _LEGACY_STOP_READS = ("items__listing__business_owner__profile", "items__listing
 def _customer_orders(customer):
     return (
         Order.objects.filter(customer=customer).select_related("delivery_assignment", "coupon")
-        .prefetch_related("delivery_assignment__stops", *_LEGACY_STOP_READS)
+        .prefetch_related("delivery_assignment__stops", *_LEGACY_STOP_READS, _open_redeliveries())
+    )
+
+
+def _open_redeliveries():
+    """An order's open re-delivery request (Plan 7F-E Task 7), read by OrderSerializer, in one query for the whole list."""
+    from django.db.models import Prefetch
+
+    from delivery.models import Redelivery
+
+    return Prefetch(
+        "redeliveries", queryset=Redelivery.objects.filter(status__in=Redelivery.OPEN_STATUSES).order_by("-attempt"),
+        to_attr="open_redeliveries",
     )
 
 

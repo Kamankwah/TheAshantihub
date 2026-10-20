@@ -156,6 +156,18 @@ class SupportOrderSearchView(APIView):
         return Response({"results": rows, "recent": seen[:5]})
 
 
+def _redelivery_fields(order):
+    """Whether Support may ask for a re-delivery at the customer's request now, and the fee it would carry (the governed
+    setting in force; the request copies it). Plan 7F-E Task 7. False and no fee while the ledger is off."""
+    from delivery import redelivery
+    from ledger import settings_store
+    from ledger.money import from_pesewas
+
+    if not redelivery.redeliverable(order):
+        return {"redeliverable": False}
+    return {"redeliverable": True, "redelivery_fee": str(from_pesewas(settings_store.current(settings_store.REDELIVERY_FEE)))}
+
+
 class SupportOrderDetailView(APIView):
     """GET /api/orders/support/<pk>/ — one order for the Support screen."""
 
@@ -184,6 +196,7 @@ class SupportOrderDetailView(APIView):
             "timeline": delivery_events_for(order),
             "actions": allowed_actions(order),
             "payments": payments_note(),
+            **_redelivery_fields(order),
             "delivery_note": (
                 "Arrives with Delivery: arrival and wait stamps, handover codes, the rider's last location "
                 "and 'can't deliver' outcomes are not recorded yet."

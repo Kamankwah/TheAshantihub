@@ -30,6 +30,7 @@ from ledger.money import from_pesewas
 from notifications.services import notify_customer
 
 from .models import Redelivery
+from .services import DeliveryError
 
 # What "the customer was not available" means (owner to confirm; the owner may add reasons): the first rider reached the
 # address (arrived_drop_at) and the job failed for one of these. Other reasons (wrong_address, refused, unsafe, other) are
@@ -42,13 +43,9 @@ NOT_REDELIVERABLE = (
 )
 
 
-class RedeliveryError(Exception):
-    def __init__(self, message, status_code=400, code="invalid", **extra):
-        super().__init__(message)
-        self.message, self.status_code, self.code, self.extra = message, status_code, code, extra
-
-    def body(self):
-        return {"detail": self.message, "code": self.code, **self.extra}
+class RedeliveryError(DeliveryError):
+    """A refusal from these rules; a DeliveryError, so every assigning path (orders AssignDispatchView, the queue's
+    force-assign, an offer) answers it the way it answers its own (status code and `code`)."""
 
 
 def ghs(pesewas):

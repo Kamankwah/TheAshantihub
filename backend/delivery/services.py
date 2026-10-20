@@ -214,10 +214,11 @@ def assign(order, rider_staff, assigned_by, *, mode):
 
     A re-assignment (Plan 7F-E Task 6, owner Ruling R3) is a job the first rider had accepted or taken further, or one
     that failed, given to a different rider: it goes to AshantiHub's own riders only (409 redelivery_in_house_only), and
-    it ends the first rider's leg. Any reset of the job (a swap, or a failed job given again) clears the assignment's
-    pickup stamp and the reopened stops' collection stamps, so the first leg's pickup counts for no one
-    (ledger.riders.pickup_made); it stays in the append-only DeliveryEvent rows. A swap of a job still waiting to be
-    accepted is ordinary dispatch, open to any rider."""
+    it ends the first rider's leg. A failure where the customer was not available (delivery.redelivery) is re-assigned
+    only once the customer paid the re-delivery fee, to an AshantiHub rider. Any reset of the job (a swap, or a failed
+    job given again) clears the assignment's pickup stamp and the reopened stops' collection stamps, so the first leg's
+    pickup counts for no one (ledger.riders.pickup_made); it stays in the append-only DeliveryEvent rows. A swap of a job
+    still waiting to be accepted is ordinary dispatch, open to any rider."""
     from orders import locks
     from orders.models import DeliveryAssignment
 
@@ -235,6 +236,12 @@ def assign(order, rider_staff, assigned_by, *, mode):
     rider = Rider.objects.filter(staff=rider_staff).select_related("vehicle").first()
     if reassignment_refused(existing, rider):
         raise in_house_only_error()
+    from . import redelivery
+
+    # Re-delivery at the customer's request (Plan 7F-E Task 7): a customer-unavailable failure waits for the paid fee
+    # (409 redelivery_fee_unpaid) and the second trip is an AshantiHub rider's (409 redelivery_in_house_only). Checked,
+    # with the request's row locked (after the assignment row), before anything below writes.
+    serving = redelivery.check_assign(order, existing, rider)
     assignment = existing or DeliveryAssignment(order=order)
     assignment.dispatch = rider_staff
     assignment.assigned_by = assigned_by
@@ -263,6 +270,7 @@ def assign(order, rider_staff, assigned_by, *, mode):
     if existing is not None and (swapped or failed):
         stops.reopen_for_new_rider(assignment, failed=failed, all_skipped=previous_reason == ALL_STOPS_SKIPPED)
     DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.ASSIGNED, at=now, by=assigned_by)
+    redelivery.link_rider(serving, rider_staff, assigned_by)
     return assignment
 
 
