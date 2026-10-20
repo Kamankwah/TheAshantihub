@@ -766,7 +766,7 @@ nothing until `CATALOGUE_MATCHER_ENABLED` is on, and sold-out listings leave sea
   every column, so any PATCH, even a price change, wrote back the stock it had read; Stage 6 saves only the sent fields
   (`listings.serializers.save_sent_fields`), but a PATCH that sends `stock_quantity` still races. Lock the row for the
   read-modify-write; the alerts' re-arm rule reads the same number.
-- (cv) **The public listing serializer still carries `contact_phone` (pre-existing).** `PublicListingSerializer`
+- (cv) **Resolved by Plan M1B: the public responses no longer carry the business contact phone (owner and staff keep it).** Original note: **The public listing serializer still carried `contact_phone` (pre-existing).** `PublicListingSerializer`
   exposes the listing's `contact_phone` to anyone, against "businesses cannot be contacted directly". The catalogue rows
   leave it out; decide whether to drop it from the public shape (check the frontend first). The same serializer also exposes
   `business_owner.full_name` (`BusinessOwnerMiniSerializer`): the owner's personal name on every public listing detail.
