@@ -748,7 +748,7 @@ class HolderDetailsGuard:
                 {"detail": "That is already the current value.", "code": "no_change"}, status=status.HTTP_400_BAD_REQUEST,
             )
         if changed:
-            RequiresSudo().has_permission(request, self)
+            sessions.require_sudo(request)  # raises 403 sudo_required
         # The message and the response never echo what was sent but not applied.
         serializer.initial_data = {key: value for key, value in request.data.items() if not holder_details.protected(instance, key)}
         raw = getattr(request, "_request", request)

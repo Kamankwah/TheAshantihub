@@ -81,6 +81,15 @@ class StaffDestinationEditTests(TestCase):
         self.assertEqual((response.status_code, response.json()["code"]), (403, "sudo_required"))
         self.assertEqual(ApprovalRequest.objects.filter(kind=holder_details.KEY).count(), 0)
 
+    def test_without_the_password_nothing_in_the_patch_is_applied(self):
+        # The door refuses before writing anything: neither the protected contact nor an unprotected field sent with it.
+        response = self.patch({"phone": NEW_PHONE, "address": "2 Lane"}, sudo=False)
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertEqual(response.json()["code"], "sudo_required")
+        self.customer.refresh_from_db()
+        self.assertEqual((self.customer.phone, self.customer.address), ("+233241234567", "1 Road"))
+        self.assertFalse(ApprovalRequest.objects.filter(kind=holder_details.KEY).exists())
+
     def test_approval_applies_change_and_starts_cooling(self):
         approval_id = self.patch({"full_name": "Ama Kyei Owusu"}).json()["approval_id"]
         before = timezone.now()
