@@ -301,4 +301,41 @@ describe('BusinessRegistrationFlow', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/Monday: opening time must be before closing time/)
     })
   })
+
+  it('business registration waits for the code before the business_info step', async () => {
+    const challenge = { id: 7, full_name: 'Abena Owusu', otp_required: true, mfa_token: 'mfa-9', channels: [{ channel: 'sms', hint: 'Text a code to 0•• ••• 2233' }] }
+    const auth = makeAuth({
+      registerBusinessOwner: vi.fn().mockResolvedValue(challenge),
+      sendOtpCode: vi.fn().mockResolvedValue({ channel: 'sms', hint: 'Text a code to 0•• ••• 2233', resend_in: 60 }),
+      verifyOtp: vi.fn().mockResolvedValue({ token: 't', account_type: 'business_owner', registration_step: 'business_info' }),
+    })
+    renderFlow(<BusinessRegistrationFlow user={null} auth={auth} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+
+    fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })
+    fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+
+    fireEvent.click(await screen.findByText('Text a code to 0•• ••• 2233'))
+    expect(screen.queryByText(/Tell us about your business/)).not.toBeInTheDocument()
+    fireEvent.change(await screen.findByLabelText('6-digit code'), { target: { value: '123456' } })
+    expect(screen.queryByText(/Tell us about your business/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+    await waitFor(() => expect(auth.verifyOtp).toHaveBeenCalledWith('mfa-9', expect.objectContaining({ code: '123456', registration: 'business_owner' })))
+    expect(await screen.findByText(/Tell us about your business/)).toBeInTheDocument()
+  })
+
+  it('Start again on the registration code screen returns to the personal details', async () => {
+    const challenge = { id: 7, otp_required: true, mfa_token: 'mfa-9', channels: [{ channel: 'sms', hint: 'Text a code to 0•• ••• 2233' }] }
+    const auth = makeAuth({ registerBusinessOwner: vi.fn().mockResolvedValue(challenge) })
+    renderFlow(<BusinessRegistrationFlow user={null} auth={auth} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+    fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })
+    fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Start again' }))
+    expect(screen.getByPlaceholderText('Full name')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Password (min 8 characters)')).toHaveValue('')
+  })
 })

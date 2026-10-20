@@ -74,6 +74,8 @@ import BusinessCommandCenter from "./components/dashboard/BusinessCommandCenter.
 import AdminCommandCenter from "./components/admin/AdminCommandCenter.jsx";
 import StaffInstallPage from "./components/admin/StaffInstallPage.jsx";
 import StaffTwoStepSignIn from "./components/admin/StaffTwoStepSignIn.jsx";
+import OtpSignIn from "./components/OtpSignIn.jsx";
+import { isOtpChallenge, otpCode } from "./lib/otp.js";
 import { D, glassCard, ghs, tint } from "./components/dashboard/theme.js";
 import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
@@ -1183,6 +1185,8 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   const [error,setError]=useState(null);
   const [submitting,setSubmitting]=useState(false);
   const [twoStep,setTwoStep]=useState(null);
+  // A code challenge for a customer / business owner / staff (non-authenticator) sign-in or a sign-up: {challenge,purpose,accountType}.
+  const [otp,setOtp]=useState(null);
   // Set when the 2-step step timed out and sent the person back to the password.
   const [twoStepNotice,setTwoStepNotice]=useState(null);
   // Why the staff shell just signed this tab out (idle / session ended); read once.
@@ -1206,11 +1210,15 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
     setTwoStepNotice(null);
     setSubmitting(true);
     try {
-      const result=await auth.login(lockedAccountType||accountType,identifier,password);
+      const type=lockedAccountType||accountType;
+      const result=await auth.login(type,identifier,password);
+      if(result?.otp_required||(result?.two_factor_required&&type!=="staff")){setOtp({challenge:result,purpose:"sign_in",accountType:type});setPassword("");return;}
       if(result?.two_factor_required||result?.two_factor_setup_required){setTwoStep(result);return;}
       onSuccess(result);
     } catch (err) {
-      setError("Invalid credentials. Please check your details and try again.");
+      if(otpCode(err)==="no_channel")setError("We have no phone or email on file to send a code to. Contact AshantiHub Support.");
+      else if(err?.status===429&&err?.body?.detail)setError(err.body.detail);
+      else setError("Invalid credentials. Please check your details and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -1248,12 +1256,20 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
       const result=accountType==="business_owner"
         ? await auth.registerBusinessOwner({full_name:fullName,login_phone:phone||undefined,email:email||undefined,password,...consentField})
         : await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:email||undefined,password,...consentField});
+      if(isOtpChallenge(result)){setOtp({challenge:result,purpose:"sign_up",accountType});setPassword("");return;}
       onSuccess(result);
     } catch (err) {
       setError("Could not create your account. Please check your details.");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const cancelOtp=(message)=>{
+    const purpose=otp?.purpose;
+    setOtp(null);setPassword("");
+    if(typeof message!=="string")return;
+    if(purpose==="sign_up")setError(message);else setTwoStepNotice(message);
   };
 
   return <div data-testid="auth-modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -1263,7 +1279,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
         <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>{mode==="forgot"?"Reset your password":lockedAccountType==="staff"?"Staff Sign In":mode==="login"?"Welcome back":"Create your account"}</div>
       </div>
       <div style={{padding:"20px 24px"}}>
-        {!lockedAccountType && mode!=="forgot" && <div style={{display:"flex",gap:8,marginBottom:16}}>
+        {!lockedAccountType && mode!=="forgot" && !otp && <div style={{display:"flex",gap:8,marginBottom:16}}>
           <button type="button" onClick={()=>setMode("login")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="login"?C.gold:C.surface2,color:mode==="login"?C.darkBrown:C.inkDim}}>Sign In</button>
           <button type="button" onClick={()=>setMode("signup")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="signup"?C.gold:C.surface2,color:mode==="signup"?C.darkBrown:C.inkDim}}>Sign Up</button>
         </div>}
@@ -1271,9 +1287,10 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
         {signedOutNotice && <div role="status" style={{background:C.canvas,border:`1px solid ${C.gold}`,color:C.ink,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{signedOutNotice}</div>}
         {error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
+        {otp && <OtpSignIn challenge={otp.challenge} accountType={otp.accountType} purpose={otp.purpose} auth={auth} onSuccess={onSuccess} onCancel={cancelOtp}/>}
         {mode==="login" && twoStep && <StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/>}
-        {mode==="login" && !twoStep && twoStepNotice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{twoStepNotice}</div>}
-        {mode==="login" && !twoStep && <form onSubmit={handleLogin}>
+        {mode==="login" && !twoStep && !otp && twoStepNotice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{twoStepNotice}</div>}
+        {mode==="login" && !twoStep && !otp && <form onSubmit={handleLogin}>
           {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:12}}>
             <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
             <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
@@ -1305,7 +1322,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
           )}
         </div>}
 
-        {mode==="signup" && <form onSubmit={handleSignup}>
+        {mode==="signup" && !otp && <form onSubmit={handleSignup}>
           <div style={{display:"flex",gap:8,marginBottom:12}}>
             <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
             <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
