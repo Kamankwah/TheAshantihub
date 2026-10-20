@@ -51,6 +51,7 @@ def deadline_for(order, *, express=False, limits=None):
 IN_HOUSE_ONLY = "Re-assigned: AshantiHub's own riders only"
 REDELIVERY_UNPAID = "Waiting for the customer to pay the re-delivery fee"
 REDELIVERY_IN_HOUSE = "Re-delivery: AshantiHub's own riders only"
+PICKUP_MISSING = "Pickup location missing"
 
 
 def redelivery_hold(order):
@@ -68,18 +69,96 @@ def redelivery_hold(order):
     return "in_house" if current is not None and current.status == current.ASSIGNED else None
 
 
-def rank(order, rules=None, now=None):
-    """{"eligible": [...best first], "left_out": [...], "pickup_located": bool, "rules": ..., "distance_basis": ...}.
-    Every rider distance here (``km``, the radius check, the distance score) is the straight-line estimate, so the
-    payload says so in ``distance_basis`` whatever OSRM is doing; road legs arrive with stage 2."""
-    rules = rules or config.effective_rules()
-    now = now or timezone.now()
+def _riders(*, in_house_only=False):
+    rows = Rider.objects.select_related("staff", "home_zone").filter(staff__is_active=True, staff__invite_token__isnull=True)
+    if in_house_only:
+        rows = rows.filter(employment=Rider.ASHANTIHUB)
+    return list(rows)
+
+
+def _context(order, rules, now):
+    """What the eligibility rules read once per order: open shifts, active jobs per rider, who declined or timed out on
+    this order, and the pickup point."""
     plat, plng, _, _ = services.dispatch_point(order)
-    shifts = {s.rider_id: s for s in ShiftSession.objects.filter(ended_at__isnull=True)}
-    riders = list(Rider.objects.select_related("staff", "home_zone").filter(staff__is_active=True, staff__invite_token__isnull=True))
     active = {}
     for row in DeliveryAssignment.objects.filter(status__in=DeliveryAssignment.ACTIVE_STATUSES).values_list("dispatch_id", flat=True):
         active[row] = active.get(row, 0) + 1
+    return {
+        "plat": plat, "plng": plng, "active": active, "stale_after": timedelta(seconds=int(rules["stale_s"])),
+        "shifts": {s.rider_id: s for s in ShiftSession.objects.filter(ended_at__isnull=True)},
+        "refused": set(Offer.objects.filter(order=order, status__in=(Offer.DECLINED, Offer.EXPIRED)).values_list("rider_id", flat=True)),
+    }
+
+
+def _rider_reason(rider, ctx, rules, now):
+    """Why `rider` cannot take a job now (their own state), or None."""
+    staff = rider.staff
+    shift = ctx["shifts"].get(rider.pk)
+    if staff.is_suspended:
+        return "Suspended"
+    if shift is None:
+        return "Not on shift"
+    if shift.on_break:
+        return "On a break"
+    if rider.job_hold:
+        return "Stopped from new jobs"
+    if shift.last_fix_at is None or now - shift.last_fix_at > ctx["stale_after"]:
+        return "Location is stale"
+    if ctx["active"].get(staff.pk, 0) >= int(rules["max_active_jobs"]):
+        return f"Already has {ctx['active'].get(staff.pk, 0)} jobs"
+    if services.required_documents_missing(rider):
+        return "A required paper is missing or expired"
+    if cod_over_cap(rider, rules):
+        return "Holds cash over the cap"
+    return None
+
+
+def _order_reason(rider, ctx, rules):
+    """(why `rider` cannot take this order, km): they declined or timed out on it, its pickup has no pin, or it is
+    beyond the radius (straight-line estimate). Call only for a rider with an open shift."""
+    if rider.pk in ctx["refused"]:
+        return "Declined or timed out on this order", None
+    if ctx["plat"] is None:
+        return PICKUP_MISSING, None
+    shift = ctx["shifts"][rider.pk]
+    km = round(haversine_m(shift.last_lat, shift.last_lng, ctx["plat"], ctx["plng"]) * services.ROAD_FACTOR / 1000, 2)
+    if km > float(rules["radius_km"]):
+        return f"{km:.1f} km away (limit {float(rules['radius_km']):g} km)", km
+    return None, km
+
+
+def _in_house_free(riders, ctx, rules, now):
+    """True when one of AshantiHub's own riders passes every rule for this order. A pickup with no pin cannot be measured,
+    so there the distance rule is left out (an on-shift in-house rider counts, as a manager's hand assignment would)."""
+    for rider in riders:
+        if rider.employment != Rider.ASHANTIHUB or _rider_reason(rider, ctx, rules, now) is not None:
+            continue
+        if _order_reason(rider, ctx, rules)[0] in (None, PICKUP_MISSING):
+            return True
+    return False
+
+
+def in_house_available(order, rules=None, now=None):
+    """Director ruling 2 (2026-10-20): is an AshantiHub (in-house) rider available for `order` right now? On shift, not on
+    a break, a fresh location, no job hold, not suspended, under the active-job limit, papers valid, under the cash cap,
+    not having declined or timed out on this order, and within the radius of its pickup (left out when the pickup has no
+    pin). While one is, a re-assigned delivery goes to in-house riders only; when none is, a third-party rider may take it
+    (services.reassignment_refused)."""
+    rules = rules or config.effective_rules()
+    now = now or timezone.now()
+    return _in_house_free(_riders(in_house_only=True), _context(order, rules, now), rules, now)
+
+
+def rank(order, rules=None, now=None):
+    """{"eligible": [...best first], "left_out": [...], "pickup_located": bool, "rules": ..., "distance_basis": ...,
+    "third_party_fallback": bool}. Every rider distance here (``km``, the radius check, the distance score) is the
+    straight-line estimate, so the payload says so in ``distance_basis`` whatever OSRM is doing; road legs arrive with
+    stage 2. ``third_party_fallback`` is true for a re-assigned order no in-house rider is available for, so third-party
+    riders are ranked too (Director ruling 2)."""
+    rules = rules or config.effective_rules()
+    now = now or timezone.now()
+    ctx = _context(order, rules, now)
+    riders = _riders()
     today = timezone.localdate(now)
     jobs_today = {}
     last_done = {}
@@ -87,52 +166,30 @@ def rank(order, rules=None, now=None):
         jobs_today[staff_id] = jobs_today.get(staff_id, 0) + 1
         if delivered_at and (staff_id not in last_done or delivered_at > last_done[staff_id]):
             last_done[staff_id] = delivered_at
-    refused = set(Offer.objects.filter(order=order, status__in=(Offer.DECLINED, Offer.EXPIRED)).values_list("rider_id", flat=True))
     # An order whose job a rider had accepted or taken further (in the queue: a failed attempt) is re-assigned, and a
-    # re-assigned delivery is done by AshantiHub's own riders only (services.assign; Plan 7F-E Task 6). The rider who
-    # held it may still be given it again: that is not a re-assignment.
+    # re-assigned delivery goes to AshantiHub's own riders while one is available (services.assign; Plan 7F-E Task 6,
+    # Director ruling 2). The rider who held it may still be given it again: that is not a re-assignment.
     held = getattr(order, "delivery_assignment", None)
     hold = redelivery_hold(order)
-    stale_after = timedelta(seconds=int(rules["stale_s"]))
+    fallback = hold is None and services.is_reassignment(held) and not _in_house_free(riders, ctx, rules, now)
     eligible, left_out = [], []
     for rider in riders:
         staff = rider.staff
-        shift = shifts.get(rider.pk)
-        reason = None
         km = None
         if hold == "unpaid":                 # nobody can take it until the customer pays (services.assign refuses)
             reason = REDELIVERY_UNPAID
-        elif staff.is_suspended:
-            reason = "Suspended"
-        elif shift is None:
-            reason = "Not on shift"
-        elif shift.on_break:
-            reason = "On a break"
-        elif rider.job_hold:
-            reason = "Stopped from new jobs"
-        elif shift.last_fix_at is None or now - shift.last_fix_at > stale_after:
-            reason = "Location is stale"
-        elif active.get(staff.pk, 0) >= int(rules["max_active_jobs"]):
-            reason = f"Already has {active.get(staff.pk, 0)} jobs"
-        elif services.required_documents_missing(rider):
-            reason = "A required paper is missing or expired"
-        elif cod_over_cap(rider, rules):
-            reason = "Holds cash over the cap"
-        elif hold == "in_house" and rider.employment != Rider.ASHANTIHUB:
-            reason = REDELIVERY_IN_HOUSE
-        elif services.reassignment_refused(held, rider):
-            reason = IN_HOUSE_ONLY
-        elif rider.pk in refused:
-            reason = "Declined or timed out on this order"
-        elif plat is None:
-            reason = "Pickup location missing"
         else:
-            km = round(haversine_m(shift.last_lat, shift.last_lng, plat, plng) * services.ROAD_FACTOR / 1000, 2)
-            if km > float(rules["radius_km"]):
-                reason = f"{km:.1f} km away (limit {float(rules['radius_km']):g} km)"
+            reason = _rider_reason(rider, ctx, rules, now)
+            if reason is None and hold == "in_house" and rider.employment != Rider.ASHANTIHUB:
+                reason = REDELIVERY_IN_HOUSE
+            elif reason is None and not fallback and services.third_party_reassignment(held, rider):
+                reason = IN_HOUSE_ONLY
+            if reason is None:
+                reason, km = _order_reason(rider, ctx, rules)
         if reason:
             left_out.append({"rider_id": rider.pk, "full_name": staff.full_name, "reason": reason})
             continue
+        shift = ctx["shifts"][rider.pk]
         n_today = jobs_today.get(staff.pk, 0)
         idle_since = last_done.get(staff.pk) or shift.started_at
         idle_min = max(0, (now - idle_since).total_seconds() / 60)
@@ -146,10 +203,14 @@ def rank(order, rules=None, now=None):
         eligible.append({
             "rider_id": rider.pk, "staff_id": staff.pk, "full_name": staff.full_name, "km": km, "total": round(total, 1),
             "parts": [{"key": k, "weight": weights[k], **parts[k]} for k in ("distance", "fairness", "idle")],
-            "vehicle_type": rider.vehicle_type, "active_jobs": active.get(staff.pk, 0),
+            "vehicle_type": rider.vehicle_type, "active_jobs": ctx["active"].get(staff.pk, 0),
         })
     eligible.sort(key=lambda r: (-r["total"], r["km"] if r["km"] is not None else 1e9, r["rider_id"]))
-    return {"eligible": eligible, "left_out": left_out, "pickup_located": plat is not None, "rules": {k: str(v) for k, v in rules.items()}, "distance_basis": routing_service.BASIS_ESTIMATE}
+    return {
+        "eligible": eligible, "left_out": left_out, "pickup_located": ctx["plat"] is not None,
+        "rules": {k: str(v) for k, v in rules.items()}, "distance_basis": routing_service.BASIS_ESTIMATE,
+        "third_party_fallback": fallback,
+    }
 
 
 def cod_over_cap(rider, rules):
@@ -165,9 +226,10 @@ def live_offer(order):
 
 def make_offer(order, rider, *, source, by=None, score=None, rules=None, now=None):
     """Offer the order to `rider`, withdrawing any live offer. A re-assigned order (services.reassignment_refused) is
-    offered to AshantiHub's own riders only: refused here (409 redelivery_in_house_only) before anything changes, so a
-    manager's offer can never stall waiting for an accept that services.assign would refuse."""
-    if services.reassignment_refused(DeliveryAssignment.objects.filter(order_id=order.pk).first(), rider):
+    offered to AshantiHub's own riders while one is available (Director ruling 2): a third-party rider is refused here
+    (409 redelivery_in_house_only) before anything changes, so a manager's offer does not stall waiting for an accept
+    that services.assign would refuse. services.assign checks again at the accept."""
+    if services.reassignment_refused(DeliveryAssignment.objects.filter(order_id=order.pk).first(), rider, order, now):
         raise services.in_house_only_error()
     hold = redelivery_hold(order)
     if hold == "unpaid":

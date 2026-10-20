@@ -260,6 +260,19 @@ class RedeliveryEndpointTests(RedeliveryBase):
         self.give(order, self.own2)
         self.assertEqual(Redelivery.objects.get(order=order).rider_id, self.own2.staff_id)
 
+    def test_a_paid_redelivery_stays_in_house_even_when_no_in_house_rider_is_available(self):
+        """Director ruling 2's third-party fallback covers a plain re-assignment only: the second trip of a paid re-delivery
+        settles its fee to platform income for an in-house rider's payroll, so a third-party rider is never given it."""
+        from delivery import dispatching
+        from ledger.tests import rider_helpers
+
+        order = self.unavailable()
+        self.pay(self.ask(order))
+        self.assertFalse(dispatching.in_house_available(order))                   # nobody of AshantiHub's own is on shift
+        other = rider_helpers.rider("swift3@example.com", name="Kwesi Owusu", phone="+233244000005")
+        self.assign_refused(order, other, "redelivery_in_house_only")
+        self.assertFalse(dispatching.rank(order)["third_party_fallback"])
+
     def test_dispatch_engine_and_offers_wait_for_the_fee(self):
         from delivery import dispatching
         from delivery.services import DeliveryError

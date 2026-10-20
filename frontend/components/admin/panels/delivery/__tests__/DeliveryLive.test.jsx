@@ -142,6 +142,25 @@ describe('Dispatch queue', () => {
     await within(region).findByText(/Score is the sum of each part/)
     expect(within(region).queryByText(/Rider distances are/)).toBeNull()
   })
+
+  // Director ruling 2 (2026-10-20): a re-assigned delivery goes to a third-party rider only when no AshantiHub rider is free.
+  it('says when third-party riders are ranked because no AshantiHub rider is available', async () => {
+    const fallbackNote = /No AshantiHub rider is available for this re-assigned delivery, so third-party riders are ranked too/
+    server.use(
+      http.get(`${API}/api/delivery/queue/`, () => HttpResponse.json(queueData({ results: [row], total: 1 }))),
+      http.get(`${API}/api/delivery/queue/7/ranking/`, () => HttpResponse.json({ ...ranking, third_party_fallback: true })),
+    )
+    wrap(<DispatchQueuePanel auth={auth} onNavigate={() => {}} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Choose rider' }))
+    const region = await screen.findByRole('region', { name: 'Order #7 detail' })
+    expect(await within(region).findByText(fallbackNote)).toBeInTheDocument()
+  })
+
+  it('says nothing about a fallback for an ordinary order', async () => {
+    const region = await openRanking(undefined, undefined)
+    await within(region).findByText(/Score is the sum of each part/)
+    expect(within(region).queryByText(/third-party riders are ranked too/)).toBeNull()
+  })
 })
 
 describe('Active deliveries and the delivery record', () => {

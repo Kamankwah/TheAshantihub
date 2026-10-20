@@ -177,6 +177,7 @@ class RiderReassignmentTests(RefundBase):
 
     # --- who may take a re-assigned delivery --------------------------------------------------------------------------
     def test_reassignment_to_third_party_rider_refused(self):
+        self.on_shift(self.own)                        # an AshantiHub rider is free, so no fallback (Director ruling 2)
         order = self.door_order()
         self.give(order, self.own)
         services.accept(self.job(order), self.own.staff)
@@ -195,6 +196,7 @@ class RiderReassignmentTests(RefundBase):
         from accounts.testing import staff_token
         from rest_framework.test import APIClient
 
+        self.on_shift(self.own)
         order = self.door_order()
         self.give(order, self.own)
         services.accept(self.job(order), self.own.staff)
@@ -290,6 +292,7 @@ class RiderReassignmentTests(RefundBase):
     def test_manager_offer_on_a_reassignment_goes_to_in_house_riders_only(self):
         from delivery.models import Offer
 
+        self.on_shift(self.own)
         order = self.picked_then_failed()                                    # in the queue again, Swift's attempt failed
         third = rider_helpers.rider("other3p@example.com", name="Kwesi Owusu", phone="+233244000005")
         refused = self.offer(order, third)
@@ -305,3 +308,101 @@ class RiderReassignmentTests(RefundBase):
     def test_manager_offer_on_an_ordinary_order_is_open_to_any_rider(self):
         order = self.door_order()
         self.assertEqual(self.offer(order, self.swift).status_code, 201)
+
+
+    # --- the third-party fallback (Director ruling 2, 2026-10-20) -----------------------------------------------------
+    # A re-assigned delivery goes to an AshantiHub (in-house) rider first. A third-party rider may take it only while no
+    # in-house rider is available (on shift and passing the dispatch rules: dispatching.in_house_available); the fallback
+    # is written on the assignment's event and in the activity log, and the rider who completes the trip is the one paid.
+    def third(self):
+        return rider_helpers.rider("other3p@example.com", name="Kwesi Owusu", phone="+233244000005")
+
+    def failed_with_pin(self):
+        """A failed attempt whose stop has a pin (so the dispatch ranking can measure distances)."""
+        order = self.door_order()
+        first = rider_helpers.rider("first@example.com", name="Kojo Badu", phone="+233244000007", third_party=False)
+        assignment = DA.objects.create(order=order, dispatch=first.staff, status=DA.FAILED, failed_at=timezone.now(),
+                                       failed_reason="wrong_address", pickup_code="1234", drop_code="5678")
+        PickupStop.objects.create(assignment=assignment, sequence=1, business_owner=self.kofi, lat=HERE[0], lng=HERE[1], code="1234")
+        return Order.objects.select_related("delivery_assignment").get(pk=order.pk)
+
+    def test_in_house_rider_available_third_party_refused(self):
+        self.on_shift(self.own)
+        order = self.picked_then_failed()
+        self.assertTrue(dispatching.in_house_available(Order.objects.get(pk=order.pk)))
+        with self.assertRaises(DeliveryError) as caught:
+            self.give(order, self.third())
+        self.assertEqual(caught.exception.code, "redelivery_in_house_only")
+
+    def test_no_in_house_rider_available_third_party_allowed_and_logged(self):
+        from activity.models import ActivityEvent
+
+        order = self.picked_then_failed()                                      # nobody of AshantiHub's own is on shift
+        self.assertFalse(dispatching.in_house_available(Order.objects.get(pk=order.pk)))
+        third = self.third()
+        with self.captureOnCommitCallbacks(execute=True):
+            assignment = self.give(order, third)
+        self.assertEqual((assignment.dispatch_id, assignment.status), (third.staff_id, DA.ASSIGNED))
+        event = DeliveryEvent.objects.filter(assignment=assignment, step=DeliveryEvent.ASSIGNED).order_by("-id").first()
+        self.assertIn("no AshantiHub rider was available", event.note)
+        logged = ActivityEvent.objects.get(verb="delivery.reassigned_third_party")
+        self.assertEqual((logged.actor_id, logged.target_id), (self.manager.pk, str(order.pk)))
+        self.assertEqual(logged.after, {
+            "order": order.pk, "rider": third.staff_id, "previous_rider": self.swift.staff_id, "previous_status": DA.FAILED,
+            "reason": "no_in_house_rider_available",
+        })
+
+    def test_an_in_house_rider_on_a_break_or_with_a_stale_fix_is_not_available(self):
+        self.on_shift(self.own)
+        ShiftSession.objects.filter(rider=self.own).update(on_break=True)
+        order = self.picked_then_failed()
+        self.assertFalse(dispatching.in_house_available(Order.objects.get(pk=order.pk)))
+        ShiftSession.objects.filter(rider=self.own).update(on_break=False, last_fix_at=timezone.now() - timedelta(hours=1))
+        self.assertFalse(dispatching.in_house_available(Order.objects.get(pk=order.pk)))
+        ShiftSession.objects.filter(rider=self.own).update(last_fix_at=timezone.now())
+        self.assertTrue(dispatching.in_house_available(Order.objects.get(pk=order.pk)))
+
+    def test_an_ordinary_dispatch_logs_no_fallback(self):
+        from activity.models import ActivityEvent
+
+        order = self.door_order()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.give(order, self.swift)                                      # a first assignment: not a re-assignment
+            self.give(order, self.third())                                   # a swap before acceptance: ordinary dispatch
+        self.assertFalse(ActivityEvent.objects.filter(verb="delivery.reassigned_third_party").exists())
+
+    def test_the_fallback_rider_who_completes_the_trip_is_paid(self):
+        order = self.picked_then_failed()
+        third = self.third()
+        self.give(order, third)
+        self.collect_all(order, third)
+        self.deliver(order, third)
+        Dispute.objects.filter(order=order).update(status=Dispute.RESOLVED)    # the failed attempt's case is closed
+        self.release(order)
+        self.assertEqual(list(RiderEarning.objects.values_list("rider_id", flat=True)), [third.pk])
+        self.assertEqual(self.rider_balances(third), (1350, 150))
+        self.assertEqual(self.rider_balances(self.swift), (0, 0))              # the first rider, whose leg ended, gets nothing
+        self.assert_balanced()
+
+    def test_ranking_lets_a_third_party_rider_take_it_only_while_no_in_house_rider_is_free(self):
+        self.on_shift(self.swift)
+        order = self.failed_with_pin()
+        ranked = dispatching.rank(order)
+        self.assertEqual([r["rider_id"] for r in ranked["eligible"]], [self.swift.pk])
+        self.assertTrue(ranked["third_party_fallback"])
+        self.on_shift(self.own)
+        ranked = dispatching.rank(Order.objects.select_related("delivery_assignment").get(pk=order.pk))
+        self.assertEqual([r["rider_id"] for r in ranked["eligible"]], [self.own.pk])
+        self.assertFalse(ranked["third_party_fallback"])
+        self.assertEqual({r["rider_id"]: r["reason"] for r in ranked["left_out"]}[self.swift.pk], dispatching.IN_HOUSE_ONLY)
+
+    def test_manager_offer_falls_back_to_a_third_party_rider_too(self):
+        from delivery.models import Offer
+
+        order = self.picked_then_failed()
+        third = self.third()
+        self.assertEqual(self.offer(order, third).status_code, 201)
+        self.assertEqual(Offer.objects.get(order=order, status=Offer.OFFERED).rider_id, third.pk)
+        self.on_shift(self.own)                                              # an in-house rider comes on shift
+        refused = self.offer(order, third)
+        self.assertEqual((refused.status_code, refused.json()["code"]), (409, "redelivery_in_house_only"))
