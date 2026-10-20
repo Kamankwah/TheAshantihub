@@ -115,7 +115,7 @@ class CreateAndApprove(PlatformBase):
             self.assertEqual(r.status_code, 400, (cap, r.content))
         self.assertFalse(DeliveryWaiver.objects.exists())
 
-    def test_blocked_business_and_bad_window_are_400(self):
+    def test_blocked_business_is_403_and_bad_window_is_400(self):
         self.owner.kyc_status = "pending"
         self.owner.save()
         self.assertEqual(self.propose().status_code, 403)  # owner_blocker raises a 403 WaiverError, as for staff promos
