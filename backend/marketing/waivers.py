@@ -38,7 +38,8 @@ def live_waivers(owner_id, now):
             business_owner__kyc_status=BusinessOwner.VERIFIED,
         ).exclude(hidden_business_q("business_owner__")).prefetch_related("listings").order_by("id")
     )
-    # An AshantiHub-funded promo whose cap is used up stops waiving (derived, never a status change).
+    # An AshantiHub-funded promo whose cap is used up stops waiving (derived, never a status change). A cap with something
+    # left still waives only a fee that fits in it (covering_waiver's `fee`, under the promo's row lock at checkout).
     return [w for w in rows if not (w.funded_by == DeliveryWaiver.FUNDER_PLATFORM and cap_left(w) <= 0)]
 
 
@@ -88,13 +89,30 @@ def mixed_business(listings):
     return len({l.business_owner_id for l in listings}) > 1
 
 
-def covering_waiver(listings, now):
+def fits(w, fee, *, lock=False):
+    """Whether `w` may waive a fee of `fee` (GH₵) now. A business-funded promo has no cap. An AshantiHub-funded promo's
+    budget cap is a HARD cap (Director ruling, 2026-10-20): the fee is waived only when it fits in what is left, so the
+    spend never passes the cap. With `lock` (checkout, inside its transaction) the promo's row is locked first
+    (select_for_update) and re-read, so concurrent checkouts are serialised on it: the second waits until the first has
+    committed and then counts the first one's charge."""
+    if w.funded_by != DeliveryWaiver.FUNDER_PLATFORM:
+        return True
+    if lock and not DeliveryWaiver.objects.select_for_update().filter(pk=w.pk, status=DeliveryWaiver.ACTIVE).exists():
+        return False                       # ended, paused or removed while this checkout was deciding
+    return cap_left(w) >= cents(fee)
+
+
+def covering_waiver(listings, now, *, fee=None, lock=False):
     """A live waiver that applies to this order, or None. Every listing must belong to one
-    business and be covered by one of that business's live waivers (the first by id is named)."""
+    business and be covered by one of that business's live waivers (the first by id is named).
+    With `fee` an AshantiHub-funded promo counts only when the fee fits in its cap (`fits`); checkout passes `lock`, which
+    locks such a promo's row (waivers in id order, after the listing rows checkout already holds) until it commits."""
     listings = list(listings)
     if not listings or mixed_business(listings):
         return None
     waivers = live_waivers(listings[0].business_owner_id, now)
+    if fee is not None:
+        waivers = [w for w in waivers if fits(w, fee, lock=lock)]
     if not waivers:
         return None
     covered = {l.pk for l in listings if any(w.all_items or l.pk in {x.pk for x in w.listings.all()} for w in waivers)}

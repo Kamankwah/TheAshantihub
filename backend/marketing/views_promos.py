@@ -433,8 +433,9 @@ def _delivery_quote(request, items):
     if lat not in (None, "") and lng not in (None, "") and not region.in_service_area(lat, lng):
         return {"fee": None, "fee_status": "out_of_area", "waived": False, "waiver_name": None, "waived_fee": None, "mixed_note": None, "message": region.OUT_OF_AREA_MESSAGE}
     listings = [i.listing for i in items]
-    waiver = waivers.covering_waiver(listings, timezone.now())
     quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
+    # The same promo checkout would apply: an AshantiHub-funded one only while the fee fits in its cap (no lock here).
+    waiver = waivers.covering_waiver(listings, timezone.now(), fee=quoted[1]["total"] if quoted else None)
     original = money(quoted[1]["total"]) if quoted else None
     from delivery import config
 
