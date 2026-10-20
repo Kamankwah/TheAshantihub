@@ -1,5 +1,5 @@
 // ─── Business Command Center — "artisan" theme (light + dark) ────────────────
-// Rebuilt from the dark "mission-control" glass theme onto a light theme
+// Rebuilt from the dark "mission-control" glass theme onto a light/dark theme
 // sourced from the app's own `C` palette (frontend/theme.js) — C.cream/C.gold/
 // C.deepGold/C.darkBrown/C.orange/C.kente1/C.kente2/C.kente3 map closely onto
 // a warm cream+gold+earth-tone look, so this stays a "reuse my tokens" theme

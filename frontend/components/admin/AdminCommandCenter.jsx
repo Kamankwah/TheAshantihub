@@ -179,8 +179,8 @@ import { setViewAsScreen } from "../../lib/viewAs.js";
 // the behavioral contract this file must keep passing). Unlike
 // BusinessCommandCenter's single top tab strip, this shell uses a grouped,
 // collapsible LEFT sidebar — 21 possible nav items is too many for one row.
-// No light/dark theme toggle here (a pre-approved, deliberate removal) — the
-// admin dashboard is always-dark, matching BusinessCommandCenter's convention.
+// Light/dark follows the site theme through `D` (theme tokens); the header
+// carries the same ThemeToggle as the business and account shells.
 
 // `onExit` is the dashboard's only real exit: a staff sign-out, labelled
 // "Sign out" in the browser and the installed app alike. `onViewSite` is the

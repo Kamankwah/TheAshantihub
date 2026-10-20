@@ -1,5 +1,5 @@
-// ─── Admin Command Center — light "artisan" theme ─────────────────────────────
-// The staff dashboard reuses the exact light cream/gold palette built for the
+// ─── Admin Command Center — "artisan" theme (light + dark) ────────────────────
+// The staff dashboard reuses the exact cream/gold palette (light + dark) built for the
 // Business Command Center (frontend/components/dashboard/theme.js) rather than
 // duplicating it — `D`/`CHART`/`glassCard`/`sectionTitle` are re-exported
 // straight from there so the two dashboards stay visually identical and in
