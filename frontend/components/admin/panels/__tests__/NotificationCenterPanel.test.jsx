@@ -58,4 +58,11 @@ describe('NotificationCenterPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Mark all as read' }))
     await waitFor(() => expect(all).toBe(1))
   })
+
+  it('otp_sms_spend reads as "Text spend"', async () => {
+    server.use(http.get(`${API}/api/notifications/`, () => HttpResponse.json({ unread_count: 1, kinds: [{ kind: 'otp_sms_spend', total: 1 }], results: [n(1, { kind: 'otp_sms_spend', title: 'Texts are running high', link: 'security' })] })))
+    wrap(<NotificationCenterPanel onNavigate={() => {}} />)
+    await screen.findByText('Texts are running high')
+    expect(screen.getAllByText('Text spend').length).toBeGreaterThan(0)
+  })
 })

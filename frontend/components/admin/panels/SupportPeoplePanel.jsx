@@ -5,6 +5,7 @@ import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D, glassCard } from "../theme.js";
 import { button, callout, chip, dim, field, pill } from "./panelStyles.js";
 import { formatDateTime, labelStyle, money } from "./portfolioParts.jsx";
+import RecoveryRequestForm from "./RecoveryRequestForm.jsx";
 
 // 14 Customers & businesses and 15 the profile (Support). Read-only: Support finds a person or business by
 // name, masked phone, order number or business name, reads what it may see, and can log a call or (for a
@@ -82,7 +83,7 @@ function StartConversation({ profile, orders, onDone }) {
   );
 }
 
-function Profile({ kind, id, onBack, onLogCall, onNavigate }) {
+function Profile({ kind, id, onBack, onLogCall, onNavigate, canRecover }) {
   const q = usePersonProfile(kind, id);
   const [starting, setStarting] = useState(false);
   useEffect(() => { apiPost("/api/support/staff/profile-opened/", { kind, id }).catch(() => {}); }, [kind, id]);
@@ -172,18 +173,19 @@ function Profile({ kind, id, onBack, onLogCall, onNavigate }) {
           {(q.data.reviews || []).length === 0 ? <div style={dim}>No reviews.</div> : q.data.reviews.map((r) => <div key={r.id} style={{ color: D.text, fontSize: "0.82rem" }}><strong>{`${r.target} · ${r.rating} of 5`}</strong> <span style={chip(D.textDim)}>{r.status}</span><div style={dim}>{`${formatDateTime(r.created_at)}${r.excerpt ? ` · "${r.excerpt}"` : ""}`}</div></div>)}
         </Section></div>
       </div>
+      {canRecover && <Section title="Recover their sign-in"><RecoveryRequestForm kind={q.data.kind} id={id} name={profile.name} /></Section>}
       <div style={dim}>Saved payment details, passwords and sign-in codes are never shown here. Opening this profile is recorded in the activity log.</div>
     </div>
   );
 }
 
-export default function SupportPeoplePanel({ profile, onOpenProfile, onBack, onLogCall, onNavigate }) {
+export default function SupportPeoplePanel({ profile, onOpenProfile, onBack, onLogCall, onNavigate, canRecover }) {
   const [q, setQ] = useState("");
   const [term, setTerm] = useState("");
   const [type, setType] = useState("all");
   const found = usePeopleLookup(term, type);
   const recent = usePeopleRecent();
-  if (profile) return <Profile kind={profile.kind} id={profile.id} onBack={onBack} onLogCall={onLogCall} onNavigate={onNavigate} />;
+  if (profile) return <Profile kind={profile.kind} id={profile.id} onBack={onBack} onLogCall={onLogCall} onNavigate={onNavigate} canRecover={canRecover} />;
   const searching = term.trim().length >= 2;
   const rows = searching ? found.data || [] : recent.data || [];
   return (

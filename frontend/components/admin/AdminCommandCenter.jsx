@@ -493,7 +493,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "subscription-plans-approval" && (role === "super_admin" ? <PlansPricesPanel /> : <SubscriptionPlanApprovalPanel />)}
           {activeTab === "delivery" && (role === "super_admin" ? <SaOrdersPanel /> : <DeliveryManagementPanel />)}
           {activeTab === "contact-messages" && (role === "support" ? <SupportContactPanel auth={auth} onNavigate={selectTab} /> : <ContactMessagesPanel auth={auth} />)}
-          {activeTab === "users" && (role === "super_admin" ? <SaCustomersPanel auth={auth} /> : role === "support" ? <SupportPeoplePanel profile={supportProfile} onOpenProfile={openSupportProfile} onBack={() => setSupportProfile(null)} onLogCall={openSupportLog} onNavigate={supportNavigate} /> : <UsersPanel auth={auth} />)}
+          {activeTab === "users" && (role === "super_admin" ? <SaCustomersPanel auth={auth} /> : role === "support" ? <SupportPeoplePanel profile={supportProfile} onOpenProfile={openSupportProfile} onBack={() => setSupportProfile(null)} onLogCall={openSupportLog} onNavigate={supportNavigate} canRecover={auth.hasPermission("otp.recovery")} /> : <UsersPanel auth={auth} />)}
           {activeTab === "categories-zones" && <CategoriesZonesPanel auth={auth} />}
           {activeTab === "site-settings" && <SiteSettingsPanel showToast={showToast} />}
           {activeTab === "staff" && (role === "super_admin" ? <StaffDirectoryPanel auth={auth} detailId={detail} onOpenDetail={openDetail} onNavigate={selectTab} onViewAs={auth.hasPermission("staff.view_as") ? startViewAs : undefined} /> : <StaffManagementPanel />)}

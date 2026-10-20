@@ -5,7 +5,7 @@ import { useSecurityPolicy } from "../../../hooks/useStaffSecurity.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D, glassCard } from "../theme.js";
 import { figures, scroll, table, td, th } from "./opsPeopleParts.jsx";
-import { button, callout, chip, dim } from "./panelStyles.js";
+import { button, callout, chip, dim, field } from "./panelStyles.js";
 import { errorStyle } from "./portfolioParts.jsx";
 
 // Super Admin 14, the firm-wide half of Security settings (the first half, a person's own
@@ -16,6 +16,65 @@ import { errorStyle } from "./portfolioParts.jsx";
 const heading = { color: D.text, fontWeight: 800, fontSize: "0.95rem", margin: 0 };
 const section = { ...glassCard, padding: 18, display: "flex", flexDirection: "column", gap: 10 };
 const minutes = (n) => (n % 60 === 0 && n >= 60 ? `${n / 60} hour${n === 60 ? "" : "s"}` : `${n} minutes`);
+
+const OTP_FIELDS = [
+  { key: "otp_customer_gap_days", label: "Days a trusted customer device skips the code", min: 1, max: 365, shown: "1 and 365" },
+  { key: "otp_sms_daily_alert", label: "Texts a day before Super Admin is alerted", min: 1, max: 1000000, shown: "1 and 1,000,000" },
+];
+
+// The two numbers behind customer and vendor one-time codes. Who gets a code is not a setting.
+function OtpCodesSection({ otp }) {
+  const queryClient = useQueryClient();
+  const [typed, setTyped] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [error, setError] = useState(null);
+  const value = (key) => (key in typed ? typed[key] : String(otp[key]));
+  const changedKeys = OTP_FIELDS.filter((f) => f.key in typed && typed[f.key] !== String(otp[f.key])).map((f) => f.key);
+
+  const save = async () => {
+    setMessage(null); setError(null);
+    const body = {};
+    for (const f of OTP_FIELDS) {
+      if (!changedKeys.includes(f.key)) continue;
+      const n = Number(value(f.key));
+      if (!Number.isInteger(n) || n < f.min || n > f.max) { setError(`${f.label} must be a whole number between ${f.shown}.`); return; }
+      body[f.key] = n;
+    }
+    setBusy(true);
+    try {
+      await apiPatch("/api/staff-security/policy/", body);
+      setTyped({});
+      setMessage("Saved. The change is in the audit log.");
+      queryClient.invalidateQueries({ queryKey: ["staff-security", "policy"] });
+    } catch (err) {
+      setError(apiErrorMessage(err, "Could not save the change."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section aria-labelledby="otp-heading" style={section}>
+      <h2 id="otp-heading" style={heading}>One-time codes</h2>
+      <div style={dim}>Staff and vendors always get a code. Who gets a code is not a setting here; it is fixed in the server. These two numbers can be changed.</div>
+      {OTP_FIELDS.map((f) => (
+        <div key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, color: D.text, fontSize: "0.82rem", fontWeight: 700 }}>
+            {f.label}
+            <input type="number" inputMode="numeric" min={f.min} max={f.max} step={1} value={value(f.key)} onChange={(e) => setTyped((t) => ({ ...t, [f.key]: e.target.value }))} style={{ ...field, ...figures, maxWidth: 180 }} />
+          </label>
+          <span style={dim}>{`Between ${f.shown}.`}</span>
+        </div>
+      ))}
+      <div>
+        <button type="button" disabled={!changedKeys.length || busy} onClick={save} style={button(D.gold, D.text, !changedKeys.length || busy)}>{busy ? "Saving…" : "Save code settings"}</button>
+      </div>
+      {message && <div role="status" style={{ color: D.text, fontSize: "0.8rem" }}>{message}</div>}
+      {error && <div role="alert" style={errorStyle}>{error}</div>}
+    </section>
+  );
+}
 
 export default function SecurityPolicySection() {
   const queryClient = useQueryClient();
@@ -101,6 +160,8 @@ export default function SecurityPolicySection() {
         {message && <div role="status" style={{ color: D.text, fontSize: "0.8rem" }}>{message}</div>}
         {error && <div role="alert" style={errorStyle}>{error}</div>}
       </section>
+
+      {data.otp && <OtpCodesSection otp={data.otp} />}
 
       <section aria-labelledby="reenter-heading" style={section}>
         <h2 id="reenter-heading" style={heading}>Re-enter the password before</h2>
