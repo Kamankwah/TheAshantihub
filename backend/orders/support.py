@@ -115,6 +115,16 @@ def _row(order):
     }
 
 
+def _refundable(order):
+    """What can still be refunded to the customer, as a string (ledger.refunds.refundable), or None while the ledger is off
+    or for an order paid before it was on."""
+    from ledger.money import from_pesewas
+    from ledger.refunds import refundable
+
+    amount = refundable(order)
+    return str(from_pesewas(amount)) if amount is not None else None
+
+
 class SupportOrderSearchView(APIView):
     """GET /api/orders/support/?q= — by order number, customer name or phone
     (nine or more digits). Without q, the latest orders. Phones come back masked."""
@@ -146,6 +156,18 @@ class SupportOrderSearchView(APIView):
         return Response({"results": rows, "recent": seen[:5]})
 
 
+def _redelivery_fields(order):
+    """Whether Support may ask for a re-delivery at the customer's request now, and the fee it would carry (the governed
+    setting in force; the request copies it). Plan 7F-E Task 7. False and no fee while the ledger is off."""
+    from delivery import redelivery
+    from ledger import settings_store
+    from ledger.money import from_pesewas
+
+    if not redelivery.redeliverable(order):
+        return {"redeliverable": False}
+    return {"redeliverable": True, "redelivery_fee": str(from_pesewas(settings_store.current(settings_store.REDELIVERY_FEE)))}
+
+
 class SupportOrderDetailView(APIView):
     """GET /api/orders/support/<pk>/ — one order for the Support screen."""
 
@@ -170,9 +192,11 @@ class SupportOrderDetailView(APIView):
                 for line in order.items.all()
             ],
             "rider": assignment.dispatch.full_name if assignment is not None and assignment.dispatch_id else None,
+            "refundable": _refundable(order),
             "timeline": delivery_events_for(order),
             "actions": allowed_actions(order),
             "payments": payments_note(),
+            **_redelivery_fields(order),
             "delivery_note": (
                 "Arrives with Delivery: arrival and wait stamps, handover codes, the rider's last location "
                 "and 'can't deliver' outcomes are not recorded yet."
@@ -239,11 +263,37 @@ class SupportOrderStatusView(APIView):
         picked up is withdrawn. With the ledger on, a paid order's money goes back to
         the customer's AshantiHub wallet in full (ledger.refunds; the payment-processing
         charge stays with the provider, because the customer asked to cancel). Returns
-        that OrderRefund, or None (ledger off, not paid, or paid before the ledger was on)."""
+        that OrderRefund, or None (ledger off, not paid, or paid before the ledger was on).
+        Must run inside a transaction: it takes the order, fee-snapshot and assignment row locks."""
+        from django.utils import timezone
+
+        from delivery.models import DeliveryEvent
+        from ledger import riders
+        from ledger.models import OrderFeeSnapshot
+
+        from . import locks
+
+        # Canonical lock order (orders/locks.py): order row, fee snapshots, then the assignment; refund_order follows.
+        locked = locks.lock_order(order.pk)
+        list(OrderFeeSnapshot.objects.select_for_update(of=("self",)).filter(order=order, reversed_at__isnull=True).order_by("pk"))
         return_stock(order)
-        assignment = getattr(order, "delivery_assignment", None)
+        # The assignment goes through the canonical lock. After a pickup the row is the evidence
+        # ledger.riders.pickup_made / delivery_earned read, so it is kept and failed, never deleted: the rider is paid
+        # and the delivery fee is not returned. Before a pickup it is withdrawn, as always.
+        assignment = locks.lock_assignment(locked)
         if assignment is not None:
-            assignment.delete()
+            if riders.pickup_made(order) is None:
+                assignment.delete()
+            else:
+                now = timezone.now()
+                assignment.status = DeliveryAssignment.FAILED
+                assignment.failed_reason = "order_cancelled"
+                assignment.failed_at = now
+                assignment.save(update_fields=["status", "failed_reason", "failed_at"])
+                DeliveryEvent.objects.create(
+                    assignment=assignment, step=DeliveryEvent.CANT_DELIVER, at=now, by=staff,
+                    note="Order cancelled by Support after pickup",
+                )
         order.status = Order.CANCELLED
         order.save(update_fields=["status"])
         from marketing.waivers import reverse_for_order

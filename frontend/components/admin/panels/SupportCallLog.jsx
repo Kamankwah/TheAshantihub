@@ -16,9 +16,9 @@ import { errorStyle, eyebrow } from "./portfolioParts.jsx";
 // Support never records "Promised to pay" (that is a Scout outcome), so it is not offered as a filter.
 export const SUPPORT_OUTCOMES = [["connected", "Connected"], ["no_answer", "No answer"], ["busy", "Busy"], ["voicemail", "Left voicemail"], ["wrong_number", "Wrong number"], ["callback_requested", "Callback requested"]];
 const OUTCOME_CHIP = {
-  connected: ["#E3F1E3", "#00500A"], no_answer: ["#FFF4E5", "#6B2E07"], busy: ["#FFF4E5", "#6B2E07"],
-  voicemail: ["#F1ECE4", "rgba(44,24,16,0.8)"], wrong_number: ["#F1ECE4", "rgba(44,24,16,0.8)"], callback_requested: ["#FBF3DC", "#6A4A00"],
-  promised_to_pay: ["#FBF3DC", "#6A4A00"],
+  connected: [D.okBg, D.okInk], no_answer: [D.warnBg, D.warnInk], busy: [D.warnBg, D.warnInk],
+  voicemail: [D.panelBg2, D.text], wrong_number: [D.panelBg2, D.text], callback_requested: [D.warnBg, D.warnInk],
+  promised_to_pay: [D.warnBg, D.warnInk],
 };
 const TYPE_LABEL = { customer: "Customer", business_owner: "Business", prospect: "Prospect", guest: "Guest", other: "Other" };
 const label = (value) => (value || "").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
@@ -42,7 +42,7 @@ function Tile({ title, value, sub, warn }) {
     <div role="group" aria-label={title} style={{ ...glassCard, padding: 12, display: "flex", flexDirection: "column", gap: 2 }}>
       <span style={{ ...dim, fontWeight: 700 }}>{title}</span>
       <span style={{ fontSize: "1.3rem", fontWeight: 800, color: D.text, fontVariantNumeric: "tabular-nums" }}>{value}</span>
-      <span style={{ ...dim, color: warn ? "#A33A00" : D.textDim }}>{sub}</span>
+      <span style={{ ...dim, color: warn ? D.warnInk : D.textDim }}>{sub}</span>
     </div>
   );
 }
@@ -62,13 +62,13 @@ function Kpis({ kpis, today }) {
 }
 
 function CallRow({ call, onEarlier }) {
-  const [bg, fg] = OUTCOME_CHIP[call.outcome] || ["#F1ECE4", D.text];
+  const [bg, fg] = OUTCOME_CHIP[call.outcome] || [D.panelBg2, D.text];
   const outcome = SUPPORT_OUTCOMES.find(([v]) => v === call.outcome)?.[1] || label(call.outcome);
   const linked = call.related_label;
   return (
     <tr>
       <td style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{sameDay(call.started_at) ? clock(call.started_at) : stamp(call.started_at)}</td>
-      <td style={td}><span style={{ fontWeight: 800, fontSize: "0.7rem", color: call.direction === "in" ? "#00502F" : D.text }}>{call.direction === "in" ? "In" : "Out"}</span></td>
+      <td style={td}><span style={{ fontWeight: 800, fontSize: "0.7rem", color: call.direction === "in" ? D.okInk : D.text }}>{call.direction === "in" ? "In" : "Out"}</span></td>
       <td style={td}>
         <div style={{ fontWeight: 700, overflowWrap: "anywhere" }}>{call.counterpart_name || "Unknown"}</div>
         <div style={dim}>{TYPE_LABEL[call.counterpart_type] || label(call.counterpart_type)}{call.counterpart_phone ? ` · ${call.counterpart_phone}` : ""}</div>

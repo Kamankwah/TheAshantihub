@@ -20,22 +20,22 @@ import { button, callout, chip, dim } from "./panelStyles.js";
 const TICK_MS = 10000;
 const dayMonth = (iso) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "");
 
-const screenStyle = { position: "fixed", inset: 0, zIndex: 1000, background: C.cream, overflowY: "auto", overscrollBehavior: "contain" };
+const screenStyle = { position: "fixed", inset: 0, zIndex: 1000, background: C.canvas, overflowY: "auto", overscrollBehavior: "contain" };
 const columnStyle = {
   maxWidth: 480, margin: "0 auto", padding: "16px 16px calc(32px + env(safe-area-inset-bottom, 0px))",
-  display: "flex", flexDirection: "column", gap: 14, color: C.darkBrown,
+  display: "flex", flexDirection: "column", gap: 14, color: C.ink,
 };
-const ownerCard = { background: C.white, border: `1px solid ${C.gold}55`, borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 6 };
+const ownerCard = { background: C.surface, border: `1px solid ${C.gold}55`, borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 6 };
 const primaryStyle = {
   minHeight: 48, width: "100%", background: C.gold, color: C.darkBrown, border: "none", borderRadius: 24,
   padding: "12px 18px", fontWeight: 900, fontSize: "0.9rem", cursor: "pointer", fontFamily: "inherit",
 };
 const quietStyle = {
-  minHeight: 44, alignSelf: "center", background: "none", border: "none", color: C.darkBrown, textDecoration: "underline",
+  minHeight: 44, alignSelf: "center", background: "none", border: "none", color: C.ink, textDecoration: "underline",
   fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit",
 };
 const problemStyle = {
-  background: `${C.kente1}12`, border: `1px solid ${C.kente1}`, color: C.darkBrown, borderRadius: 12,
+  background: `${C.kente1}12`, border: `1px solid ${C.kente1}`, color: C.ink, borderRadius: 12,
   padding: "10px 12px", fontSize: "0.85rem", fontWeight: 700,
 };
 

@@ -9,7 +9,7 @@
 // - Reminders is real (subscription expiry, unpaid events, failed payments) —
 //   the old hardcoded WhatsApp-schedule mock is gone.
 import { useState } from "react";
-import { D, glassCard, sectionTitle } from "../theme.js";
+import { D, glassCard, sectionTitle, tint } from "../theme.js";
 import { apiDownload, apiPost } from "../../../apiClient.js";
 import { useMyTransactions } from "../../../hooks/useMyTransactions.js";
 import { useSubscriptionPlans } from "../../../hooks/useSubscriptionPlans.js";
@@ -152,7 +152,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
       </div>
 
       <div style={{ padding: "22px 0 20px" }}>
-        {actionError && <div style={{ background: `${D.red}1f`, color: D.red, border: `1px solid ${D.red}55`, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 16 }}>{actionError}</div>}
+        {actionError && <div style={{ background: tint(D.red, "1f"), color: D.red, border: `1px solid ${tint(D.red, "55")}`, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 16 }}>{actionError}</div>}
 
         {/* ── SALES OVERVIEW (customer sales) ── */}
         {payTab === "overview" && (
@@ -205,7 +205,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
                     if (c.key === "item") return <span>{r.item} <span style={{ color: D.textFaint, fontSize: "0.66rem" }}>({r.kind})</span></span>;
                     if (c.key === "customer") return r.customer;
                     if (c.key === "quantity") return r.quantity;
-                    if (c.key === "line_total") return <span style={{ fontWeight: 800, color: D.green }}>GHS {Number(r.line_total).toLocaleString()}</span>;
+                    if (c.key === "line_total") return <span style={{ fontWeight: 800, color: D.price }}>GHS {Number(r.line_total).toLocaleString()}</span>;
                     return null;
                   }}
                 />
@@ -256,7 +256,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
                     if (c.key === "purpose") return t.purpose;
                     if (c.key === "amount") return <span style={{ fontWeight: 800, color: D.text }}>GHS {Number(t.amount).toLocaleString()}</span>;
                     if (c.key === "date") return t.created_at?.slice(0, 10);
-                    if (c.key === "status") return <span style={{ background: `${statusColor[t.status]}20`, color: statusColor[t.status], borderRadius: 20, padding: "3px 9px", fontSize: "0.62rem", fontWeight: 800 }}>{statusLabel[t.status] || t.status}</span>;
+                    if (c.key === "status") return <span style={{ background: tint(statusColor[t.status], "20"), color: statusColor[t.status], borderRadius: 20, padding: "3px 9px", fontSize: "0.62rem", fontWeight: 800 }}>{statusLabel[t.status] || t.status}</span>;
                     return null;
                   }}
                 />
@@ -282,7 +282,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 14 }}>
                 {visiblePlans.map(plan => (
                   <div key={plan.id} style={{ ...glassCard, padding: "22px", border: `2px solid ${plan.is_recommended ? D.gold : D.cardBorder}`, position: "relative" }}>
-                    {plan.is_recommended && <div style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", background: D.gold, color: D.pageBg, borderRadius: 20, padding: "3px 14px", fontSize: "0.62rem", fontWeight: 900, whiteSpace: "nowrap" }}>⭐ MOST POPULAR</div>}
+                    {plan.is_recommended && <div style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", background: D.gold, color: D.cream, borderRadius: 20, padding: "3px 14px", fontSize: "0.62rem", fontWeight: 900, whiteSpace: "nowrap" }}>⭐ MOST POPULAR</div>}
                     <div style={{ fontWeight: 900, color: D.text, fontSize: "1rem", marginBottom: 4 }}>{plan.name}</div>
                     <div style={{ fontWeight: 900, fontSize: "1.8rem", color: D.text, marginBottom: 2 }}>
                       GHS {(Number(plan.monthly_price) * cycleMonths).toLocaleString()}
@@ -314,7 +314,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
               {reminders.length === 0 && <div style={{ color: D.textFaint, fontSize: "0.8rem" }}>Nothing needs attention — you're all caught up. 🎉</div>}
               {reminders.map((r, i) => (
                 <div key={i} style={{ display: "flex", gap: 12, padding: "12px 0", borderBottom: i < reminders.length - 1 ? `1px solid ${D.divider}` : "none", alignItems: "flex-start" }}>
-                  <div style={{ width: 38, height: 38, borderRadius: "50%", background: `${r.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.05rem", flexShrink: 0 }}>{r.icon}</div>
+                  <div style={{ width: 38, height: 38, borderRadius: "50%", background: tint(r.color, "20"), display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.05rem", flexShrink: 0 }}>{r.icon}</div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 800, fontSize: "0.8rem", color: r.color }}>{r.title}</div>
                     <div style={{ fontSize: "0.72rem", color: D.textDim, marginTop: 2 }}>{r.body}</div>

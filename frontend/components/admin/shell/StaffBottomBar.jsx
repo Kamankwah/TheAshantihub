@@ -1,11 +1,11 @@
-import { D } from "../theme.js";
+import { D, tint } from "../theme.js";
 
 const visuallyHidden = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" };
 
 // Shared by both phone bars: this one and the scout's ScoutBottomBar.
 export const quickNavStyle = {
   position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 110, display: "flex",
-  background: "rgba(253,246,227,0.97)", borderTop: `1px solid ${D.cardBorder}`, boxShadow: "0 -2px 12px rgba(44,24,16,0.08)",
+  background: tint(D.pageBg, "f7"), borderTop: `1px solid ${D.cardBorder}`, boxShadow: "0 -2px 12px rgba(44,24,16,0.08)",
   paddingBottom: "env(safe-area-inset-bottom, 0px)", paddingLeft: "env(safe-area-inset-left, 0px)", paddingRight: "env(safe-area-inset-right, 0px)",
 };
 

@@ -53,17 +53,17 @@ export default function SearchBar({ onOpenResult, onSubmit }) {
 
   return (
     <div ref={boxRef} style={{ position: "relative", width: "100%", minWidth: 0, fontFamily: BODY_FONT }}>
-      <form role="search" aria-label="Site search" onSubmit={submit} style={{ display: "flex", height: 44, borderRadius: 10, overflow: "hidden", background: C.white, boxShadow: `0 0 0 1px ${C.gold}33` }}>
+      <form role="search" aria-label="Site search" onSubmit={submit} style={{ display: "flex", height: 44, borderRadius: 10, overflow: "hidden", background: C.surface, boxShadow: `0 0 0 1px ${C.gold}33` }}>
         <select
           aria-label="Search in"
           value={category}
           onChange={(e) => { setCategory(e.target.value); setOpen(true); }}
           className="ah-search-picker"
-          style={{ flex: "0 0 auto", maxWidth: 150, border: "none", borderRight: `1px solid ${C.gold}40`, background: D.panelBg2, color: C.darkBrown, fontFamily: BODY_FONT, fontSize: 13, fontWeight: 600, padding: "0 8px", cursor: "pointer" }}
+          style={{ flex: "0 0 auto", maxWidth: 150, border: "none", borderRight: `1px solid ${C.gold}40`, background: D.panelBg2, color: C.ink, fontFamily: BODY_FONT, fontSize: 13, fontWeight: 600, padding: "0 8px", cursor: "pointer" }}
         >
-          <option value="" style={{ color: C.darkBrown, background: C.white }}>All</option>
+          <option value="" style={{ color: C.ink, background: C.surface }}>All</option>
           {departments.map((d) => (
-            <option key={d.id} value={d.slug} style={{ color: C.darkBrown, background: C.white }}>{d.label}</option>
+            <option key={d.id} value={d.slug} style={{ color: C.ink, background: C.surface }}>{d.label}</option>
           ))}
         </select>
         <input
@@ -75,7 +75,7 @@ export default function SearchBar({ onOpenResult, onSubmit }) {
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
           autoComplete="off"
-          style={{ flex: 1, minWidth: 0, border: "none", outline: "none", padding: "0 12px", fontFamily: BODY_FONT, fontSize: 15, color: C.darkBrown, background: C.white }}
+          style={{ flex: 1, minWidth: 0, border: "none", outline: "none", padding: "0 12px", fontFamily: BODY_FONT, fontSize: 15, color: C.ink, background: C.surface }}
         />
         <button type="submit" aria-label="Search" style={{ flex: "0 0 52px", border: "none", background: C.gold, color: C.darkBrown, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
@@ -83,13 +83,13 @@ export default function SearchBar({ onOpenResult, onSubmit }) {
       </form>
 
       {showResults && (
-        <div role="region" aria-label="Search results" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, zIndex: 300, background: C.white, color: C.darkBrown, borderRadius: 12, boxShadow: D.shadow, border: `1px solid ${C.gold}33`, maxHeight: "70vh", overflowY: "auto", padding: "6px 0" }}>
+        <div role="region" aria-label="Search results" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, zIndex: 300, background: C.surface, color: C.ink, borderRadius: 12, boxShadow: D.shadow, border: `1px solid ${C.gold}33`, maxHeight: "70vh", overflowY: "auto", padding: "6px 0" }}>
           {search.isPending ? (
-            <p style={{ margin: 0, padding: "12px 16px", fontSize: 14, color: "rgba(44,24,16,0.62)" }}>Searching…</p>
+            <p style={{ margin: 0, padding: "12px 16px", fontSize: 14, color: C.inkDim }}>Searching…</p>
           ) : search.isError ? (
-            <p style={{ margin: 0, padding: "12px 16px", fontSize: 14, color: "rgba(44,24,16,0.62)" }}>Search is not answering right now. Try again in a moment.</p>
+            <p style={{ margin: 0, padding: "12px 16px", fontSize: 14, color: C.inkDim }}>Search is not answering right now. Try again in a moment.</p>
           ) : groups.length === 0 ? (
-            <p style={{ margin: 0, padding: "12px 16px", fontSize: 14, color: "rgba(44,24,16,0.62)" }}>Nothing found for “{term}”.</p>
+            <p style={{ margin: 0, padding: "12px 16px", fontSize: 14, color: C.inkDim }}>Nothing found for “{term}”.</p>
           ) : (
             groups.map((g) => (
               <div key={g.key} style={{ padding: "4px 0" }}>
@@ -100,17 +100,17 @@ export default function SearchBar({ onOpenResult, onSubmit }) {
                     type="button"
                     onClick={() => pick(row)}
                     className="ah-search-row"
-                    style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 16px", border: "none", background: "transparent", textAlign: "left", cursor: "pointer", fontFamily: BODY_FONT, color: C.darkBrown }}
+                    style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 16px", border: "none", background: "transparent", textAlign: "left", cursor: "pointer", fontFamily: BODY_FONT, color: C.ink }}
                   >
                     {row.photo
                       ? <img src={row.photo} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
                       : <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: 8, background: D.panelBg2, flexShrink: 0 }} />}
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: "block", fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</span>
-                      {row.category_label && <span style={{ display: "block", fontSize: 12, color: "rgba(44,24,16,0.62)" }}>{row.category_label}</span>}
+                      {row.category_label && <span style={{ display: "block", fontSize: 12, color: C.inkDim }}>{row.category_label}</span>}
                     </span>
                     {cedis(row.price) && (
-                      <span style={{ fontSize: 13, fontWeight: 700, color: C.darkBrown, whiteSpace: "nowrap", ...TABULAR }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: C.ink, whiteSpace: "nowrap", ...TABULAR }}>
                         {g.key === "events" ? `from ${cedis(row.price)}` : cedis(row.price)}
                       </span>
                     )}

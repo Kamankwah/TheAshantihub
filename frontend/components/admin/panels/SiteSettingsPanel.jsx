@@ -83,7 +83,7 @@ function SiteSettingsForm({ initial, onSaved, showToast }) {
 
   const input = (f, multiline) => {
     const dirty = form[f.key] !== base[f.key];
-    const style = { ...field, width: "100%", boxSizing: "border-box", border: dirty ? `2px solid ${D.deepGold}` : field.border, background: dirty ? "#FFFBEF" : D.panelBg };
+    const style = { ...field, width: "100%", boxSizing: "border-box", border: dirty ? `2px solid ${D.deepGold}` : field.border, background: dirty ? D.panelBg2 : D.panelBg };
     return (
       <label key={f.key} style={labelStyle}>{f.label}
         {multiline
@@ -97,7 +97,7 @@ function SiteSettingsForm({ initial, onSaved, showToast }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {changed.length > 0 && (
-        <div role="status" style={{ position: "sticky", top: 0, zIndex: 2, display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", background: "#FFFBEF", border: `1px solid ${D.deepGold}`, borderRadius: 12, padding: "8px 14px" }}>
+        <div role="status" style={{ position: "sticky", top: 0, zIndex: 2, display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", background: D.panelBg2, border: `1px solid ${D.deepGold}`, borderRadius: 12, padding: "8px 14px" }}>
           <strong style={{ color: D.text, fontSize: "0.85rem" }}>{changed.length === 1 ? "1 unsaved change" : `${changed.length} unsaved changes`}</strong>
           <span style={{ display: "inline-flex", gap: 8 }}>
             <button type="button" style={button(D.panelBg, D.text)} onClick={() => { setForm(base); setError(null); }}>Discard</button>

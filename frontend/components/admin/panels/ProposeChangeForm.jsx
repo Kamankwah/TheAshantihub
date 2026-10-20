@@ -11,11 +11,8 @@ import { SentNotice, card, distanceMeters, errorStyle, errorText, firstName, h2,
 
 // [payload field, label, input type, field on the business page payload]
 const TEXT_FIELDS = [
-  ["full_name", "Owner's full name", "text", "owner_name"],
   ["business_name", "Business name", "text", "business_name"],
-  ["login_phone", "Sign-in phone", "tel", "login_phone"],
   ["business_contact_phone", "Business phone", "tel", "business_contact_phone"],
-  ["email", "Owner's email", "email", "email"],
   ["gps_address", "Ghana Post address", "text", "gps_address"],
 ];
 const phoneHint = (who) => `A new phone is checked against every other business before ${who} sees it.`;
@@ -113,7 +110,6 @@ function ChangeForm({ business: live, onBack, onSent, leadName, maskPhones }) {
   if (zone && zone !== String(business.zone?.id ?? "")) changes.zone_id = Number(zone);
   if (hours && hours !== (business.opening_hours || "")) changes.opening_hours = hours;
   if (description.trim() !== (business.business_description || "").trim()) changes.business_description = description.trim();
-  if (!live.needs_claim) { delete changes.login_phone; delete changes.email; }
   const changedMeanwhile = [...TEXT_FIELDS.map(([, , , source]) => source), "opening_hours", "business_description", "lat", "lng"]
     .some((key) => String(live[key] ?? "") !== String(business[key] ?? "")) || (live.zone?.id ?? null) !== (business.zone?.id ?? null);
   let count = Object.keys(changes).length;
@@ -172,16 +168,10 @@ function ChangeForm({ business: live, onBack, onSent, leadName, maskPhones }) {
         <h2 style={h2}>Propose a change</h2>
         <div style={dim}>{[business.business_name, business.zone?.name].filter(Boolean).join(" · ")}</div>
       </div>
-      <Section title="Owner and business">{textField("full_name")}{textField("business_name")}</Section>
-      <Section title="Phone numbers and email">
-        {live.needs_claim
-          ? <>{textField("login_phone")}{textField("business_contact_phone")}{textField("email")}</>
-          : (
-            <>
-              {textField("business_contact_phone")}
-              <div style={dim}>The owner changes their sign-in phone and email themselves.</div>
-            </>
-          )}
+      <Section title="Business and phone">
+        {textField("business_name")}
+        {textField("business_contact_phone")}
+        <div style={dim}>Name and contact are changed by the business itself.</div>
       </Section>
       <Section title="Address and area">
         {textField("gps_address")}

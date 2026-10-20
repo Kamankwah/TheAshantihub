@@ -32,12 +32,23 @@ class WaiverError(Exception):
 # ─── checkout ────────────────────────────────────────────────────────────────
 def live_waivers(owner_id, now):
     """Waivers on right now for one business: approved, and now inside [starts_at, ends_at)."""
-    return list(
+    rows = list(
         DeliveryWaiver.objects.filter(
             business_owner_id=owner_id, status=DeliveryWaiver.ACTIVE, starts_at__lte=now, ends_at__gt=now,
             business_owner__kyc_status=BusinessOwner.VERIFIED,
         ).exclude(hidden_business_q("business_owner__")).prefetch_related("listings").order_by("id")
     )
+    # An AshantiHub-funded promo whose cap is used up stops waiving (derived, never a status change).
+    return [w for w in rows if not (w.funded_by == DeliveryWaiver.FUNDER_PLATFORM and cap_left(w) <= 0)]
+
+
+def spent(w):
+    """What an AshantiHub-funded promo has cost so far: its charges still owed (reversed ones cost nothing)."""
+    return w.charges.filter(status=WaivedFeeCharge.OWED).aggregate(t=Sum("amount"))["t"] or Decimal("0.00")
+
+
+def cap_left(w):
+    return (w.budget_cap or Decimal("0.00")) - spent(w)
 
 
 def owner_blocker(owner):
@@ -153,10 +164,60 @@ def create_for_staff(staff, owner, data):
     fields, listings = clean(data, owner)
     w = DeliveryWaiver.objects.create(
         business_owner=owner, source=DeliveryWaiver.STAFF, status=DeliveryWaiver.ACTIVE, created_by=staff,
-        reviewed_by=staff, reviewed_at=timezone.now(), **fields,
+        funded_by=DeliveryWaiver.FUNDER_BUSINESS, reviewed_by=staff, reviewed_at=timezone.now(), **fields,
     )
     w.listings.set(listings)
     return w
+
+
+def _cap(value):
+    """The budget cap as money, or a WaiverError: required, a plain number above zero."""
+    from decimal import InvalidOperation
+
+    if value is None or isinstance(value, bool) or isinstance(value, (list, dict)):
+        raise WaiverError("Set the most this promo may cost AshantiHub (a budget cap above zero).")
+    try:
+        cap = cents(Decimal(str(value).strip()))
+    except (InvalidOperation, ValueError):
+        raise WaiverError("The budget cap must be an amount in GH₵.")
+    if not cap.is_finite() or cap <= 0:
+        raise WaiverError("The budget cap must be more than zero.")
+    if cap >= Decimal("100000000"):
+        raise WaiverError("That budget cap is too large.")
+    return cap
+
+
+@transaction.atomic
+def create_platform_funded(staff, owner, data, request=None):
+    """An AshantiHub-funded promo for one named business: pending until Operations or a Super Admin approves it through the
+    approvals engine (a Super Admin's own applies at once). Returns (waiver, approval)."""
+    from activity.services import record
+    from approvals import services as approvals
+
+    from .approval_kinds_waivers import KEY
+
+    _guard(owner)
+    fields, listings = clean(data, owner)
+    cap = _cap(data.get("budget_cap"))
+    w = DeliveryWaiver.objects.create(
+        business_owner=owner, source=DeliveryWaiver.STAFF, status=DeliveryWaiver.PENDING, created_by=staff,
+        funded_by=DeliveryWaiver.FUNDER_PLATFORM, budget_cap=cap, **fields,
+    )
+    w.listings.set(listings)
+    approval = approvals.submit(
+        staff, KEY, title=f"Free delivery for {owner.display_name}, up to GH₵ {cap} paid by AshantiHub", target=w,
+        payload={"waiver": w.pk, "budget_cap": str(cap)}, request=request,
+    )
+    w.refresh_from_db()
+    record(staff, "marketing.delivery_promo_created", target=w, summary=f"AshantiHub-funded free delivery proposed: {w.name}", request=request,
+           after={"business_id": owner.pk, "name": w.name, "starts_at": w.starts_at.isoformat(), "ends_at": w.ends_at.isoformat(),
+                  "budget_cap": str(cap), "funded_by": w.funded_by})
+    return w, approval
+
+
+def _refuse_platform(w):
+    if w.funded_by == DeliveryWaiver.FUNDER_PLATFORM:
+        raise WaiverError("AshantiHub-funded promos are decided from the approvals inbox.", 409)
 
 
 def _locked(pk, **scope):
@@ -202,6 +263,7 @@ def end(pk, owner=None):
 @transaction.atomic
 def approve(pk, staff):
     w = _locked(pk)
+    _refuse_platform(w)
     _guard(w.business_owner)
     if w.status != DeliveryWaiver.PENDING:
         raise WaiverError("This promo is not waiting for review.", 409)
@@ -219,6 +281,7 @@ def reject(pk, staff, reason):
     if not reason:
         raise WaiverError("Give a reason so the business knows what to change.")
     w = _locked(pk)
+    _refuse_platform(w)
     if w.status != DeliveryWaiver.PENDING:
         raise WaiverError("This promo is not waiting for review.", 409)
     w.status, w.reviewed_by, w.reviewed_at, w.rejection_reason = DeliveryWaiver.REJECTED, staff, timezone.now(), reason[:300]
@@ -230,6 +293,7 @@ def reject(pk, staff, reason):
 @transaction.atomic
 def re_review(pk):
     w = _locked(pk)
+    _refuse_platform(w)
     if w.status != DeliveryWaiver.REJECTED:
         raise WaiverError("Only a not-approved promo can be sent back to review.", 400)
     w.status, w.rejection_reason, w.reviewed_by, w.reviewed_at = DeliveryWaiver.PENDING, "", None, None
@@ -237,8 +301,18 @@ def re_review(pk):
     return w
 
 
+def _approval_of(w):
+    from approvals.models import ApprovalRequest
+
+    from .approval_kinds_waivers import KEY
+
+    return ApprovalRequest.objects.filter(kind=KEY, target_type="marketing.deliverywaiver", target_id=str(w.pk)).order_by("-id").first()
+
+
 def serialize(w, now=None):
     now = now or timezone.now()
+    platform = w.funded_by == DeliveryWaiver.FUNDER_PLATFORM
+    approval = _approval_of(w) if platform else None
     owed = w.charges.filter(status=WaivedFeeCharge.OWED).aggregate(n=Count("id"), total=Sum("amount"))
     return {
         "covered_orders": owed["n"], "covered_total": str(owed["total"] or Decimal("0.00")),
@@ -246,5 +320,9 @@ def serialize(w, now=None):
         "starts_at": w.starts_at, "ends_at": w.ends_at, "all_items": w.all_items,
         "listings": [{"id": l.pk, "name": l.name} for l in w.listings.all()],
         "status": w.status, "effective_status": w.effective_status(now), "live": w.is_live(now), "source": w.source,
+        "funded_by": w.funded_by, "budget_cap": str(w.budget_cap) if w.budget_cap is not None else None,
+        "spent": str(spent(w)) if platform else None,
+        "awaiting_approval": bool(platform and w.status == DeliveryWaiver.PENDING and approval is not None and approval.status == "pending"),
+        "approval_id": approval.pk if approval else None,
         "rejection_reason": w.rejection_reason, "reviewed_at": w.reviewed_at, "created_at": w.created_at,
     }

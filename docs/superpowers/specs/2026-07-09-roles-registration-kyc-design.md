@@ -44,7 +44,7 @@ BusinessOwnerProfile        # OneToOne -> BusinessOwner
   ghana_card_front_image
   ghana_card_back_image
   gps_address                        # Ghana Post digital address format
-  business_contact_phone             # public: shown on listing, used for wa.me links
+  business_contact_phone             # superseded: no longer public (Plan M1B); owner and staff only; no wa.me links
   is_formal                          # bool, self-declared at registration
   business_reg_certificate           # nullable; required iff is_formal = true
   tin                                # nullable; required iff is_formal = true

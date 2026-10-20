@@ -32,7 +32,7 @@ export default function MostVisitedCategories({ onNavigate }) {
               type="button"
               onClick={() => open(row)}
               className="ah-visited-tile"
-              style={{ display: "flex", flexDirection: "column", width: "100%", aspectRatio: "1 / 1", padding: 12, gap: 10, border: `1px solid ${C.gold}33`, borderRadius: 16, background: C.white, color: C.darkBrown, cursor: "pointer", fontFamily: BODY_FONT, textAlign: "left", boxSizing: "border-box", boxShadow: "0 4px 14px rgba(44,24,16,0.08)", transition: "box-shadow 150ms ease-out" }}
+              style={{ display: "flex", flexDirection: "column", width: "100%", aspectRatio: "1 / 1", padding: 12, gap: 10, border: `1px solid ${C.gold}33`, borderRadius: 16, background: C.surface, color: C.ink, cursor: "pointer", fontFamily: BODY_FONT, textAlign: "left", boxSizing: "border-box", boxShadow: "0 4px 14px rgba(44,24,16,0.08)", transition: "box-shadow 150ms ease-out" }}
             >
               <span aria-hidden="true" style={{ flex: 1, width: "100%", borderRadius: 12, background: D.panelBg2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "clamp(2rem, 9vw, 3rem)" }}>
                 {row.icon}

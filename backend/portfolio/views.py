@@ -17,12 +17,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts import claims, sessions
+from accounts import claims, hours, sessions
 from accounts.models import BusinessOwner, Role, StaffUser
 from accounts.views import IsBusinessOwner
 from accounts.permissions import HasAnyRolePermission, HasRolePermission, IsStaff, RequiresSudo
 from accounts.phones import filter_by_phone, phone_key
-from accounts.serializers import staff_brief
+from accounts.serializers import BusinessHoursSerializer, hours_payload, staff_brief
 from activity.models import ActivityEvent
 from activity.services import record
 from approvals.services import ApprovalError
@@ -330,7 +330,7 @@ def _portfolio_sort_key(row):
 
 
 KYC_FILTERS = ("verified", "pending", "suspended")
-FLAG_FILTERS = ("fraud", "dispute", "no_login")
+FLAG_FILTERS = ("fraud", "dispute", "no_login", "no_hours")
 
 
 def _filtered_rows(request, now):
@@ -366,12 +366,14 @@ def _filtered_rows(request, now):
         rows = [row for row in rows if row.owner.open_disputes > 0]
     elif flag_filter == "no_login":
         rows = [row for row in rows if row.owner.needs_claim]
+    elif flag_filter == "no_hours":
+        rows = [row for row in rows if not row.owner.has_hours]
     return rows
 
 
 class PortfolioListView(APIView):
     """GET /api/portfolio/businesses/?scope=mine|team|all&health=&subscription=
-    &kyc=verified|pending|suspended&flag=fraud|dispute|no_login
+    &kyc=verified|pending|suspended&flag=fraud|dispute|no_login|no_hours
     &scout=&zone=&unassigned=1&q=&page= — a DRF page of 25 plus `summary`."""
 
     def get_permissions(self):
@@ -410,6 +412,47 @@ class PortfolioBusinessDetailView(APIView):
             now,
         )[0]
         return Response(business_detail(row, request))
+
+
+WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+
+def _first_error(errors):
+    while isinstance(errors, (dict, list)) and errors:
+        errors = next(iter(errors.values())) if isinstance(errors, dict) else errors[0]
+    return str(errors)
+
+
+class BusinessHoursStaffView(APIView):
+    """PUT /api/portfolio/businesses/<pk>/hours/ {days: [...]} — staff enter a business's weekly opening
+    hours, under the same rules as the owner's own endpoint. Only the account manager or a portfolio.manage
+    holder (anyone else gets 404). New orders use the new hours; orders already placed keep their times.
+    A broken rule answers 400 {detail, weekday} naming the failing day. Records business.hours_set (last)."""
+
+    def get_permissions(self):
+        return [HasAnyRolePermission(PORTFOLIO_SCOUT, PORTFOLIO_MANAGE)]
+
+    def put(self, request, pk):
+        owner = get_managed_business(request, pk)
+        serializer = BusinessHoursSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"detail": _first_error(serializer.errors)}, status=400)
+        days = serializer.validated_data["days"]
+        before = hours_payload(owner)
+        try:
+            with transaction.atomic():
+                hours.set_week(owner, days)
+                after = hours_payload(owner)
+                record(
+                    request.user, "business.hours_set", target=owner, summary=f"Opening hours set for {owner.display_name}",
+                    before={"days": before}, after={"days": after}, request=request,
+                )
+        except hours.HoursError as exc:
+            message = str(exc)
+            if exc.weekday is not None:
+                message = f"{WEEKDAY_NAMES[exc.weekday]}: {message}"
+            return Response({"detail": message, "weekday": exc.weekday}, status=400)
+        return Response({"days": after, "has_hours": True})
 
 
 class BusinessOrdersView(APIView):
@@ -796,3 +839,96 @@ class LeaderboardView(APIView):
             return Response(leaderboard.build(request.user, request.query_params.get("month")))
         except leaderboard.LeaderboardError as exc:
             return Response({"detail": str(exc)}, status=400)
+
+
+# ── Business detail change requests: Operations assigns, the scout verifies (plan 7F-C Task 7) ───────────────────
+
+def _detail_change_refused(exc):
+    return Response({"detail": exc.message, "code": exc.code}, status=exc.status_code)
+
+
+DETAIL_CHANGE_LIST_LIMIT = 200
+
+
+class DetailChangeListView(APIView):
+    """GET detail-changes/?status= — Operations (scouts.assign) lists the businesses' change requests, newest first;
+    with no status, the live ones (requested, assigned, verified). Values are masked as on every staff screen."""
+
+    def get_permissions(self):
+        return [HasRolePermission("scouts.assign")]
+
+    def get(self, request):
+        from .detail_changes import staff_row
+        from .models import BusinessDetailChangeRequest as ChangeRequest
+
+        wanted = request.query_params.get("status")
+        rows = ChangeRequest.objects.select_related("business_owner__profile", "assigned_scout")
+        if wanted:
+            if wanted not in dict(ChangeRequest.STATUS_CHOICES):
+                return Response({"detail": "Unknown status.", "code": "invalid"}, status=400)
+            rows = rows.filter(status=wanted)
+        else:
+            rows = rows.filter(status__in=ChangeRequest.LIVE_STATUSES)
+        return Response({"results": [staff_row(change) for change in rows[:DETAIL_CHANGE_LIST_LIMIT]]})
+
+
+class MyDetailChangesView(APIView):
+    """GET detail-changes/mine/ — the scout's assigned requests (scouts.verify), waiting ones first. The scout sees the
+    new value in full: they confirm it with the owner on site."""
+
+    def get_permissions(self):
+        return [HasRolePermission("scouts.verify")]
+
+    def get(self, request):
+        from .detail_changes import scout_row
+        from .models import BusinessDetailChangeRequest as ChangeRequest
+
+        rows = ChangeRequest.objects.filter(assigned_scout=request.user).select_related(
+            "business_owner__profile__zone",
+        ).exclude(status=ChangeRequest.WITHDRAWN)
+        items = sorted(
+            (scout_row(change) for change in rows),
+            key=lambda item: (not item["can_verify"], -(item["assigned_at"].timestamp() if item["assigned_at"] else 0)),
+        )
+        return Response({"results": items})
+
+
+class DetailChangeAssignView(APIView):
+    """POST detail-changes/<pk>/assign/ {scout} — Operations (scouts.assign) assigns a scout who is not the business's
+    registrar or account manager. 200 with the request, or 400/404/409 {detail, code}."""
+
+    def get_permissions(self):
+        return [HasRolePermission("scouts.assign")]
+
+    def post(self, request, pk):
+        from . import detail_changes
+
+        body = request.data if isinstance(request.data, dict) else {}
+        try:
+            with transaction.atomic():
+                change = detail_changes.assign(request.user, pk, body.get("scout"), http_request=request)
+        except detail_changes.DetailChangeError as exc:
+            return _detail_change_refused(exc)
+        return Response(detail_changes.staff_row(change))
+
+
+class DetailChangeVerifyView(APIView):
+    """POST detail-changes/<pk>/verify/ {outcome: "verified"|"not_verified", note} — the assigned scout only, after
+    checking in at the business for this request inside the radius. The view records its own event (the note is
+    masked there and not copied from the body)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("scouts.verify")]
+
+    def post(self, request, pk):
+        from . import detail_changes
+
+        body = request.data if isinstance(request.data, dict) else {}
+        try:
+            with transaction.atomic():
+                change = detail_changes.verify(
+                    request.user, pk, body.get("outcome"), body.get("note"), http_request=request,
+                )
+        except detail_changes.DetailChangeError as exc:
+            return _detail_change_refused(exc)
+        return Response(detail_changes.scout_row(change))

@@ -15,7 +15,7 @@ export default function StaffGateNotice({ floating = false, passive = false, onD
   const notice = (
     <div role={passive ? "status" : "alert"} style={{
       display: "flex", alignItems: "center", gap: 10,
-      background: C.cream, color: C.darkBrown, border: `1px solid ${C.gold}66`, borderRadius: 12,
+      background: C.canvas, color: C.ink, border: `1px solid ${C.gold}66`, borderRadius: 12,
       padding: "10px 14px", fontSize: "0.8rem", fontWeight: 700, lineHeight: 1.5, textAlign: "left",
       boxShadow: floating ? D.shadow : "none",
       ...style,
@@ -23,7 +23,7 @@ export default function StaffGateNotice({ floating = false, passive = false, onD
       <span style={{ flex: 1 }}>{STAFF_GATE_MESSAGE}</span>
       {onDismiss && (
         <button type="button" onClick={onDismiss} aria-label="Dismiss notice"
-          style={{ background: "none", border: "none", color: C.darkBrown, opacity: 0.6, cursor: "pointer", fontSize: "0.95rem", minWidth: 32, minHeight: 32, fontFamily: "inherit" }}>
+          style={{ background: "none", border: "none", color: C.ink, opacity: 0.6, cursor: "pointer", fontSize: "0.95rem", minWidth: 32, minHeight: 32, fontFamily: "inherit" }}>
           ✕
         </button>
       )}

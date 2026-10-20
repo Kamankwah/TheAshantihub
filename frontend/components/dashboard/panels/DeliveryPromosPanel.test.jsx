@@ -42,4 +42,10 @@ describe('DeliveryPromosPanel', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Only an approved promo can be paused.')
     expect(hit).toBe(true)
   })
+
+  it('labels a platform-funded promo "AshantiHub pays"', async () => {
+    renderPanel([{ ...PROMO, funded_by: 'platform' }, { ...PROMO, id: 5, name: 'Own promo', funded_by: 'business' }])
+    expect(await screen.findByText('AshantiHub pays')).toBeInTheDocument()
+    expect(screen.getAllByText('AshantiHub pays')).toHaveLength(1)
+  })
 })

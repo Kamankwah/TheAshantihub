@@ -16,7 +16,6 @@ const LISTING = {
   price_amount: '450.00',
   price_unit: '/night',
   tag: 'Featured',
-  contact_phone: '+233244000001',
   lat: '6.688500',
   lng: '-1.624400',
   main_photo: 'http://localhost:8000/media/listing_photos/main/lodge.jpg',
@@ -77,6 +76,15 @@ describe('ListingDetailPage', () => {
     expect(await screen.findByText('Royal Ashanti Lodge')).toBeInTheDocument()
     expect(screen.getByText(/Luxury rooms with kente-draped interiors/)).toBeInTheDocument()
     expect(screen.getByText(/450/)).toBeInTheDocument()
+  })
+
+  it('shows no business phone or tel link even if a response still carried one', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, contact_phone: '+233244000001' })))
+    const { container } = renderPage()
+    expect(await screen.findByText('Royal Ashanti Lodge')).toBeInTheDocument()
+    expect(container.querySelector('a[href^="tel:"]')).toBeNull()
+    expect(container.querySelector('a[href*="wa.me"]')).toBeNull()
+    expect(container.textContent).not.toMatch(/233244000001|0244000001/)
   })
 
   it('renders a gallery thumbnail per photo', async () => {

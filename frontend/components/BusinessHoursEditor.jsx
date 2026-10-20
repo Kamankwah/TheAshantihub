@@ -27,7 +27,7 @@ export function hoursProblem(rows) {
   return null;
 }
 
-const timeInput = { padding: "7px 8px", borderRadius: 8, border: "1.5px solid #ddd", fontSize: "0.8rem", fontFamily: "inherit", background: "#fff", color: C.darkBrown };
+const timeInput = { padding: "7px 8px", borderRadius: 8, border: `1.5px solid ${C.border}`, fontSize: "0.8rem", fontFamily: "inherit", background: C.surface, color: C.darkBrown };
 
 export default function BusinessHoursEditor({ initialDays, onSave, saving = false, saveLabel = "Save hours", error = null }) {
   const [rows, setRows] = useState(() => startRows(initialDays));
@@ -49,14 +49,14 @@ export default function BusinessHoursEditor({ initialDays, onSave, saving = fals
 
   return (
     <form onSubmit={submit} aria-label="Weekly opening hours">
-      <div style={{ fontSize: "0.72rem", color: "#666", marginBottom: 10, lineHeight: 1.5 }}>
+      <div style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 10, lineHeight: 1.5 }}>
         Ghana time. An order placed while you are closed is held until you next open.
       </div>
       {rows.map((r, i) => (
         <div key={DAYS[i]} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "6px 0", borderBottom: "1px solid rgba(44,24,16,0.1)" }}>
           <span style={{ width: 84, fontWeight: 700, fontSize: "0.78rem", color: C.darkBrown }}>{DAYS[i]}</span>
           <input type="time" aria-label={`${DAYS[i]} opens`} value={r.opens} disabled={r.closed} onChange={(e) => change(i, { opens: e.target.value })} style={{ ...timeInput, opacity: r.closed ? 0.4 : 1 }} />
-          <span style={{ fontSize: "0.72rem", color: "#666" }}>to</span>
+          <span style={{ fontSize: "0.72rem", color: C.inkDim }}>to</span>
           <input type="time" aria-label={`${DAYS[i]} closes`} value={r.closes} disabled={r.closed} onChange={(e) => change(i, { closes: e.target.value })} style={{ ...timeInput, opacity: r.closed ? 0.4 : 1 }} />
           <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: "0.74rem", color: C.darkBrown, marginLeft: "auto" }}>
             <input type="checkbox" aria-label={`${DAYS[i]} closed`} checked={r.closed} onChange={(e) => change(i, { closed: e.target.checked })} />

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { C } from "../theme.js";
 
 // Leaflet's default marker icon references image files by relative path, which
 // break under Vite's bundler. Point them at the CDN copies so markers render
@@ -56,7 +57,7 @@ export default function DeliveryRouteMap({ pickups = [], dropoff = null, height 
 
   if (allPoints.length === 0) {
     return (
-      <div style={{ height, display: "flex", alignItems: "center", justifyContent: "center", background: "#f3efe6", borderRadius: 12, color: "#8A7A6B", fontSize: "0.78rem", textAlign: "center", padding: 16 }}>
+      <div style={{ height, display: "flex", alignItems: "center", justifyContent: "center", background: C.surface2, borderRadius: 12, color: C.inkDim, fontSize: "0.78rem", textAlign: "center", padding: 16 }}>
         No map coordinates for this delivery yet — use the address and phone below.
       </div>
     );

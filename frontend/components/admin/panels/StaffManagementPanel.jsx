@@ -2,7 +2,7 @@ import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useStaffRoster } from "../../../hooks/useStaffRoster.js";
 import { usePermissionCatalog } from "../../../hooks/usePermissionCatalog.js";
-import { D, glassCard, STAFF_STATUS_COLORS } from "../theme.js";
+import { D, glassCard, STAFF_STATUS_COLORS, tint } from "../theme.js";
 import StaffInstallLink from "../StaffInstallLink.jsx";
 import { LastSignIn } from "./sessionParts.jsx";
 
@@ -113,7 +113,7 @@ function StaffRow({ staff, onResend, resent, resending, onChanged }) {
           {isSuspended && staff.suspension_reason && <div style={{ color: D.red, fontSize: "0.64rem", marginTop: 2 }}>Reason: {staff.suspension_reason}</div>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <span style={{ background: `${STAFF_STATUS_COLORS[staff.status]}22`, color: STAFF_STATUS_COLORS[staff.status], borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 700 }}>{staff.status}</span>
+          <span style={{ background: tint(STAFF_STATUS_COLORS[staff.status], "22"), color: STAFF_STATUS_COLORS[staff.status], borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 700 }}>{staff.status}</span>
           {RESENDABLE_STATUSES.has(staff.status) && (
             resent ? (
               <span style={{ color: D.green, fontSize: "0.66rem", fontWeight: 700 }}>✓ Sent!</span>

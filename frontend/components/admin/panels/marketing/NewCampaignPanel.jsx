@@ -91,7 +91,7 @@ export default function NewCampaignPanel({ detailId, onOpenDetail, onNavigate })
             <div role="group" aria-label="Channel" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {CHANNELS.map(([key, label]) => (
                 <button key={key} type="button" aria-pressed={form.channel === key} onClick={() => set({ channel: key, template: "" })}
-                  style={{ ...button(form.channel === key ? D.text : D.panelBg, form.channel === key ? "#FDF6E3" : D.text), display: "inline-flex", gap: 6, alignItems: "center" }}>
+                  style={{ ...button(form.channel === key ? D.text : D.panelBg, form.channel === key ? D.pageBg : D.text), display: "inline-flex", gap: 6, alignItems: "center" }}>
                   {label}{state(key) && state(key) !== "connected" && <span style={{ fontSize: "0.62rem", opacity: 0.85 }}>{STATE_WORD[state(key)]}</span>}
                 </button>
               ))}

@@ -6,16 +6,18 @@ import { Chip, ExportButton, FilterBar, KpiStrip, LoadState, Pager, ScreenHeader
 import { card, h3, money, useDebounced } from "./portfolioParts.jsx";
 
 // Super Admin > Events & tickets (screen 21): real ticket and escrow records.
-// Ticket money is held until the ticket is checked in at the door (released
-// automatically) or Accounting releases or refunds it by hand. Nothing pays
-// organisers out yet, and payments are simulated.
+// Ticket money is held. A door check-in only records that the ticket was
+// delivered; it never releases money. A ticket in the ledger is released by
+// the release timer, and a ticket bought before the ledger by Accounting by
+// hand. Accounting can also refund. Nothing pays organisers out yet, and
+// payments are simulated.
 
 const STATE_COLOR = { on_sale: D.green, ended: D.textFaint, waiting: D.amber, unpaid: D.amber, rejected: D.red, expired: D.textFaint };
 const FLOW = [
   "The buyer pays in the app (simulated for now) and gets a ticket code.",
   "The money is held. It is not the organiser's yet.",
-  "At the door the organiser checks the code in the app. Checking a ticket in releases its money.",
-  "If something goes wrong (fraud, a dispute, a no-show) Accounting can release or refund a held ticket by hand, with a note.",
+  "At the door the organiser checks the code in the app. Checking a ticket in records that it was delivered; it does not release the money.",
+  "The money is released by the release timer for tickets in the ledger, or by Accounting by hand, with a note, for tickets bought before the ledger. Accounting can also refund a held ticket (fraud, a dispute, a no-show).",
   "Paying organisers out is not built yet: “released” means released in the records, not sent to a bank or MoMo account.",
 ];
 

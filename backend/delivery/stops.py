@@ -87,6 +87,7 @@ def _legacy_stop(assignment):
         code=assignment.pickup_code, code_attempts=assignment.pickup_code_attempts, status=status,
         arrived_at=assignment.arrived_pickup_at if status == PickupStop.ARRIVED else None,
         collected_at=assignment.picked_up_at if status == PickupStop.COLLECTED else None,
+        collected_by_id=assignment.picked_up_by_id if status == PickupStop.COLLECTED else None,
     )
 
 
@@ -189,7 +190,9 @@ def reopen_for_new_rider(assignment, *, failed, all_skipped=False):
     `all_skipped` is true when the failed attempt ended because every shop was skipped: the manager is re-dispatching
     the order, so the skipped stops reopen too (same codes). What the skips recorded is not lost: it lives on the
     append-only DeliveryEvent rows (stops.skip_history), and each skipped shop's refund case stays open as its own
-    record, only unlinked from the stop so a second skip can open a fresh case."""
+    record, only unlinked from the stop so a second skip can open a fresh case. A reopened collected stop loses its
+    collection stamp (`collected_at`, `collected_by`): the first rider's pickup ended with their leg (Plan 7F-E Task 6). A stop
+    that stays collected keeps its `collected_by`, so it counts for no later rider (ledger.riders.pickup_made)."""
     for stop in ensure_stops(assignment):
         if stop.status == PickupStop.SKIPPED:
             if not all_skipped:
@@ -198,10 +201,11 @@ def reopen_for_new_rider(assignment, *, failed, all_skipped=False):
         if failed or stop.status == PickupStop.ARRIVED:
             stop.status, stop.arrived_at = PickupStop.PENDING, None
             if failed:
-                stop.collected_at = None
+                stop.collected_at, stop.collected_by = None, None
         if stop.status in PickupStop.OPEN:
             stop.code_attempts, stop.planned_arrival = 0, None
-        stop.save(update_fields=["status", "arrived_at", "collected_at", "code_attempts", "planned_arrival", "skip_note", "skipped_by", "dispute"])
+        stop.save(update_fields=["status", "arrived_at", "collected_at", "collected_by", "code_attempts", "planned_arrival", "skip_note", "skipped_by",
+                                "dispute"])
     first = assignment.stops.filter(sequence=1).first()
     if first is not None:
         assignment.pickup_code_attempts = first.code_attempts

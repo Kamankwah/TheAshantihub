@@ -50,7 +50,7 @@ class AppendOnlyTests(TestCase):
 
 
 class OrderRefundTests(TestCase):
-    def test_wallet_pesewas_is_credit_after_kept_fee(self):
-        refund = OrderRefund(amount_pesewas=11500, processing_pesewas=200, delivery_kept_pesewas=1500)
-        self.assertEqual(refund.wallet_pesewas, 10200)
-        self.assertEqual(OrderRefund(amount_pesewas=500, delivery_kept_pesewas=1500).wallet_pesewas, 0)    # a coupon left less than the fee
+    def test_wallet_pesewas_is_amount_plus_processing(self):
+        refund = OrderRefund(amount_pesewas=10000, processing_pesewas=200, delivery_kept_pesewas=1500)
+        self.assertEqual(refund.wallet_pesewas, 10200)               # amount_pesewas is already net of the kept fee (R1)
+        self.assertEqual(OrderRefund(amount_pesewas=0, processing_pesewas=50, delivery_kept_pesewas=1500).wallet_pesewas, 50)

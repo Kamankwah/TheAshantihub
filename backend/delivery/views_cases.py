@@ -147,8 +147,9 @@ class CaseDetailView(APIView):
 
 
 class DecideView(APIView):
-    """POST cases/<id>/decide/ {outcome, fault, note, refund_amount, stop_rider_jobs, send_to_operations} — record the
-    decision. Needs the password again (it can ask for a refund). The note is required."""
+    """POST cases/<id>/decide/ {outcome, fault, note, refund_amount | whole_refund, stop_rider_jobs, send_to_operations} — record
+    the decision. `whole_refund: true` (outcome refund, ledger on) asks for a whole-order refund when nothing is left to give
+    the customer; refund_amount is then 0.00. Needs the password again (it can ask for a refund). The note is required."""
 
     def get_permissions(self):
         return [HasRolePermission("delivery.disputes"), RequiresSudo()]
@@ -163,7 +164,13 @@ class DecideView(APIView):
         if not note:
             return Response({"detail": "Write a note for the record.", "field": "note"}, status=400)
         amount = None
-        if outcome == "refund":
+        # A whole refund with nothing left to give the customer (a coupon left them having paid no more than the delivery
+        # fee kept for the rider): asked for with `whole_refund`, since every refund amount must be above 0. The approval
+        # then refunds the whole order (ledger.refunds.whole_at_zero_refusal).
+        whole = outcome == "refund" and data.get("whole_refund") is True
+        if whole:
+            amount = Decimal("0.00")
+        elif outcome == "refund":
             try:
                 amount = Decimal(str(data.get("refund_amount"))).quantize(Decimal("0.01"))
             except (InvalidOperation, ValueError, TypeError):
@@ -172,9 +179,15 @@ class DecideView(APIView):
             d = get_object_or_404(delivery_cases().select_for_update(of=("self",)), pk=pk)
             if d.status in Dispute.FINAL_STATUSES:
                 return Response({"detail": "This case has already been decided.", "code": "already_decided"}, status=409)
-            if amount is not None and (amount <= 0 or (d.order_id and amount > d.order.total_amount)):
+            if whole:
+                from ledger import refunds
+
+                refusal = refunds.whole_at_zero_refusal(d.order, refunds.scope_for_dispute(d)) if d.order_id else "Only an order can be refunded whole."
+                if refusal:
+                    return Response({"detail": refusal, "field": "whole_refund"}, status=400)
+            if amount is not None and not whole and (amount <= 0 or (d.order_id and amount > d.order.total_amount)):
                 return Response({"detail": "The refund must be more than 0 and no more than the order total.", "field": "refund_amount"}, status=400)
-            if amount is not None and d.order_id:
+            if amount is not None and not whole and d.order_id:
                 # With the ledger on, refuse now what the Super Admin's approval could never pay: the case is final after this.
                 from ledger import refunds
                 from ledger.money import to_pesewas
@@ -204,7 +217,9 @@ class DecideView(APIView):
             if amount is not None:
                 try:
                     approval = approvals.submit(
-                        request.user, config.REFUND, title=f"Refund GH₵ {amount} for delivery case #{d.pk}", payload={"dispute_id": d.pk, "amount": str(amount)},
+                        request.user, config.REFUND,
+                        title=f"Whole-order refund for delivery case #{d.pk}" if whole else f"Refund GH₵ {amount} for delivery case #{d.pk}",
+                        payload={"dispute_id": d.pk, "amount": str(amount), **({"whole": True} if whole else {})},
                         target=d, maker_note=note[:500], request=request,
                     )
                 except approvals.ApprovalError as exc:

@@ -78,12 +78,24 @@ class VisitTargetsView(APIView):
                     "verification", owner, services.business_pin(owner), getattr(owner, "profile", None),
                     scout_assignment=assignment.pk,
                 ))
+            from portfolio.models import BusinessDetailChangeRequest
+
+            changes = BusinessDetailChangeRequest.objects.filter(
+                assigned_scout=request.user, status=BusinessDetailChangeRequest.ASSIGNED,
+            ).select_related("business_owner__profile__zone")
+            for change in changes:
+                owner = change.business_owner
+                items.append(_target(
+                    "change_verification", owner, services.business_pin(owner), getattr(owner, "profile", None),
+                    change_request=change.pk,
+                ))
         if "businesses.register" in perms:
             for prospect in Prospect.objects.filter(scout=request.user).exclude(
                 status=Prospect.REGISTERED).select_related("zone").order_by("pk"):
                 pin = services.prospect_pin(prospect)
                 items.append({
                     "kind": "prospect", "business_owner": None, "scout_assignment": None, "prospect": prospect.pk,
+                    "change_request": None,
                     "business_id": None, "name": prospect.name, "area": prospect.zone.name if prospect.zone_id else None,
                     "lat": float(pin[0]) if pin else None, "lng": float(pin[1]) if pin else None,
                     "has_pin": pin is not None,
@@ -98,6 +110,7 @@ def _target(kind, owner, pin, profile, **ids):
         "kind": kind,
         "business_owner": ids.get("business_owner"),
         "scout_assignment": ids.get("scout_assignment"),
+        "change_request": ids.get("change_request"),
         "business_id": owner.pk,
         "name": owner.display_name,
         "area": zone.name if zone else None,
@@ -190,7 +203,7 @@ class VisitListCreateView(APIView):
             visit = services.check_in(
                 request.user, business_owner_id=data.get("business_owner"),
                 scout_assignment_id=data.get("scout_assignment"), prospect_id=data.get("prospect"),
-                purpose=data.get("purpose"),
+                change_request_id=data.get("change_request"), purpose=data.get("purpose"),
                 lat=data.get("lat"), lng=data.get("lng"), accuracy_m=data.get("accuracy_m"), request=request,
             )
         except VisitError as error:

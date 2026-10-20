@@ -56,7 +56,7 @@ function Calendar({ month, leave, holidays, today, onMonth }) {
             const holiday = holidayOn[iso];
             return (
               <div key={i} role="gridcell" aria-label={`${n} ${first.toLocaleDateString("en-GB", { month: "long" })}${isToday ? ", today" : ""}${holiday ? `, ${holiday}` : ""}${away.length ? `, ${away.map((l) => l.staff_name).join(", ")} on leave` : ""}`}
-                style={{ minHeight: 78, borderRadius: 10, padding: 4, display: "flex", flexDirection: "column", gap: 3, background: sunday || holiday ? "#F1ECE4" : D.panelBg, border: isToday ? `2px solid ${D.text}` : `1px solid ${D.cardBorder}` }}>
+                style={{ minHeight: 78, borderRadius: 10, padding: 4, display: "flex", flexDirection: "column", gap: 3, background: sunday || holiday ? D.panelBg2 : D.panelBg, border: isToday ? `2px solid ${D.text}` : `1px solid ${D.cardBorder}` }}>
                 <span style={{ fontSize: "0.75rem", fontWeight: isToday ? 800 : 600, color: sunday ? D.textDim : D.text, ...figures }}>{n}</span>
                 {holiday && <span style={{ ...chip(D.gold), whiteSpace: "normal" }}>{holiday}</span>}
                 {away.map((l) => (

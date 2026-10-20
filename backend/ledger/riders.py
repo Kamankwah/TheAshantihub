@@ -20,16 +20,21 @@ run (escrow.settle_delivery: the held fee moves to platform delivery income, the
 exactly as a release does). A rider only assigned, with nothing collected, is paid nothing and the customer gets the fee
 back; an AshantiHub rider's fee stays platform delivery income.
 
-Lock order (spec W7, extended): the order row, its fee snapshots, the rider row (release), the delivery assignment row then
-the rider row (a whole refund before release: rider_for_settle),
-then every ledger account in one sorted pass (posting.lock). The end-of-day job locks the rider row first, then the day's
+An order re-delivered at the customer's request (delivery.Redelivery, Plan 7F-E Task 7, Ruling R4) was delivered on the
+first trip as far as its fee goes: the first rider reached the address and the customer was away. That rider keeps the
+original fee (fee_rider, tested at Redelivery.first_leg_ended_at), whatever the second trip does, and no refund returns it
+(delivery_earned). The second trip's own fee is the re-delivery fee (ledger.redelivery), never the original one.
+
+Lock order (spec W7, extended; the canonical order is in orders/locks.py): the order row, its fee snapshots, the rider
+row (release), the delivery assignment row then the rider row (a whole refund before release: rider_for_settle), then
+every ledger account in one sorted pass (posting.lock). The end-of-day job locks the rider row first, then the day's
 earning rows, then the accounts: its commit checks the foreign key to the rider, which waits for a FOR UPDATE holder, so
 taking the accounts first would cycle with a release or a switch back (rider row, then reserve). Every
 select_for_update that reaches the rider's rows takes `of=("self",)` so the staff row is not locked with it."""
 import logging
 
 from django.db import transaction
-from django.db.models import Min, Sum
+from django.db.models import Min, Q, Sum
 from django.utils import timezone
 
 from delivery import employment
@@ -58,22 +63,62 @@ def accounts_of(rider):
     return posting.account_for(Account.RIDER_BALANCE, rider.staff), posting.account_for(Account.RIDER_RESERVE, rider.staff)
 
 
+def first_leg(order):
+    """(staff id, when the leg ended) of the rider who completed the first trip of an order re-delivered at the customer's
+    request (delivery.Redelivery, Plan 7F-E Task 7, Ruling R4), or None when the order was never re-delivered."""
+    from delivery.models import Redelivery
+
+    leg = Redelivery.objects.filter(order_id=order.pk).order_by("attempt").values_list("first_rider_id", "first_leg_ended_at").first()
+    return leg
+
+
+def fee_payee(order, *, at_settle=False):
+    """(staff id, the time their employment is tested at) of the rider the order's ORIGINAL delivery fee belongs to, or
+    None. The one source for third_party_rider (release) and rider_for_settle (a whole refund before release):
+    - re-delivered at the customer's request (Redelivery.first_rider, Ruling R4): the first rider, at the end of their leg
+      (they reached the address and the customer was away), whatever the second trip does;
+    - else at release: the rider on the assignment, at `delivered_at` (none for a failed or undelivered job);
+    - else at a settle (`at_settle`): the rider on the assignment, at their own pickup (pickup_made, the current leg)."""
+    leg = first_leg(order)
+    if leg is not None:
+        return leg
+    assignment = DeliveryAssignment.objects.filter(order_id=order.pk).first()
+    if assignment is None or assignment.dispatch_id is None:
+        return None
+    if at_settle:
+        picked = pickup_made(order)
+        return (assignment.dispatch_id, picked) if picked is not None else None
+    if assignment.status == DeliveryAssignment.FAILED or assignment.delivered_at is None:
+        return None
+    return assignment.dispatch_id, assignment.delivered_at
+
+
+def fee_rider(order, *, at_settle=False):
+    """The payee of the order's original delivery fee (a StaffUser), or None (fee_payee). Whether that rider is actually
+    paid (third-party, at release or settle) or the fee stays platform income (an AshantiHub rider) is decided by
+    third_party_rider / rider_for_settle from the employment periods."""
+    from accounts.models import StaffUser
+
+    payee = fee_payee(order, at_settle=at_settle)
+    return StaffUser.objects.filter(pk=payee[0]).first() if payee is not None and payee[0] else None
+
+
 def third_party_rider(order, *, lock=False):
-    """The third-party Rider who delivered this order, or None: not door to door, no delivery made (none, failed, never
-    marked delivered), AshantiHub's own rider, or delivered before the rider became third-party. `lock` takes the rider
-    row's lock (that row only), so a switch back to AshantiHub's own (delivery.employment.apply) waits for the caller."""
+    """The third-party Rider who earned this order's delivery fee, or None: not door to door, no delivery made (none,
+    failed, never marked delivered), AshantiHub's own rider, or delivered before the rider became third-party. For an
+    order re-delivered at the customer's request the payee is the first rider (fee_rider), tested at the end of their leg:
+    their trip was completed, whatever the second trip does. `lock` takes the rider row's lock (that row only), so a switch
+    back to AshantiHub's own (delivery.employment.apply) waits for the caller."""
     if order.delivery_method != Order.DOOR_TO_DOOR:
         return None
-    assignment = DeliveryAssignment.objects.filter(order_id=order.pk).first()
-    if (
-        assignment is None or assignment.status == DeliveryAssignment.FAILED or assignment.delivered_at is None
-        or assignment.dispatch_id is None
-    ):
+    payee = fee_payee(order)
+    if payee is None:
         return None
-    rider = Rider.objects.select_related("staff").filter(staff_id=assignment.dispatch_id).first()
+    staff_id, at = payee
+    rider = Rider.objects.select_related("staff").filter(staff_id=staff_id).first() if staff_id else None
     # History reads the employment periods (delivery.RiderEmploymentPeriod), never the current flag, so a later switch
     # back or forward cannot re-label this delivery.
-    if rider is None or not employment.third_party_at(rider, assignment.delivered_at):
+    if rider is None or not employment.third_party_at(rider, at):
         return None
     if lock:
         # Only a third-party rider's row is locked, so an AshantiHub rider's release never queues behind a fleet edit. The
@@ -150,26 +195,40 @@ def credit_delivery(order, rider, now=None):
 # --- the delivery fee belongs to the rider once a pickup is done (Plan 7F-D) ----------------------------------------------
 
 def pickup_made(order):
-    """When the rider first collected goods for this door-to-door order, or None: the earliest `collected_at` of its
-    COLLECTED pickup stops, else the assignment's `picked_up_at`. Does not look at the assignment's status: a delivery that
-    failed after a pickup still counts."""
+    """When the rider on the CURRENT leg first collected goods for this door-to-door order, or None: the earliest
+    `collected_at` of its COLLECTED pickup stops, else the assignment's `picked_up_at`, counting only a pickup made by the
+    rider on the assignment now (`collected_by` / `picked_up_by` is `assignment.dispatch_id`, or null on a row written before
+    those stamps existed). A re-assignment ends the previous leg (Plan 7F-E Task 6, Ruling R3): the first rider's pickup
+    then counts for no one, so a refund before the new rider's own pickup returns the fee, and the settle test reads the new
+    rider's own pickup time. Does not look at the assignment's status: a delivery that failed after a pickup still counts."""
     if order.delivery_method != Order.DOOR_TO_DOOR:
         return None
     assignment = DeliveryAssignment.objects.filter(order_id=order.pk).first()
     if assignment is None:
         return None
-    first = PickupStop.objects.filter(
-        assignment_id=assignment.pk, status=PickupStop.COLLECTED, collected_at__isnull=False,
-    ).aggregate(first=Min("collected_at"))["first"]
-    return first or assignment.picked_up_at
+    current = assignment.dispatch_id
+    first = (
+        PickupStop.objects.filter(assignment_id=assignment.pk, status=PickupStop.COLLECTED, collected_at__isnull=False)
+        .filter(Q(collected_by__isnull=True) | Q(collected_by_id=current))
+        .aggregate(first=Min("collected_at"))["first"]
+    )
+    if first is not None:
+        return first
+    if assignment.picked_up_by_id is None or assignment.picked_up_by_id == current:
+        return assignment.picked_up_at
+    return None
 
 
 def delivery_earned(order):
-    """True once the delivery fee has been earned: a pickup was made, a rider was already paid for the order, or the order
-    was released with a delivered assignment. Once true it stays true."""
+    """True once the delivery fee has been earned: a pickup was made, a rider was already paid for the order, the first
+    trip was completed and the customer was away (a re-delivery was asked for, Plan 7F-E Task 7: the first rider keeps the
+    fee, so no refund returns it), or the order was released with a delivered assignment. It can become false again: a
+    re-assignment (Plan 7F-E Task 6, Ruling R3) clears the first leg's pickup (pickup_made counts the current leg only), so
+    an order earned only by that pickup is unearned until the new rider picks up; a rider paid, a completed first trip or a
+    release keeps it true."""
     from . import escrow
 
-    if pickup_made(order) is not None or RiderEarning.objects.filter(order_id=order.pk).exists():
+    if pickup_made(order) is not None or RiderEarning.objects.filter(order_id=order.pk).exists() or first_leg(order) is not None:
         return True
     if not Journal.objects.filter(key=escrow.release_key(order)).exists():
         return False
@@ -185,18 +244,24 @@ def delivery_kept(order):
 
 def rider_for_settle(order):
     """The third-party rider to pay when a whole refund settles this order's delivery before release, or None (no
-    pickup, AshantiHub's own rider, or one who was not third-party when they picked up). The delivery assignment row is
+    pickup, AshantiHub's own rider, or one who was not third-party when they picked up). For an order re-delivered at the
+    customer's request it is the first rider (fee_rider), tested at the end of their leg. Otherwise the rider is the one on the
+    assignment now and the pickup is that rider's own (pickup_made counts the current leg only, Plan 7F-E Task 6), so a
+    re-assigned rider is never tested against the first rider's pickup time. The delivery assignment row is
     locked first (refunds.refund_order already holds it from before it decided whether the fee was earned, so a pickup
     confirmed meanwhile either finished before that decision or waits for the refund), then the rider's row; call inside the
     refund's transaction after the order row and its fee snapshots."""
+    from orders import locks
+
     if order.delivery_method != Order.DOOR_TO_DOOR:
         return None
-    assignment = DeliveryAssignment.objects.select_for_update(of=("self",)).filter(order_id=order.pk).first()
-    picked = pickup_made(order)
-    if assignment is None or assignment.dispatch_id is None or picked is None:
+    assignment = locks.lock_assignment(order)       # `order` is the refund's locked row (orders.locks.lock_order)
+    payee = fee_payee(order, at_settle=True)       # re-delivered: the first rider at the end of their leg; else the pickup
+    if payee is None:
         return None
-    rider = Rider.objects.select_related("staff").filter(staff_id=assignment.dispatch_id).first()
-    if rider is None or not employment.third_party_at(rider, picked):
+    staff_id, at = payee
+    rider = Rider.objects.select_related("staff").filter(staff_id=staff_id).first() if staff_id else None
+    if rider is None or not employment.third_party_at(rider, at):
         return None
     return Rider.objects.select_related("staff").select_for_update(of=("self",)).get(pk=rider.pk)
 

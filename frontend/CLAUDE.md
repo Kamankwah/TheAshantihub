@@ -27,9 +27,19 @@ monolith holding most components, with extractions living in `components/`,
 - **Styling is inline `style={{...}}` off the shared `C` palette** (`theme.js`) — no CSS
   framework, no CSS modules, no stylesheet. Reuse `C`; don't hardcode new colors. The only other
   mechanism in use is a component-local `<style>` tag for raw `@keyframes`/`@media` rules.
+- **Every page has a dark mode.** Surfaces and text use the theme tokens — `C.canvas`/`surface`/
+  `surface2`/`ink`/`inkDim`/`line`/`price`/`trust`/`okBg`… or `D.pageBg`/`panelBg`/`text`… — which
+  are `var(--ah-*)` (index.css; mirrored in `THEME_TOKENS`, checked by `__tests__/theme.test.jsx`).
+  Brand keys (`C.gold`, `C.darkBrown`, `C.cream`, `C.white`, kente) are fixed: use them only for brand
+  marks, fixed fills and the text on those fills (`D.darkBrown` on gold, `D.cream` on dark fills).
+  Never append a hex alpha to a token (`${D.green}22` is invalid CSS now) — use `tint(color, "22")`.
+  `__tests__/darkModeLiterals.test.js` fails on any hardcoded white/cream background; QR codes use
+  `C.paper` (allowlisted). `__tests__/darkModeSmoke.test.jsx` renders key pages in dark mode.
 - **Exception, new work only:** `components/ui/*.tsx` use real Tailwind + shadcn CSS-variable
-  tokens. `index.css` deliberately has **no global `body`/`html` reset** so it doesn't fight the
-  inline-styled UI — which means **every Tailwind/shadcn component's root must be wrapped in
+  tokens. `index.css` deliberately has **no global `body`/`html` reset** (no font/margin/background
+  reset) so it doesn't fight the inline-styled UI. It does carry two global `html, body` pieces: tabular
+  figures (`font-variant-numeric: tabular-nums`) and, under `:root[data-theme="dark"]`, the themed
+  canvas/ink (`--ah-canvas`/`--ah-ink`; light mode sets no background) — which means **every Tailwind/shadcn component's root must be wrapped in
   `<div className="shadcn-scope">`** or it picks up no theme tokens at all. This exception is
   additive, not a migration; existing `C`-palette surfaces stay inline-styled.
 - **Read `DESIGN.md` (repo root) before any visual or UI decision.** It is the source of truth

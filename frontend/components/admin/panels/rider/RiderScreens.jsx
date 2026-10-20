@@ -173,7 +173,7 @@ export function ReportIssueScreen() {
     <div style={screen}>
       <h1 style={{ ...h2, fontSize: "1.3rem" }}>Report an issue</h1>
       <span style={dim}>Goes straight to {manager?.full_name || "your manager"}, Delivery Manager.</span>
-      <Warn>Is anyone hurt? <a href="tel:112" style={{ color: "#6B2E07", fontWeight: 800 }}>Call 112</a> first.</Warn>
+      <Warn>Is anyone hurt? <a href="tel:112" style={{ color: D.warnInk, fontWeight: 800 }}>Call 112</a> first.</Warn>
       <fieldset style={{ border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
         <legend style={{ fontWeight: 800, color: D.text, marginBottom: 6 }}>What kind of problem?</legend>
         {ISSUES.map(([id, label]) => <label key={id} style={{ display: "flex", gap: 8, alignItems: "center", border: `1px solid ${kind === id ? D.text : D.cardBorder}`, borderRadius: 12, padding: "10px 12px" }}><input type="radio" name="kind" checked={kind === id} onChange={() => setKind(id)} />{label}</label>)}
@@ -278,12 +278,12 @@ export function RiderMenuScreen({ auth, onSelect, onSignOut }) {
     <div style={screen}>
       <h1 style={{ ...h2, fontSize: "1.3rem" }}>Menu</h1>
       <section aria-label="Profile" style={{ ...card, flexDirection: "row", alignItems: "center" }}>
-        <div aria-hidden="true" style={{ width: 52, height: 52, borderRadius: "50%", background: D.text, color: "#FDF6E3", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, flex: "none" }}>{initials}</div>
+        <div aria-hidden="true" style={{ width: 52, height: 52, borderRadius: "50%", background: D.text, color: D.pageBg, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, flex: "none" }}>{initials}</div>
         <div>
           <div style={{ fontWeight: 800, color: D.text }}>{auth.user?.full_name}</div>
           <div style={dim}>Dispatch rider{r ? ` · ${r.vehicle_type}${r.home_zone ? ` · ${r.home_zone}` : ""}` : ""}</div>
           {r?.manager && <div style={dim}>Reports to {r.manager.full_name}, Delivery Manager</div>}
-          {me.data?.shift && <div style={{ ...dim, color: "#00500A", fontWeight: 700 }}>On shift since {hhmm(me.data.shift.started_at)}</div>}
+          {me.data?.shift && <div style={{ ...dim, color: D.okInk, fontWeight: 700 }}>On shift since {hhmm(me.data.shift.started_at)}</div>}
         </div>
       </section>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

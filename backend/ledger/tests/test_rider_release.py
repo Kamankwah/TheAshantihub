@@ -20,6 +20,7 @@ from delivery.models import Rider, RiderEarning
 from ledger import escrow, posting, refunds, riders, settings_store, verification
 from ledger.models import Account, FulfilmentCheck, Journal, MoneySetting
 from listings.models import Category, Listing, Zone
+from orders import locks
 from orders.models import DeliveryAssignment, Order, OrderItem
 
 from . import rider_helpers
@@ -104,19 +105,24 @@ class RiderReleaseTests(RefundBase):
         self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 0)
 
     def test_a_redispatched_delivery_pays_the_rider_who_delivered(self):
-        first, second = rider_helpers.rider(), rider_helpers.rider("rider2@example.com", name="Yaw Boateng", phone="+233244000003")
+        """Plan 7F-E Task 6 (Ruling R3): a re-dispatched delivery goes to AshantiHub's own riders only, so the rider who
+        delivers it is in-house and the fee stays platform delivery income; the failed first attempt earns nothing. (Before
+        R3 a third-party second rider was paid here; assign now refuses one, see test_rider_reassignment.)"""
+        first = rider_helpers.rider()
+        second = rider_helpers.rider("rider2@example.com", name="Yaw Boateng", phone="+233244000003", third_party=False)
         order = self.delivered_order(first)
         DeliveryAssignment.objects.filter(order=order).update(status=DeliveryAssignment.FAILED, delivered_at=None, failed_at=timezone.now())
         manager = make_staff("delivery_manager", "dm@example.com")
-        delivery_services.assign(order, second.staff, manager, mode=DeliveryAssignment.MANUAL)   # the same row, a new rider
+        with transaction.atomic():                                  # callers lock the order row first (orders/locks.py)
+            delivery_services.assign(locks.lock_order(order.pk), second.staff, manager, mode=DeliveryAssignment.MANUAL)   # the same row, a new rider
         DeliveryAssignment.objects.filter(order=order).update(
             status=DeliveryAssignment.CONFIRMED, delivered_at=timezone.now(), confirmed_at=timezone.now(), failed_at=None,
         )
         self.release(order)
-        self.assertEqual(RiderEarning.objects.get(order=order).rider, second)
-        self.assertEqual(self.balance(Account.RIDER_BALANCE, second.staff), 900)
+        self.assertFalse(RiderEarning.objects.filter(order=order).exists())
         self.assertFalse(Account.objects.filter(kind=Account.RIDER_BALANCE, owner_id=str(first.staff.pk)).exists())   # checked before self.balance(), which opens the account
-        self.assertEqual(self.balance(Account.RIDER_BALANCE, first.staff), 0)                    # the failed attempt earned nothing
+        self.assertFalse(Account.objects.filter(kind=Account.RIDER_BALANCE, owner_id=str(second.staff.pk)).exists())  # in-house: no wallet
+        self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 1000)                  # the fee stays platform delivery income
 
     def test_a_skipped_shops_refund_still_pays_the_rider_the_whole_fee(self):
         swift, esi = rider_helpers.rider(), self.owner("Esi")

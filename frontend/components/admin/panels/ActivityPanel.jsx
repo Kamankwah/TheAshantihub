@@ -3,7 +3,7 @@ import { useActivity } from "../../../hooks/useActivity.js";
 import { D, glassCard, ROLE_ACCENTS, ROLE_BADGE_TEXT } from "../theme.js";
 
 const humanise = (verb) => verb.replace(/[._-]+/g, " ").trim();
-const pill = (active) => ({ background: active ? D.text : "transparent", color: active ? "#fff" : D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "6px 12px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" });
+const pill = (active) => ({ background: active ? D.text : "transparent", color: active ? D.pageBg : D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "6px 12px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" });
 
 export default function ActivityPanel() {
   const [mine, setMine] = useState(false);

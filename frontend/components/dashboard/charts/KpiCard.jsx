@@ -1,4 +1,4 @@
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, tint } from "../theme.js";
 
 // A single "mission-control" KPI stat card: glass surface, accent glow strip,
 // icon, big value, label, and an optional sub-line / trend chip. Purely
@@ -11,7 +11,7 @@ export default function KpiCard({ icon, label, value, sub, accent = D.gold, tren
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
         <div style={{ fontSize: "1.35rem", filter: "saturate(1.2)" }}>{icon}</div>
         {trend != null && (
-          <span style={{ background: `${accent}22`, color: accent, borderRadius: 20, padding: "2px 9px", fontSize: "0.6rem", fontWeight: 800, whiteSpace: "nowrap" }}>{trend}</span>
+          <span style={{ background: tint(accent, "22"), color: accent, borderRadius: 20, padding: "2px 9px", fontSize: "0.6rem", fontWeight: 800, whiteSpace: "nowrap" }}>{trend}</span>
         )}
       </div>
       <div style={{ fontWeight: 900, fontSize: "1.5rem", color: D.text, marginTop: 8, lineHeight: 1.1, letterSpacing: "-0.01em" }}>{value}</div>

@@ -1,5 +1,5 @@
 import { RadialBarChart, RadialBar, PolarAngleAxis, ResponsiveContainer } from "recharts";
-import { D, getScoreColor, getScoreGrade } from "../theme.js";
+import { D, getScoreColor, getScoreGrade, tint } from "../theme.js";
 import { ChartEmpty } from "./ChartFrame.jsx";
 
 // Credit-score gauge (0–1000) rendered as a 270° radial bar with the score +
@@ -21,7 +21,7 @@ export default function CreditRadialGauge({ score, size = 200 }) {
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
         <div style={{ fontWeight: 900, fontSize: "2rem", color, lineHeight: 1 }}>{score}</div>
         <div style={{ fontSize: "0.58rem", color: D.textDim, textTransform: "uppercase", letterSpacing: "0.06em" }}>out of 1000</div>
-        <div style={{ marginTop: 6, background: `${color}22`, color, borderRadius: 20, padding: "2px 11px", fontSize: "0.68rem", fontWeight: 900 }}>{grade} — {label}</div>
+        <div style={{ marginTop: 6, background: tint(color, "22"), color, borderRadius: 20, padding: "2px 11px", fontSize: "0.68rem", fontWeight: 900 }}>{grade} — {label}</div>
       </div>
     </div>
   );

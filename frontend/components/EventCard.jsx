@@ -1,4 +1,4 @@
-import { C } from "../theme.js";
+import { C, tint } from "../theme.js";
 
 // ─── starString ─────────────────────────────────────────────────────────────
 // EventCard can't import Stars from App.jsx — this codebase's established
@@ -54,11 +54,11 @@ export default function EventCard({ item, onOpen }) {
         borderRadius: 16,
         overflow: "hidden",
         boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-        border: `1.5px solid ${accentColor}55`,
+        border: `1.5px solid ${tint(accentColor, "55")}`,
         cursor: onOpen ? "pointer" : "default",
       }}
     >
-      <div style={{ height: 120, position: "relative", overflow: "hidden", background: `linear-gradient(135deg,${accentColor}22,${accentColor}44)` }}>
+      <div style={{ height: 120, position: "relative", overflow: "hidden", background: `linear-gradient(135deg,${tint(accentColor, "22")},${tint(accentColor, "44")})` }}>
         {item.is_private ? (
           <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
             <div style={{ fontSize: "1.8rem" }}>🔒</div>
@@ -91,7 +91,7 @@ export default function EventCard({ item, onOpen }) {
           {item.category?.icon} {item.category?.label} · 📍 {item.zone?.name}
         </div>
         {item.is_private && (
-          <span style={{ display: "inline-block", marginTop: 8, background: `${C.kente1}22`, color: C.kente1, fontSize: "0.62rem", fontWeight: 700, padding: "3px 9px", borderRadius: 20 }}>
+          <span style={{ display: "inline-block", marginTop: 8, background: `${C.kente1}22`, color: C.danger, fontSize: "0.62rem", fontWeight: 700, padding: "3px 9px", borderRadius: 20 }}>
             🔒 Code required
           </span>
         )}

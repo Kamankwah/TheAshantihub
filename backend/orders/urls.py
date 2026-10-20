@@ -1,5 +1,7 @@
 from django.urls import path
 
+from delivery import views_redelivery
+
 from . import support, views
 
 urlpatterns = [
@@ -23,6 +25,8 @@ urlpatterns = [
     path("", views.OrderListView.as_view(), name="order-list"),
     path("<int:pk>/", views.OrderDetailView.as_view(), name="order-detail"),
     path("<int:pk>/tracking/", views.OrderTrackingView.as_view(), name="order-tracking"),
+    # The customer pays a re-delivery fee (Plan 7F-E Task 7; the view lives with the rules in delivery).
+    path("<int:pk>/redelivery/pay/", views_redelivery.RedeliveryPayView.as_view(), name="order-redelivery-pay"),
     path(
         "<int:pk>/delivery-status/",
         views.OrderDeliveryStatusUpdateView.as_view(),

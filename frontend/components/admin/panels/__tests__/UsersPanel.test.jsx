@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../../../mocks/server.js'
@@ -121,5 +121,73 @@ describe('UsersPanel detail view', () => {
     await screen.findByText('✏️ Edit')
     expect(patched).not.toBeNull()
     expect(patched).not.toHaveProperty('phone')
+  })
+})
+
+describe('UsersPanel save: the second-person contract', () => {
+  const DETAIL = { ...CUSTOMER, address: 'Adum', created_at: '2026-01-01T00:00:00Z' }
+  const open = async (patchHandler) => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/customers/', () => HttpResponse.json({ count: 1, next: null, previous: null, results: [CUSTOMER] })),
+      http.get('http://localhost:8000/api/accounts/customers/1/', () => HttpResponse.json(DETAIL)),
+      http.patch('http://localhost:8000/api/accounts/customers/1/', patchHandler),
+    )
+    renderPanel(['users.view', 'users.manage'])
+    fireEvent.click(await screen.findByText('✏️ Edit'))
+    await screen.findByText('Save changes')
+  }
+
+  it('shows sent-for-approval on a 201 with approval_id', async () => {
+    await open(() => HttpResponse.json({ ...CUSTOMER, approval_id: 41, approval_ids: [41], status: 'pending' }, { status: 201 }))
+    fireEvent.click(screen.getByText('Save changes'))
+    const note = await screen.findByRole('status')
+    expect(note).toHaveTextContent('Sent for approval (request #41). The details change when another person approves.')
+    expect(note).not.toHaveTextContent('Other changes were saved')
+    expect(screen.queryByText('Save changes')).not.toBeInTheDocument()
+  })
+
+  it('counts the requests when more than one was sent', async () => {
+    await open(() => HttpResponse.json({ ...CUSTOMER, approval_id: 41, approval_ids: [41, 42], status: 'pending' }, { status: 201 }))
+    fireEvent.click(screen.getByText('Save changes'))
+    expect(await screen.findByRole('status')).toHaveTextContent('Sent for approval (2 requests).')
+  })
+
+  it('plain save still says nothing special', async () => {
+    await open(() => HttpResponse.json({ ...CUSTOMER }))
+    fireEvent.click(screen.getByText('Save changes'))
+    await screen.findByText('✏️ Edit')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Sent for approval/)).not.toBeInTheDocument()
+  })
+
+  it('no_change shows its own message', async () => {
+    await open(() => HttpResponse.json({ detail: 'That is already the current value.', code: 'no_change' }, { status: 400 }))
+    fireEvent.click(screen.getByText('Save changes'))
+    expect(await screen.findByText('That is already the current value.')).toBeInTheDocument()
+    expect(screen.queryByText(/Could not save/)).not.toBeInTheDocument()
+  })
+
+  it('mixed PATCH reports the saved part', async () => {
+    await open(() => HttpResponse.json({ ...CUSTOMER, address: 'Bantama', approval_id: 7, approval_ids: [7], status: 'pending' }, { status: 201 }))
+    fireEvent.change(screen.getByDisplayValue('Adum'), { target: { value: 'Bantama' } })
+    fireEvent.click(screen.getByText('Save changes'))
+    expect(await screen.findByRole('status')).toHaveTextContent('Sent for approval (request #7). The details change when another person approves. Other changes were saved.')
+  })
+
+  it('does not send an unchanged masked email, and does send a really changed one', async () => {
+    const bodies = []
+    await open(async ({ request }) => { bodies.push(await request.json()); return HttpResponse.json({ ...CUSTOMER }) })
+    fireEvent.change(screen.getByDisplayValue('Adum'), { target: { value: 'Bantama' } })
+    fireEvent.click(screen.getByText('Save changes'))
+    await screen.findByText('✏️ Edit')
+    expect(bodies[0]).toEqual({ address: 'Bantama' })
+    expect(bodies[0]).not.toHaveProperty('email')
+
+    fireEvent.click(screen.getByText('✏️ Edit'))
+    await screen.findByText('Save changes')
+    fireEvent.change(await screen.findByDisplayValue('am•••@example.com'), { target: { value: 'new@example.com' } })
+    fireEvent.click(screen.getByText('Save changes'))
+    await waitFor(() => expect(bodies).toHaveLength(2))
+    expect(bodies[1].email).toBe('new@example.com')
   })
 })

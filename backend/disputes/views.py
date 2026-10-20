@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
@@ -109,7 +110,9 @@ class DisputeFlagView(APIView):
 class DisputeResolveView(APIView):
     """POST /api/disputes/{id}/resolve/ — requires disputes.resolve_financial.
     Body: optional refund_amount, resolution_notes, and outcome ("resolved"
-    default, or "rejected"). A dispute already in a final state cannot be
+    default, or "rejected"). With the ledger on, `whole_refund: true` (and no
+    refund_amount) refunds the whole order when nothing is left to give the
+    customer (ledger.refunds.whole_at_zero_refusal; refund_amount is then 0.00). A dispute already in a final state cannot be
     re-actioned here (mirrors ContactMessage's "resolved is final" rule).
     """
 
@@ -127,10 +130,25 @@ class DisputeResolveView(APIView):
             dispute = generics.get_object_or_404(Dispute.objects.select_for_update(), pk=pk)
             if dispute.status in Dispute.FINAL_STATUSES:
                 return Response({"detail": "This dispute has already been resolved."}, status=400)
+            # A whole refund with nothing left to give the customer (a coupon left them having paid no more than the
+            # delivery fee kept for the rider): asked for with `whole_refund`, since every amount must be above 0.
+            whole = data["whole_refund"] and data["outcome"] == "resolved"
+            if whole:
+                from ledger import refunds
+
+                if data.get("refund_amount"):
+                    return Response({"whole_refund": "Send either a refund amount or a whole-order refund, not both."}, status=400)
+                if not dispute.order_id:
+                    return Response({"whole_refund": "Only an order can be refunded whole."}, status=400)
+                refusal = refunds.whole_at_zero_refusal(dispute.order, refunds.scope_for_dispute(dispute))
+                if refusal:
+                    return Response({"whole_refund": refusal}, status=400)
             dispute.status = Dispute.RESOLVED if data["outcome"] == "resolved" else Dispute.REJECTED
             # A rejected dispute never moves money: drop any refund_amount sent
             # with outcome="rejected" so a Rejected row can't show a refund.
             dispute.refund_amount = data.get("refund_amount") if data["outcome"] == "resolved" else None
+            if whole:
+                dispute.refund_amount = Decimal("0.00")     # the customer's credit from order money (a processing charge aside)
             dispute.resolution_notes = data.get("resolution_notes", "")
             dispute.resolved_by = request.user
             dispute.save(
@@ -139,13 +157,13 @@ class DisputeResolveView(APIView):
             # With the ledger on, the refund goes to the customer's AshantiHub wallet now (ledger.refunds; nothing
             # happens while it is off). Its source dispute-<id> is the one the delivery-case approval uses too, so a
             # dispute is never refunded twice. A refund the ledger cannot give undoes the whole decision.
-            if dispute.order_id and dispute.refund_amount:
+            if dispute.order_id and (dispute.refund_amount or whole):
                 from ledger import refunds
                 from ledger.money import to_pesewas
 
                 try:
                     refund = refunds.refund_order(
-                        dispute.order, to_pesewas(dispute.refund_amount), source=f"dispute-{dispute.pk}", by=request.user,
+                        dispute.order, None if whole else to_pesewas(dispute.refund_amount), source=f"dispute-{dispute.pk}", by=request.user,
                         owner_ids=refunds.scope_for_dispute(dispute), refund_processing=data.get("refund_processing", False),
                         note=f"Dispute #{dispute.pk}",
                     )

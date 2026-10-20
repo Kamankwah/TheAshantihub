@@ -1,10 +1,10 @@
-// ─── Admin Command Center — light "artisan" theme ─────────────────────────────
-// The staff dashboard reuses the exact light cream/gold palette built for the
+// ─── Admin Command Center — "artisan" theme (light + dark) ────────────────────
+// The staff dashboard reuses the exact cream/gold palette (light + dark) built for the
 // Business Command Center (frontend/components/dashboard/theme.js) rather than
 // duplicating it — `D`/`CHART`/`glassCard`/`sectionTitle` are re-exported
 // straight from there so the two dashboards stay visually identical and in
 // sync by construction (not by hand-copying values).
-export { D, CHART, glassCard, sectionTitle, ghs } from "../dashboard/theme.js";
+export { D, CHART, glassCard, sectionTitle, ghs, tint } from "../dashboard/theme.js";
 // Credit-score colour/grade helpers, re-exported so the admin Credit panel
 // (item 16) shares the exact same score→colour/grade mapping as the business
 // CreditPanel rather than forking it.

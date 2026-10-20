@@ -9,7 +9,7 @@ import {
   getScoreColor,
   getScoreGrade,
   maxLoanForScore,
-  CREDIT_FACTOR_META,
+  CREDIT_FACTOR_META, tint,
 } from "../theme.js";
 
 // Lending partners now come from GET /api/credit/partners/ (item 16), not the
@@ -67,7 +67,7 @@ function ScoreGauge({ score }) {
         <text x={cx} y={cy+8} textAnchor="middle" fontSize="10" fontWeight="700" fill={D.textDim}>out of 1000</text>
       </svg>
       <div style={{ marginTop:-8 }}>
-        <span style={{ background:`${color}20`, color, borderRadius:20, padding:"3px 12px", fontSize:"0.75rem", fontWeight:900 }}>{grade} — {label}</span>
+        <span style={{ background:tint(color, "20"), color, borderRadius:20, padding:"3px 12px", fontSize:"0.75rem", fontWeight:900 }}>{grade} — {label}</span>
       </div>
     </div>
   );
@@ -150,7 +150,7 @@ export default function CreditPanel({ user }) {
         {isError && (
           <div style={{ ...glassCard, padding:"30px 24px", textAlign:"center" }}>
             <div style={{ color:D.red, fontWeight:700, fontSize:"0.85rem", marginBottom:14 }}>Could not load your AshantiHub Credit Score. Make sure you're signed in as a business owner.</div>
-            <button onClick={()=>refetch()} style={{ background:D.gold, color:D.pageBg, border:"none", borderRadius:20, padding:"8px 18px", fontWeight:800, cursor:"pointer" }}>Retry</button>
+            <button onClick={()=>refetch()} style={{ background:D.gold, color:D.cream, border:"none", borderRadius:20, padding:"8px 18px", fontWeight:800, cursor:"pointer" }}>Retry</button>
           </div>
         )}
 
@@ -173,7 +173,7 @@ export default function CreditPanel({ user }) {
                   { icon: loanEligible?"✅":"❌", label:"Loan Status", value: loanEligible?"Eligible":"Not yet eligible" },
                   { icon:"🤝", label:"Lending partners", value: partners.length > 0 ? `${partners.length} available` : "Coming soon" },
                 ].map(s => (
-                  <div key={s.label} style={{ background:"rgba(255,255,255,0.55)", borderRadius:12, padding:"12px", textAlign:"center" }}>
+                  <div key={s.label} style={{ background:tint(D.panelBg, "8c"), borderRadius:12, padding:"12px", textAlign:"center" }}>
                     <div style={{ fontSize:"1.4rem", marginBottom:4 }}>{s.icon}</div>
                     <div style={{ fontWeight:900, color:D.gold, fontSize:"1rem" }}>{s.value}</div>
                     <div style={{ fontSize:"0.62rem", opacity:0.8 }}>{s.label}</div>
@@ -197,7 +197,7 @@ export default function CreditPanel({ user }) {
                           <span style={{ fontWeight:900, color:D.gold, fontSize:"0.78rem" }}>{Math.round(f.weight*100)}% weight</span>
                         </div>
                         <div style={{ fontSize:"0.68rem", color:D.textDim, marginBottom:4 }}>{meta.desc}</div>
-                        <div style={{ height:6, background:"rgba(255,255,255,0.7)", borderRadius:10, overflow:"hidden" }}>
+                        <div style={{ height:6, background:D.panelBg, borderRadius:10, overflow:"hidden" }}>
                           <div style={{ height:"100%", width:`${f.score_pct}%`, background:`linear-gradient(90deg,${D.gold},${D.green})`, borderRadius:10 }}/>
                         </div>
                       </div>
@@ -213,13 +213,13 @@ export default function CreditPanel({ user }) {
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 {[
                   { range:"800–1000", grade:"A / A+", label:"Exceptional", color:D.green },
-                  { range:"700–799", grade:"B+ / A-", label:"Good", color:D.kente2 },
+                  { range:"700–799", grade:"B+ / A-", label:"Good", color:D.green },
                   { range:"600–699", grade:"B / B-", label:"Average", color:D.gold },
                   { range:"500–599", grade:"C / C+", label:"Below Average", color:D.amber },
                   { range:"300–499", grade:"D", label:"Building", color:D.red },
                 ].map(b => (
-                  <div key={b.range} style={{ display:"flex", gap:10, alignItems:"center", padding:"10px 12px", borderRadius:12, background:`${b.color}1e`, border:`1px solid ${b.color}55` }}>
-                    <div style={{ width:50, height:50, borderRadius:"50%", background:`${b.color}20`, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:b.color, fontSize:"0.82rem", flexShrink:0 }}>{b.grade}</div>
+                  <div key={b.range} style={{ display:"flex", gap:10, alignItems:"center", padding:"10px 12px", borderRadius:12, background:tint(b.color, "1e"), border:`1px solid ${tint(b.color, "55")}` }}>
+                    <div style={{ width:50, height:50, borderRadius:"50%", background:tint(b.color, "20"), display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:b.color, fontSize:"0.82rem", flexShrink:0 }}>{b.grade}</div>
                     <div style={{ flex:1 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:2 }}>
                         <span style={{ fontWeight:800, fontSize:"0.8rem", color:D.text }}>{b.range} — {b.label}</span>
@@ -270,11 +270,11 @@ export default function CreditPanel({ user }) {
 
             {loanEligible ? (
               <button onClick={()=>{ setCreditTab("apply"); }}
-                style={{ width:"100%", background:D.green, color:D.pageBg, border:"none", borderRadius:20, padding:"12px", fontWeight:900, cursor:"pointer", fontSize:"0.88rem" }}>
+                style={{ width:"100%", background:D.green, color:D.cream, border:"none", borderRadius:20, padding:"12px", fontWeight:900, cursor:"pointer", fontSize:"0.88rem" }}>
                 💰 Apply for a Business Loan →
               </button>
             ) : (
-              <div style={{ background:`${D.red}1f`, borderRadius:10, padding:"10px 14px", fontSize:"0.7rem", color:D.red, fontWeight:600, textAlign:"center" }}>
+              <div style={{ background:tint(D.red, "1f"), borderRadius:10, padding:"10px 14px", fontSize:"0.7rem", color:D.red, fontWeight:600, textAlign:"center" }}>
                 ❌ Score too low — keep improving to unlock loans. See the Insights tab for tips.
               </div>
             )}
@@ -295,10 +295,10 @@ export default function CreditPanel({ user }) {
               {partners.map(p => (
                 <div key={p.id} style={{ ...glassCard, padding:"20px", borderTop:`4px solid ${p.color || D.gold}` }}>
                   <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
-                    <div style={{ width:44, height:44, borderRadius:12, background:`${p.color || D.gold}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.4rem" }}>{p.logo}</div>
+                    <div style={{ width:44, height:44, borderRadius:12, background:tint(p.color || D.gold, "15"), display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.4rem" }}>{p.logo}</div>
                     <div>
                       <div style={{ fontWeight:800, fontSize:"0.88rem", color:D.text }}>{p.name}</div>
-                      <span style={{ background:`${p.color || D.gold}20`, color:p.color || D.gold, borderRadius:20, padding:"2px 8px", fontSize:"0.62rem", fontWeight:700 }}>{PARTNER_TYPE_LABELS[p.partner_type] || p.partner_type}</span>
+                      <span style={{ background:tint(p.color || D.gold, "20"), color:p.color || D.gold, borderRadius:20, padding:"2px 8px", fontSize:"0.62rem", fontWeight:700 }}>{PARTNER_TYPE_LABELS[p.partner_type] || p.partner_type}</span>
                     </div>
                   </div>
                   <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:14, fontSize:"0.74rem" }}>
@@ -344,7 +344,7 @@ export default function CreditPanel({ user }) {
                   Your current AshantiHub Credit Score is <strong>{score}</strong>. You need a score of at least <strong>600</strong> to apply for a loan through our lending partners.
                 </div>
                 <button onClick={()=>setCreditTab("insights")}
-                  style={{ background:D.gold, color:D.pageBg, border:"none", borderRadius:30, padding:"10px 22px", fontWeight:900, cursor:"pointer" }}>
+                  style={{ background:D.gold, color:D.cream, border:"none", borderRadius:30, padding:"10px 22px", fontWeight:900, cursor:"pointer" }}>
                   See how to improve your score →
                 </button>
               </div>
@@ -378,7 +378,7 @@ export default function CreditPanel({ user }) {
                 </div>
                 <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap" }}>
                   <button onClick={()=>{ setLoanSubmitted(false); setSubmittedApp(null); setLoanAmount(""); setLoanPurpose(""); }}
-                    style={{ background:D.gold, color:D.pageBg, border:"none", borderRadius:30, padding:"10px 22px", fontWeight:900, cursor:"pointer" }}>
+                    style={{ background:D.gold, color:D.cream, border:"none", borderRadius:30, padding:"10px 22px", fontWeight:900, cursor:"pointer" }}>
                     Apply for Another Loan
                   </button>
                   <button onClick={()=>setCreditTab("score")}
@@ -456,12 +456,12 @@ export default function CreditPanel({ user }) {
                     <div style={{ fontWeight:800, color:D.text, marginBottom:12, fontSize:"0.85rem" }}>🤝 Your Matched Partners</div>
                     {matchedPartners.map(p=>(
                       <div key={p.id} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${D.divider}` }}>
-                        <div style={{ width:32, height:32, borderRadius:8, background:`${p.color || D.gold}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1rem" }}>{p.logo}</div>
+                        <div style={{ width:32, height:32, borderRadius:8, background:tint(p.color || D.gold, "15"), display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1rem" }}>{p.logo}</div>
                         <div style={{ flex:1 }}>
                           <div style={{ fontWeight:700, fontSize:"0.76rem", color:D.text }}>{p.name}</div>
                           <div style={{ fontSize:"0.65rem", color:D.textDim }}>{p.max_loan} • {p.interest_rate}</div>
                         </div>
-                        <span style={{ background:`${D.green}22`, color:D.green, borderRadius:20, padding:"2px 7px", fontSize:"0.6rem", fontWeight:700 }}>✓ Match</span>
+                        <span style={{ background:tint(D.green, "22"), color:D.green, borderRadius:20, padding:"2px 7px", fontSize:"0.6rem", fontWeight:700 }}>✓ Match</span>
                       </div>
                     ))}
                     {matchedPartners.length===0 && (
@@ -483,17 +483,17 @@ export default function CreditPanel({ user }) {
             <div style={{ ...glassCard, padding:"20px", marginBottom:20 }}>
               <div style={{ fontWeight:800, color:D.text, marginBottom:14, fontSize:"0.88rem" }}>📈 How to Improve Your Credit Score</div>
               {[
-                { icon:"🏷️", tip:"Publish more listings", impact:"up to 25% of score", action:"Get listings approved and published — this factor counts up to 10 published listings.", color:D.kente3 },
+                { icon:"🏷️", tip:"Publish more listings", impact:"up to 25% of score", action:"Get listings approved and published — this factor counts up to 10 published listings.", color:D.blue },
                 { icon:"📅", tip:"Stay active longer", impact:"up to 20% of score", action:"The longer your business account exists on AshantiHub, the higher your tenure score (counted up to 24 months).", color:D.gold },
                 { icon:"🪪", tip:"Complete KYC verification", impact:"up to 30% of score", action:"Submit your Ghana Card and business details for KYC review and get verified by AshantiHub staff.", color:D.purple },
-                { icon:"🏦", tip:"Verify your payout details", impact:"up to 25% of score", action:"Add and verify your MoMo/bank payout details in your Business Dashboard profile.", color:D.kente2 },
+                { icon:"🏦", tip:"Verify your payout details", impact:"up to 25% of score", action:"Add and verify your MoMo/bank payout details in your Business Dashboard profile.", color:D.green },
               ].map(item => (
                 <div key={item.tip} style={{ display:"flex", gap:12, padding:"12px 0", borderBottom:`1px solid ${D.divider}`, alignItems:"flex-start" }}>
-                  <div style={{ width:40, height:40, borderRadius:10, background:`${item.color}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.2rem", flexShrink:0 }}>{item.icon}</div>
+                  <div style={{ width:40, height:40, borderRadius:10, background:tint(item.color, "15"), display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.2rem", flexShrink:0 }}>{item.icon}</div>
                   <div style={{ flex:1 }}>
                     <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
                       <span style={{ fontWeight:800, fontSize:"0.8rem", color:D.text }}>{item.tip}</span>
-                      <span style={{ background:`${item.color}20`, color:item.color, borderRadius:20, padding:"2px 8px", fontSize:"0.62rem", fontWeight:800 }}>{item.impact}</span>
+                      <span style={{ background:tint(item.color, "20"), color:item.color, borderRadius:20, padding:"2px 8px", fontSize:"0.62rem", fontWeight:800 }}>{item.impact}</span>
                     </div>
                     <div style={{ fontSize:"0.7rem", color:D.textDim, lineHeight:1.5 }}>{item.action}</div>
                   </div>

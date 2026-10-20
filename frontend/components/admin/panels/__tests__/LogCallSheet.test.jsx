@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from '../../../../mocks/server.js'
 import LogCallSheet from '../LogCallSheet.jsx'
+import { D } from '../../theme.js'
 
 const API = 'http://localhost:8000'
 const WHO = {
@@ -161,7 +162,8 @@ describe('LogCallSheet', () => {
   it('draws Direction and How it went as segmented controls', async () => {
     renderSheet()
     const dialog = await screen.findByRole('dialog', { name: 'Log a call' })
-    expect(within(dialog).getByRole('group', { name: 'Direction' })).toHaveStyle({ background: '#F5ECD8' })
-    expect(within(dialog).getByRole('group', { name: 'How it went' })).toHaveStyle({ background: '#F5ECD8' })
+    // the cream track is the theme's recessed well (#F5ECD8 in light mode)
+    expect(within(dialog).getByRole('group', { name: 'Direction' }).style.background).toBe(D.panelBg2)
+    expect(within(dialog).getByRole('group', { name: 'How it went' }).style.background).toBe(D.panelBg2)
   })
 })

@@ -133,6 +133,37 @@ describe('AuthModal', () => {
   })
 })
 
+describe('AuthModal — second step for customer and owner accounts', () => {
+  const signIn = async (auth, type) => {
+    render(<AuthModal authState="login" auth={auth} onClose={() => {}} onSuccess={auth.onSuccess} />)
+    if (type === 'business_owner') fireEvent.click(screen.getByRole('button', { name: 'Business Owner' }))
+    fireEvent.change(screen.getByPlaceholderText('Phone or email'), { target: { value: '+233241234567' } })
+    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'secret' } })
+    const buttons = screen.getAllByRole('button', { name: 'Sign In' })
+    fireEvent.click(buttons[buttons.length - 1])
+    fireEvent.change(await screen.findByLabelText('6-digit code'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+  }
+
+  it('a customer login answering two_factor_required shows the code step and signs in with the app code', async () => {
+    const result = { token: 't', account_type: 'customer', id: 1, full_name: 'Ama' }
+    const auth = makeAuth({ login: vi.fn().mockResolvedValue({ two_factor_required: true, mfa_token: 'mfa-c' }), verifyTwoFactor: vi.fn().mockResolvedValue(result), onSuccess: vi.fn() })
+    await signIn(auth, 'customer')
+    await waitFor(() => expect(auth.verifyTwoFactor).toHaveBeenCalledWith('mfa-c', { code: '123456' }))
+    await waitFor(() => expect(auth.onSuccess).toHaveBeenCalledWith(result))
+    expect(auth.login).toHaveBeenCalledWith('customer', '+233241234567', 'secret')
+  })
+
+  it('an owner login likewise', async () => {
+    const result = { token: 't', account_type: 'business_owner', id: 2, full_name: 'Kofi' }
+    const auth = makeAuth({ login: vi.fn().mockResolvedValue({ two_factor_required: true, mfa_token: 'mfa-o' }), verifyTwoFactor: vi.fn().mockResolvedValue(result), onSuccess: vi.fn() })
+    await signIn(auth, 'business_owner')
+    await waitFor(() => expect(auth.verifyTwoFactor).toHaveBeenCalledWith('mfa-o', { code: '123456' }))
+    await waitFor(() => expect(auth.onSuccess).toHaveBeenCalledWith(result))
+    expect(auth.login).toHaveBeenCalledWith('business_owner', '+233241234567', 'secret')
+  })
+})
+
 describe('AuthModal — signed-out notice', () => {
   it('the staff sign-in explains an idle sign-out, once', () => {
     noteSignedOutReason('idle')

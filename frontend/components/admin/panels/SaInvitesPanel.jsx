@@ -62,8 +62,8 @@ export default function SaInvitesPanel() {
   const openByRole = kpis ? Object.entries(kpis.open_by_role).map(([r, n]) => `${n} ${roleLabel(r).toLowerCase()}`).join(" · ") : "";
   const tiles = kpis ? [
     { label: "Open invites", value: kpis.open, sub: openByRole || "None waiting" },
-    { label: "Opened, not finished", value: kpis.opened_unfinished, sub: "Opened the link, no password yet", tone: kpis.opened_unfinished ? "#A33A00" : undefined },
-    { label: "Expired", value: kpis.expired, sub: kpis.expired ? "Send a new link or remove" : "None", tone: kpis.expired ? "#A33A00" : undefined },
+    { label: "Opened, not finished", value: kpis.opened_unfinished, sub: "Opened the link, no password yet", tone: kpis.opened_unfinished ? D.warnInk : undefined },
+    { label: "Expired", value: kpis.expired, sub: kpis.expired ? "Send a new link or remove" : "None", tone: kpis.expired ? D.warnInk : undefined },
     { label: "Accepted · 30 days", value: kpis.accepted_30_days, sub: kpis.median_days_to_accept == null ? "" : `Median ${kpis.median_days_to_accept} days from the last link to a password` },
   ] : [];
   const invites = (data?.invites || []).filter((i) => !roleFilter || i.role === roleFilter);

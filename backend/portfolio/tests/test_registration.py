@@ -1,4 +1,5 @@
 import io
+import json
 import tempfile
 from decimal import Decimal
 from unittest import mock
@@ -24,6 +25,10 @@ from portfolio.models import AccountManagerAssignment
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
 REGISTER_URL = "/api/portfolio/register/"
 CHECK_URL = "/api/portfolio/register/check/"
+WEEK = [
+    {"weekday": d, "closed": d == 6, "opens": None if d == 6 else "08:00", "closes": None if d == 6 else "18:00"}
+    for d in range(7)
+]
 DUPLICATE = {"detail": "Already registered — ask Operations.", "code": "duplicate"}
 
 
@@ -81,6 +86,7 @@ class RegistrationBase(TestCase):
             "ghana_card_front": png("card.png"),
             "ghana_card_number": "GHA-123456789-0",
             "maker_note": "Met Gifty at her salon",
+            "hours": json.dumps(WEEK),
         }
         data.update(overrides)
         return {key: value for key, value in data.items() if value is not None}

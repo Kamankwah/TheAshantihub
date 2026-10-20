@@ -3,7 +3,7 @@ import { apiPatch, apiPost } from "../../../apiClient.js";
 import { useCreditScoresAdmin } from "../../../hooks/useCreditScoresAdmin.js";
 import { useLendingPartners } from "../../../hooks/useLendingPartners.js";
 import { useLoanApplicationsAdmin } from "../../../hooks/useLoanApplicationsAdmin.js";
-import { D, glassCard, getScoreColor, getScoreGrade } from "../theme.js";
+import { D, glassCard, getScoreColor, getScoreGrade, tint } from "../theme.js";
 
 // Admin Credit panel (punch-list item 16). Three sections: manage business
 // owners' credit scores (view + manual adjustment), manage the lending-partner
@@ -194,7 +194,7 @@ function LoanRow({ app, onChanged }) {
         <div>
           <div style={{ color: D.text, fontWeight: 700, fontSize: "0.8rem" }}>
             {app.business_owner_name} · GHS {app.amount}
-            <span style={{ background: `${meta.color}22`, color: meta.color, borderRadius: 20, padding: "1px 8px", fontSize: "0.58rem", fontWeight: 800, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>{meta.label}</span>
+            <span style={{ background: tint(meta.color, "22"), color: meta.color, borderRadius: 20, padding: "1px 8px", fontSize: "0.58rem", fontWeight: 800, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>{meta.label}</span>
           </div>
           <div style={{ color: D.textDim, fontSize: "0.66rem" }}>{app.purpose} · {app.lending_partner_name || "no partner"} · score {app.score_at_application} · {app.created_at?.slice(0, 10)}</div>
           {isFinal && app.reviewed_by_name && <div style={{ color: D.textFaint, fontSize: "0.62rem", marginTop: 1 }}>Decided by {app.reviewed_by_name}{app.decision_notes ? ` — ${app.decision_notes}` : ""}</div>}

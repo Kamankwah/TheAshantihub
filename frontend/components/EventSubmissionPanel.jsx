@@ -71,6 +71,12 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
   const [renewId, setRenewId] = useState(null);       // event being renewed
   const [renewDays, setRenewDays] = useState(null);    // chosen tier duration
   const [renewAmount, setRenewAmount] = useState(0);
+  // Cancel (Plan 7F-C): one event's confirm step open at a time.
+  const [cancelId, setCancelId] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [actionError, setActionError] = useState(null);
+  const [cancelDone, setCancelDone] = useState(null); // {id, tickets_refunded, tickets_left} as the API returned them
 
   // Attendees view (docs/BUSINESS_EVENTS_ROADMAP.md Phase 7) — at most one
   // event's attendee list is expanded at a time; useEventAttendees is only
@@ -238,6 +244,27 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
     }
   };
 
+  const openCancel = (ev) => {
+    setActionError(null);
+    setCancelReason("");
+    setCancelId(cancelId === ev.id ? null : ev.id);
+  };
+
+  const confirmCancel = async (ev) => {
+    setActionError(null);
+    setCancelling(true);
+    try {
+      const response = await apiPost(`/api/events/mine/${ev.id}/cancel/`, { reason: cancelReason.trim() });
+      setCancelDone({ id: ev.id, tickets_refunded: response?.tickets_refunded, tickets_left: response?.tickets_left });
+      setCancelId(null);
+      refetch();
+    } catch (err) {
+      setActionError(err?.body?.detail || "Could not cancel this event. Please try again.");
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   // Days until an event's paid visibility window ends; negative = expired.
   const daysLeft = (ev) => {
     if (!ev.expires_at) return null;
@@ -309,7 +336,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                 >
                   {uploadingMedia ? "Uploading…" : "Upload Photo"}
                 </button>
-                {mediaUploaded && <span style={{ color: C.kente2, fontSize: "0.76rem" }}>Photo added ✓</span>}
+                {mediaUploaded && <span style={{ color: C.trust, fontSize: "0.76rem" }}>Photo added ✓</span>}
               </div>
               {mediaError && <div style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.74rem" }}>{mediaError}</div>}
               <button
@@ -410,7 +437,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
         {isLoading && <div style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.78rem" }}>Loading your events…</div>}
         {isError && (
           <div style={{ color: "#ffb4b4", fontSize: "0.78rem" }}>
-            Could not load your events. <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.kente1, borderRadius: 20, padding: "2px 10px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button>
+            Could not load your events. <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "2px 10px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button>
           </div>
         )}
         {!isLoading && !isError && (myEvents?.length ?? 0) === 0 && (
@@ -420,13 +447,22 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
           <div key={ev.id} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "12px 14px", marginBottom: 10, border: `1px solid ${C.gold}22` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <div style={{ color: "white", fontWeight: 700, fontSize: "0.84rem" }}>{ev.name}</div>
-              <span style={{ background: statusColor(ev.status), color: "white", fontSize: "0.62rem", fontWeight: 700, padding: "3px 9px", borderRadius: 20, textTransform: "capitalize" }}>{ev.status}</span>
+              <span style={{ background: statusColor(ev.status), color: "white", fontSize: "0.62rem", fontWeight: 700, padding: "3px 9px", borderRadius: 20, textTransform: "capitalize" }}>{ev.status === "cancelled" ? "Cancelled" : ev.status}</span>
             </div>
+            {ev.status === "cancelled" && ev.cancel_reason && (
+              <div style={{ color: C.lightGold, fontSize: "0.74rem", marginTop: 6 }}>Reason: {ev.cancel_reason}</div>
+            )}
+            {cancelDone?.id === ev.id && typeof cancelDone.tickets_refunded === "number" && (
+              <div role="status" style={{ color: C.lightGold, fontSize: "0.74rem", marginTop: 6 }}>
+                {cancelDone.tickets_refunded} ticket{cancelDone.tickets_refunded === 1 ? "" : "s"} refunded
+                {cancelDone.tickets_left ? ` · ${cancelDone.tickets_left} still being refunded` : ""}
+              </div>
+            )}
             {ev.status === "rejected" && ev.rejection_reason && (
               <div style={{ color: "#ffb4b4", fontSize: "0.74rem", marginTop: 6 }}>Reason: {ev.rejection_reason}</div>
             )}
             {/* Expiry countdown (Wave E) — for a paid event. */}
-            {ev.paid_at && ev.expires_at && (() => {
+            {ev.status !== "cancelled" && ev.paid_at && ev.expires_at && (() => {
               const d = daysLeft(ev);
               const expired = d != null && d < 0;
               return (
@@ -446,6 +482,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                 </button>
               </div>
             )}
+            {ev.status !== "cancelled" && (
             <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
               {ev.status === "approved" && !ev.paid_at && (
                 <button
@@ -491,8 +528,41 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
               >
                 {expandedCheckinId === ev.id ? "▲ Hide Check-in" : "✅ Check-in"}
               </button>
+              {(ev.status === "approved" || ev.status === "pending") && (
+                <button
+                  onClick={() => openCancel(ev)}
+                  style={{ background: "none", color: "#ffb4b4", border: "1px solid rgba(255,180,180,0.45)", borderRadius: 20, padding: "7px 16px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  {cancelId === ev.id ? "▲ Keep event" : "Cancel event"}
+                </button>
+              )}
             </div>
-            {editId === ev.id && (
+            )}
+            {cancelId === ev.id && ev.status !== "cancelled" && (
+              <div style={{ marginTop: 10, padding: "12px 14px", background: "rgba(255,255,255,0.05)", borderRadius: 10, border: "1px solid rgba(255,180,180,0.35)" }}>
+                <div style={{ color: "#ffb4b4", fontSize: "0.74rem", fontWeight: 800, marginBottom: 8 }}>
+                  Every ticket is refunded in full from your account, including tickets already scanned. This cannot be undone.
+                </div>
+                <textarea
+                  aria-label="Why are you cancelling?"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="Why are you cancelling? (buyers are told the event was cancelled)"
+                  maxLength={300}
+                  rows={2}
+                  style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }}
+                />
+                {actionError && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{actionError}</div>}
+                <button
+                  onClick={() => confirmCancel(ev)}
+                  disabled={cancelling || cancelReason.trim().length < 5}
+                  style={{ background: C.kente1, color: "white", border: "none", borderRadius: 20, padding: "7px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit", opacity: cancelling || cancelReason.trim().length < 5 ? 0.6 : 1 }}
+                >
+                  {cancelling ? "Cancelling…" : "Cancel event and refund every ticket"}
+                </button>
+              </div>
+            )}
+            {editId === ev.id && ev.status !== "cancelled" && (
               <div style={{ marginTop: 10, padding: "12px 14px", background: "rgba(255,255,255,0.05)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.14)" }}>
                 <div style={{ color: C.gold, fontSize: "0.72rem", fontWeight: 800, marginBottom: 8 }}>Edit event — this will need re-approval (no re-payment)</div>
                 {["name", "address"].map((f) => (
@@ -508,9 +578,9 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                 <button onClick={() => saveEdit(ev)} disabled={savingEdit} style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 20, padding: "7px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit", opacity: savingEdit ? 0.6 : 1 }}>{savingEdit ? "Saving…" : "Save & resubmit"}</button>
               </div>
             )}
-            {expandedAttendeesId === ev.id && <EventAttendeesPanel eventId={ev.id} />}
-            {expandedTicketsId === ev.id && <EventTicketTypesPanel eventId={ev.id} />}
-            {expandedCheckinId === ev.id && <EventCheckinPanel eventId={ev.id} />}
+            {ev.status !== "cancelled" && expandedAttendeesId === ev.id && <EventAttendeesPanel eventId={ev.id} />}
+            {ev.status !== "cancelled" && expandedTicketsId === ev.id && <EventTicketTypesPanel eventId={ev.id} />}
+            {ev.status !== "cancelled" && expandedCheckinId === ev.id && <EventCheckinPanel eventId={ev.id} />}
           </div>
         ))}
       </div>
@@ -538,7 +608,7 @@ function EventAttendeesPanel({ eventId }) {
     return (
       <div style={{ color: "#ffb4b4", fontSize: "0.74rem", marginTop: 8 }}>
         Could not load attendees.{" "}
-        <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.kente1, borderRadius: 20, padding: "1px 8px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
+        <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "1px 8px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
           Retry
         </button>
       </div>
@@ -568,7 +638,7 @@ function EventAttendeesPanel({ eventId }) {
 function statusColor(status) {
   if (status === "approved") return C.kente2;
   if (status === "rejected") return C.kente1;
-  if (status === "expired") return "#666";
+  if (status === "expired" || status === "cancelled") return "#666";
   return C.deepGold;
 }
 

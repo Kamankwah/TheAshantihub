@@ -21,7 +21,7 @@ export function ScoutProfileBlock({ user, roleColor }) {
   const manager = user?.manager;
   return (
     <div style={{ padding: "14px 14px 12px", borderBottom: `1px solid ${D.divider}`, display: "flex", gap: 12, alignItems: "center" }}>
-      <div aria-hidden="true" style={{ width: 48, height: 48, borderRadius: "50%", background: D.text, color: "#FDF6E3", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, flexShrink: 0 }}>{initials(user?.full_name)}</div>
+      <div aria-hidden="true" style={{ width: 48, height: 48, borderRadius: "50%", background: D.text, color: D.pageBg, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, flexShrink: 0 }}>{initials(user?.full_name)}</div>
       <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ color: D.text, fontWeight: 800, fontSize: "0.95rem" }}>{user?.full_name}</span>
