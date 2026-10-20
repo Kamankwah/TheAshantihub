@@ -134,6 +134,7 @@ import OpsTargetsPanel from "./panels/OpsTargetsPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
 import ApprovalRulesPanel from "./panels/ApprovalRulesPanel.jsx";
 import MoneyRulesPanel from "./panels/MoneyRulesPanel.jsx";
+import RedeliveryFeePanel from "./panels/RedeliveryFeePanel.jsx";
 import PortfolioPanel from "./panels/PortfolioPanel.jsx";
 import SubscriptionsDuePanel from "./panels/SubscriptionsDuePanel.jsx";
 import FraudCasesPanel from "./panels/FraudCasesPanel.jsx";
@@ -601,6 +602,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "approval-rules" && <ApprovalRulesPanel onNavigate={selectTab} />}
           {activeTab === "money-rules" && <MoneyRulesPanel />}
+          {activeTab === "redelivery-fee" && <RedeliveryFeePanel />}
           {/* The external co-signer has one screen: the requests waiting for their second approval. */}
           {activeTab === "overview" && role === "cosigner" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
