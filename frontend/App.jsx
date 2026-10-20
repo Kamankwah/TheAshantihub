@@ -61,6 +61,7 @@ import { ContactPage } from "./components/ui/contact-page.tsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 import BusinessClaimPage from "./components/BusinessClaimPage.jsx";
 import MarketingConsentCard from "./components/MarketingConsentCard.jsx";
+import AccountSecurityCard from "./components/security/AccountSecurityCard.jsx";
 import UnsubscribePage from "./components/UnsubscribePage.jsx";
 import TrackedLinkPage from "./components/TrackedLinkPage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
@@ -2353,6 +2354,8 @@ function SettingsTab({ user, auth, lang, setLang, onSignOut }) {
         <span style={{color:D.text,fontWeight:700}}>{user?.email||"Not set"}</span>
       </div>
     </div>
+
+    <AccountSecurityCard accountType="customer"/>
 
     <div style={{...glassCard,padding:18}}>
       <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:10}}>Language</div>
