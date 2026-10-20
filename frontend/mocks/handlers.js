@@ -577,6 +577,19 @@ export const handlers = [
   }),
   // The business's own change requests (Profile & Settings): none by default.
   http.get('http://localhost:8000/api/accounts/business-owners/me/detail-changes/', () => HttpResponse.json({ results: [] })),
+  // Wallets (Plan 3F): ledger ON and empty by default; a test needing the "off" state overrides with a 409 {code:'ledger_off'}.
+  http.get('http://localhost:8000/api/wallet/', () => HttpResponse.json({ kind: 'customer', balance: '0.00' })),
+  http.get('http://localhost:8000/api/wallet/vendor/', () => HttpResponse.json({
+    pending: '0.00', available: '0.00', withdrawable: '0.00', negative: false, awaiting_call: false, fee_cap: '0.00',
+  })),
+  http.get('http://localhost:8000/api/wallet/transactions/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/wallet/destinations/', () => HttpResponse.json({ results: [], cooling_hours: 24 })),
+  http.get('http://localhost:8000/api/wallet/withdrawals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/wallet/processing/', ({ request }) => {
+    const amount = new URL(request.url).searchParams.get('amount')
+    if (!amount) return HttpResponse.json({ amount: ['Enter an amount.'] }, { status: 400 })
+    return HttpResponse.json({ amount, payment_processing: '0.00', you_pay: amount, provider: 'simulated' })
+  }),
   // The staff wallet's fail-a-withdrawal door answers 201 {approval_id, status:'pending'}: a second person approves.
   http.post('http://localhost:8000/api/wallet/staff/withdrawals/:id/fail/', () => HttpResponse.json({ approval_id: 9, status: 'pending' }, { status: 201 })),
   http.get('http://localhost:8000/api/approvals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
