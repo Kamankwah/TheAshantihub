@@ -204,7 +204,11 @@ class OfferTests(EngineCase):
         self.on_shift(self.rider)
         self.set_rules()
         self.as_staff(self.admin, sudo=True)
-        self.client.post("/api/delivery/rules/time-limits/", {"values": {**LIMITS, "promise_standard_min": 10, "promise_express_min": 10}}, format="json")
+        # Open all day: with the 07:00-20:00 hours an order placed in the evening (Accra) is promised from the next opening,
+        # so the time is not short and this test failed every night (deadline_for).
+        self.client.post("/api/delivery/rules/time-limits/", {"values": {
+            **LIMITS, "promise_standard_min": 10, "promise_express_min": 10, "opens_at": "00:00", "closes_at": "23:59",
+        }}, format="json")
         order = self.make_order()
         Offer.objects.all().delete()
         self.switch(True)
