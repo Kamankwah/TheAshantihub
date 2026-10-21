@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { C, CURRENCIES } from "../theme.js";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCart } from "../hooks/useCart.js";
@@ -12,6 +12,10 @@ import { useStaffGate } from "../hooks/useStaffGate.js";
 import { useCanBuy } from "../hooks/useCanBuy.js";
 import LocationPicker from "./LocationPicker.jsx";
 import StaffGateNotice from "./StaffGateNotice.jsx";
+import PaymentMethodPicker from "./wallet/PaymentMethodPicker.jsx";
+import { useWallet } from "../hooks/useWallet.js";
+import { useWalletProcessing } from "../hooks/useWalletProcessing.js";
+import { formatGhs } from "./wallet/walletMoney.js";
 
 // ─── CartDrawer ─────────────────────────────────────────────────────────────
 // Customer cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4). Mirrors App.jsx's
@@ -59,6 +63,12 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   // the cart while the modal is still open, which would otherwise drop the
   // displayed amount to 0 right as the success screen appears.
   const [checkoutAmount, setCheckoutAmount] = useState(0);
+  // The server's processing charge, snapshotted with the amount for the same reason.
+  const [checkoutProcessing, setCheckoutProcessing] = useState(undefined);
+  // "momo" | "wallet". The picker (and so any choice) exists only while the ledger is on.
+  const [paymentMethod, setPaymentMethod] = useState("momo");
+  const [walletPaying, setWalletPaying] = useState(false);
+  const walletPayingRef = useRef(false);
   // Delivery method chosen before paying (Wave F). Door-to-door needs an
   // address + phone; store pickup needs neither.
   const [deliveryMethod, setDeliveryMethod] = useState("store_pickup");
@@ -129,10 +139,20 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   // button stays off until the limits have actually been read (a customer only; staff are gated separately).
   const guardUnchecked = user?.accountType === "customer" && (guardPending || guardError);
   const deliveryLimitBlock = !!guardBlock && guardBlock.code !== "not_deliverable";
-  // canBuy too: if the opening moves while the confirm step is open, paying stops.
-  const payReady = canBuy && doorToDoorReady && !guardBlock && !guardUnchecked;
   const shownTotal = delivery?.fee != null && itemsTotal != null ? (parseFloat(itemsTotal) + parseFloat(delivery.fee)).toFixed(2) : itemsTotal;
   const [couponError, setCouponError] = useState("");
+
+  // "Ledger on" means the wallet read succeeded; off (409 ledger_off), loading or failed all mean no picker and
+  // today's mobile-money flow exactly, with no payment_method sent.
+  const { data: wallet } = useWallet({ enabled: user?.accountType === "customer" });
+  const pickerShown = !!wallet && wallet.balance !== undefined;
+  const method = pickerShown ? paymentMethod : "momo";
+  // The server's charge for paying shownTotal by mobile money (shared cache with the picker's own line).
+  const { data: processingData } = useWalletProcessing(pickerShown && method === "momo" ? shownTotal : "");
+  // With the picker shown, paying by mobile money waits for the server's charge so the modal never shows an invented one.
+  const processingReady = !(pickerShown && method === "momo") || processingData?.payment_processing !== undefined;
+  // canBuy too: if the opening moves while the confirm step is open, paying stops.
+  const payReady = canBuy && doorToDoorReady && !guardBlock && !guardUnchecked && processingReady && !walletPaying;
 
   const formatAmount = (amount) => {
     const value = parseFloat(amount) || 0;
@@ -170,10 +190,9 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
     }
   };
 
-  const handlePaymentSuccess = async (ref) => {
-    setCheckoutError(null);
-    try {
-      const response = await apiPost("/api/orders/checkout/", {
+  // The checkout body shared by both payment paths (delivery, coupon and pin exactly as before).
+  const checkoutBody = (extra = {}) => ({
+        ...extra,
         delivery_method: deliveryMethod,
         delivery_address: deliveryAddress,
         delivery_phone: deliveryPhone,
@@ -184,7 +203,12 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
         ...(deliveryMethod === "door_to_door" && deliveryLat != null
           ? { delivery_lat: deliveryLat, delivery_lng: deliveryLng }
           : {}),
-      });
+  });
+
+  const handlePaymentSuccess = async (ref) => {
+    setCheckoutError(null);
+    try {
+      const response = await apiPost("/api/orders/checkout/", checkoutBody(pickerShown ? { payment_method: "momo" } : {}));
       // Hubtel integration (docs/HUBTEL_INTEGRATION.md) — once
       // payments_provider is "hubtel", OrderCheckoutView returns
       // {mode:"redirect", checkout_url} instead of the placed order, since
@@ -204,6 +228,31 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
       setCheckoutError(err?.body?.code === "out_of_area"
         ? `${apiErrorMessage(err, "We only deliver within the Ashanti Region for now.")} Your order was not placed. Payment reference: ${ref}.`
         : "Payment was confirmed but we couldn't place your order. Please contact support with reference " + ref + ".");
+    }
+  };
+
+  // Paying from the AshantiHub wallet: no payment modal; one checkout post. A refusal (insufficient_funds,
+  // ledger_off, ...) shows the server's own words and leaves the cart as it was.
+  const handleWalletPay = async () => {
+    if (staffGate.blocked() || walletPayingRef.current) return;
+    walletPayingRef.current = true;
+    setWalletPaying(true);
+    setCheckoutError(null);
+    try {
+      const response = await apiPost("/api/orders/checkout/", checkoutBody({ payment_method: "wallet" }));
+      if (response?.mode === "redirect") {
+        window.location.href = response.checkout_url;
+        return;
+      }
+      setOrder(response);
+      setStep("confirmation");
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["wallet"] });
+    } catch (err) {
+      setCheckoutError(apiErrorMessage(err, "We couldn't place your order. Please try again."));
+    } finally {
+      walletPayingRef.current = false;
+      setWalletPaying(false);
     }
   };
 
@@ -406,12 +455,23 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
             {promosOn && pinChosen && quoteFailed && <div data-testid="cart-delivery-unchecked" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>We couldn't check delivery to this location yet. Try again.</div>}
             {guardBlock && <div data-testid="cart-guard-block" role="alert" style={{ background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{guardBlock.detail}{deliveryLimitBlock && <div>Store pickup is still available.</div>}</div>}
             {guardUnchecked && !guardBlock && <div data-testid="cart-guard-unchecked" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>{guardError ? "We couldn't check your delivery limits yet. Try again shortly." : "Checking your delivery limits…"}</div>}
+            {pickerShown && (
+              <div style={{ marginBottom: 12 }}>
+                <PaymentMethodPicker value={method} onChange={(m) => { setPaymentMethod(m); setCheckoutError(null); }} amount={shownTotal} />
+              </div>
+            )}
             {checkoutError && <div style={{ background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{checkoutError}</div>}
             {staffGate.shownFor && <StaffGateNotice style={{ marginBottom: 12 }} />}
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => setStep("cart")} style={{ flex: 1, background: C.surface2, color: C.inkDim, border: "none", borderRadius: 20, padding: "10px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>← Back</button>
               <button
-                onClick={() => { if (staffGate.blocked()) return; setCheckoutAmount(parseFloat(shownTotal) || 0); setShowPayment(true); }}
+                onClick={() => {
+                  if (staffGate.blocked()) return;
+                  if (method === "wallet") { handleWalletPay(); return; }
+                  setCheckoutAmount(parseFloat(shownTotal) || 0);
+                  setCheckoutProcessing(pickerShown ? processingData?.payment_processing : undefined);
+                  setShowPayment(true);
+                }}
                 disabled={!payReady}
                 style={{ flex: 2, background: payReady ? C.kente2 : C.surface3, color: "white", border: "none", borderRadius: 20, padding: "10px", fontWeight: 900, cursor: payReady ? "pointer" : "not-allowed", fontFamily: "inherit" }}
               >
@@ -433,6 +493,12 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                   <span>{formatAmount(oi.line_total)}</span>
                 </div>
               ))}
+              {order.payment_processing && order.payment_processing !== "0.00" && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: C.inkDim }}>Payment processing</span>
+                  <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatGhs(order.payment_processing)}</span>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${C.line}`, paddingTop: 6, marginTop: 4 }}>
                 <span style={{ fontWeight: 800 }}>Total Paid</span>
                 <span style={{ fontWeight: 900, color: C.price }}>{formatAmount(order.total_amount)}</span>
@@ -453,6 +519,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
       <PaymentComponent
         amount={checkoutAmount}
         purpose="AshantiHub Order Checkout"
+        {...(checkoutProcessing !== undefined ? { processing: checkoutProcessing } : {})}
         businessName={user?.fullName || ""}
         onSuccess={handlePaymentSuccess}
         onClose={handlePaymentClose}

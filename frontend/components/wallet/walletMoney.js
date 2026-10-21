@@ -21,6 +21,24 @@ export function formatGhs(value) {
   return `${sign}GH₵ ${group(whole.replace(/^0+(?=\d)/, ''))}.${(frac + '00').slice(0, 2)}`
 }
 
+// "12.5" -> 1250 (whole pesewas), or null when the text is not a plain GHS
+// amount. Integer parsing only, for display comparisons and sums.
+export function ghsToPesewas(text) {
+  const match = /^(\d{1,10})(?:\.(\d{0,2}))?$/.exec(String(text ?? '').trim())
+  if (!match) return null
+  return Number(match[1]) * 100 + Number(((match[2] ?? '') + '00').slice(0, 2))
+}
+
+// amount (a number or a decimal string) + a server GHS string, summed in whole
+// pesewas and shown with two decimals ("301.50"); null if either is unusable.
+export function addGhs(amount, serverText) {
+  const a = typeof amount === 'number' ? Math.round(amount * 100) : ghsToPesewas(amount)
+  const b = ghsToPesewas(serverText)
+  if (a === null || b === null || Number.isNaN(a)) return null
+  const sum = a + b
+  return `${Math.floor(sum / 100)}.${String(sum % 100).padStart(2, '0')}`
+}
+
 // For the 7C held-top-up field only, which is sent as whole pesewas.
 export function pesewasToGhs(pesewas) {
   const n = Math.trunc(Number(pesewas) || 0)

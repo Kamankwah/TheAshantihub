@@ -6,6 +6,7 @@ import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
 import { useCanBuy } from "./hooks/useCanBuy.js";
 import CartTieredResults from "./components/CartTieredResults.jsx";
+import { addGhs } from "./components/wallet/walletMoney.js";
 import { useListing } from "./hooks/useListing.js";
 import { useEvents } from "./hooks/useEvents.js";
 import { useAuth } from "./hooks/useAuth.js";
@@ -115,7 +116,9 @@ const MOMO_NETWORKS = [
 // UI. Passed down as a `PaymentComponent` prop rather than imported directly,
 // same "avoid an App.jsx <-> components/ circular import" convention as
 // ListingDetailPage's `CardComponent` prop.
-export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose }) {
+// `processing` (optional): the server's payment-processing charge as a GH₵ string. When given, it replaces the
+// simulated 1.5% fee everywhere in the modal; left undefined, the modal behaves exactly as before the ledger.
+export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose, processing: serverProcessing }) {
   const [step, setStep] = useState(1);
   const [network, setNetwork] = useState(null);
   const [phone, setPhone] = useState("");
@@ -191,6 +194,8 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
   const selectedNetwork = MOMO_NETWORKS.find(n => n.id === network);
   const fee = amount * 0.015;
   const total = amount + fee;
+  const hasServerCharge = typeof serverProcessing === "string";
+  const totalText = hasServerCharge ? (addGhs(amount, serverProcessing) || amount.toFixed(2)) : total.toFixed(2);
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
@@ -229,7 +234,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                     <div style={{ width:40, height:40, borderRadius:"50%", background:n.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.2rem", flexShrink:0 }}>{n.logo}</div>
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:800, fontSize:"0.88rem", color:C.ink }}>{n.name}</div>
-                      <div style={{ fontSize:"0.68rem", color:C.inkDim }}>Dial {n.ussd} • {n.fee} transaction fee</div>
+                      <div style={{ fontSize:"0.68rem", color:C.inkDim }}>Dial {n.ussd}{!hasServerCharge && <> • {n.fee} transaction fee</>}</div>
                     </div>
                     <div style={{ color:"#ccc", fontSize:"1.2rem" }}>›</div>
                   </button>
@@ -241,10 +246,10 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                   <span>Amount</span><span style={{ fontWeight:700 }}>GHS {amount.toFixed(2)}</span>
                 </div>
                 <div style={{ display:"flex", justifyContent:"space-between", color:C.inkDim, marginBottom:6 }}>
-                  <span>Transaction fee (1.5%)</span><span>GHS {fee.toFixed(2)}</span>
+                  <span>{hasServerCharge ? "Payment processing" : "Transaction fee (1.5%)"}</span><span>GHS {hasServerCharge ? serverProcessing : fee.toFixed(2)}</span>
                 </div>
                 <div style={{ display:"flex", justifyContent:"space-between", fontWeight:900, color:C.ink, borderTop:`1px solid ${C.gold}33`, paddingTop:6 }}>
-                  <span>Total</span><span style={{ color:C.price }}>GHS {total.toFixed(2)}</span>
+                  <span>Total</span><span style={{ color:C.price }}>GHS {totalText}</span>
                 </div>
               </div>
             </div>
@@ -274,8 +279,8 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                 <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Purpose</span><span style={{ fontWeight:700 }}>{purpose}</span></div>
                 <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Network</span><span style={{ fontWeight:700 }}>{selectedNetwork.name}</span></div>
                 <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Amount</span><span style={{ fontWeight:700 }}>GHS {amount}</span></div>
-                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Fee</span><span>GHS {fee.toFixed(2)}</span></div>
-                <div style={{ display:"flex", justifyContent:"space-between", borderTop:`1px solid ${C.line}`, paddingTop:4, marginTop:2 }}><span style={{ fontWeight:800 }}>Total</span><span style={{ fontWeight:900, color:C.price }}>GHS {total.toFixed(2)}</span></div>
+                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>{hasServerCharge ? "Payment processing" : "Fee"}</span><span>GHS {hasServerCharge ? serverProcessing : fee.toFixed(2)}</span></div>
+                <div style={{ display:"flex", justifyContent:"space-between", borderTop:`1px solid ${C.line}`, paddingTop:4, marginTop:2 }}><span style={{ fontWeight:800 }}>Total</span><span style={{ fontWeight:900, color:C.price }}>GHS {totalText}</span></div>
               </div>
 
               <div style={{ background:tint(C.info, "14"), border:`1px solid ${tint(C.info, "40")}`, borderRadius:10, padding:"10px 12px", fontSize:"0.7rem", color:C.info, marginBottom:16, lineHeight:1.6 }}>
@@ -286,7 +291,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                 <button onClick={() => setStep(1)} style={{ flex:1, background:C.surface2, color:C.inkDim, border:"none", borderRadius:20, padding:"11px", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>← Back</button>
                 <button onClick={() => { if(phone.length>=10) setStep(3); }}
                   style={{ flex:2, background:phone.length>=10?selectedNetwork.color:C.surface3, color:phone.length>=10?selectedNetwork.textColor:C.inkFaint, border:"none", borderRadius:20, padding:"11px", fontWeight:900, cursor:phone.length>=10?"pointer":"default", fontFamily:"inherit", fontSize:"0.85rem" }}>
-                  Pay GHS {total.toFixed(2)} →
+                  Pay GHS {totalText} →
                 </button>
               </div>
             </div>
@@ -335,7 +340,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                   <div style={{ fontSize:"3.5rem", marginBottom:12 }}>✅</div>
                   <div style={{ fontWeight:900, color:"#22c55e", fontSize:"1.1rem", marginBottom:6 }}>Payment Successful!</div>
                   <div style={{ color:C.inkDim, fontSize:"0.78rem", marginBottom:16, lineHeight:1.6 }}>
-                    Your payment of <strong>GHS {total.toFixed(2)}</strong> has been received.<br/>
+                    Your payment of <strong>GHS {totalText}</strong> has been received.<br/>
                     A receipt has been sent to your WhatsApp.
                   </div>
                   <div style={{ background:C.okBg, border:"1px solid #22c55e33", borderRadius:14, padding:"14px", marginBottom:16, textAlign:"left" }}>
@@ -343,7 +348,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                     {[
                       ["Transaction Ref", txnRef],
                       ["Network", selectedNetwork?.name],
-                      ["Amount Paid", `GHS ${total.toFixed(2)}`],
+                      ["Amount Paid", `GHS ${totalText}`],
                       ["Purpose", purpose],
                       ["Date", new Date().toLocaleDateString("en-GH")],
                       ["Status", "✅ Confirmed"],
