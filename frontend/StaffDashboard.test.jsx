@@ -63,7 +63,7 @@ describe('StaffDashboard', () => {
     // and permissions stay). Some labels (Support, Marketing) also appear elsewhere, hence getAllByText.
     ;['My approvals', 'Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays',
       'Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting', 'Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Events & tickets',
-      'Disputes & returns', 'Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Analytics', 'Growth funnel', 'Reports hub',
+      'Disputes & returns', 'Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets', 'Analytics', 'Growth funnel', 'Reports hub',
       'Scheduled exports', 'Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings', 'Notification center',
       'Staff announcements', 'Approval rules & timers', 'Commission policy', 'Delivery pricing', 'Plans & prices', 'Target limits', 'Tax tables',
       'Categories & zones', 'Integrations', 'System health']

@@ -454,6 +454,17 @@ describe('Operations menu (canvas 2026-10-12)', () => {
   })
 })
 
+describe('Wallets item (wallet 3F)', () => {
+  it('test_accountant_reaches_wallets_under_more_tools', () => {
+    const accountant = buildNavGroups({ user: { role: 'accountant' }, hasPermission: (c) => ['wallets.view', 'wallets.manage'].includes(c) })
+    expect(accountant.find((g) => g.label === 'More tools').items.map((i) => i.label)).toContain('Wallets')
+  })
+  it('hides Wallets without wallets.view', () => {
+    const ids = buildNavGroups({ user: { role: 'accountant' }, hasPermission: () => false }).flatMap((g) => g.items.map((i) => i.id))
+    expect(ids).not.toContain('wallets')
+  })
+})
+
 describe('Marketplace opening item', () => {
   const ids = (role, perms) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
   it('opening_only_in_super_admin_menu', () => {
@@ -476,7 +487,7 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
       ['People', ['Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays']],
       ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
       ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
-      ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation']],
+      ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets']],
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
       ['Security & audit', ['Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings']],
       ['Communication', ['Notification center', 'Staff announcements']],
