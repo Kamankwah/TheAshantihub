@@ -39,7 +39,11 @@ const supportOnly = (auth, ...perms) => auth.user?.role === "support" && perms.s
 // The Marketing canvas (2026-10-13, 22 screens): its own screens are Marketing's alone. A
 // screen not built yet is a placeholder (`placeholder: "marketing"`) until its package lands.
 const mkOnly = (auth, ...perms) => auth.user?.role === "marketing" && perms.some((perm) => auth.hasPermission(perm));
-const opsOrSa = (auth, ...perms) => ["operations", "super_admin"].includes(auth.user?.role) && perms.some((perm) => auth.hasPermission(perm));
+const opsOrSa = (auth, ...perms) => ["operations", "super_admin", "general_manager"].includes(auth.user?.role) && perms.some((perm) => auth.hasPermission(perm));
+// The General Manager (marketplace M3): a checker who reports to the Super Admin. Its menu is an explicit list
+// (ROLE_MENUS.general_manager) of Super Admin's screens minus money editing/approval and Super Admin-only
+// configuration; the only NAV_ITEMS entry it adds is a read-only view of a money screen, gated on the read permission.
+const gmOnly = (auth, ...perms) => auth.user?.role === "general_manager" && perms.some((perm) => auth.hasPermission(perm));
 
 export const NAV_ITEMS = [
   { id: "kyc", icon: "🪪", label: "KYC Queue", show: (auth) => auth.hasPermission("kyc.approve") },
@@ -162,7 +166,7 @@ export const NAV_ITEMS = [
   { id: "step-in-marketing", icon: "👁️", label: "Marketing", show: canStepIn },
   { id: "step-in-accounting", icon: "👁️", label: "Accounting", show: canStepIn },
   { id: "payouts-payroll", icon: "🏦", label: "Payouts & payroll", show: saOnly },
-  { id: "commissions", icon: "💷", label: "Commissions", show: (auth) => saOrAcct(auth, "commission.view_all") },
+  { id: "commissions", icon: "💷", label: "Commissions", show: (auth) => saOrAcct(auth, "commission.view_all") || gmOnly(auth, "commission.view_all") },
   { id: "refunds", icon: "↩️", label: "Refunds", show: (auth) => saOrAcct(auth) },
   { id: "reconciliation", icon: "🧮", label: "Reconciliation", show: (auth) => saOrAcct(auth) },
   { id: "growth-funnel", icon: "🪜", label: "Growth funnel", show: saOnly },
@@ -231,6 +235,21 @@ const ROLE_MENUS = {
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
     ["communication", "Communication", ["notification-center", "staff-announcements"]],
     ["settings", "Settings", ["approval-rules", "money-rules", "commission-policy", "delivery-pricing", "subscription-plans-approval", "targets", "tax-tables", "categories-zones", "integrations", "system-health", "opening"]],
+  ],
+  // General Manager: Super Admin's menu minus (a) every screen that edits or approves money (Money rules, Payouts &
+  // payroll, Refunds, Reconciliation, Delivery pricing, Tax tables, Plans & prices, Approval rules, Disputes & returns),
+  // (b) Super Admin-only configuration (staff and roles, sessions, view-as, target limits, integrations, system health,
+  // opening, exports and announcements) and (c) the maker screens (Register, Prospects, Client listings: the GM is a
+  // checker). Revenue & sales, Commissions and Commission policy stay as read-only views, each on its read permission.
+  // An explicit list, so a future money entry added to Super Admin's menu never reaches the GM by copy.
+  general_manager: [
+    ["home", "Home", ["approvals"]],
+    ["people", "People", ["my-team", "leave"]],
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "events-moderation", "hero"]],
+    ["money", "Money (read only)", ["transactions", "commissions"]],
+    ["insights", "Insights", ["analytics", "team-reports"]],
+    ["security-audit", "Security & audit", ["activity", "fraud-cases", "security"]],
+    ["settings", "Settings", ["commission-policy"]],
   ],
   // Operations, exactly as the approved canvas draws it (Overview is pinned
   // above the groups). Users, Scout Assignments, Register a business, Field
@@ -322,7 +341,7 @@ const ROLE_MENUS = {
 
 // Roles whose menu is the whole menu: a screen the canvas leaves out is not
 // offered under "More tools" either (its permission and panel stay).
-const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner", "support", "delivery_manager", "dispatch", "marketing"]);
+const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "general_manager", "cosigner", "support", "delivery_manager", "dispatch", "marketing"]);
 
 // Nav ids whose screen is not built yet, per role; AdminCommandCenter renders the
 // "being built" panel for them. A package that builds one swaps its panel in and
@@ -355,6 +374,8 @@ const ROLE_LABELS = {
   marketing: {
     hero: "Hero approval", "events-moderation": "Events", reports: "Reports", "categories-zones": "Categories",
   },
+  // The General Manager reads the Super Admin words only where it gets the Super Admin read screen.
+  general_manager: { approvals: "Approvals inbox", "my-team": "Invite", moderation: "Listings & services", "events-moderation": "Events & tickets", activity: "Staff activity", "team-reports": "Team reports" },
   // Super Admin reads the canvas's words; the ids (and every other role's labels) stay.
   super_admin: {
     approvals: "My approvals", staff: "Staff directory", sessions: "Sessions & devices", leave: "Leave & holidays",
@@ -365,7 +386,7 @@ const ROLE_LABELS = {
   },
 };
 // The pinned Overview: "Today" for a scout, the canvas's "Command center" for Super Admin, "Live operations" for the Delivery Manager.
-export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" ? "Command center" : role === "delivery_manager" ? "Live operations" : role === "dispatch" ? "Shift" : "Overview");
+export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" || role === "general_manager" ? "Command center" : role === "delivery_manager" ? "Live operations" : role === "dispatch" ? "Shift" : "Overview");
 const toNavItem = ({ id, icon, label }, role) => ({ id, icon, label: ROLE_LABELS[role]?.[id] || label });
 
 export function buildNavGroups(auth) {

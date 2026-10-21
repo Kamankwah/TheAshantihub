@@ -474,7 +474,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
               ? <ShiftPanel />
             : role === "delivery_manager"
               ? <LiveOperationsPanel auth={auth} onNavigate={selectTab} onOpenDelivery={(id) => openAt("dm-active", id)} onOpenCase={(id) => openAt("dm-cases", id)} />
-            : role === "super_admin"
+            : role === "super_admin" || role === "general_manager"
               ? <SuperAdminOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} />
             : role === "accountant" && auth.hasPermission("transactions.report")
               ? <AccountingOverviewPanel auth={auth} onNavigate={selectTab} />
@@ -484,9 +484,9 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
               ? <OperationsOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} onOpenBusiness={openBusiness} />
               : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
           {activeTab === "kyc" && <KYCQueuePanel auth={auth} />}
-          {activeTab === "moderation" && (role === "super_admin" ? <SaListingsPanel auth={auth} onOpenBusiness={openBusiness} /> : <ListingsModerationPanel auth={auth} />)}
+          {activeTab === "moderation" && (role === "super_admin" || role === "general_manager" ? <SaListingsPanel auth={auth} onOpenBusiness={openBusiness} /> : <ListingsModerationPanel auth={auth} />)}
           {activeTab === "hero" && <HeroApprovalPanel auth={auth} />}
-          {activeTab === "events-moderation" && (role === "super_admin" ? <SaEventsPanel /> : <EventsModerationPanel auth={auth} />)}
+          {activeTab === "events-moderation" && (role === "super_admin" || role === "general_manager" ? <SaEventsPanel /> : <EventsModerationPanel auth={auth} />)}
           {activeTab === "event-pricing" && <EventPricingPanel auth={auth} />}
           {activeTab === "reviews" && (role === "support" ? <SupportReviewsPanel /> : <ReviewsModerationPanel auth={auth} />)}
           {activeTab === "subscription-plans" && <SubscriptionPlansManagePanel />}
@@ -536,7 +536,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "tasks" && (role === "scout"
             ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} leadName={leadName} />
             : <TasksPanel auth={auth} />)}
-          {activeTab === "activity" && (role === "operations" || role === "super_admin" ? <StaffActivityPanel live={live.live} superAdmin={role === "super_admin"} /> : <ActivityPanel />)}
+          {activeTab === "activity" && (role === "operations" || role === "super_admin" || role === "general_manager" ? <StaffActivityPanel live={live.live} superAdmin={role === "super_admin"} /> : <ActivityPanel />)}
           {activeTab === "visit-map" && <TeamVisitMapPanel onOpenBusiness={openBusiness} />}
           {activeTab === "calls" && <CallLogPanel auth={auth} onLogCall={() => selectTab("support-log-call")} />}
           {activeTab === "support-log-call" && <SupportLogCallPage presetLink={callLink} onDone={() => selectTab("calls")} onSeeLog={() => selectTab("calls")} />}
@@ -597,7 +597,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "staff-announcements" && <StaffAnnouncementsPanel />}
           {activeTab === "sessions" && (role === "super_admin" ? <SaSessionsPanel /> : <SessionsPanel auth={auth} />)}
           {activeTab === "invites" && <SaInvitesPanel />}
-          {activeTab === "my-team" && (role === "operations" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
+          {activeTab === "my-team" && (role === "operations" || role === "general_manager" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "approval-rules" && <ApprovalRulesPanel onNavigate={selectTab} />}
           {activeTab === "money-rules" && <MoneyRulesPanel />}

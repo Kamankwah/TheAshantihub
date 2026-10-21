@@ -18,6 +18,7 @@ import { D } from "../dashboard/theme.js";
 // `ROLE_COLORS` (StaffDashboard was its only consumer).
 export const ROLE_ACCENTS = {
   super_admin: C.gold,
+  general_manager: C.gold, // reports to the Super Admin; same family of accent
   operations: C.kente3,
   accountant: C.kente1,
   marketing: C.kente2,
@@ -38,6 +39,7 @@ export const ROLE_ACCENTS = {
 // orange 5.0:1 (white on either would be only ~3.3:1).
 export const ROLE_BADGE_TEXT = {
   super_admin: "#1a1205",
+  general_manager: "#1a1205",
   operations: "#fff",
   accountant: "#fff",
   marketing: "#fff",

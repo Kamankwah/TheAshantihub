@@ -195,6 +195,15 @@ describe('PortfolioPanel — all portfolios (Operations)', () => {
     await waitFor(() => expect(urls.some((u) => param(u, 'scope') === 'all')).toBe(true))
   })
 
+  it('shows a General Manager the businesses without any way to reassign them (Super Admin and leads only)', async () => {
+    recordList([])
+    const GM = { user: { id: 3, full_name: 'Esi Manu', role: 'general_manager', account_type: 'staff' }, hasPermission: (c) => c === 'portfolio.manage' }
+    renderPanel({ mode: 'all', auth: GM })
+    expect(await screen.findByRole('table', { name: 'Businesses' })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /^Select / })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Reassigning records who/)).not.toBeInTheDocument()
+  })
+
   it('offers the Paused filter only while the pause is on', async () => {
     recordList([], ROWS, { ...SUMMARY, pause_enabled: true })
     renderPanel({ mode: 'all', auth: OPS })

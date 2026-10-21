@@ -154,6 +154,8 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
   const q = useDebounced(search.trim());
   const { data, isLoading, isError, refetch } = usePortfolio({ scope, ...filters, q, page });
   const { scouts } = useReassignableScouts(auth);
+  // Reassigning is Super Admin's, or a lead's own scouts; the General Manager reads every portfolio but changes none.
+  const canReassign = auth?.user?.role !== "general_manager";
   const { data: zones } = useZones();
   const rows = data?.results || [];
   const s = data?.summary;
@@ -217,7 +219,7 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
       </div>
 
       {status && <div role="status" style={callout(D.green)}>{status}</div>}
-      {selected.length > 0 && (
+      {canReassign && selected.length > 0 && (
         <div style={{ ...callout(D.gold), fontWeight: 400, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontWeight: 800 }}>{`${selected.length} selected · ${selected.map((x) => x.business_name).join(", ")}`}</div>
           <ReassignForm businesses={selected} auth={auth} onDone={reassigned} onCancel={() => setSelected([])} />
@@ -234,14 +236,14 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
             <table aria-label="Businesses" style={{ borderCollapse: "collapse", width: "100%", minWidth: 900, fontSize: "0.78rem", color: D.text, fontVariantNumeric: "tabular-nums" }}>
               <thead>
                 <tr>
-                  <th style={th}>Select</th><th style={th}>Business</th><th style={th}>Account manager</th><th style={th}>Health</th>
+                  {canReassign && <th style={th}>Select</th>}<th style={th}>Business</th><th style={th}>Account manager</th><th style={th}>Health</th>
                   <th style={th}>Subscription</th><th style={th}>Listings live</th><th style={th}>Last order</th><th style={th}>Last contact</th><th style={th}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((b) => (
                   <tr key={b.id}>
-                    <td style={td}><input type="checkbox" aria-label={`Select ${b.business_name}`} checked={isSelected(b.id)} onChange={() => toggle(b)} /></td>
+                    {canReassign && <td style={td}><input type="checkbox" aria-label={`Select ${b.business_name}`} checked={isSelected(b.id)} onChange={() => toggle(b)} /></td>}
                     <td style={td}>
                       <div style={{ fontWeight: 800 }}>{b.business_name}</div>
                       <div style={dim}>{[b.zone?.name, b.registration_channel === "self" ? "registered online" : null, b.needs_claim ? "owner hasn't set a login" : null].filter(Boolean).join(" · ")}</div>
@@ -271,7 +273,7 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
             </table>
           </div>
         )}
-        <div style={dim}>{`${HEALTH_NOTE} Reassigning records who, when and why, and tells the new scout.`}</div>
+        <div style={dim}>{canReassign ? `${HEALTH_NOTE} Reassigning records who, when and why, and tells the new scout.` : HEALTH_NOTE}</div>
       </div>
       <Pager data={data} page={page} setPage={setPage} />
     </div>

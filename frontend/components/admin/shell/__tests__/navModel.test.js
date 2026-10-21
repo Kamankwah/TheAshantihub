@@ -570,3 +570,77 @@ describe('Marketing menu (canvas 2026-10-13)', () => {
     expect(makeBadgeFor({ promotions_pending: 3, hero: 2, events: 1 }, 'marketing')('promotions')).toBe(3)
   })
 })
+
+describe('General Manager menu (marketplace M3, Task 0)', () => {
+  // The seeded GM: Operations' permissions minus businesses.register and users.manage, plus the read views.
+  const GM = [
+    'kyc.approve', 'scouts.assign', 'listings.moderate', 'listings.approve_staffed', 'hero_media.approve', 'event.approve', 'reviews.moderate', 'users.view',
+    'orders.manage_delivery', 'site_settings.manage', 'zones.manage', 'contact_messages.manage', 'staff.invite_team', 'activity.view_team',
+    'calls.log', 'portfolio.manage', 'targets.manage', 'leave.record', 'fraud.manage', 'fraud.flag', 'service_issues.view',
+    'approvals.view_all', 'activity.view_all', 'analytics.view', 'calls.view_all', 'calls.view_peers', 'commission.view_all', 'escrow.view', 'fees.view',
+    'wallets.view', 'reports.view_all', 'transactions.report',
+  ]
+  const gmAuth = (perms = GM) => ({ user: { role: 'general_manager' }, hasPermission: (c) => perms.includes(c) })
+  const idsOf = (auth) => buildNavGroups(auth).flatMap((g) => g.items.map((i) => i.id))
+  const MONEY_OR_SA_CONFIG = [
+    'money-rules', 'payouts-payroll', 'refunds', 'reconciliation', 'delivery-pricing', 'tax-tables', 'subscription-plans-approval',
+    'subscription-plans', 'event-pricing', 'approval-rules', 'escrow', 'disputes', 'credit', 'promotions',
+    'integrations', 'system-health', 'opening', 'staff', 'sessions', 'teams-reporting', 'roles-permissions', 'invites', 'growth-funnel',
+    'scheduled-exports', 'sign-in-history', 'data-exports-log', 'notification-center', 'staff-announcements', 'targets',
+    'step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting',
+  ]
+
+  it('GM menu hides money approvals and Money rules editing', () => {
+    // Even holding every permission, the explicit menu never places a money or Super Admin configuration screen.
+    for (const auth of [gmAuth(), { user: { role: 'general_manager' }, hasPermission: () => true }]) {
+      const ids = idsOf(auth)
+      for (const hidden of MONEY_OR_SA_CONFIG) expect(ids).not.toContain(hidden)
+      expect(buildNavGroups(auth).some((g) => g.id === 'more')).toBe(false)
+    }
+    const ids = idsOf(gmAuth())
+    for (const shown of ['approvals', 'moderation', 'events-moderation', 'hero']) expect(ids).toContain(shown)
+  })
+
+  it('has exactly the explicit menu, in order, with read-only money views', () => {
+    expect(buildNavGroups(gmAuth()).map((g) => [g.label, g.items.map((i) => [i.id, i.label])])).toEqual([
+      ['Home', [['approvals', 'Approvals inbox']]],
+      ['People', [['my-team', 'Invite'], ['leave', 'Leave & calendar']]],
+      ['Marketplace', [['all-portfolios', 'All portfolios'], ['users', 'Users'], ['moderation', 'Listings & services'], ['delivery', 'Delivery Management'], ['events-moderation', 'Events & tickets'], ['hero', 'Hero Approval']]],
+      ['Money (read only)', [['transactions', 'Transactions Report'], ['commissions', 'Commissions']]],
+      ['Insights', [['analytics', 'Analytics'], ['team-reports', 'Team reports']]],
+      ['Security & audit', [['activity', 'Staff activity'], ['fraud-cases', 'Fraud cases'], ['security', 'Sign-in & Security']]],
+      ['Settings', [['commission-policy', 'Commission policy']]],
+    ])
+  })
+
+  it('leaves a read-only money view out when the GM lacks its read permission', () => {
+    const ids = idsOf(gmAuth(GM.filter((p) => !['commission.view_all', 'transactions.report'].includes(p))))
+    expect(ids).not.toContain('commissions')
+    expect(ids).not.toContain('transactions')
+    expect(ids).not.toContain('commission-policy')
+  })
+
+  it('GM menu has no Register, Prospects or Client listings entries', () => {
+    for (const auth of [gmAuth(), { user: { role: 'general_manager' }, hasPermission: () => true }]) {
+      const items = buildNavGroups(auth).flatMap((g) => g.items)
+      for (const gone of ['register-business', 'prospects', 'client-listings']) expect(items.map((i) => i.id)).not.toContain(gone)
+      expect(items.map((i) => i.label)).not.toContain('Client listings')
+    }
+  })
+
+  it('reads Command center as the overview label, and other roles keep theirs', () => {
+    expect(overviewLabel('general_manager')).toBe('Command center')
+    expect(overviewLabel('operations')).toBe('Overview')
+  })
+
+  it('reads the approvals and team-reports badges the Operations menu reads, not Super Admin-only keys', () => {
+    const badgeFor = makeBadgeFor({ approvals_waiting: 4, team_reports_waiting: 3, reports_hub: 9, invites_open: 2, disputes_open: 1 }, 'general_manager')
+    expect(badgeFor('approvals')).toBe(4)
+    expect(badgeFor('team-reports')).toBe(3)
+    expect(badgeFor('invites')).toBe(0)
+  })
+
+  it('has no placeholder screens', () => {
+    expect(PLACEHOLDER_TABS.general_manager.size).toBe(0)
+  })
+})
