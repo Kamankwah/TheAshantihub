@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useWalletTransactions } from '../../hooks/useWalletTransactions.js'
 import RefundNotice from './RefundNotice.jsx'
 import { walletMessage } from './walletErrors.js'
-import { formatGhs } from './walletMoney.js'
+import { formatGhs, formatWhen } from './walletMoney.js'
 import { walletStyles } from './walletStyles.js'
 
 // Filter groups by the server's journal kinds (backend/wallets/services.py
@@ -16,12 +16,6 @@ const GROUPS = [
   { id: 'promos', label: 'Free-delivery promos', kinds: ['order_waiver_charge', 'order_waiver_return'] },
 ]
 const REFUND_KINDS = ['order_refund', 'booking_refund']
-
-const DATE = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Accra', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-function formatWhen(iso) {
-  const d = iso ? new Date(iso) : null
-  return d && !Number.isNaN(d.getTime()) ? DATE.format(d) : null
-}
 
 const hidden = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap' }
 

@@ -32,3 +32,10 @@ export function newRequestId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
   return `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
 }
+
+// An ISO time as Accra date and time ("21 Oct 2026, 14:05"), or null if unusable.
+const DATE = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Accra', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+export function formatWhen(iso) {
+  const d = iso ? new Date(iso) : null
+  return d && !Number.isNaN(d.getTime()) ? DATE.format(d) : null
+}
