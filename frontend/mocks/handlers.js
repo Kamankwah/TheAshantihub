@@ -594,7 +594,7 @@ export const handlers = [
   http.get('http://localhost:8000/api/targets/me/', () => HttpResponse.json({
     period: 'week', label: 'Mon 5 – Sun 11 October', start: '2026-10-05', end: '2026-10-11', today: '2026-10-07',
     working_days: 6, leave_days: 0, holiday_days: 0, has_targets: false,
-    measures: ['registrations', 'visits', 'calls', 'renewals'].map((metric) => ({
+    measures: ['registrations', 'visits', 'calls', 'listings'].map((metric) => ({
       metric, label: metric[0].toUpperCase() + metric.slice(1), how: '', done: 0, target: null, today_done: 0, today_target: null,
     })),
     days: [], daily: [], set_by: null, effective_from: null, sunday_off: true, leave: [], holidays: [], lead: null,

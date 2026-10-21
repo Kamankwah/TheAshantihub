@@ -8,12 +8,12 @@ import OpsTargetsPanel from '../OpsTargetsPanel.jsx'
 const API = 'http://localhost:8000'
 const LIMITS = [
   { metric: 'calls', min_daily: 5, max_daily: 20 }, { metric: 'registrations', min_daily: 1, max_daily: 5 },
-  { metric: 'renewals', min_daily: 0, max_daily: 3 }, { metric: 'visits', min_daily: 4, max_daily: 12 },
+  { metric: 'listings', min_daily: 0, max_daily: 3 }, { metric: 'visits', min_daily: 4, max_daily: 12 },
 ]
 const staff = (id, name, daily, over = {}) => ({ id, full_name: name, role: 'scout', daily, state: 'working', areas: ['Adum'], joined: '2026-09-01T00:00:00Z', pending_cut: null, ...over })
-const DAILY = { registrations: 3, visits: 8, calls: 10, renewals: 1 }
-const plans = (list) => ({ metrics: ['registrations', 'visits', 'calls', 'renewals'], today: '2026-10-07', limits: LIMITS, staff: list })
-const previewRow = (id, over = {}) => ({ staff: id, week: { registrations: [18, 18], visits: [48, 48], calls: [60, 60], renewals: [6, 6] }, month: { registrations: [81, 81], visits: [216, 216], calls: [270, 270], renewals: [27, 27] }, cuts: [], month_working_days: 27, ...over })
+const DAILY = { registrations: 3, visits: 8, calls: 10, listings: 1 }
+const plans = (list) => ({ metrics: ['registrations', 'visits', 'calls', 'listings'], today: '2026-10-07', limits: LIMITS, staff: list })
+const previewRow = (id, over = {}) => ({ staff: id, week: { registrations: [18, 18], visits: [48, 48], calls: [60, 60], listings: [6, 6] }, month: { registrations: [81, 81], visits: [216, 216], calls: [270, 270], listings: [27, 27] }, cuts: [], month_working_days: 27, ...over })
 
 function serve({ list, history = [], preview = (changes) => changes.map((c) => previewRow(c.staff)), seen = {} }) {
   server.use(
@@ -46,6 +46,8 @@ describe('OpsTargetsPanel', () => {
     expect(screen.getByText("Set by Super Admin · you can't go outside them")).toBeInTheDocument()
     expect(screen.getByLabelText('Registrations a day for Kwame')).toHaveValue(3)
     expect(screen.getByLabelText('Registrations a day for Efua')).toHaveValue(4)
+    expect(screen.getByLabelText('Listings a day for Kwame')).toHaveValue(1)
+    expect(screen.queryByLabelText(/Renewals/)).not.toBeInTheDocument()
     expect(screen.queryByText('Esi Nyarko', { selector: 'div' })).not.toBeInTheDocument() // support has no targets
     const team = screen.getByText('Team a day').closest('tr')
     expect(team).toHaveTextContent('7') // 3 + 4 registrations
@@ -55,7 +57,7 @@ describe('OpsTargetsPanel', () => {
 
   it('previews week and month before to after, and saves a raise from the chosen date', async () => {
     const seen = {}
-    serve({ list: [staff(1, 'Kwame Asante', DAILY)], seen, preview: (changes) => changes.map((c) => previewRow(c.staff, { week: { registrations: [18, 24], visits: [48, 48], calls: [60, 60], renewals: [6, 6] }, month: { registrations: [81, 99], visits: [216, 216], calls: [270, 270], renewals: [27, 27] } })) })
+    serve({ list: [staff(1, 'Kwame Asante', DAILY)], seen, preview: (changes) => changes.map((c) => previewRow(c.staff, { week: { registrations: [18, 24], visits: [48, 48], calls: [60, 60], listings: [6, 6] }, month: { registrations: [81, 99], visits: [216, 216], calls: [270, 270], listings: [27, 27] } })) })
     renderPanel()
     const input = await screen.findByLabelText('Registrations a day for Kwame')
     fireEvent.change(input, { target: { value: '4' } })
@@ -73,7 +75,7 @@ describe('OpsTargetsPanel', () => {
   })
 
   it('a cut is flagged for Super Admin approval before saving, and the old target stays', async () => {
-    serve({ list: [staff(3, 'Yaw Owusu', DAILY)], preview: (changes) => changes.map((c) => previewRow(c.staff, { cuts: ['registrations'], week: { registrations: [18, 14], visits: [48, 48], calls: [60, 60], renewals: [6, 6] } })) })
+    serve({ list: [staff(3, 'Yaw Owusu', DAILY)], preview: (changes) => changes.map((c) => previewRow(c.staff, { cuts: ['registrations'], week: { registrations: [18, 14], visits: [48, 48], calls: [60, 60], listings: [6, 6] } })) })
     renderPanel()
     fireEvent.change(await screen.findByLabelText('Registrations a day for Yaw'), { target: { value: '2' } })
     expect(await screen.findByText('Registrations cut will go to Super Admin — the current target stays until it is decided')).toBeInTheDocument()

@@ -14,7 +14,7 @@ import { errorStyle, eyebrow, h2, h3, useDebounced } from "./portfolioParts.jsx"
 // total, so it goes to Super Admin and the old target stays until decided.
 // The preview comes from the server (it knows leave, holidays and the weekday
 // pattern); nothing here is a typed-in number except the targets themselves.
-const METRICS = [["registrations", "Registrations"], ["visits", "Visits"], ["calls", "Calls"], ["renewals", "Renewals"]];
+const METRICS = [["registrations", "Registrations"], ["visits", "Visits"], ["calls", "Calls"], ["listings", "Listings"]];
 const LABEL = Object.fromEntries(METRICS);
 const ORANGE = "#E8621A";
 

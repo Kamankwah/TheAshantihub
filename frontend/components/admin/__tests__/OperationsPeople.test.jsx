@@ -34,7 +34,7 @@ afterEach(() => setStoredAuth(null))
 describe('Operations People screens in the shell', () => {
   it('opens the real Scouts, Targets, Leave and Invite screens, not placeholders', async () => {
     server.use(
-      http.get(`${API}/api/operations/scouts/`, () => HttpResponse.json({ scope: 'team', today: '2026-10-07', month_label: 'October', counts: { team: 0, all: 0 }, totals: { registrations: { done: 0, target: 0 }, visits: { done: 0, target: 0 }, calls: { done: 0, target: 0 }, renewals: { done: 0, target: 0 }, visits_flagged: 0 }, scouts: [] })),
+      http.get(`${API}/api/operations/scouts/`, () => HttpResponse.json({ scope: 'team', today: '2026-10-07', month_label: 'October', counts: { team: 0, all: 0 }, totals: { registrations: { done: 0, target: 0 }, visits: { done: 0, target: 0 }, calls: { done: 0, target: 0 }, listings: { done: 0, target: 0 }, visits_flagged: 0 }, scouts: [] })),
       http.get(`${API}/api/targets/plans/`, () => HttpResponse.json({ metrics: [], today: '2026-10-07', limits: [], staff: [] })),
       http.get(`${API}/api/targets/history/`, () => HttpResponse.json([])),
       http.get(`${API}/api/targets/leave/`, () => HttpResponse.json([])),
@@ -56,9 +56,9 @@ describe('Operations People screens in the shell', () => {
     server.use(
       http.get(`${API}/api/operations/scouts/`, () => HttpResponse.json({
         scope: 'team', today: '2026-10-07', month_label: 'October', counts: { team: 1, all: 1 },
-        totals: { registrations: { done: 0, target: 3 }, visits: { done: 0, target: 8 }, calls: { done: 0, target: 10 }, renewals: { done: 0, target: 1 }, visits_flagged: 0 },
+        totals: { registrations: { done: 0, target: 3 }, visits: { done: 0, target: 8 }, calls: { done: 0, target: 10 }, listings: { done: 0, target: 1 }, visits_flagged: 0 },
         scouts: [{ id: 41, name: 'Kwame Asante', areas: [], manager: { id: 2, name: 'Ama Boateng' }, mine: true, state: 'working', back_on: null,
-          measures: { registrations: { done: 0, target: 3 }, visits: { done: 0, target: 8 }, calls: { done: 0, target: 10 }, renewals: { done: 0, target: 1 } },
+          measures: { registrations: { done: 0, target: 3 }, visits: { done: 0, target: 8 }, calls: { done: 0, target: 10 }, listings: { done: 0, target: 1 } },
           month: { done: 0, target: 81, due_by_today: 18, on_pace: false, leave_cut: 0 }, portfolio: { size: 0, healthy: 0, needs_attention: 0, at_risk: 0, new: 0 },
           check_in: null, outside_7d: 0, fraud_case_open: false, report: { today: { status: 'not_yet', due: '19:00', late: false, is_late: false }, last: null } }],
       })),
