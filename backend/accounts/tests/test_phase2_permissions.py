@@ -8,16 +8,16 @@ from accounts.testing import make_staff
 PHASE2_GRANTS = {
     "businesses.register": {"scout", "operations"},
     "businesses.manage_portfolio": {"scout"},
-    "portfolio.manage": {"operations"},
-    "targets.manage": {"operations"},
+    "portfolio.manage": {"operations", "general_manager"},
+    "targets.manage": {"operations", "general_manager"},
     "targets.limits": set(),
     "calendar.manage": set(),
-    "leave.record": {"operations"},
+    "leave.record": {"operations", "general_manager"},
     "commission.view_own": {"scout"},
-    "commission.view_all": {"accountant"},
+    "commission.view_all": {"accountant", "general_manager"},
     "commission.policy": {"accountant"},
-    "fraud.manage": {"operations"},
-    "fraud.flag": {"support", "operations"},
+    "fraud.manage": {"operations", "general_manager"},
+    "fraud.flag": {"support", "operations", "general_manager"},
 }
 
 

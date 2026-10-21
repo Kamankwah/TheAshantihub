@@ -130,6 +130,7 @@ class CustomerRegistrationSerializer(serializers.ModelSerializer):
         return customer
 
 
+GM_MANAGER_MESSAGE = "A General Manager reports to a Super Admin."
 INVITE_TOKEN_LIFETIME = datetime.timedelta(days=7)
 
 
@@ -164,6 +165,8 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         requester = self.context["request"].user
         if value.name == Role.SUPER_ADMIN and requester.role.name != Role.SUPER_ADMIN:
             raise serializers.ValidationError("Only a super_admin can invite another super_admin.")
+        if value.name == Role.GENERAL_MANAGER and requester.role.name != Role.SUPER_ADMIN:
+            raise serializers.ValidationError("Only a super_admin can invite a General Manager.")
         if not can_manage_staff(requester) and not RoleInviteRule.objects.filter(
             inviter_role=requester.role, invitee_role=value
         ).exists():
@@ -179,6 +182,8 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         elif attrs.get("manager") is not None and not can_lead_team(attrs["manager"]):
             # Same rule as StaffManagerView: only someone who can lead a team.
             raise serializers.ValidationError({"manager": ["Choose a manager who can lead a team."]})
+        if attrs["role"].name == Role.GENERAL_MANAGER and (attrs.get("manager") is None or attrs["manager"].role.name != Role.SUPER_ADMIN):
+            raise serializers.ValidationError({"manager": [GM_MANAGER_MESSAGE]})
         if attrs.get("areas") and attrs["role"].name != Role.SCOUT:
             raise serializers.ValidationError({"areas": ["Areas are for scouts only."]})
         rider_fields = {"vehicle_type", "home_zone", "first_shift_date", "invite_note"}

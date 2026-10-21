@@ -32,6 +32,7 @@ DEFAULT_MATRIX = {
     "dispatch": {"delivery.dispatch"},
     "pickup_desk": {"pickup.confirm"},
     "cosigner": {"approvals.cosign"},
+    "general_manager": {"kyc.approve", "listings.moderate", "approvals.view_all", "listings.approve_staffed"},
 }
 
 

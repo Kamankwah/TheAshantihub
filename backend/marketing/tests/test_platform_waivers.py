@@ -163,7 +163,7 @@ class BusinessSideUnchanged(PlatformBase):
         def roles(code):
             return set(Role.objects.filter(permissions__codename=code).values_list("name", flat=True))
         self.assertEqual(roles("delivery_promo.fund"), {"marketing", "super_admin"})
-        self.assertEqual(roles("delivery_promo.approve"), {"operations", "super_admin"})
+        self.assertEqual(roles("delivery_promo.approve"), {"operations", "general_manager", "super_admin"})
 
     def test_coupon_and_campaign_kinds_unchanged(self):
         from approvals.registry import get_kind

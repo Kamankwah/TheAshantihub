@@ -99,6 +99,8 @@ class ReassignManagerView(APIView):
             return Response({"detail": "Someone can't report to themselves."}, status=400)
         if not can_lead_team(manager):
             return Response({"detail": "Choose a manager who can lead a team."}, status=400)
+        if staff.role.name == Role.GENERAL_MANAGER and manager.role.name != Role.SUPER_ADMIN:
+            return Response({"detail": "A General Manager reports to a Super Admin."}, status=400)
         if staff.manager_id == manager.pk:
             return Response({"detail": f"{staff.full_name} already reports to {manager.full_name}."}, status=400)
         node = manager
@@ -147,6 +149,10 @@ class ChangeRoleView(APIView):
         # Granting or removing Super Admin is a Super Admin's act, whatever else the caller may manage.
         if Role.SUPER_ADMIN in (role.name, staff.role.name) and request.user.role.name != Role.SUPER_ADMIN:
             return Response({"detail": "Only a Super Admin can give or take away the Super Admin role."}, status=403)
+        if role.name == Role.GENERAL_MANAGER and request.user.role.name != Role.SUPER_ADMIN:
+            return Response({"detail": "Only a Super Admin can make someone a General Manager."}, status=403)
+        if role.name == Role.GENERAL_MANAGER and (staff.manager is None or staff.manager.role.name != Role.SUPER_ADMIN):
+            return Response({"detail": "A General Manager reports to a Super Admin. Move them under one first."}, status=400)
         if not staff.is_active:
             return Response({"detail": "Reactivate this person before changing their role."}, status=400)
         if staff.role_id == role.pk:

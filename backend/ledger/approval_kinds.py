@@ -104,7 +104,7 @@ def super_admin_only(request):
 FEE_RULES = ApprovalKind(
     key=FEE_RULES_KEY, label="Change platform-fee rules", pool_permission="", current_state=fee_current_state,
     apply=fee_apply, response_hours=48, chain_note="Super Admin only", resolve_approver=super_admin_only,
-    render_diff=fee_diff, validate=fee_validate, requires_sudo=True,
+    render_diff=fee_diff, validate=fee_validate, requires_sudo=True, money=True,
     consequences=lambda request: ["Applies only to orders paid after it starts. Orders already paid keep the fee they were given."],
 )
 
@@ -186,6 +186,6 @@ def setting_consequences(request):
 MONEY_SETTING = ApprovalKind(
     key=SETTING_KEY, label="Change a money setting", pool_permission="", current_state=setting_current_state,
     apply=setting_apply, response_hours=48, chain_note="Super Admin only", resolve_approver=super_admin_only,
-    render_diff=setting_diff, validate=setting_validate, requires_sudo=True,
+    render_diff=setting_diff, validate=setting_validate, requires_sudo=True, money=True,
     consequences=setting_consequences,
 )

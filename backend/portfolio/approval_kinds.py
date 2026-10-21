@@ -210,6 +210,7 @@ BUSINESS_DETAIL_CHANGE = ApprovalKind(
     consequences=detail_changes.approval_consequences,
     public_payload=detail_changes.approval_public_payload,
     requires_sudo=True,
+    money=True,  # it controls who can reach the business's money
     two_people=True,
     chain_note="One approval from another holder of portfolio.manage, or a Super Admin; never the scout who verified",
 )

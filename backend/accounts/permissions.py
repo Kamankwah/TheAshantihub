@@ -54,6 +54,12 @@ def can_lead_team(staff):
     )
 
 
+def sees_every_team(user):
+    """Whose READ views span every team: a Super Admin, and the General Manager who reports to
+    one. Writes keep checking the Super Admin role itself."""
+    return isinstance(user, StaffUser) and user.role.name in (Role.SUPER_ADMIN, Role.GENERAL_MANAGER)
+
+
 class IsStaff(BasePermission):
     def has_permission(self, request, view):
         return isinstance(request.user, StaffUser)

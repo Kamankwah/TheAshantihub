@@ -63,13 +63,13 @@ class OpsInboxTests(TestCase):
         self.assertEqual(row["maker_team"], {"mine": True, "manager": "Ama"})
         self.assertFalse(row["escalated"])
         self.assertEqual(row["next_move"]["stage"], "pool")
-        self.assertEqual(row["next_move"]["label"], "any Operations")
+        self.assertEqual(row["next_move"]["label"], "any General Manager or any Operations")
 
     def test_the_detail_timeline_projects_the_reminder_and_each_level(self):
         approval = self.submit(self.kwame)
         detail = self.client.get(f"/api/approvals/{approval.id}/").json()
         self.assertEqual([t["kind"] for t in detail["timeline"]], ["sent", "reminder", "move", "move"])
-        self.assertEqual([t["what"] for t in detail["timeline"]][2:], ["Moves to any Operations", "Moves to a Super Admin"])
+        self.assertEqual([t["what"] for t in detail["timeline"]][2:], ["Moves to any General Manager or any Operations", "Moves to a Super Admin"])
         self.assertEqual(detail["consequences"], [])  # the test kind states none
 
     def test_the_decided_timeline_ends_with_the_decision(self):

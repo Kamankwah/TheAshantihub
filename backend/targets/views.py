@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Role, StaffUser
-from accounts.permissions import HasAnyRolePermission, HasRolePermission, IsStaff
+from accounts.permissions import HasAnyRolePermission, HasRolePermission, IsStaff, sees_every_team
 from activity.models import ActivityEvent
 from activity.services import record
 from approvals import services as approvals
@@ -90,7 +90,7 @@ class PlansView(APIView):
     def get(self, request):
         team = StaffUser.objects.filter(is_active=True).select_related("role", "manager")
         team = team.exclude(pk=request.user.pk)
-        team = team.filter(manager__isnull=False) if request.user.role.name == Role.SUPER_ADMIN else team.filter(manager=request.user)
+        team = team.filter(manager__isnull=False) if sees_every_team(request.user) else team.filter(manager=request.user)
         team = list(team.order_by("full_name"))
         today = timezone.localdate()
         cuts = plans.pending_cuts({s.pk for s in team})
@@ -181,7 +181,7 @@ class TargetsHistoryView(APIView):
 
     def get(self, request):
         team = StaffUser.objects.filter(is_active=True).exclude(pk=request.user.pk)
-        team = team.filter(manager__isnull=False) if request.user.role.name == Role.SUPER_ADMIN else team.filter(manager=request.user)
+        team = team.filter(manager__isnull=False) if sees_every_team(request.user) else team.filter(manager=request.user)
         names = dict(team.values_list("pk", "full_name"))
         ids = [str(pk) for pk in names]
         events = ActivityEvent.objects.filter(
