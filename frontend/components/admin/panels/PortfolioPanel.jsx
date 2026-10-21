@@ -262,7 +262,7 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
                     <td style={td}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button type="button" aria-label={`Open ${b.business_name}`} onClick={() => onOpen(b.id)} style={button(D.panelBg, D.text)}>Open</button>
-                        {!b.account_manager && (
+                        {canReassign && !b.account_manager && (
                           <button type="button" aria-label={`Assign a scout to ${b.business_name}`} onClick={() => setSelected([{ id: b.id, business_name: b.business_name }])} style={button(D.gold, D.text)}>Assign a scout</button>
                         )}
                       </div>
