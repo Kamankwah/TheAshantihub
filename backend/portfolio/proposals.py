@@ -670,11 +670,13 @@ def _scout_wording(owner, detail):
     return errors
 
 
-def check_listing(owner, listing):
+def check_listing(owner, listing, *, require_kyc=True):
     """(validated_data, errors) for a listing this business would add now:
     KYC approved, subscription not paused, then the owner's own listing rules
-    (listings.serializers.validate_listing_for_owner) in scout wording."""
-    if owner.kyc_status != BusinessOwner.VERIFIED:
+    (listings.serializers.validate_listing_for_owner) in scout wording.
+    A staff draft (portfolio.drafts) passes require_kyc=False: it is written while the business waits for KYC and is
+    checked again, with KYC, when it is submitted for approval."""
+    if require_kyc and owner.kyc_status != BusinessOwner.VERIFIED:
         return None, {"business": [KYC_FIRST]}
     if subscription_state(getattr(owner, "subscription", None))["state"] == "paused":
         return None, {"subscription": [SUBSCRIPTION_PAUSED]}

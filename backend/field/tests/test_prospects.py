@@ -235,3 +235,66 @@ class RegisterFromProspectTests(RegistrationBase):
         data = self.client.get(PROSPECTS).data
         self.assertEqual(data["signed_up_this_month"], 1)
         self.assertEqual(data["counts"]["all"], 0)
+
+
+class StaffAddsProspectForScoutTests(ProspectBase):
+    """Operations and Super Admin add a prospect on behalf of a named scout (plan M3, Task 5)."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = make_staff("super_admin", "root@example.com")
+        self.gm = make_staff("general_manager", "gm@example.com")
+
+    def add_for(self, who, scout=None, **overrides):
+        self.as_staff(who)
+        body = {"name": "Ohemaa Waakye Joint", "phone": "024 123 4567", "zone": self.zone.pk, **overrides}
+        if scout is not None:
+            body["scout"] = scout.pk
+        return self.client.post(PROSPECTS, body, format="json")
+
+    def test_operations_adds_prospect_for_scout(self):
+        response = self.add_for(self.lead, self.kwame)
+        self.assertEqual(response.status_code, 201, response.content)
+        prospect = Prospect.objects.get()
+        self.assertEqual(prospect.scout, self.kwame)
+        from activity.models import ActivityEvent
+
+        event = ActivityEvent.objects.get(verb="prospect.create")
+        self.assertEqual(event.actor_id, self.lead.pk)
+        self.assertEqual(event.on_behalf_of_id, self.kwame.pk)
+
+    def test_super_admin_adds_prospect_for_scout(self):
+        self.assertEqual(self.add_for(self.admin, self.efua).status_code, 201)
+        self.assertEqual(Prospect.objects.get().scout, self.efua)
+
+    def test_the_scout_is_required_and_must_be_an_active_scout(self):
+        self.assertEqual(self.add_for(self.lead).status_code, 400)
+        self.assertEqual(self.add_for(self.lead, self.lead).status_code, 400)  # not a scout
+        self.efua.is_active = False
+        self.efua.save()
+        self.assertEqual(self.add_for(self.lead, self.efua).status_code, 400)
+        self.as_staff(self.lead)
+        bad = self.client.post(PROSPECTS, {"name": "X", "phone": "0241234567", "scout": 99999}, format="json")
+        self.assertEqual(bad.status_code, 400)
+        self.assertFalse(Prospect.objects.exists())
+
+    def test_prospect_phone_dedupe_still_applies(self):
+        self.assertEqual(self.add_for(self.lead, self.kwame).status_code, 201)
+        again = self.add_for(self.admin, self.kwame, name="Other")
+        self.assertEqual(again.status_code, 400)
+        self.assertEqual(again.data["code"], "own_phone")
+        existing_business("Adwoa Fabrics", phone="+233 24 555 0000", gps="AK-112-0399")
+        taken = self.add_for(self.lead, self.efua, phone="0245550000")
+        self.assertEqual(taken.status_code, 400)
+        self.assertEqual(taken.data["code"], "phone_taken")
+
+    def test_a_scout_still_adds_their_own_and_cannot_name_another(self):
+        self.assertEqual(self.add_for(self.kwame).status_code, 201)
+        self.assertEqual(Prospect.objects.get().scout, self.kwame)
+        self.assertEqual(self.add_for(self.efua, self.kwame, phone="0249990000").status_code, 400)
+
+    def test_general_manager_and_support_are_refused(self):
+        support = make_staff("support", "help@example.com")
+        self.assertEqual(self.add_for(self.gm, self.kwame).status_code, 403)
+        self.assertEqual(self.add_for(support, self.kwame).status_code, 403)
+        self.assertFalse(Prospect.objects.exists())

@@ -24,7 +24,7 @@ from approvals.services import submit
 from fraud.models import FraudFlag
 from fraud.services import raise_flag
 
-from . import checks
+from . import checks, confirmations
 from .serializers import KycResubmitSerializer, ScoutRegistrationSerializer
 from .services import assign_account_manager
 
@@ -140,13 +140,16 @@ def register_business(scout, data, files, *, http_request=None):
             assign_account_manager(owner, scout, by=scout, reason="Registered the business")
         flags = _raise_flags(scout, owner, values)
         approval = _submit_kyc(scout, owner, name, maker_note=values.get("maker_note", ""), http_request=http_request)
+        # R3: a staff-registered owner always has a registration confirmation, made in this same transaction. The text
+        # goes out after commit; a refusal here rolls the whole registration back.
+        confirmation = confirmations.request_confirmation(owner, scout, registration=True)
         record(
             scout, "business.registered", target_type=OWNER_TARGET_TYPE, target_id=str(owner.pk), target_label=name,
             after={"business_name": name, "flags": [flag.pk for flag in flags],
                    **({"prospect_id": prospect.pk} if prospect is not None else {})},
             request=http_request,
         )
-    return {"business_owner": owner, "approval": approval, "flags": flags}
+    return {"business_owner": owner, "approval": approval, "flags": flags, "confirmation": confirmation}
 
 
 def _create_business(registrar, values, identity):

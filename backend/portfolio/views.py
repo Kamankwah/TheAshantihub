@@ -20,7 +20,8 @@ from rest_framework.views import APIView
 from accounts import claims, hours, sessions
 from accounts.models import BusinessOwner, Role, StaffUser
 from accounts.views import IsBusinessOwner
-from accounts.permissions import HasAnyRolePermission, HasRolePermission, IsStaff, RequiresSudo
+from accounts.claims import ClaimError
+from accounts.permissions import HasAnyRolePermission, HasRolePermission, IsStaff, RequiresSudo, can_stage_for
 from accounts.phones import filter_by_phone, phone_key
 from accounts.serializers import BusinessHoursSerializer, hours_payload, staff_brief
 from activity.models import ActivityEvent
@@ -32,7 +33,7 @@ from notifications.services import notify_staff
 from staff_tasks.models import Task
 from staff_tasks.services import create_task
 
-from . import checks, delivery, health, leaderboard
+from . import checks, delivery, drafts, health, leaderboard
 from .models import BusinessHealthSnapshot
 from .registration import RegistrationError, register_business, resubmit_kyc
 from .serializers import (
@@ -62,6 +63,21 @@ def get_managed_business(request, pk, *, allow_portfolio_manage=True):
     if owner.account_manager_id == user.pk:
         return owner
     if allow_portfolio_manage and "portfolio.manage" in user.effective_permission_codenames():
+        return owner
+    raise Http404
+
+
+def get_staged_business(request, pk):
+    """The business at `pk` when the caller may act for it: its account manager, or (listings.stage) Operations or
+    Super Admin for any business (`can_stage_for`). Anything else is a 404, so a scout can't learn which other
+    businesses exist."""
+    owner = get_object_or_404(BusinessOwner.objects.select_related("profile", "account_manager"), pk=pk)
+    user = request.user
+    if not isinstance(user, StaffUser):
+        raise Http404
+    if owner.account_manager_id == user.pk and "businesses.manage_portfolio" in user.effective_permission_codenames():
+        return owner
+    if can_stage_for(user, owner):
         return owner
     raise Http404
 
@@ -144,6 +160,7 @@ class RegisterBusinessView(APIView):
                 for flag in result["flags"]
             ],
             "needs_claim": owner.needs_claim,
+            "confirmation": drafts.registration_state(result["confirmation"]),
         }, status=status.HTTP_201_CREATED)
 
 
@@ -706,10 +723,10 @@ class PhotoStageView(APIView):
     for a later proposal; it reaches the listing only when that is approved."""
 
     def get_permissions(self):
-        return [HasRolePermission("businesses.manage_portfolio")]
+        return [HasAnyRolePermission("businesses.manage_portfolio", "listings.stage")]
 
     def post(self, request, pk):
-        owner = get_managed_business(request, pk, allow_portfolio_manage=False)
+        owner = get_staged_business(request, pk)
         serializer = StagePhotoSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -931,3 +948,81 @@ class DetailChangeVerifyView(APIView):
         except detail_changes.DetailChangeError as exc:
             return _detail_change_refused(exc)
         return Response(detail_changes.scout_row(change))
+
+
+# ── Staff drafts for a client (plan M3, Task 5) ─────────────────────────────
+
+HTTP_409_CODES_400 = {"too_long", "mixed_owners", "invalid"}
+
+
+def _claim_error(exc):
+    """A confirmation refusal as {detail, code}: the rate limit is 429, a malformed ask 400, a state conflict 409."""
+    if exc.status_code == 429:
+        code = 429
+    elif exc.code in HTTP_409_CODES_400:
+        code = 400
+    else:
+        code = 409
+    return Response({"detail": exc.message, "code": exc.code}, status=code)
+
+
+class _DraftView(APIView):
+    """Shared by the draft endpoints: listings.stage plus the can_stage_for scope; refusals map to HTTP."""
+
+    def get_permissions(self):
+        return [HasRolePermission("listings.stage")]
+
+    def owner(self, request, pk):
+        owner = get_object_or_404(BusinessOwner.objects.select_related("profile"), pk=pk)
+        if not can_stage_for(request.user, owner):
+            raise Http404
+        return owner
+
+    def handle_exception(self, exc):
+        if isinstance(exc, ClaimError):
+            return _claim_error(exc)
+        return super().handle_exception(exc)
+
+
+class DraftListCreateView(_DraftView):
+    """GET businesses/<pk>/drafts/ lists the business's drafts with their confirmation state; POST creates one
+    ({kind, ...listing fields})."""
+
+    def get(self, request, pk):
+        return Response(drafts.list_drafts(self.owner(request, pk)))
+
+    def post(self, request, pk):
+        owner = self.owner(request, pk)
+        draft = drafts.create_draft(request.user, owner, request.data, request=request)
+        return Response(drafts.draft_item(drafts.get_draft(owner, draft.pk)), status=status.HTTP_201_CREATED)
+
+
+class DraftDetailView(_DraftView):
+    """PATCH edits and DELETE withdraws a draft that is a draft, awaiting the owner or lapsed."""
+
+    def patch(self, request, pk, draft_id):
+        owner = self.owner(request, pk)
+        draft = drafts.update_draft(request.user, owner, drafts.get_draft(owner, draft_id), request.data, request=request)
+        return Response(drafts.draft_item(drafts.get_draft(owner, draft.pk)))
+
+    def delete(self, request, pk, draft_id):
+        owner = self.owner(request, pk)
+        draft = drafts.withdraw_draft(request.user, owner, drafts.get_draft(owner, draft_id), request=request)
+        return Response(drafts.draft_item(drafts.get_draft(owner, draft.pk)))
+
+
+class DraftSendView(_DraftView):
+    """POST businesses/<pk>/drafts/send/ {draft_ids} — text the owner one link to confirm these drafts."""
+
+    def post(self, request, pk):
+        owner = self.owner(request, pk)
+        ids = request.data.get("draft_ids") if isinstance(request.data, dict) else None
+        return Response(drafts.send(request.user, owner, ids, request=request))
+
+
+class DraftResendView(_DraftView):
+    """POST businesses/<pk>/drafts/<id>/resend/ — a fresh link when the last lapsed or the text did not go out."""
+
+    def post(self, request, pk, draft_id):
+        owner = self.owner(request, pk)
+        return Response(drafts.resend_draft(request.user, owner, drafts.get_draft(owner, draft_id), request=request))

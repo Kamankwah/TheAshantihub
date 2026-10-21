@@ -72,7 +72,9 @@ class PhotoStageTests(ChangeTestBase):
     def test_only_the_account_manager_can_stage(self):
         self.as_staff(self.other_scout)
         self.assertEqual(self.client.post(self.url(), {"image": jpeg()}, format="multipart").status_code, 404)
-        self.as_staff(self.lead)  # Operations doesn't hold businesses.manage_portfolio
+        self.assertFalse(StagedPhoto.objects.exists())
+        # Operations stages for any business since the staff-listing pipeline (listings.stage, plan M3); Support cannot
+        self.as_staff(make_staff("support", "help@example.com"))
         self.assertEqual(self.client.post(self.url(), {"image": jpeg()}, format="multipart").status_code, 403)
         self.assertFalse(StagedPhoto.objects.exists())
 

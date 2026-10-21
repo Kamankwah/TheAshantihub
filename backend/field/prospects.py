@@ -78,7 +78,9 @@ def sync_follow_up(prospect):
         task.save(update_fields=["status"])
 
 
-def create_prospect(scout, data, *, request=None):
+def create_prospect(scout, data, *, request=None, actor=None):
+    """Add a prospect to `scout`'s list. `actor` is the Operations or Super Admin member adding it on the scout's
+    behalf (the activity log says so); the scout owns it and gets the follow-up task."""
     phone = _clean_phone(data["phone"], scout=scout)
     _check_follow_up(data.get("next_follow_up_at"), None)
     status = data.get("status") or Prospect.NEW
@@ -88,8 +90,9 @@ def create_prospect(scout, data, *, request=None):
             status=status, next_follow_up_at=None if status == Prospect.NOT_INTERESTED else data.get("next_follow_up_at"),
         )
         sync_follow_up(prospect)
-        record(scout, "prospect.create", target=prospect,
-               after={"name": prospect.name, "status": prospect.status}, request=request)
+        record(actor or scout, "prospect.create", target=prospect,
+               after={"name": prospect.name, "status": prospect.status}, request=request,
+               on_behalf_of=scout if actor else None)
     return prospect
 
 

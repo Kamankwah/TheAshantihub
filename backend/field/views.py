@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 
 from django.utils.dateparse import parse_date
 
-from accounts.models import BusinessOwner, ScoutAssignment, StaffUser
+from accounts.models import BusinessOwner, Role, ScoutAssignment, StaffUser
 from accounts.permissions import HasAnyRolePermission, HasRolePermission
 
 from . import prospects as prospects_module
@@ -374,6 +374,28 @@ def _prospect_order(prospect, now):
     return (closed, due is None, due or now, -prospect.pk)
 
 
+NAME_A_SCOUT = "Choose the scout this prospect is for. It must be an active scout."
+OWN_LIST_ONLY = "A scout adds prospects to their own list."
+
+
+def _named_scout_id(body):
+    raw = body.get("scout") if isinstance(body, dict) else None
+    if raw in (None, "") or isinstance(raw, bool):
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return -1
+
+
+def _named_scout(body):
+    """The active scout named by `scout` in the body, else None."""
+    pk = _named_scout_id(body)
+    if pk is None:
+        return None
+    return StaffUser.objects.filter(pk=pk, role__name=Role.SCOUT, is_active=True, is_suspended=False).first()
+
+
 class ProspectListCreateView(APIView):
     """GET prospects/ — the scout's own, not yet registered (?status= narrows;
     status=registered lists the signed-up ones), with counts per status and
@@ -403,8 +425,15 @@ class ProspectListCreateView(APIView):
         if not serializer.is_valid():
             return _invalid(serializer)
         data = serializer.validated_data
+        scout, actor = request.user, None
+        if request.user.role.name != Role.SCOUT:  # Operations or Super Admin: on behalf of a named scout
+            scout, actor = _named_scout(request.data), request.user
+            if scout is None:
+                return Response({"detail": NAME_A_SCOUT, "code": "scout_required"}, status=400)
+        elif _named_scout_id(request.data) not in (None, request.user.pk):
+            return Response({"detail": OWN_LIST_ONLY, "code": "scout_not_allowed"}, status=400)
         try:
-            prospect = prospects_module.create_prospect(request.user, data, request=request)
+            prospect = prospects_module.create_prospect(scout, data, request=request, actor=actor)
         except VisitError as error:
             return _refused(error)
         prospect = prospects_module.with_last_visit(Prospect.objects.filter(pk=prospect.pk)).get()

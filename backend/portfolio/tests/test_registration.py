@@ -106,7 +106,9 @@ class RegistrationTests(RegistrationBase):
         self.assertEqual(body, {
             "id": owner.pk, "business_name": "Asafo Hair & Beauty", "approval_id": approval.pk,
             "approver_name": "Ama", "flags": [], "needs_claim": True,
+            "confirmation": body["confirmation"],
         })
+        self.assertEqual(set(body["confirmation"]), {"state", "sent_to_masked", "expires_at", "send_note"})
         # The owner: pending KYC, no usable password until they claim the login.
         self.assertEqual(
             (owner.full_name, owner.login_phone, owner.email, owner.kyc_status),
@@ -148,7 +150,7 @@ class RegistrationTests(RegistrationBase):
         # Recorded once, last; the middleware adds nothing.
         self.assertEqual(
             list(ActivityEvent.objects.order_by("id").values_list("verb", flat=True)),
-            ["approval.requested", "business.registered"],
+            ["approval.requested", "owner_confirmation.sent", "business.registered"],  # the owner's text request (M3 R3)
         )
         event = ActivityEvent.objects.get(verb="business.registered")
         self.assertEqual(

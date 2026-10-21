@@ -25,6 +25,13 @@ urlpatterns = [
     path("businesses/<int:pk>/follow-up/", views.BusinessFollowUpView.as_view(), name="portfolio-follow-up"),
     path("leaderboard/", views.LeaderboardView.as_view(), name="portfolio-leaderboard"),
     path("subscriptions-due/", views.SubscriptionsDueView.as_view(), name="portfolio-subscriptions-due"),
+    path("businesses/<int:pk>/drafts/", views.DraftListCreateView.as_view(), name="portfolio-drafts"),
+    path("businesses/<int:pk>/drafts/send/", views.DraftSendView.as_view(), name="portfolio-drafts-send"),
+    path("businesses/<int:pk>/drafts/<int:draft_id>/", views.DraftDetailView.as_view(), name="portfolio-draft-detail"),
+    path(
+        "businesses/<int:pk>/drafts/<int:draft_id>/resend/", views.DraftResendView.as_view(),
+        name="portfolio-draft-resend",
+    ),
     path("businesses/<int:pk>/photos/", views.PhotoStageView.as_view(), name="portfolio-photo-stage"),
     path("businesses/<int:pk>/changes/", views.ProposeChangeView.as_view(), name="portfolio-propose-change"),
     path("businesses/<int:pk>/listings/", views.ProposeListingView.as_view(), name="portfolio-propose-listing"),
