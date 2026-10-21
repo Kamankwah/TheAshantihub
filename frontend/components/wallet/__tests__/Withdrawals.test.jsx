@@ -113,6 +113,23 @@ describe('WithdrawForm', () => {
     expect(bodies[1].body.request_id).not.toBe(bodies[0].body.request_id)
   })
 
+  it('test_request_id_survives_editing_and_reverting_the_amount_after_a_network_error', async () => {
+    destinations([dest()])
+    const bodies = capture((n) => (n <= 1 ? HttpResponse.error() : HttpResponse.json(wd(), { status: 200 })))
+    wrap(<WithdrawForm />)
+    await ready()
+    type('100')
+    submit()
+    await screen.findByRole('alert')
+    await waitFor(() => expect(screen.getByRole('button', { name: /withdraw/i })).not.toBeDisabled())
+    type('10')
+    type('100.00')
+    submit()
+    await screen.findByText('Processing')
+    expect(bodies).toHaveLength(2)
+    expect(bodies[1].body.request_id).toBe(bodies[0].body.request_id)
+  })
+
   it('test_request_id_changes_when_amount_or_destination_changes', async () => {
     destinations([dest(), dest({ id: 8, account_number_masked: '055****111' })])
     const bodies = capture(() => HttpResponse.json({ detail: 'You have GH₵ 5.00 to withdraw.', code: 'insufficient_funds' }, { status: 409 }))

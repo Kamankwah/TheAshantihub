@@ -12,14 +12,16 @@ import { walletStyles } from './walletStyles.js'
 // Idempotency: one request_id is made when the form mounts and sent by every
 // submit of the same destination and amount (a double click, a retry after a
 // network error, the step-up retry inside apiClient). It is replaced only when
-// the destination or amount changes, and after a success. The charge is shown
+// the destination or amount actually submitted differs from the last one sent,
+// and after a success. The charge is shown
 // only once the server has answered; nothing is estimated here.
 export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet', onDone }) {
   const s = walletStyles(tone)
   const queryClient = useQueryClient()
   const destinations = useWalletDestinations({ basePath })
-  const requestId = useRef(null)
-  if (requestId.current === null) requestId.current = newRequestId()
+  // {key, id}: the id belongs to what was last submitted. key is null until the first submit adopts the id made at mount.
+  const sent = useRef(null)
+  if (sent.current === null) sent.current = { key: null, id: newRequestId() }
   const inFlight = useRef(false)
   const [amount, setAmount] = useState('')
   const [chosen, setChosen] = useState(null)
@@ -54,8 +56,12 @@ export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet',
     setError(null)
     setResult(null)
     try {
-      const res = await apiPost(`${basePath}/withdrawals/`, { destination: destination.id, amount, request_id: requestId.current })
-      requestId.current = newRequestId()
+      // Decided at submit time from what is being sent, so editing and reverting the amount (or "100" vs "100.00") reuses the id.
+      const key = `${destination.id}|${formatGhs(amount)}`
+      if (sent.current.key !== null && sent.current.key !== key) sent.current = { key, id: newRequestId() }
+      else sent.current.key = key
+      const res = await apiPost(`${basePath}/withdrawals/`, { destination: destination.id, amount, request_id: sent.current.id })
+      sent.current = { key: null, id: newRequestId() }
       setResult(res)
       setAmount('')
       await queryClient.invalidateQueries({ queryKey: ['wallet'] })
@@ -81,7 +87,7 @@ export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet',
       <label style={s.label} htmlFor="wallet-withdraw-destination">Pay out to</label>
       <select
         id="wallet-withdraw-destination" style={s.field} value={destination.id}
-        onChange={(e) => { setChosen(Number(e.target.value)); requestId.current = newRequestId() }}
+        onChange={(e) => { setChosen(Number(e.target.value)) }}
       >
         {usable.map((d) => (
           <option key={d.id} value={d.id}>{d.institution} {d.account_number_masked} ({d.account_name})</option>
@@ -90,7 +96,7 @@ export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet',
       <label style={{ ...s.label, marginTop: 12 }} htmlFor="wallet-withdraw-amount">Amount to withdraw (GH₵)</label>
       <input
         id="wallet-withdraw-amount" style={s.field} inputMode="decimal" autoComplete="off" value={amount}
-        onChange={(e) => { setAmount(e.target.value.trim()); requestId.current = newRequestId() }}
+        onChange={(e) => { setAmount(e.target.value.trim()) }}
       />
       {error && <div role="alert" style={{ ...s.error, marginTop: 12 }}>{error}</div>}
       {result && (
