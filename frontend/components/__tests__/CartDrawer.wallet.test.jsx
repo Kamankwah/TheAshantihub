@@ -20,7 +20,7 @@ function StubPayment({ amount, processing, onSuccess, onClose }) {
 }
 
 function renderDrawer(props = {}) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } })
   return render(
     <QueryClientProvider client={queryClient}>
       <CartDrawer
@@ -132,7 +132,63 @@ describe('CartDrawer wallet checkout', () => {
     fireEvent.click(screen.getByText('Done'))
     expect(await screen.findByText('Order Confirmed!')).toBeInTheDocument()
     expect(screen.getByText('Payment processing')).toBeInTheDocument()
-    expect(screen.getByText('GH₵ 4.50', { selector: 'span' })).toBeInTheDocument()
+    expect(screen.getByText('GHS 4.50')).toBeInTheDocument()
+    expect(screen.getByText('Order total')).toBeInTheDocument()
+    expect(screen.getByText('Total paid')).toBeInTheDocument()
+    expect(screen.getAllByText('GHS 300.00').length).toBeGreaterThan(0)
+    expect(screen.getByText('GHS 304.50')).toBeInTheDocument()
+  })
+
+  it('test_failed_quote_blocks_momo_with_a_reason_and_retry', async () => {
+    let fail = true
+    server.use(cart(), walletOn(), http.get(`${API}/api/wallet/processing/`, () =>
+      fail ? new HttpResponse(null, { status: 500 })
+        : HttpResponse.json({ amount: '300.00', payment_processing: '4.50', you_pay: '304.50', provider: 'simulated' })))
+    renderDrawer()
+    await toConfirm()
+    expect(await screen.findByText(/We couldn't get the payment processing charge/)).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getByText('Confirm & Pay')).toBeDisabled()
+    fail = false
+    fireEvent.click(screen.getByText('Try again'))
+    await waitFor(() => expect(screen.getByText('Confirm & Pay')).toBeEnabled())
+  })
+
+  it('test_zero_total_blocks_momo_and_points_to_the_wallet', async () => {
+    server.use(http.get(`${API}/api/cart/`, () => HttpResponse.json({ ...CART, total: '0.00' })), walletOn())
+    renderDrawer()
+    await toConfirm()
+    expect(await screen.findByText('There is nothing to pay by mobile money. Choose your AshantiHub wallet.')).toBeInTheDocument()
+    expect(screen.getByText('Confirm & Pay')).toBeDisabled()
+  })
+
+  it('test_pending_wallet_read_keeps_pay_disabled', async () => {
+    server.use(cart(), http.get(`${API}/api/wallet/`, async () => {
+      await new Promise((r) => setTimeout(r, 300))
+      return HttpResponse.json({ kind: 'customer', balance: '500.00' })
+    }), processing())
+    renderDrawer()
+    await toConfirm()
+    expect(screen.getByText('Checking payment options…')).toBeInTheDocument()
+    expect(screen.getByText('Confirm & Pay')).toBeDisabled()
+    await waitFor(() => expect(screen.getByText('Confirm & Pay')).toBeEnabled())
+    expect(screen.queryByText('Checking payment options…')).not.toBeInTheDocument()
+  })
+
+  it('test_wallet_failure_never_opens_the_simulated_fee_modal_and_retry_recovers', async () => {
+    let fail = true
+    server.use(cart(), processing(), http.get(`${API}/api/wallet/`, () =>
+      fail ? new HttpResponse(null, { status: 500 }) : HttpResponse.json({ kind: 'customer', balance: '500.00' })))
+    renderDrawer()
+    await toConfirm()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Try again')
+    expect(screen.getByText('Confirm & Pay')).toBeDisabled()
+    fireEvent.click(screen.getByText('Confirm & Pay'))
+    expect(screen.queryByText('Simulate Pay')).not.toBeInTheDocument()
+    fail = false
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('radio', { name: /AshantiHub wallet/ })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Confirm & Pay')).toBeEnabled())
   })
 
   it('test_staff_session_still_gets_the_staff_notice', async () => {

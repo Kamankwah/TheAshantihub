@@ -15,7 +15,8 @@ import StaffGateNotice from "./StaffGateNotice.jsx";
 import PaymentMethodPicker from "./wallet/PaymentMethodPicker.jsx";
 import { useWallet } from "../hooks/useWallet.js";
 import { useWalletProcessing } from "../hooks/useWalletProcessing.js";
-import { formatGhs } from "./wallet/walletMoney.js";
+import { addGhs, isPlausibleAmount } from "./wallet/walletMoney.js";
+import { walletMessage } from "./wallet/walletErrors.js";
 
 // ─── CartDrawer ─────────────────────────────────────────────────────────────
 // Customer cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4). Mirrors App.jsx's
@@ -142,17 +143,26 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const shownTotal = delivery?.fee != null && itemsTotal != null ? (parseFloat(itemsTotal) + parseFloat(delivery.fee)).toFixed(2) : itemsTotal;
   const [couponError, setCouponError] = useState("");
 
-  // "Ledger on" means the wallet read succeeded; off (409 ledger_off), loading or failed all mean no picker and
-  // today's mobile-money flow exactly, with no payment_method sent.
-  const { data: wallet } = useWallet({ enabled: user?.accountType === "customer" });
+  // Only the server's ledger_off answer means "off" (today's flow, no picker, no payment_method). While the wallet
+  // read is loading, or after any other failure, checkout waits (with a reason and a retry) rather than opening the
+  // simulated-fee modal against a ledger that may be on.
+  const isCustomer = user?.accountType === "customer";
+  const { data: wallet, error: walletError, isPending: walletPending, refetch: refetchWallet } = useWallet({ enabled: isCustomer });
   const pickerShown = !!wallet && wallet.balance !== undefined;
+  const walletOff = !!walletError && walletMessage(walletError).kind === "off";
+  const walletChecking = isCustomer && walletPending;
+  const walletFailed = isCustomer && !!walletError && !walletOff && !pickerShown;
   const method = pickerShown ? paymentMethod : "momo";
-  // The server's charge for paying shownTotal by mobile money (shared cache with the picker's own line).
-  const { data: processingData } = useWalletProcessing(pickerShown && method === "momo" ? shownTotal : "");
-  // With the picker shown, paying by mobile money waits for the server's charge so the modal never shows an invented one.
-  const processingReady = !(pickerShown && method === "momo") || processingData?.payment_processing !== undefined;
+  const momoWithPicker = pickerShown && method === "momo";
+  // The server's charge for paying shownTotal by mobile money (shared cache with the picker's own line). A total that
+  // is not a positive amount cannot be quoted: mobile money stays blocked and the wallet is the way to pay.
+  const quotable = isPlausibleAmount(shownTotal);
+  const { data: processingData, error: processingError, isError: processingFailed, refetch: refetchProcessing } = useWalletProcessing(momoWithPicker ? shownTotal : "");
+  const processingReady = !momoWithPicker || processingData?.payment_processing !== undefined;
+  const processingPending = momoWithPicker && quotable && !processingData && !processingFailed;
+  const payReady0 = !walletChecking && !walletFailed && processingReady;
   // canBuy too: if the opening moves while the confirm step is open, paying stops.
-  const payReady = canBuy && doorToDoorReady && !guardBlock && !guardUnchecked && processingReady && !walletPaying;
+  const payReady = canBuy && doorToDoorReady && !guardBlock && !guardUnchecked && payReady0 && !walletPaying;
 
   const formatAmount = (amount) => {
     const value = parseFloat(amount) || 0;
@@ -160,6 +170,9 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
     const rate = CURRENCIES[currency] ?? 1;
     return `${currency} ${(value * rate).toFixed(2)}`;
   };
+
+  // The order carries a non-zero payment-processing charge: the receipt then lists the order total, the charge and the total paid.
+  const charged = !!order?.payment_processing && order.payment_processing !== "0.00";
 
   const updateQuantity = async (item, nextQuantity) => {
     if (nextQuantity < 1) return;
@@ -460,6 +473,21 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                 <PaymentMethodPicker value={method} onChange={(m) => { setPaymentMethod(m); setCheckoutError(null); }} amount={shownTotal} />
               </div>
             )}
+            {walletChecking && <div data-testid="cart-wallet-checking" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>Checking payment options…</div>}
+            {walletFailed && (
+              <div role="alert" style={{ background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>
+                {walletMessage(walletError).text}{" "}
+                <button type="button" onClick={() => refetchWallet()} style={{ background: "none", border: "none", color: C.errInk, textDecoration: "underline", cursor: "pointer", fontSize: "0.72rem", fontFamily: "inherit" }}>Try again</button>
+              </div>
+            )}
+            {momoWithPicker && !quotable && <div style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>There is nothing to pay by mobile money. Choose your AshantiHub wallet.</div>}
+            {processingPending && <div data-testid="cart-processing-checking" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>Getting the payment processing charge…</div>}
+            {momoWithPicker && quotable && processingFailed && (
+              <div role="alert" style={{ background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>
+                {apiErrorMessage(processingError, "We couldn't get the payment processing charge.")}{" "}
+                <button type="button" onClick={() => refetchProcessing()} style={{ background: "none", border: "none", color: C.errInk, textDecoration: "underline", cursor: "pointer", fontSize: "0.72rem", fontFamily: "inherit" }}>Try again</button>
+              </div>
+            )}
             {checkoutError && <div style={{ background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{checkoutError}</div>}
             {staffGate.shownFor && <StaffGateNotice style={{ marginBottom: 12 }} />}
             <div style={{ display: "flex", gap: 8 }}>
@@ -493,15 +521,15 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                   <span>{formatAmount(oi.line_total)}</span>
                 </div>
               ))}
-              {order.payment_processing && order.payment_processing !== "0.00" && (
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: C.inkDim }}>Payment processing</span>
-                  <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatGhs(order.payment_processing)}</span>
-                </div>
-              )}
+              {charged ? (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.inkDim }}>Order total</span><span>{formatAmount(order.total_amount)}</span></div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.inkDim }}>Payment processing</span><span style={{ fontVariantNumeric: "tabular-nums" }}>{formatAmount(order.payment_processing)}</span></div>
+                </>
+              ) : null}
               <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${C.line}`, paddingTop: 6, marginTop: 4 }}>
-                <span style={{ fontWeight: 800 }}>Total Paid</span>
-                <span style={{ fontWeight: 900, color: C.price }}>{formatAmount(order.total_amount)}</span>
+                <span style={{ fontWeight: 800 }}>{charged ? "Total paid" : "Total Paid"}</span>
+                <span style={{ fontWeight: 900, color: C.price }}>{formatAmount(charged ? (addGhs(order.total_amount, order.payment_processing) ?? order.total_amount) : order.total_amount)}</span>
               </div>
             </div>
             <button onClick={startOver} style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 24, padding: "10px 22px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>Continue Shopping</button>
