@@ -26,7 +26,7 @@ from .models import (
 from delivery.models import VEHICLE_TYPES as VEHICLE_TYPE_CHOICES, DeliveryZone, Rider
 from listings.models import Zone
 
-from .permissions import can_lead_team, can_manage_staff
+from .permissions import can_lead_team, can_manage_staff, general_manager_manager_problem
 from .phones import filter_by_phone, mask_phone
 
 # Used to pay the same check_password() cost when no account is found, so that
@@ -130,7 +130,6 @@ class CustomerRegistrationSerializer(serializers.ModelSerializer):
         return customer
 
 
-GM_MANAGER_MESSAGE = "A General Manager reports to a Super Admin."
 INVITE_TOKEN_LIFETIME = datetime.timedelta(days=7)
 
 
@@ -182,8 +181,9 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         elif attrs.get("manager") is not None and not can_lead_team(attrs["manager"]):
             # Same rule as StaffManagerView: only someone who can lead a team.
             raise serializers.ValidationError({"manager": ["Choose a manager who can lead a team."]})
-        if attrs["role"].name == Role.GENERAL_MANAGER and (attrs.get("manager") is None or attrs["manager"].role.name != Role.SUPER_ADMIN):
-            raise serializers.ValidationError({"manager": [GM_MANAGER_MESSAGE]})
+        problem = general_manager_manager_problem(attrs["role"].name, attrs.get("manager"))
+        if problem:
+            raise serializers.ValidationError({"manager": [problem]})
         if attrs.get("areas") and attrs["role"].name != Role.SCOUT:
             raise serializers.ValidationError({"areas": ["Areas are for scouts only."]})
         rider_fields = {"vehicle_type", "home_zone", "first_shift_date", "invite_note"}

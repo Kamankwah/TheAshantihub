@@ -212,7 +212,7 @@ BUSINESS_DETAIL_CHANGE = ApprovalKind(
     requires_sudo=True,
     money=True,  # it controls who can reach the business's money
     two_people=True,
-    chain_note="One approval from another holder of portfolio.manage, or a Super Admin; never the scout who verified",
+    chain_note="One approval from another holder of portfolio.manage (not a General Manager), or a Super Admin; never the scout who verified",
 )
 
 KINDS = (BUSINESS_KYC, BUSINESS_UPDATE, LISTING_CREATE, LISTING_PHOTOS, BUSINESS_DETAIL_CHANGE)

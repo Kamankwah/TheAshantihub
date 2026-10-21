@@ -71,6 +71,6 @@ def _amount(request):
 
 CAMPAIGN_KIND = ApprovalKind(
     key=KIND_KEY, label="Send a marketing campaign", pool_permission="", current_state=_current_state, apply=_apply,
-    response_hours=24, chain_note="Super Admin only", resolve_approver=_super_admin_only, render_diff=_diff, validate=_validate,
+    response_hours=24, chain_note="Super Admin or General Manager", resolve_approver=_super_admin_only, render_diff=_diff, validate=_validate,
     on_rejected=_on_rejected, consequences=_consequences, amount_of=_amount,
 )

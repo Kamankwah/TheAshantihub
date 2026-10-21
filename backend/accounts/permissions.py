@@ -60,6 +60,19 @@ def sees_every_team(user):
     return isinstance(user, StaffUser) and user.role.name in (Role.SUPER_ADMIN, Role.GENERAL_MANAGER)
 
 
+GM_MANAGER_MESSAGE = "A General Manager reports to a Super Admin."
+
+
+def general_manager_manager_problem(role_name, manager):
+    """The one rule for who a General Manager reports to: an active Super Admin, never nobody.
+    Returns the refusal message, or None when `role_name` is not General Manager or the manager is fine."""
+    if role_name != Role.GENERAL_MANAGER:
+        return None
+    if manager is None or manager.role.name != Role.SUPER_ADMIN or not manager.is_active:
+        return GM_MANAGER_MESSAGE
+    return None
+
+
 class IsStaff(BasePermission):
     def has_permission(self, request, view):
         return isinstance(request.user, StaffUser)

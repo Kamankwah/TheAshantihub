@@ -5,7 +5,6 @@ from dataclasses import replace
 from django.test import TestCase
 from django.utils import timezone
 
-from accounts.models import Role
 from accounts.testing import make_staff
 from approvals import registry, services
 from approvals.models import ApprovalRequest

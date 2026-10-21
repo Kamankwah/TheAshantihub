@@ -5,7 +5,9 @@ from django.db import migrations
 # stage (approvals.view_all), approves listings staff made for a client, and reads the Super Admin dashboards.
 # It never holds a money, ledger-setting, wallet or configuration permission; the approvals engine also bars it from
 # every kind marked money=True whatever it holds.
-MAKER_PERMISSIONS = ["businesses.register"]
+# users.manage is withheld too: with the ledger off it lets the holder rewrite a business owner's login phone and email
+# directly, the same class of write as the money-kind owner contact change.
+MAKER_PERMISSIONS = ["businesses.register", "users.manage"]
 EXTRA = [
     "approvals.view_all",
     "activity.view_all", "analytics.view", "calls.view_all", "calls.view_peers", "commission.view_all",
@@ -23,6 +25,10 @@ def seed(apps, schema_editor):
     wanted = list(operations.permissions.exclude(codename__in=MAKER_PERMISSIONS))
     wanted += list(Permission.objects.filter(codename__in=EXTRA))
     role.permissions.add(staffed, *wanted)
+    # The GM invites what Operations invites (a Super Admin or another GM is never in those rules).
+    RoleInviteRule = apps.get_model("accounts", "RoleInviteRule")
+    for rule in RoleInviteRule.objects.filter(inviter_role=operations):
+        RoleInviteRule.objects.get_or_create(inviter_role=role, invitee_role=rule.invitee_role)
     # Super Admin holds every permission; the later staff-listing migration grants it to Operations too.
     Role.objects.get(name="super_admin").permissions.add(staffed)
 
