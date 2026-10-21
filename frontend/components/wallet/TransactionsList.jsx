@@ -50,6 +50,10 @@ export default function TransactionsList({ tone = 'light', orderHref }) {
   const rows = loaded.flatMap((p) => p.results || [])
   const last = loaded[loaded.length - 1]
   const hasMore = Boolean(last.next)
+  const nextPage = Math.max(...Object.keys(pages).map(Number)) + 1
+  // A failed page is retried, never skipped: the button always asks for the page after the highest loaded.
+  const loadMore = () => (page === nextPage ? query.refetch() : setPage(nextPage))
+  const loadError = query.error ? walletMessage(query.error) : null
   if (!rows.length) return <div style={s.card}><div style={s.note}>You don't have any transactions yet.</div></div>
 
   const chips = GROUPS.filter((g) => rows.some((r) => g.kinds.includes(r.kind)))
@@ -92,8 +96,9 @@ export default function TransactionsList({ tone = 'light', orderHref }) {
           )
         })}
       </ul>
+      {loadError && <div style={{ ...s.error, marginTop: 12 }}>{loadError.text}</div>}
       {hasMore && (
-        <button type="button" style={{ ...s.ghost, marginTop: 12 }} disabled={query.isFetching} onClick={() => setPage(page + 1)}>Load more</button>
+        <button type="button" style={{ ...s.ghost, marginTop: 12 }} disabled={query.isFetching} onClick={loadMore}>Load more</button>
       )}
     </div>
   )

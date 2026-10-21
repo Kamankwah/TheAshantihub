@@ -59,6 +59,32 @@ describe('TransactionsList', () => {
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
   })
 
+  it('test_failed_load_more_shows_the_error_and_retries_the_same_page', async () => {
+    let failing = true
+    server.use(http.get(`${API}/api/wallet/transactions/`, ({ request }) => {
+      const p = new URL(request.url).searchParams.get('page')
+      if (p === '2') {
+        return failing
+          ? HttpResponse.json({ detail: 'Server trouble.' }, { status: 500 })
+          : HttpResponse.json({ count: 3, next: `${API}/api/wallet/transactions/?page=3`, previous: 'x', results: [row({ id: 2, label: 'Top-up two' })] })
+      }
+      if (p === '3') return HttpResponse.json({ count: 3, next: null, previous: 'x', results: [row({ id: 3, label: 'Top-up three' })] })
+      return HttpResponse.json({ count: 3, next: `${API}/api/wallet/transactions/?page=2`, previous: null, results: [row({ id: 1, label: 'Top-up one' })] })
+    }))
+    renderIt()
+    await screen.findByText('Top-up one')
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    expect(await screen.findByText('Server trouble.', {}, { timeout: 8000 })).toBeInTheDocument()
+    expect(screen.getByText('Top-up one')).toBeInTheDocument()
+    failing = false
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    expect(await screen.findByText('Top-up two')).toBeInTheDocument()
+    expect(screen.queryByText('Server trouble.')).toBeNull()
+    expect(screen.queryByText('Top-up three')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    expect(await screen.findByText('Top-up three')).toBeInTheDocument()
+  }, 20000)
+
   it('test_empty_state_text', async () => {
     renderIt()
     expect(await screen.findByText("You don't have any transactions yet.")).toBeInTheDocument()
