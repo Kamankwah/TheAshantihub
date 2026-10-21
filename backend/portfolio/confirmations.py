@@ -38,6 +38,7 @@ from .models import ListingDraft, OwnerConfirmation
 logger = logging.getLogger(__name__)
 
 LINK_TTL = timedelta(days=7)
+QUEUED_STALE = timedelta(minutes=10)  # a link still "queued" after this never went out
 RESEND_LIMIT = 3  # per draft per Accra day
 MAX_BODY = 306
 
@@ -45,6 +46,9 @@ INVALID = "This link isn't valid. Check you opened the whole link, or ask Ashant
 USED = "This link has already been used or replaced. Ask AshantiHub for a new one if you still need to confirm."
 EXPIRED = "This link has expired. Ask AshantiHub to send a new one."
 NOTHING = "There is nothing to ask the owner to confirm."
+NOTHING_NEW = "There is nothing new to send. Resend the existing link if it lapsed or did not go out."
+ALREADY_SENT = "That draft was already sent to the owner. Resend it instead."
+ONLINE_OWNER = "This business registered itself online, so its registration needs no confirmation."
 NOT_CONFIRMABLE = "One of these drafts can't be sent to the owner in its present state."
 NOT_SENT_YET = "This draft has not been sent to the owner yet."
 ALREADY_ANSWERED = "The owner has already answered, so there is nothing to resend."
@@ -62,6 +66,11 @@ SEND_NOTES = {
     OwnerConfirmation.BLOCKED: "Not sent: that number belongs to a staff account",
 }
 LAPSED = "lapsed"
+NOT_DELIVERED = {
+    OwnerConfirmation.QUEUED: "the text never went out", OwnerConfirmation.FAILED: "the text could not be delivered",
+    OwnerConfirmation.SIMULATED: "texts are simulated", OwnerConfirmation.NO_PHONE: "no phone number on file",
+    OwnerConfirmation.BLOCKED: "that number belongs to a staff account",
+}
 
 
 def needs_owner_text(owner):
@@ -82,15 +91,14 @@ _OPEN = Q(confirmed_at__isnull=True, declined_at__isnull=True, revoked_at__isnul
 
 
 def registration_confirmed(owner):
-    """True unless a staff-registered business has a registration confirmation request and none was confirmed.
-    (a) not registered by staff, (b) a registration link confirmed, or (c) no registration link was ever made
-    (grandfathered: rows are never deleted, and staff registration creates its row with the owner) -> True."""
-    if owner.registration_channel != BusinessOwner.SCOUT or owner.registered_by_id is None:
-        return True
+    """False only when a registration confirmation was requested and none was confirmed (rows are checked first, so a
+    registrar deleted since changes nothing). With no request at all it is True: an owner who registered online, or a
+    business from before this release (grandfathered: rows are never deleted, and staff registration creates its row
+    with the owner, so a staff-registered owner without one predates the pipeline)."""
     rows = OwnerConfirmation.objects.filter(business_owner=owner, scope=OwnerConfirmation.REGISTRATION)
-    if rows.filter(confirmed_at__isnull=False).exists():
-        return True
-    return not rows.exists()
+    if rows.exists():  # a request was made: a confirmed one is required (registered_by may have been nulled since)
+        return rows.filter(confirmed_at__isnull=False).exists()
+    return True  # no request ever made: online owner, or grandfathered (R3 c); staff registration creates its row
 
 
 def _registration_row_confirmed(owner):
@@ -106,10 +114,10 @@ def _plain(text, limit):
     return " ".join(kept.split())[:limit].strip()
 
 
-def _body(staff, business, count, link):
+def _body(staff, business, count, confirm_url):
     first = _plain((staff.full_name or "").split(" ")[0], 20) or "Our team"
     items = f"{count} item" + ("" if count == 1 else "s")
-    head, tail = f"AshantiHub: {first} asks you to confirm {items} for ", f". Open {link}. Valid 7 days."
+    head, tail = f"AshantiHub: {first} asks you to confirm {items} for ", f". Open {confirm_url}. Valid 7 days."
     room = MAX_BODY - len(head) - len(tail)
     name = _plain(business, 200) or "your business"
     if len(name) > room:
@@ -151,8 +159,10 @@ def _resendable(confirmation, now):
         return True
     if confirmation.confirmed_at is not None or confirmation.declined_at is not None:
         return False
+    if confirmation.send_state == OwnerConfirmation.QUEUED:  # the after-commit send never ran (e.g. the worker died)
+        return confirmation.expires_at <= now or confirmation.created_at <= now - QUEUED_STALE
     return confirmation.expires_at <= now or confirmation.send_state in (
-        OwnerConfirmation.FAILED, OwnerConfirmation.NO_PHONE,
+        OwnerConfirmation.FAILED, OwnerConfirmation.NO_PHONE, OwnerConfirmation.BLOCKED,
     )
 
 
@@ -186,10 +196,14 @@ def _issue(owner, staff, drafts, registration, *, resend=False, source=None):
                 current = links.get(draft.confirmation_id)
                 if current is not None and not _resendable(current, now):
                     raise ClaimError(STILL_OPEN, code="still_open")
-            elif draft.status not in (ListingDraft.DRAFT, ListingDraft.AWAITING_OWNER):
+            elif draft.status == ListingDraft.AWAITING_OWNER:
+                raise ClaimError(ALREADY_SENT, code="still_open")  # awaiting ones go through resend
+            elif draft.status != ListingDraft.DRAFT:
                 raise ClaimError(NOT_CONFIRMABLE, code="not_confirmable")
 
         olds = [link for link in links.values() if _is_open(link)]
+        if registration and locked.registration_channel != BusinessOwner.SCOUT:
+            raise ClaimError(ONLINE_OWNER, code="not_staff_registered")
         want_registration = registration or (source is not None and source.scope == OwnerConfirmation.REGISTRATION)
         if source is not None:
             held = links.get(source.pk)
@@ -202,6 +216,12 @@ def _issue(owner, staff, drafts, registration, *, resend=False, source=None):
         )) and not _registration_row_confirmed(locked)
         if not found and not take_registration:
             raise ClaimError(NOTHING, code="nothing_to_confirm")
+        if not resend and not explicit and not (
+            registration and take_registration
+            and not any(link.scope == OwnerConfirmation.REGISTRATION for link in olds)
+        ):
+            # request mode needs a new item: a DRAFT draft, or a registration not already on an open link
+            raise ClaimError(NOTHING_NEW, code="nothing_new")
 
         if resend:
             for draft in found:
@@ -248,10 +268,16 @@ def _issue(owner, staff, drafts, registration, *, resend=False, source=None):
                     draft.resend_day = today
                 draft.status, draft.confirmation = ListingDraft.AWAITING_OWNER, row
                 draft.save(update_fields=["status", "confirmation", "resends_today", "resend_day", "updated_at"])
+        if blocked:
+            went = "not sent: that number belongs to a staff account"
+        elif not phone:
+            went = "not sent: no phone number on file"
+        else:
+            went = f"text queued to {mask_phone(phone)}"
         record(
             staff, "owner_confirmation.resent" if resend else "owner_confirmation.sent", target=row,
-            summary=f"Asked the owner to confirm {count} item(s); text to {mask_phone(phone) if phone else 'no number'}",
-            after={"scope": row.scope, "items": count, "sent_to": mask_phone(phone) if phone else ""},
+            summary=f"Asked the owner to confirm {count} item(s); {went}",
+            after={"scope": row.scope, "items": count, "sent_to": mask_phone(phone) if phone and not blocked else ""},
         )  # 4. the activity chain, last
         if phone and not blocked:
             transaction.on_commit(lambda: _send_after_commit(row.pk, phone, body), robust=True)
@@ -414,18 +440,23 @@ def notify_lapsed(now=None):
     due = OwnerConfirmation.objects.filter(_OPEN, expires_at__lte=now, lapse_notified_at__isnull=True)
     announced = 0
     for row in due.select_related("business_owner", "created_by").order_by("pk"):
-        if not OwnerConfirmation.objects.filter(pk=row.pk, lapse_notified_at__isnull=True).update(lapse_notified_at=now):
+        if not OwnerConfirmation.objects.filter(_OPEN, pk=row.pk, lapse_notified_at__isnull=True).update(
+            lapse_notified_at=now,
+        ):
             continue  # another run announced it
         waiting = list(row.drafts.filter(status=ListingDraft.AWAITING_OWNER).select_related("created_by"))
         if not waiting and row.scope != OwnerConfirmation.REGISTRATION:
             continue
         makers = {draft.created_by_id: draft.created_by for draft in waiting}
         makers.setdefault(row.created_by_id, row.created_by)
+        name = row.business_owner.display_name
+        if row.send_state == OwnerConfirmation.SENT:
+            title = f"{name} did not confirm in time"
+            text = "The 7-day link lapsed. Resend it from the draft to give the owner another 7 days."
+        else:
+            title = f"The confirmation text for {name} was not delivered"
+            text = f"It never reached the owner ({NOT_DELIVERED[row.send_state]}). Resend it from the draft."
         for staff in makers.values():
-            notify_staff(
-                staff, "owner_link_lapsed", f"{row.business_owner.display_name} did not confirm in time",
-                body="The 7-day link lapsed. Resend it from the draft to give the owner another 7 days.",
-                link="portfolio", icon="⏳",
-            )
+            notify_staff(staff, "owner_link_lapsed", title, body=text, link="portfolio", icon="⏳")
         announced += 1
     return announced

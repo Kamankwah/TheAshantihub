@@ -483,3 +483,109 @@ class LapseTaskTests(Base):
 
         entry = settings.CELERY_BEAT_SCHEDULE["portfolio-notify-lapsed-confirmations"]
         self.assertEqual(entry["task"], "portfolio.tasks.notify_lapsed_confirmations")
+
+
+class GuardTests(Base):
+    def scout_owner(self, phone="024 111 0020"):
+        return make_owner(phone, registration_channel=BusinessOwner.SCOUT, registered_by=self.scout)
+
+    def test_request_mode_cannot_be_used_to_resend_without_limit(self):
+        draft = self.draft()
+        first = self.ask(drafts=[draft])
+        for kwargs in ({}, {"drafts": [ListingDraft.objects.get(pk=draft.pk)]}):
+            with self.assertRaises(ClaimError) as caught:
+                confirmations.request_confirmation(self.owner, self.scout, **kwargs)
+            self.assertIn(caught.exception.code, {"nothing_new", "still_open"})
+        with self.assertRaises(ClaimError):
+            confirmations.request_confirmation(self.owner, self.scout, registration=True)  # online owner
+        first.refresh_from_db()
+        self.assertIsNone(first.revoked_at)
+        self.assertEqual(len(senders.sms_outbox), 1)
+
+    def test_registration_already_on_an_open_link_is_not_new(self):
+        owner = self.scout_owner()
+        with self.captureOnCommitCallbacks(execute=True):
+            first = confirmations.request_confirmation(owner, self.scout, registration=True)
+        with self.assertRaises(ClaimError) as caught:
+            confirmations.request_confirmation(owner, self.scout, registration=True)
+        self.assertEqual(caught.exception.code, "nothing_new")
+        first.refresh_from_db()
+        self.assertIsNone(first.revoked_at)
+        with self.assertRaises(ClaimError) as caught:
+            confirmations.request_confirmation(owner, self.scout)
+        self.assertEqual(caught.exception.code, "nothing_new")
+
+    def test_registration_cannot_be_requested_for_an_online_owner(self):
+        with self.assertRaises(ClaimError) as caught:
+            confirmations.request_confirmation(self.owner, self.scout, registration=True)
+        self.assertEqual(caught.exception.code, "not_staff_registered")
+
+    def test_registration_confirmed_checks_rows_before_the_registrar(self):
+        owner = self.scout_owner("024 111 0021")
+        with self.captureOnCommitCallbacks(execute=True):
+            confirmations.request_confirmation(owner, self.scout, registration=True)
+        BusinessOwner.objects.filter(pk=owner.pk).update(registered_by=None)
+        self.assertFalse(confirmations.registration_confirmed(BusinessOwner.objects.get(pk=owner.pk)))
+        confirmations.confirm(self.raw())
+        self.assertTrue(confirmations.registration_confirmed(BusinessOwner.objects.get(pk=owner.pk)))
+
+    def test_a_blocked_link_can_be_resent(self):
+        staff = make_staff("scout", "ama@example.com", phone="0241110001")
+        draft = self.draft()
+        row = self.ask(drafts=[draft])
+        self.assertEqual(row.send_state, OwnerConfirmation.BLOCKED)
+        type(staff).objects.filter(pk=staff.pk).update(phone=None)  # the clash is fixed
+        with self.captureOnCommitCallbacks(execute=True):
+            again = confirmations.resend([draft.pk], self.scout)
+        again.refresh_from_db()
+        self.assertEqual(again.send_state, OwnerConfirmation.SENT)
+
+    def test_a_queued_link_is_resendable_only_once_stale(self):
+        draft = self.draft()
+        with mock.patch.object(confirmations, "_send_after_commit"):  # the send never ran
+            row = self.ask(drafts=[draft])
+        self.assertEqual(row.send_state, OwnerConfirmation.QUEUED)
+        with self.assertRaises(ClaimError) as caught:
+            confirmations.resend([draft.pk], self.scout)
+        self.assertEqual(caught.exception.code, "still_open")
+        with self.at(row.created_at + confirmations.QUEUED_STALE + timedelta(seconds=1)):
+            with self.captureOnCommitCallbacks(execute=True):
+                confirmations.resend([draft.pk], self.scout)
+        self.assertEqual(len(senders.sms_outbox), 1)
+
+    def test_the_activity_summary_says_what_happened(self):
+        make_staff("scout", "ama@example.com", phone="0241110001")
+        self.ask()
+        event = ActivityEvent.objects.get(verb="owner_confirmation.sent")
+        self.assertIn("not sent: that number belongs to a staff account", event.summary)
+        self.assertNotIn("0001", event.summary + repr(event.after))
+
+    def test_a_lapsed_link_that_never_reached_the_owner_says_so(self):
+        make_staff("scout", "ama@example.com", phone="0241110001")
+        row = self.ask()
+        OwnerConfirmation.objects.filter(pk=row.pk).update(expires_at=timezone.now() - timedelta(minutes=1))
+        self.assertEqual(tasks.notify_lapsed_confirmations(), 1)
+        notice = Notification.objects.get(kind="owner_link_lapsed")
+        self.assertIn("was not delivered", notice.title)
+        self.assertNotIn("did not confirm", notice.title)
+        self.assertIn("staff account", notice.body)
+
+    def test_a_lapsed_sent_link_keeps_the_did_not_confirm_wording(self):
+        row = self.ask()
+        OwnerConfirmation.objects.filter(pk=row.pk).update(expires_at=timezone.now() - timedelta(minutes=1))
+        tasks.notify_lapsed_confirmations()
+        self.assertIn("did not confirm in time", Notification.objects.get(kind="owner_link_lapsed").title)
+
+    def test_a_link_answered_before_the_guard_update_is_not_announced(self):
+        row = self.ask()
+        OwnerConfirmation.objects.filter(pk=row.pk).update(expires_at=timezone.now() - timedelta(minutes=1))
+        real = confirmations.OwnerConfirmation.objects.filter
+
+        def revoke_then_filter(*args, **kwargs):
+            if kwargs.get("lapse_notified_at__isnull") and kwargs.get("pk") == row.pk:
+                OwnerConfirmation.objects.filter(pk=row.pk).update(revoked_at=timezone.now())
+            return real(*args, **kwargs)
+
+        with mock.patch.object(OwnerConfirmation.objects, "filter", side_effect=revoke_then_filter):
+            self.assertEqual(confirmations.notify_lapsed(), 0)
+        self.assertFalse(Notification.objects.filter(kind="owner_link_lapsed").exists())
