@@ -587,6 +587,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "staffsecurity.tasks.purge_old_sign_in_records",
         "schedule": crontab(hour=3, minute=45),
     },
+    "portfolio-notify-lapsed-confirmations": {
+        "task": "portfolio.tasks.notify_lapsed_confirmations",
+        "schedule": crontab(minute=35),  # hourly, at thirty-five past: tell staff an owner link lapsed (once per link)
+    },
     "portfolio-purge-staged-photos": {
         "task": "portfolio.tasks.purge_staged_photos",
         "schedule": crontab(hour=4, minute=30),

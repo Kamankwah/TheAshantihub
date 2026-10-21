@@ -144,6 +144,11 @@ class Event(models.Model):
         related_name="reviewed_events",
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
+    # The staff member who drafted this event for a client business (staff-listing pipeline, plan M3); null for every
+    # event its organizer made. Mirrors Listing.created_by_staff.
+    created_by_staff = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="events_created_for_owners",
+    )
 
     access_level = models.CharField(max_length=10, choices=ACCESS_LEVEL_CHOICES, default=PUBLIC)
     # Always generated on creation regardless of access_level (see

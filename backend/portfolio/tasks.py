@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from approvals.models import ApprovalRequest
 
-from . import health
+from . import confirmations, health
 from .models import StagedPhoto
 
 STAGED_PHOTO_TTL = timedelta(days=7)
@@ -57,3 +57,9 @@ def purge_unused_staged_photos(now=None):
 @shared_task
 def purge_staged_photos():
     return purge_unused_staged_photos()
+
+
+@shared_task
+def notify_lapsed_confirmations():
+    """Hourly: tell the staff behind each owner link that lapsed unanswered, once."""
+    return confirmations.notify_lapsed()

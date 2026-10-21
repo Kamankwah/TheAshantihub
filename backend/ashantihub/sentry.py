@@ -11,6 +11,8 @@ from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
 EXTRA_DENYLIST = [
     "password_confirm", "raw", "token", "claim_link",
+    # Owner confirmation links (portfolio.confirmations): the texted link and the token inside it, in a frame.
+    "confirm_token", "confirm_link",
     # One-time codes (otp app): request bodies and the step-up header.
     "code", "mfa_token", "recovery_code", "device_token", "step_up_token", "otpauth_uri",
     "x-step-up-token", "x_step_up_token",
