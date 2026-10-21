@@ -1,5 +1,7 @@
 """Staff registration for a client (plan M3, Task 5): Operations and Super Admin register a business like a scout does,
 and every staff registration (R3) creates its registration-scope owner confirmation in the same transaction."""
+from unittest import mock
+
 from django.test import override_settings
 
 from accounts.models import BusinessOwner
@@ -68,3 +70,13 @@ class RegisterByStaffTests(RegistrationBase):
         response = self.register_committing(self.lead)  # same phone, address and card: a duplicate
         self.assertEqual(response.status_code, 400)
         self.assertEqual(OwnerConfirmation.objects.count(), before)
+
+    def test_a_confirmation_refusal_answers_409_and_registers_nothing(self):
+        from accounts.claims import ClaimError
+
+        error = ClaimError("Nothing to do.", code="nothing_new")
+        with mock.patch("portfolio.registration.confirmations.request_confirmation", side_effect=error):
+            response = self.register_committing(self.lead)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json(), {"detail": "Nothing to do.", "code": "nothing_new"})
+        self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())

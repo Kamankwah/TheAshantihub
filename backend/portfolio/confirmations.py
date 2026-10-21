@@ -316,7 +316,8 @@ def detach(draft, staff, *, withdraw=False, payload=None):
     """Take a draft off its link so it can be edited (back to `draft`, optionally with a new payload) or withdrawn.
     Only a `draft` or `awaiting_owner` (live or lapsed) draft can be detached. The owner confirms what they saw, so
     the old link is revoked once it covers nothing: no draft left on it and not a registration link. A link that
-    still covers another draft or the registration stays live. Returns the locked, refreshed draft. Lock order as
+    still covers another draft or the registration stays live. `payload` is the new payload, or a function of the
+    payload read under the lock. Returns the locked, refreshed draft. Lock order as
     everywhere here: owner, the owner's links, the drafts; the caller records activity afterwards."""
     with transaction.atomic():
         owner = BusinessOwner.objects.select_for_update().get(pk=draft.business_owner_id)  # 1. the owner
@@ -333,7 +334,8 @@ def detach(draft, staff, *, withdraw=False, payload=None):
         locked.status = ListingDraft.WITHDRAWN if withdraw else ListingDraft.DRAFT
         fields = ["confirmation", "status", "updated_at"]
         if payload is not None:
-            locked.payload = payload
+            # a callable gets the payload as read under the lock, so concurrent edits never lose each other's changes
+            locked.payload = payload(locked.payload) if callable(payload) else payload
             fields.append("payload")
         locked.save(update_fields=fields)
         if link is not None and link.revoked_at is None and link.scope != OwnerConfirmation.REGISTRATION:

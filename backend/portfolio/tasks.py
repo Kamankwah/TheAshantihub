@@ -7,10 +7,13 @@ from django.utils import timezone
 from approvals.models import ApprovalRequest
 
 from . import confirmations, health
-from .models import StagedPhoto
+from .models import ListingDraft, StagedPhoto
 
 STAGED_PHOTO_TTL = timedelta(days=7)
 PHOTO_KINDS = ("listing.create", "listing.photos")
+LIVE_DRAFT_STATUSES = (
+    ListingDraft.DRAFT, ListingDraft.AWAITING_OWNER, ListingDraft.OWNER_CONFIRMED, ListingDraft.SUBMITTED,
+)
 
 
 @shared_task
@@ -22,9 +25,11 @@ def _photos_held_by_pending_requests():
     """Staged photos a pending listing.create / listing.photos request still
     names. Purging one would leave that request impossible to approve."""
     held = set()
-    payloads = ApprovalRequest.objects.filter(
+    payloads = list(ApprovalRequest.objects.filter(
         status=ApprovalRequest.PENDING, kind__in=PHOTO_KINDS,
-    ).values_list("payload", flat=True)
+    ).values_list("payload", flat=True))
+    # ...and the photos of every staff draft still on its way (one query): it may wait 7+ days on the owner's link
+    payloads += list(ListingDraft.objects.filter(status__in=LIVE_DRAFT_STATUSES).values_list("payload", flat=True))
     for payload in payloads:
         if not isinstance(payload, dict):
             continue

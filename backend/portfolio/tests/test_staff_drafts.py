@@ -381,3 +381,16 @@ class LeakTests(DraftBase):
             text = json.dumps(event.__dict__, default=str)
             for needle in ("0244100200", "244100200", "0241119999", "241119999", raw, "/business/confirm", "token_hash"):
                 self.assertNotIn(needle, text, event.verb)
+
+
+class FixRoundTests(DraftBase):
+    def test_an_edit_merges_onto_the_payload_read_under_the_lock(self):
+        self.as_staff(self.lead)
+        draft = self.make_draft()
+        stale = ListingDraft.objects.get(pk=draft.pk)  # what a slow second request read before the first one saved
+        self.call("patch", self.url(tail=f"{draft.pk}/"), {"name": "First edit"})
+        from portfolio import drafts
+
+        drafts.update_draft(self.lead, self.owner, stale, {"description": "Second edit"})
+        payload = ListingDraft.objects.get(pk=draft.pk).payload
+        self.assertEqual((payload["name"], payload["description"]), ("First edit", "Second edit"))

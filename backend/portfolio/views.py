@@ -148,6 +148,8 @@ class RegisterBusinessView(APIView):
             result = register_business(request.user, request.data, request.FILES, http_request=request)
         except RegistrationError as exc:
             return _refused(exc)
+        except ClaimError as exc:  # the owner's confirmation could not be requested: nothing was registered
+            return _claim_error(exc)
         owner, approval = result["business_owner"], result["approval"]
         shows_titles = "portfolio.manage" in request.user.effective_permission_codenames()
         return Response({

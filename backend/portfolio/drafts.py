@@ -197,11 +197,13 @@ def update_draft(staff, owner, draft, data, *, request=None):
         raise ClaimError(confirmations.NOT_EDITABLE, code="not_editable", status_code=409)
     if not isinstance(data, dict):
         raise ValidationError({"detail": ["Send the fields to change."]})
-    merged = {**draft.payload, **{key: value for key, value in data.items() if key != "kind"}}
-    payload = clean_payload(owner, draft.kind, merged)
+    changes = {key: value for key, value in data.items() if key != "kind"}
     was = draft.status
     with transaction.atomic():
-        draft = confirmations.detach(draft, staff, payload=payload)
+        # merge and validate against the payload read under the draft's lock, so two edits cannot overwrite each other
+        draft = confirmations.detach(
+            draft, staff, payload=lambda current: clean_payload(owner, draft.kind, {**current, **changes}),
+        )
         record(
             staff, "listing_draft.updated", target=draft,
             summary=f"Edited {draft.kind} draft “{_label(draft)}”"
