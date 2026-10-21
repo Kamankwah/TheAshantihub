@@ -55,6 +55,15 @@ describe('Staff withdrawals queue', () => {
     expect(within(screen.getByText('WD-0006').closest('tr')).queryByRole('button', { name: /Resolve/ })).toBeNull()
   })
 
+  it('test_never_sent_withdrawal_says_not_sent', async () => {
+    server.use(http.get(LIST, () => envelope([row({ id: 9, reference: 'WD-0009', status: 'held', status_label: 'Held', submitted_at: null, stuck: true }), row()])))
+    wrap(<WithdrawalsPanel auth={manage} />)
+    const held = (await screen.findByText('WD-0009')).closest('tr')
+    expect(held).toHaveTextContent('Not sent')
+    expect(held).not.toHaveTextContent('2026')
+    expect(screen.getByText('WD-0005').closest('tr')).not.toHaveTextContent('Not sent')
+  })
+
   it('test_resolve_submits_a_request_not_a_fail', async () => {
     const posts = []
     server.use(

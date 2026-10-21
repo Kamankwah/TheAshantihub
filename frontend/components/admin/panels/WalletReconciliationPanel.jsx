@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useWalletReconciliation } from "../../../hooks/useWalletReconciliation.js";
 import { walletMessage } from "../../wallet/walletErrors.js";
-import { formatGhs } from "../../wallet/walletMoney.js";
+import { formatGhs, pesewasToGhs } from "../../wallet/walletMoney.js";
 import { walletStyles } from "../../wallet/walletStyles.js";
 import { D, glassCard } from "../theme.js";
 import { button, chip, dim } from "./panelStyles.js";
@@ -29,29 +29,51 @@ function Pair({ label, ledger, statement }) {
 
 const show = (v) => (v !== null && typeof v === "object" ? JSON.stringify(v) : String(v));
 
+const isDiffRow = (v) => v && typeof v === "object" && !Array.isArray(v) && "reference" in v && "kind" in v && "problem" in v;
+const pesewas = (v) => (v === null || v === undefined ? "—" : pesewasToGhs(v));
+
+// The server sends a list of {reference, kind, problem, ledger, statement} with ledger and statement in
+// whole pesewas (or null). Rows of that shape are shown in GH₵; anything else is shown as sent.
 function Differences({ value }) {
-  const entries = Array.isArray(value) ? value.map((v, i) => [String(i + 1), v]) : value && typeof value === "object" ? Object.entries(value) : [];
-  if (!entries.length) return null;
+  const list = Array.isArray(value) ? value : [];
+  const rows = list.filter(isDiffRow);
+  const other = Array.isArray(value) ? list.filter((v) => !isDiffRow(v)).map((v, i) => [String(i + 1), v]) : value && typeof value === "object" ? Object.entries(value) : [];
+  if (!rows.length && !other.length) return null;
   return (
-    <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 12px", fontSize: "0.78rem" }}>
-      {entries.map(([k, v]) => (
-        <div key={k} style={{ display: "contents" }}>
-          <dt style={{ color: D.textDim, fontWeight: 700 }}>{k}</dt>
-          <dd style={{ margin: 0, color: D.text, fontVariantNumeric: "tabular-nums" }}>{show(v)}</dd>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.78rem" }}>
+      {rows.map((d, i) => (
+        <div key={`${d.reference}-${i}`} style={{ display: "flex", gap: 12, flexWrap: "wrap", color: D.text }}>
+          <span style={{ fontWeight: 700 }}>{d.reference}</span>
+          <span>{d.kind}</span>
+          <span>{d.problem}</span>
+          <span style={amount}>Ledger {pesewas(d.ledger)}</span>
+          <span style={amount}>Statement {pesewas(d.statement)}</span>
         </div>
       ))}
-    </dl>
+      {other.length > 0 && (
+        <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 12px" }}>
+          {other.map(([k, v]) => (
+            <div key={k} style={{ display: "contents" }}>
+              <dt style={{ color: D.textDim, fontWeight: 700 }}>{k}</dt>
+              <dd style={{ margin: 0, color: D.text, fontVariantNumeric: "tabular-nums" }}>{show(v)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
   );
 }
 
-function Run({ run }) {
+function Run({ run, onNavigate }) {
   return (
     <li style={{ listStyle: "none", padding: "12px 0", borderBottom: `1px solid ${D.divider}`, display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <span style={{ color: D.text, fontWeight: 800 }}>{run.day}</span>
         <span style={chip(D.textDim)}>{run.status_label || run.status}</span>
         {run.provider && <span style={dim}>{run.provider}</span>}
-        {has(run.fraud_case_id) && <span style={chip(D.red)}>Fraud case #{run.fraud_case_id}</span>}
+        {has(run.fraud_case_id) && (onNavigate
+          ? <button type="button" onClick={() => onNavigate("fraud-cases")} style={{ ...chip(D.red), cursor: "pointer", textDecoration: "underline", fontFamily: "inherit" }}>Fraud alert #{run.fraud_case_id}</button>
+          : <span style={chip(D.red)}>Fraud alert #{run.fraud_case_id}</span>)}
       </div>
       <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
         <Pair label="Ledger in / statement in" ledger={run.ledger_in} statement={run.statement_in} />
@@ -71,7 +93,7 @@ function Run({ run }) {
   );
 }
 
-export default function WalletReconciliationPanel({ fallback = null }) {
+export default function WalletReconciliationPanel({ fallback = null, onNavigate }) {
   const queryClient = useQueryClient();
   const s = walletStyles("dashboard");
   const query = useWalletReconciliation();
@@ -86,7 +108,7 @@ export default function WalletReconciliationPanel({ fallback = null }) {
         {failure ? <div role="alert" style={s.error}>{failure.text}</div>
           : !runs ? <div role="status" style={dim}>Loading…</div>
           : !runs.length ? <div style={dim}>No reconciliation runs yet.</div>
-          : <ul style={{ margin: 0, padding: 0 }}>{runs.map((r) => <Run key={`${r.day}-${r.provider}`} run={r} />)}</ul>}
+          : <ul style={{ margin: 0, padding: 0 }}>{runs.map((r) => <Run key={`${r.day}-${r.provider}`} run={r} onNavigate={onNavigate} />)}</ul>}
       </section>
     </div>
   );

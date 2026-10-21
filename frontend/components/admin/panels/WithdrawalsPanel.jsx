@@ -99,7 +99,7 @@ function Rows({ status, canManage, onResolve }) {
                 <td style={{ ...td, ...money }}>{formatGhs(r.charge)}</td>
                 <td style={td}>{r.status_label}{r.stuck && <> <span style={chip(D.amber)}>Stuck</span></>}</td>
                 <td style={td}>{r.destination?.account_number_masked || "—"}</td>
-                <td style={td}>{when(r.submitted_at || r.created_at)}</td>
+                <td style={td}>{r.submitted_at ? when(r.submitted_at) : "Not sent"}</td>
                 <td style={td}>{r.stuck && canManage && <button type="button" onClick={() => onResolve(r)} style={button(D.panelBg, D.text, false)}>Resolve…</button>}</td>
               </tr>
             ))}
