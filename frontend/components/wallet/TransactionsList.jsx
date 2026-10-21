@@ -16,6 +16,8 @@ const GROUPS = [
   { id: 'releases', label: 'Releases', kinds: ['order_release', 'booking_release'] },
   { id: 'promos', label: 'Free-delivery promos', kinds: ['order_waiver_charge', 'order_waiver_return'] },
 ]
+// A vendor's money sits in two accounts; a release debits Pending and credits Available.
+const ACCOUNTS = { pending: 'Pending', available: 'Available' }
 const REFUND_KINDS = ['order_refund', 'booking_refund']
 
 const hidden = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap' }
@@ -59,7 +61,7 @@ export default function TransactionsList({ tone = 'light', orderHref }) {
           return (
             <li key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '12px 0', borderTop: s.card.border }}>
               <div style={{ minWidth: 0 }}>
-                <div style={s.value}>{r.label}</div>
+                <div style={s.value}>{r.label}{ACCOUNTS[r.account] && <span style={{ ...s.note, marginLeft: 8 }}>{ACCOUNTS[r.account]}</span>}</div>
                 {when && <div style={s.note}>{when}</div>}
                 {REFUND_KINDS.includes(r.kind) && incoming && <RefundNotice line={r} tone={tone} />}
                 {r.order && typeof orderHref === 'function' && (

@@ -106,4 +106,30 @@ describe('VendorPayouts', () => {
     expect(screen.queryByText(/cap/i)).toBeNull()
     expect(screen.queryByRole('button', { name: /export|download|csv/i })).toBeNull()
   })
+
+  it('test_a_failed_withdraw_then_retry_sends_the_same_request_id', async () => {
+    vendorWallet()
+    const bodies = []
+    server.use(
+      http.get(`${API}/api/wallet/destinations/`, () => HttpResponse.json({
+        results: [{ id: 7, rail: 'momo', institution: 'MTN', account_name: 'Akosua', account_number_masked: '024****567', usable_from: '2026-10-01T10:00:00Z', usable: true, removed: false }],
+        cooling_hours: 24,
+      })),
+      http.post(`${API}/api/wallet/withdrawals/`, async ({ request }) => {
+        bodies.push(await request.json())
+        if (bodies.length === 1) return HttpResponse.json({ detail: 'Try again.' }, { status: 500 })
+        return HttpResponse.json({ id: 1, reference: 'WD-1', amount: '10.00', charge: '0.00', you_receive: '10.00', status: 'processing', status_label: 'Processing', destination: null, created_at: '2026-10-20T10:05:00Z', settled_at: null, failure_reason: '' }, { status: 201 })
+      }),
+    )
+    wrap(<VendorPayouts />)
+    fireEvent.change(await screen.findByLabelText(/amount to withdraw/i), { target: { value: '10' } })
+    const go = () => fireEvent.click(screen.getByRole('button', { name: /withdraw/i }))
+    go()
+    await screen.findByRole('alert')
+    await waitFor(() => expect(screen.getByRole('button', { name: /withdraw/i })).not.toBeDisabled())
+    go()
+    await waitFor(() => expect(bodies).toHaveLength(2))
+    expect(bodies[0].request_id).toBeTruthy()
+    expect(bodies[1].request_id).toBe(bodies[0].request_id)
+  })
 })

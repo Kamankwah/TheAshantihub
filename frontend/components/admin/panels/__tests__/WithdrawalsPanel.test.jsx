@@ -196,4 +196,37 @@ describe('Staff withdrawals queue', () => {
     await waitFor(() => expect(seen).toContain('all:1'))
     await waitFor(() => expect(screen.queryByText('WD-0002')).toBeNull())
   })
+
+  it('test_submitted_time_is_shown_in_accra_time', async () => {
+    server.use(http.get(LIST, () => envelope([row({ submitted_at: '2026-10-20T23:30:00Z' })])))
+    wrap(<WithdrawalsPanel auth={manage} />)
+    const tr = (await screen.findByText('WD-0005')).closest('tr')
+    expect(tr).toHaveTextContent(/20 Oct 2026/)
+    expect(tr).toHaveTextContent(/23:30/)
+  })
+
+  it.each(['provider_answered', 'amount_case_open'])('test_a_%s_refusal_refreshes_the_stale_stuck_row', async (code) => {
+    let lists = 0
+    server.use(
+      http.get(LIST, () => { lists += 1; return envelope(lists === 1 ? [stuckRow()] : []) }),
+      http.post('http://localhost:8000/api/wallet/staff/withdrawals/:id/resolve/', () => HttpResponse.json({ detail: 'Already settled.', code }, { status: 409 })),
+    )
+    wrap(<WithdrawalsPanel auth={manage} />)
+    const sheet = await openSheet()
+    fireEvent.change(within(sheet).getByLabelText(/Evidence/), { target: { value: EVIDENCE } })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Send for approval' }))
+    expect(await within(sheet).findByRole('alert')).toHaveTextContent('Already settled.')
+    await waitFor(() => expect(lists).toBeGreaterThan(1))
+    await waitFor(() => expect(screen.queryByText('WD-0005')).toBeNull())
+  })
+
+  it('test_evidence_is_capped_at_500_and_counted', async () => {
+    server.use(http.get(LIST, () => envelope([stuckRow()])))
+    wrap(<WithdrawalsPanel auth={manage} />)
+    const sheet = await openSheet()
+    const box = within(sheet).getByLabelText(/Evidence/)
+    expect(box).toHaveAttribute('maxlength', '500')
+    fireEvent.change(box, { target: { value: EVIDENCE } })
+    expect(sheet).toHaveTextContent(`${EVIDENCE.length}/500`)
+  })
 })

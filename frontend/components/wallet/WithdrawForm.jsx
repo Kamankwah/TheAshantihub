@@ -24,12 +24,13 @@ export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet',
   if (sent.current === null) sent.current = { key: null, id: newRequestId() }
   const inFlight = useRef(false)
   const [amount, setAmount] = useState('')
-  const [chosen, setChosen] = useState(null)
+  // undefined until the first data arrives; then the id the user holds. It is never re-picked silently.
+  const [chosen, setChosen] = useState(undefined)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
 
-  if (destinations.error) {
+  if (destinations.error && !destinations.data) {
     const m = walletMessage(destinations.error)
     return <div style={s.card}><div style={m.kind === 'off' ? s.note : s.error}>{m.text}</div></div>
   }
@@ -45,12 +46,14 @@ export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet',
       </div>
     )
   }
-  const destination = usable.find((d) => d.id === chosen) || usable[0]
-  const plausible = isPlausibleAmount(amount)
+  if (chosen === undefined) setChosen(usable[0].id)
+  const destination = usable.find((d) => d.id === chosen)
+  const gone = chosen != null && chosen !== undefined && !destination
+  const plausible = isPlausibleAmount(amount) && Boolean(destination)
 
   async function submit(e) {
     e.preventDefault()
-    if (inFlight.current || !plausible) return
+    if (inFlight.current || !plausible || !destination) return
     inFlight.current = true
     setBusy(true)
     setError(null)
@@ -76,9 +79,9 @@ export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet',
     }
   }
 
-  const row = (label, value) => (
+  const row = (label, value, isMoney = true) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '4px 0' }}>
-      <span style={s.note}>{label}</span><span style={s.amount}>{value}</span>
+      <span style={s.note}>{label}</span><span style={isMoney ? s.amount : s.value}>{value}</span>
     </div>
   )
 
@@ -86,24 +89,27 @@ export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet',
     <form onSubmit={submit} style={s.card} noValidate>
       <label style={s.label} htmlFor="wallet-withdraw-destination">Pay out to</label>
       <select
-        id="wallet-withdraw-destination" style={s.field} value={destination.id}
-        onChange={(e) => { setChosen(Number(e.target.value)) }}
+        id="wallet-withdraw-destination" style={s.field} value={destination ? destination.id : ''}
+        onChange={(e) => { setChosen(Number(e.target.value)); setResult(null) }}
       >
+        {!destination && <option value="" disabled>Choose a number</option>}
         {usable.map((d) => (
           <option key={d.id} value={d.id}>{d.institution} {d.account_number_masked} ({d.account_name})</option>
         ))}
       </select>
+      {gone && <div role="alert" style={{ ...s.error, marginTop: 8 }}>The number you chose can't receive money now. Choose another.</div>}
       <label style={{ ...s.label, marginTop: 12 }} htmlFor="wallet-withdraw-amount">Amount to withdraw (GH₵)</label>
       <input
         id="wallet-withdraw-amount" style={s.field} inputMode="decimal" autoComplete="off" value={amount}
-        onChange={(e) => { setAmount(e.target.value.trim()) }}
+        onChange={(e) => { setAmount(e.target.value.trim()); setResult(null) }}
       />
       {error && <div role="alert" style={{ ...s.error, marginTop: 12 }}>{error}</div>}
       {result && (
         <div role="status" style={{ marginTop: 12 }}>
+          {result.amount != null && <div style={s.value}>{formatGhs(result.amount)} withdrawal</div>}
           {row('Charge', formatGhs(result.charge))}
           {row('You receive', formatGhs(result.you_receive))}
-          {row('Status', result.status_label)}
+          {row('Status', result.status_label, false)}
         </div>
       )}
       <div style={{ marginTop: 16 }}>

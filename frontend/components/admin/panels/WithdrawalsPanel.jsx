@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../../apiClient.js";
 import { useStaffWithdrawals } from "../../../hooks/useStaffWithdrawals.js";
-import { walletMessage } from "../../wallet/walletErrors.js";
-import { formatGhs } from "../../wallet/walletMoney.js";
+import { refusalCode, walletMessage } from "../../wallet/walletErrors.js";
+import { formatGhs, formatWhen } from "../../wallet/walletMoney.js";
 import { walletStyles } from "../../wallet/walletStyles.js";
 import { usePagedRows } from "../../wallet/usePagedRows.js";
 import { D, glassCard } from "../theme.js";
@@ -25,9 +25,12 @@ const MIN_EVIDENCE = 10;
 const td = { padding: "8px 8px", borderBottom: `1px solid ${D.divider}`, verticalAlign: "top", fontSize: "0.8rem", color: D.text };
 const th = { ...dim, textAlign: "left", fontWeight: 700, padding: "6px 8px" };
 const money = { fontVariantNumeric: "tabular-nums", color: D.price, fontWeight: 700, whiteSpace: "nowrap" };
-const when = (iso) => (iso ? new Date(iso).toLocaleString("en-GH", { dateStyle: "medium", timeStyle: "short" }) : "—");
+const when = (iso) => formatWhen(iso) || "—";
+const MAX_EVIDENCE = 500;
+// Refusals that mean the server's state moved on: the Stuck row is stale.
+const STALE_CODES = ["provider_answered", "amount_case_open"];
 
-function ResolveSheet({ row, onClose, onSent }) {
+function ResolveSheet({ row, onClose, onSent, onStale }) {
   const s = walletStyles("dashboard");
   const [outcome, setOutcome] = useState("failed");
   const [evidence, setEvidence] = useState("");
@@ -44,6 +47,7 @@ function ResolveSheet({ row, onClose, onSent }) {
       onSent(done);
     } catch (e) {
       setError(walletMessage(e).text);
+      if (STALE_CODES.includes(refusalCode(e))) onStale();
       setBusy(false);
     }
   };
@@ -60,8 +64,8 @@ function ResolveSheet({ row, onClose, onSent }) {
       </fieldset>
       <label style={{ display: "flex", flexDirection: "column", gap: 4, color: D.text, fontSize: "0.8rem", fontWeight: 700 }}>
         Evidence (required, 10+ characters, counted)
-        <textarea value={evidence} onChange={(e) => setEvidence(e.target.value)} rows={3} style={field} />
-        <span style={dim}>{length} / {MIN_EVIDENCE}</span>
+        <textarea value={evidence} onChange={(e) => setEvidence(e.target.value)} rows={3} maxLength={MAX_EVIDENCE} style={field} />
+        <span style={dim}>{length} / {MIN_EVIDENCE} minimum · {evidence.length}/{MAX_EVIDENCE}</span>
       </label>
       <div style={callout(D.amber)}>
         Failed returns {formatGhs(row.amount)} to the holder's balance. Paid records it as paid. A second approver must confirm; nothing changes until then.
@@ -137,7 +141,7 @@ export default function WithdrawalsPanel({ auth }) {
         ))}
       </div>
       {sent && <div role="status" style={callout(D.green)}>{sent}</div>}
-      {resolving && <ResolveSheet row={resolving} onClose={() => setResolving(null)} onSent={onSent} />}
+      {resolving && <ResolveSheet row={resolving} onClose={() => setResolving(null)} onSent={onSent} onStale={refresh} />}
       <section aria-label="Withdrawals list" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
         <Rows key={`${status}-${round}`} status={status} canManage={canManage} onResolve={(r) => { setSent(""); setResolving(r); }} />
       </section>

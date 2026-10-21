@@ -289,3 +289,28 @@ describe('AdminCommandCenter — phone baseline CSS', () => {
     expect(css).toMatch(/overflow-wrap: anywhere/)
   })
 })
+
+describe('AdminCommandCenter — reconciliation fraud link gate', () => {
+  const run = { day: '2026-10-19', provider: 'hubtel', status: 'mismatch', status_label: 'Does not match', ledger_in: '100.00', statement_in: '90.00', differences: {}, fraud_case_id: 8 }
+  const open = async (permissions) => {
+    server.use(http.get('http://localhost:8000/api/wallet/staff/reconciliation/', () => HttpResponse.json({ results: [run] })))
+    const auth = {
+      user: { token: 't', account_type: 'staff', id: 1, full_name: 'Esi Accountant', role: 'accountant', permissions },
+      hasPermission: (c) => permissions.includes(c),
+      logout: vi.fn(),
+    }
+    renderShell({ auth })
+    fireEvent.click(await within(panelNav()).findByRole('button', { name: /Reconciliation/ }))
+    await screen.findByText('Fraud alert #8')
+  }
+
+  it('shows plain text, not a link, when the role holds no fraud permission', async () => {
+    await open(['transactions.report', 'wallets.view', 'wallets.manage'])
+    expect(screen.queryByRole('button', { name: 'Fraud alert #8' })).toBeNull()
+  })
+
+  it('links to the fraud tab when the role holds fraud.flag', async () => {
+    await open(['transactions.report', 'wallets.view', 'fraud.flag'])
+    expect(screen.getByRole('button', { name: 'Fraud alert #8' })).toBeInTheDocument()
+  })
+})

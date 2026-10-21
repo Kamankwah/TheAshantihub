@@ -575,7 +575,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "leaderboard" && <LeaderboardPanel />}
           {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} showTaxRuling={role === "super_admin" || auth.hasPermission("commission.tax_ruling")} onOpenApproval={role === "super_admin" ? openApproval : undefined} />}
           {activeTab === "payouts-payroll" && <PayoutsPayrollPanel onNavigate={selectTab} />}
-          {activeTab === "reconciliation" && <WalletReconciliationPanel fallback={<ReconciliationPanel />} onNavigate={selectTab} />}
+          {activeTab === "reconciliation" && <WalletReconciliationPanel fallback={<ReconciliationPanel />} onNavigate={auth.hasPermission("fraud.manage") || auth.hasPermission("fraud.flag") ? selectTab : undefined} />}
           {activeTab === "wallets" && <WalletsPanel />}
           {activeTab === "withdrawals" && <WithdrawalsPanel auth={auth} />}
           {activeTab === "delivery-pricing" && <DeliveryPricingPanel auth={auth} />}
