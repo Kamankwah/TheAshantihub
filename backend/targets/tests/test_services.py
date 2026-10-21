@@ -10,7 +10,8 @@ from payments.models import CheckoutSession
 from portfolio.models import AccountManagerAssignment
 from portfolio.tests.health_fixtures import make_business
 from targets import services
-from targets.models import Leave, PublicHoliday, TargetPlan, WorkPattern
+from listings.models import Category, Listing, Zone
+from targets.models import METRIC_CHOICES, METRICS, Leave, PublicHoliday, TargetPlan, WorkPattern
 
 from .base import MON, SAT, SUN, WED, TargetsBase, at
 from datetime import date
@@ -41,7 +42,7 @@ class WorkingDayTests(TargetsBase):
 class TargetSumTests(TargetsBase):
     def setUp(self):
         super().setUp()
-        self.plan_all(self.kwame, registrations=1, visits=6, calls=10, renewals=1)
+        self.plan_all(self.kwame, registrations=1, visits=6, calls=10, listings=1)
 
     def test_a_working_day_has_the_plan_value_and_sunday_has_none(self):
         self.assertEqual(services.daily_target(self.kwame, "visits", MON), 6)
@@ -144,14 +145,63 @@ class ActualTests(TargetsBase):
         self.assertEqual(services.actual(self.kwame, "renewals", MON, SUN), 1)
 
     def test_a_scout_with_nothing_has_zero_everywhere(self):
-        for metric in ("registrations", "visits", "calls", "renewals"):
+        for metric in ("registrations", "visits", "calls", "listings", "renewals"):
             self.assertEqual(services.actual(self.efua, metric, MON, SUN), 0)
+
+
+class ListingsMetricTests(TargetsBase):
+    def setUp(self):
+        super().setUp()
+        self.owner = make_business("Adwoa Fabrics")
+        self.category = Category.objects.create(slug="t-goods", icon="x", label="Goods", color="#15803d", kind=Category.PRODUCT)
+        self.zone = Zone.objects.get_or_create(name="Bantama")[0]
+
+    def listing(self, by, status=Listing.PUBLISHED, reviewed=None, created=None, name="Gari"):
+        item = Listing.objects.create(
+            business_owner=self.owner, category=self.category, zone=self.zone, name=name, description="D.",
+            contact_phone="+233241110001", status=status, created_by_staff=by, reviewed_at=reviewed,
+        )
+        if created:
+            Listing.objects.filter(pk=item.pk).update(created_at=created)
+        return item
+
+    def test_metrics_exclude_renewals_include_listings(self):
+        self.assertEqual(METRICS, ("registrations", "visits", "calls", "listings"))
+        self.assertIn("renewals", dict(METRIC_CHOICES))
+
+    def test_counts_only_approved_listing_made_by_scout(self):
+        self.listing(self.kwame, Listing.PUBLISHED, at(WED), name="A")
+        self.listing(self.kwame, Listing.PENDING_REVIEW, None, name="B")
+        self.listing(self.kwame, Listing.REJECTED, at(WED), name="C")
+        self.assertEqual(services.actual(self.kwame, "listings", WED, WED), 1)
+
+    def test_counts_once_by_approval_day_not_creation_day(self):
+        two_days_ago = at(date(2026, 10, 5))
+        self.listing(self.kwame, Listing.PUBLISHED, at(WED), created=two_days_ago)
+        self.assertEqual(services.actual(self.kwame, "listings", WED, WED), 1)
+        self.assertEqual(services.actual(self.kwame, "listings", MON, MON), 0)
+
+    def test_other_scouts_listing_and_owner_made_listing_not_counted(self):
+        self.listing(self.efua, Listing.PUBLISHED, at(WED), name="A")
+        self.listing(None, Listing.PUBLISHED, at(WED), name="B")
+        self.assertEqual(services.actual(self.kwame, "listings", WED, WED), 0)
+        self.assertEqual(services.actual(self.efua, "listings", WED, WED), 1)
+
+    def test_historic_renewals_plan_row_survives(self):
+        self.plan(self.kwame, "renewals", 2)
+        self.plan(self.kwame, "listings", 1)
+        self.assertEqual(TargetPlan.objects.filter(staff=self.kwame, metric="renewals").count(), 1)
+        summary = services.period_summary(self.kwame, "day", WED)
+        self.assertEqual([m["metric"] for m in summary["measures"]], ["registrations", "visits", "calls", "listings"])
+
+    def test_actual_renewals_still_computable_for_history(self):
+        self.assertEqual(services.actual(self.kwame, "renewals", MON, SUN), 0)
 
 
 class PeriodSummaryTests(TargetsBase):
     def setUp(self):
         super().setUp()
-        self.plan_all(self.kwame, registrations=1, visits=6, calls=10, renewals=1)
+        self.plan_all(self.kwame, registrations=1, visits=6, calls=10, listings=1)
         Leave.objects.create(staff=self.kwame, start=SAT, end=SAT, recorded_by=self.lead)
 
     def test_the_week(self):

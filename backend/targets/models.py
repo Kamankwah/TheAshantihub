@@ -4,9 +4,13 @@ from django.db import models
 REGISTRATIONS = "registrations"
 VISITS = "visits"
 CALLS = "calls"
-RENEWALS = "renewals"
-METRICS = (REGISTRATIONS, VISITS, CALLS, RENEWALS)
-METRIC_CHOICES = [(REGISTRATIONS, "Registrations"), (VISITS, "Visits"), (CALLS, "Calls"), (RENEWALS, "Renewals")]
+LISTINGS = "listings"
+RENEWALS = "renewals"  # retired as a target measure; old plan rows stay readable
+METRICS = (REGISTRATIONS, VISITS, CALLS, LISTINGS)
+LEGACY_METRICS = (RENEWALS,)
+METRIC_CHOICES = [
+    (REGISTRATIONS, "Registrations"), (VISITS, "Visits"), (CALLS, "Calls"), (LISTINGS, "Listings"), (RENEWALS, "Renewals"),
+]
 DEFAULT_WEEKDAYS = [0, 1, 2, 3, 4, 5]  # Monday to Saturday (0 = Monday)
 
 

@@ -12,13 +12,14 @@ from django.utils import timezone
 from reports.providers import day_bounds
 from reports.services import period_bounds
 
-from .models import CALLS, DEFAULT_WEEKDAYS, METRICS, REGISTRATIONS, RENEWALS, VISITS, Leave, PublicHoliday, TargetPlan, WorkPattern
+from .models import CALLS, DEFAULT_WEEKDAYS, LISTINGS, METRICS, REGISTRATIONS, RENEWALS, VISITS, Leave, PublicHoliday, TargetPlan, WorkPattern
 
-LABELS = {REGISTRATIONS: "Registrations", VISITS: "Visits", CALLS: "Calls", RENEWALS: "Renewals"}
+LABELS = {REGISTRATIONS: "Registrations", VISITS: "Visits", CALLS: "Calls", LISTINGS: "Listings", RENEWALS: "Renewals"}
 HOW = {
     REGISTRATIONS: "Count when Operations approves KYC",
     VISITS: "Count when you check out",
     CALLS: "Calls you log",
+    LISTINGS: "Count when Operations approves a listing you made for a business",
     RENEWALS: "Owner pays the subscription in the app",
 }
 WORKING, OFF, HOLIDAY, ON_LEAVE = "working", "off", "holiday", "leave"
@@ -44,7 +45,8 @@ class Calendar:
         self.holidays = {h.date: h.name for h in PublicHoliday.objects.filter(date__gte=start, date__lte=end)}
         self.leaves = list(Leave.objects.filter(staff=staff, start__lte=end, end__gte=start).select_related("recorded_by"))
         self.plans = {metric: [] for metric in METRICS}
-        for plan in TargetPlan.objects.filter(staff=staff, effective_from__lte=end).select_related("set_by"):
+        # Retired measures (LEGACY_METRICS) keep their rows but no longer feed the calendar.
+        for plan in TargetPlan.objects.filter(staff=staff, metric__in=METRICS, effective_from__lte=end).select_related("set_by"):
             self.plans[plan.metric].append(plan)
         for plans in self.plans.values():
             plans.sort(key=lambda p: (p.effective_from, p.id), reverse=True)
@@ -95,6 +97,13 @@ def target(staff, metric, start, end):
     return Calendar(staff, start, end).total(metric)
 
 
+def _events_record_their_staff():
+    """Event.created_by_staff arrives in marketplace M3 Task 4; Task 7 relies on this guard being true."""
+    from events.models import Event
+
+    return "created_by_staff" in {f.name for f in Event._meta.get_fields()}
+
+
 def actual(staff, metric, start, end):
     """What the scout did over the local days start..end, from source records."""
     low, high = day_bounds(start, end)
@@ -115,6 +124,19 @@ def actual(staff, metric, start, end):
         from calls.models import CallLog
 
         return CallLog.objects.filter(staff=staff, started_at__gte=low, started_at__lt=high).count()
+    if metric == LISTINGS:
+        from listings.models import Listing
+
+        count = Listing.objects.filter(
+            created_by_staff=staff, status=Listing.PUBLISHED, reviewed_at__gte=low, reviewed_at__lt=high,
+        ).count()
+        if _events_record_their_staff():
+            from events.models import Event
+
+            count += Event.objects.filter(
+                created_by_staff=staff, status=Event.APPROVED, reviewed_at__gte=low, reviewed_at__lt=high,
+            ).count()
+        return count
     if metric == RENEWALS:
         from billing.models import Transaction
 
