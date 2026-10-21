@@ -591,6 +591,8 @@ export const handlers = [
     return HttpResponse.json({ amount, payment_processing: '0.00', you_pay: amount, provider: 'simulated' })
   }),
   http.get('http://localhost:8000/api/wallet/staff/wallets/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/wallet/staff/withdrawals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/wallet/staff/reconciliation/', () => HttpResponse.json({ results: [] })),
   // The staff wallet's fail-a-withdrawal door answers 201 {approval_id, status:'pending'}: a second person approves.
   http.post('http://localhost:8000/api/wallet/staff/withdrawals/:id/fail/', () => HttpResponse.json({ approval_id: 9, status: 'pending' }, { status: 201 })),
   http.get('http://localhost:8000/api/approvals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),

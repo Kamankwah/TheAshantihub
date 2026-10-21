@@ -57,6 +57,8 @@ import SaSessionsPanel from "./panels/SaSessionsPanel.jsx";
 import { startViewAs } from "../../hooks/useViewAs.js";
 import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
 import WalletsPanel from "./panels/WalletsPanel.jsx";
+import WithdrawalsPanel from "./panels/WithdrawalsPanel.jsx";
+import WalletReconciliationPanel from "./panels/WalletReconciliationPanel.jsx";
 import DisputesPanel from "./panels/DisputesPanel.jsx";
 import TransactionsReportPanel from "./panels/TransactionsReportPanel.jsx";
 import CreditPanel from "./panels/CreditPanel.jsx";
@@ -573,8 +575,9 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "leaderboard" && <LeaderboardPanel />}
           {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} showTaxRuling={role === "super_admin" || auth.hasPermission("commission.tax_ruling")} onOpenApproval={role === "super_admin" ? openApproval : undefined} />}
           {activeTab === "payouts-payroll" && <PayoutsPayrollPanel onNavigate={selectTab} />}
-          {activeTab === "reconciliation" && <ReconciliationPanel />}
+          {activeTab === "reconciliation" && <WalletReconciliationPanel fallback={<ReconciliationPanel />} />}
           {activeTab === "wallets" && <WalletsPanel />}
+          {activeTab === "withdrawals" && <WithdrawalsPanel auth={auth} />}
           {activeTab === "delivery-pricing" && <DeliveryPricingPanel auth={auth} />}
           {activeTab === "tax-tables" && <TaxTablesPanel onNavigate={selectTab} />}
           {activeTab === "integrations" && <IntegrationsPanel />}

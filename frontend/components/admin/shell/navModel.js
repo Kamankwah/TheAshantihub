@@ -166,6 +166,7 @@ export const NAV_ITEMS = [
   { id: "refunds", icon: "↩️", label: "Refunds", show: (auth) => saOrAcct(auth) },
   { id: "reconciliation", icon: "🧮", label: "Reconciliation", show: (auth) => saOrAcct(auth) },
   { id: "wallets", icon: "👛", label: "Wallets", show: (auth) => auth.hasPermission("wallets.view") },
+  { id: "withdrawals", icon: "💸", label: "Withdrawals", show: (auth) => auth.hasPermission("wallets.view") },
   { id: "growth-funnel", icon: "🪜", label: "Growth funnel", show: saOnly },
   { id: "scheduled-exports", icon: "📆", label: "Scheduled exports", show: saOnly },
   { id: "sign-in-history", icon: "🕵️", label: "Sign-in history", show: saOnly },
@@ -205,7 +206,7 @@ export const NAV_ITEMS = [
 // any session whose role has no menu below.
 const DEFAULT_GROUPS = [
   ["moderation", "Moderation", ["kyc", "moderation", "hero", "events-moderation", "reviews", "fraud-cases"]],
-  ["finance", "Finance", ["event-pricing", "subscription-plans", "subscription-plans-approval", "commission-policy", "escrow", "disputes", "transactions", "wallets", "credit"]],
+  ["finance", "Finance", ["event-pricing", "subscription-plans", "subscription-plans-approval", "commission-policy", "escrow", "disputes", "transactions", "wallets", "withdrawals", "credit"]],
   ["users-roles", "Users & Roles", ["users", "staff", "sessions"]],
   ["field-ops", "Field Operations", ["scout-assignments", "field-verification", "visits", "targets", "commission", "leaderboard", "prospects", "register-business", "delivery-coordination", "my-deliveries", "portfolio", "all-portfolios", "at-risk", "subscriptions-due"]],
   ["content", "Content", ["categories-zones", "promotions", "site-settings"]],
@@ -227,7 +228,7 @@ const ROLE_MENUS = {
     ["people", "People", ["staff", "teams-reporting", "invites", "roles-permissions", "sessions", "leave"]],
     ["teams", "Teams (step in)", ["step-in-operations", "step-in-support", "step-in-delivery", "step-in-marketing", "step-in-accounting"]],
     ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "events-moderation", "hero", "disputes"]],
-    ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation", "wallets"]],
+    ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation", "wallets", "withdrawals"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
     ["communication", "Communication", ["notification-center", "staff-announcements"]],

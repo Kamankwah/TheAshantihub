@@ -487,7 +487,7 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
       ['People', ['Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays']],
       ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
       ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
-      ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets']],
+      ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets', 'Withdrawals']],
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
       ['Security & audit', ['Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings']],
       ['Communication', ['Notification center', 'Staff announcements']],
