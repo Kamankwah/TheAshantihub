@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useWalletTransactions } from '../../hooks/useWalletTransactions.js'
+import { usePagedRows } from './usePagedRows.js'
 import RefundNotice from './RefundNotice.jsx'
 import { walletMessage } from './walletErrors.js'
 import { formatGhs, formatWhen } from './walletMoney.js'
@@ -24,30 +25,14 @@ const hidden = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', 
 // passes `orderHref(orderId)`. Filtering is client-side on loaded pages.
 export default function TransactionsList({ tone = 'light', orderHref }) {
   const s = walletStyles(tone)
-  const [page, setPage] = useState(1)
-  const [pages, setPages] = useState({})
   const [group, setGroup] = useState('all')
-  const query = useWalletTransactions(page)
-  const data = query.data
+  const { query, loaded, rows, hasMore, loadMore, loadError } = usePagedRows(useWalletTransactions)
 
-  useEffect(() => {
-    if (data) setPages((p) => ({ ...p, [page]: data }))
-  }, [data, page])
-
-  if (query.error && !Object.keys(pages).length) {
+  if (query.error && !loaded.length) {
     const m = walletMessage(query.error)
     return <div style={s.card}><div style={m.kind === 'off' ? s.note : s.error}>{m.text}</div></div>
   }
-  const loaded = Object.keys(pages).sort((a, b) => a - b).map((k) => pages[k])
   if (!loaded.length) return <div style={s.card}><div style={s.note}>Loading your transactions…</div></div>
-
-  const rows = loaded.flatMap((p) => p.results || [])
-  const last = loaded[loaded.length - 1]
-  const hasMore = Boolean(last.next)
-  const nextPage = Math.max(...Object.keys(pages).map(Number)) + 1
-  // A failed page is retried, never skipped: the button always asks for the page after the highest loaded.
-  const loadMore = () => (page === nextPage ? query.refetch() : setPage(nextPage))
-  const loadError = query.error ? walletMessage(query.error) : null
   if (!rows.length) return <div style={s.card}><div style={s.note}>You don't have any transactions yet.</div></div>
 
   const chips = GROUPS.filter((g) => rows.some((r) => g.kinds.includes(r.kind)))

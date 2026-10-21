@@ -1,0 +1,110 @@
+import { useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { apiPost } from '../../apiClient.js'
+import { useWalletDestinations } from '../../hooks/useWalletDestinations.js'
+import { refusalCode, walletMessage } from './walletErrors.js'
+import { formatGhs, formatWhen, isPlausibleAmount, newRequestId } from './walletMoney.js'
+import { walletStyles } from './walletStyles.js'
+
+// Withdraw to one of the holder's usable payout numbers. Holder-agnostic:
+// `basePath` is '/api/wallet' (customers) or the vendor / rider base path.
+//
+// Idempotency: one request_id is made when the form mounts and sent by every
+// submit of the same destination and amount (a double click, a retry after a
+// network error, the step-up retry inside apiClient). It is replaced only when
+// the destination or amount changes, and after a success. The charge is shown
+// only once the server has answered; nothing is estimated here.
+export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet', onDone }) {
+  const s = walletStyles(tone)
+  const queryClient = useQueryClient()
+  const destinations = useWalletDestinations({ basePath })
+  const requestId = useRef(null)
+  if (requestId.current === null) requestId.current = newRequestId()
+  const inFlight = useRef(false)
+  const [amount, setAmount] = useState('')
+  const [chosen, setChosen] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [result, setResult] = useState(null)
+
+  if (destinations.error) {
+    const m = walletMessage(destinations.error)
+    return <div style={s.card}><div style={m.kind === 'off' ? s.note : s.error}>{m.text}</div></div>
+  }
+  if (!destinations.data) return <div style={s.card}><div style={s.note}>Loading…</div></div>
+
+  const all = destinations.data.results || []
+  const usable = all.filter((d) => d.usable)
+  if (!usable.length) {
+    const waiting = all.some((d) => !d.removed)
+    return (
+      <div style={s.card}>
+        <div style={s.note}>{waiting ? 'Your new number is still in its waiting period' : 'Add a payout number first'}</div>
+      </div>
+    )
+  }
+  const destination = usable.find((d) => d.id === chosen) || usable[0]
+  const plausible = isPlausibleAmount(amount)
+
+  async function submit(e) {
+    e.preventDefault()
+    if (inFlight.current || !plausible) return
+    inFlight.current = true
+    setBusy(true)
+    setError(null)
+    setResult(null)
+    try {
+      const res = await apiPost(`${basePath}/withdrawals/`, { destination: destination.id, amount, request_id: requestId.current })
+      requestId.current = newRequestId()
+      setResult(res)
+      setAmount('')
+      await queryClient.invalidateQueries({ queryKey: ['wallet'] })
+      if (onDone) onDone(res)
+    } catch (err) {
+      const m = walletMessage(err)
+      const freeAt = refusalCode(err) === 'topup_held' ? formatWhen(err.body?.free_at) : null
+      setError(freeAt ? `${m.text} It can be withdrawn from ${freeAt}.` : m.text)
+    } finally {
+      inFlight.current = false
+      setBusy(false)
+    }
+  }
+
+  const row = (label, value) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '4px 0' }}>
+      <span style={s.note}>{label}</span><span style={s.amount}>{value}</span>
+    </div>
+  )
+
+  return (
+    <form onSubmit={submit} style={s.card} noValidate>
+      <label style={s.label} htmlFor="wallet-withdraw-destination">Pay out to</label>
+      <select
+        id="wallet-withdraw-destination" style={s.field} value={destination.id}
+        onChange={(e) => { setChosen(Number(e.target.value)); requestId.current = newRequestId() }}
+      >
+        {usable.map((d) => (
+          <option key={d.id} value={d.id}>{d.institution} {d.account_number_masked} ({d.account_name})</option>
+        ))}
+      </select>
+      <label style={{ ...s.label, marginTop: 12 }} htmlFor="wallet-withdraw-amount">Amount to withdraw (GH₵)</label>
+      <input
+        id="wallet-withdraw-amount" style={s.field} inputMode="decimal" autoComplete="off" value={amount}
+        onChange={(e) => { setAmount(e.target.value.trim()); requestId.current = newRequestId() }}
+      />
+      {error && <div role="alert" style={{ ...s.error, marginTop: 12 }}>{error}</div>}
+      {result && (
+        <div role="status" style={{ marginTop: 12 }}>
+          {row('Charge', formatGhs(result.charge))}
+          {row('You receive', formatGhs(result.you_receive))}
+          {row('Status', result.status_label)}
+        </div>
+      )}
+      <div style={{ marginTop: 16 }}>
+        <button type="submit" style={{ ...s.button, opacity: busy || !plausible ? 0.6 : 1 }} disabled={busy || !plausible}>
+          {busy ? 'Working…' : 'Withdraw'}
+        </button>
+      </div>
+    </form>
+  )
+}
