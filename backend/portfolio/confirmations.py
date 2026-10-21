@@ -25,8 +25,8 @@ from django.db.models import Q
 from django.utils import timezone
 
 from accounts.claims import ClaimError, hash_token
-from accounts.models import BusinessOwner
-from accounts.phones import mask_phone, normalize_gh_phone
+from accounts.models import BusinessOwner, StaffUser
+from accounts.phones import filter_by_phone, mask_phone, normalize_gh_phone
 from activity.services import record
 from notifications.services import notify_staff, notify_staff_on_commit
 from otp import senders, spend
@@ -59,6 +59,7 @@ SEND_NOTES = {
     OwnerConfirmation.FAILED: "Not sent: the text could not be delivered",
     OwnerConfirmation.SIMULATED: "Not sent: texts are simulated",
     OwnerConfirmation.NO_PHONE: "Not sent: no phone number on file",
+    OwnerConfirmation.BLOCKED: "Not sent: that number belongs to a staff account",
 }
 LAPSED = "lapsed"
 
@@ -103,12 +104,6 @@ def _registration_row_confirmed(owner):
 def _plain(text, limit):
     kept = "".join(char for char in (text or "") if char in vendor_texts.PLAIN)
     return " ".join(kept.split())[:limit].strip()
-
-
-def _body_ok(body, link):
-    # fits() allows a narrower set than GSM-7 itself: "=" and "_" in the link (one septet each in GSM-7) are outside
-    # it, so the link is checked as same-length plain characters and the whole body against the real length.
-    return len(body) <= MAX_BODY and vendor_texts.fits(body.replace(link, "x" * len(link)))
 
 
 def _body(staff, business, count, link):
@@ -225,12 +220,14 @@ def _issue(owner, staff, drafts, registration, *, resend=False, source=None):
         raw = secrets.token_urlsafe(32)
         confirm_url = confirm_link(raw)
         body = _body(staff, locked.display_name, count, confirm_url)
-        if not _body_ok(body, confirm_url):
+        if not vendor_texts.fits(body):
             raise ClaimError(TOO_LONG, code="too_long")
         try:
             phone = normalize_gh_phone(locked.login_phone)
         except ValueError:
             phone = ""
+        # A staff member's own number must never receive a token (they could confirm their own listing). One query.
+        blocked = bool(phone) and filter_by_phone(StaffUser.objects.filter(is_active=True), "phone", phone).exists()
 
         previous = [link.resend_count for link in links.values()]
         if olds:
@@ -239,7 +236,9 @@ def _issue(owner, staff, drafts, registration, *, resend=False, source=None):
             business_owner=locked,
             scope=OwnerConfirmation.REGISTRATION if take_registration else OwnerConfirmation.LISTINGS,
             token_hash=hash_token(raw), sent_to=phone, expires_at=now + LINK_TTL, created_by=staff,
-            send_state=OwnerConfirmation.QUEUED if phone else OwnerConfirmation.NO_PHONE,
+            send_state=(
+                OwnerConfirmation.BLOCKED if blocked else OwnerConfirmation.QUEUED if phone else OwnerConfirmation.NO_PHONE
+            ),
             resend_count=(max(previous, default=0) + 1) if resend else 0,
         )
         if found:
@@ -254,7 +253,7 @@ def _issue(owner, staff, drafts, registration, *, resend=False, source=None):
             summary=f"Asked the owner to confirm {count} item(s); text to {mask_phone(phone) if phone else 'no number'}",
             after={"scope": row.scope, "items": count, "sent_to": mask_phone(phone) if phone else ""},
         )  # 4. the activity chain, last
-        if phone:
+        if phone and not blocked:
             transaction.on_commit(lambda: _send_after_commit(row.pk, phone, body), robust=True)
     return row
 

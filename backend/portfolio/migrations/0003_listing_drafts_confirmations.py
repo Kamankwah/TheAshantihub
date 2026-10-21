@@ -21,7 +21,7 @@ class Migration(migrations.Migration):
                 ('token_hash', models.CharField(max_length=64, unique=True)),
                 ('sent_to', models.CharField(blank=True, default='', max_length=20)),
                 ('sent_at', models.DateTimeField(blank=True, null=True)),
-                ('send_state', models.CharField(choices=[('queued', 'Queued'), ('sent', 'Sent'), ('failed', 'Failed'), ('simulated', 'Simulated'), ('no_phone', 'No phone')], default='queued', max_length=10)),
+                ('send_state', models.CharField(choices=[('queued', 'Queued'), ('sent', 'Sent'), ('failed', 'Failed'), ('simulated', 'Simulated'), ('no_phone', 'No phone'), ('blocked', 'Blocked')], default='queued', max_length=10)),
                 ('expires_at', models.DateTimeField()),
                 ('confirmed_at', models.DateTimeField(blank=True, null=True)),
                 ('declined_at', models.DateTimeField(blank=True, null=True)),

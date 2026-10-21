@@ -27,6 +27,7 @@ class PlainTextTests(SimpleTestCase):
     def test_only_plain_characters_and_at_most_two_parts(self):
         self.assertTrue(vendor_texts.fits(BODY))
         self.assertTrue(vendor_texts.fits("x" * 306))
+        self.assertTrue(vendor_texts.fits("Open https://a.example.com/b?token=ab_c-d. Valid 7 days."))  # "=" and "_" are GSM-7
         for body in ("", "x" * 307, "GH₵ 5.00 due", "Order — paid", "1 × Kente"):
             self.assertFalse(vendor_texts.fits(body), body)
 

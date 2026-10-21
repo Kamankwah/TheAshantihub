@@ -112,7 +112,7 @@ class IssueTests(Base):
         self.assertTrue(body.startswith("AshantiHub: Kwame asks you to confirm 2 items for Akosua's Kitchen. Open "))
         self.assertTrue(body.endswith("Valid 7 days."))
         self.assertLessEqual(len(body), 306)
-        self.assertTrue(vendor_texts.fits(body.replace(link, "x" * len(link))))
+        self.assertTrue(vendor_texts.fits(body))
 
     @override_settings(FRONTEND_BASE_URL="https://" + "a" * 100 + ".example.com")
     def test_a_very_long_business_name_is_truncated_so_the_body_fits(self):
@@ -123,7 +123,7 @@ class IssueTests(Base):
         body = senders.sms_outbox[-1].body
         link = confirmations.confirm_link(self.raw())
         self.assertLessEqual(len(body), 306)
-        self.assertTrue(vendor_texts.fits(body.replace(link, "x" * len(link))))
+        self.assertTrue(vendor_texts.fits(body))
         self.assertIn("..", body)
 
     def test_no_phone_sends_nothing_and_says_so(self):
@@ -157,6 +157,29 @@ class IssueTests(Base):
                 row = confirmations.request_confirmation(other, self.scout, drafts=[self.draft(other)])
         row.refresh_from_db()
         self.assertEqual(row.send_state, OwnerConfirmation.FAILED)
+
+    def test_a_staff_members_number_is_blocked_and_nothing_is_sent(self):
+        make_staff("scout", "ama@example.com", phone="+233 24 111 0001")  # same number as the owner's, written differently
+        draft = self.draft()
+        row = self.ask(drafts=[draft])
+        self.assertEqual(senders.sms_outbox, [])
+        self.assertEqual(row.send_state, OwnerConfirmation.BLOCKED)
+        self.assertEqual(confirmations.state_of(ListingDraft.objects.get(pk=draft.pk))["send_note"],
+                         "Not sent: that number belongs to a staff account")
+        self.assertEqual(spend.owner_confirmation_texts_sent_on(timezone.localdate()), 0)
+        # a resend is blocked the same way
+        OwnerConfirmation.objects.filter(pk=row.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
+        with self.captureOnCommitCallbacks(execute=True):
+            again = confirmations.resend([draft.pk], self.scout)
+        self.assertEqual((again.send_state, senders.sms_outbox), (OwnerConfirmation.BLOCKED, []))
+
+    def test_an_inactive_staff_number_or_a_different_number_is_not_blocked(self):
+        make_staff("scout", "old@example.com", phone="0241110001", is_active=False)
+        make_staff("scout", "other@example.com", phone="0241119999")
+        row = self.ask()
+        row.refresh_from_db()
+        self.assertEqual(row.send_state, OwnerConfirmation.SENT)
+        self.assertEqual(len(senders.sms_outbox), 1)
 
     def test_no_provider_call_inside_the_transaction(self):
         with mock.patch("otp.senders.deliver") as deliver:

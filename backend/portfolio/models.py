@@ -147,8 +147,10 @@ class OwnerConfirmation(models.Model):
     FAILED = "failed"
     SIMULATED = "simulated"
     NO_PHONE = "no_phone"
+    BLOCKED = "blocked"  # the number belongs to a staff account: no text goes (a staff member must not confirm for an owner)
     SEND_STATE_CHOICES = [
         (QUEUED, "Queued"), (SENT, "Sent"), (FAILED, "Failed"), (SIMULATED, "Simulated"), (NO_PHONE, "No phone"),
+        (BLOCKED, "Blocked"),
     ]
 
     business_owner = models.ForeignKey(BusinessOwner, on_delete=models.CASCADE, related_name="owner_confirmations")
