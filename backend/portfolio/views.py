@@ -150,8 +150,7 @@ class RegisterBusinessView(APIView):
 class KycResubmitView(APIView):
     """POST businesses/<pk>/kyc/ (the account manager only, and only for a
     scout-registered business) — a fresh business.kyc request after the last
-    one was returned. A Super Admin who is the account manager goes to the KYC
-    queue (Decision 14), so approval_id and approver_name are null."""
+    one was returned. business.kyc is a two_people kind, so a Super Admin's own request waits for someone else."""
 
     def get_permissions(self):
         return [HasAnyRolePermission("businesses.manage_portfolio", "businesses.register")]

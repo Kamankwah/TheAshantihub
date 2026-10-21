@@ -36,7 +36,7 @@ def assign_account_manager(business_owner, scout, *, by, reason):
 def approver_name(approval):
     """Who a just-submitted request waits for, for "Sent to …": the maker's
     manager by name, otherwise the Operations pool or a Super Admin. None when
-    there is no request (a Super Admin's own registration)."""
+    there is no request."""
     from approvals.models import ApprovalRequest
 
     if approval is None:

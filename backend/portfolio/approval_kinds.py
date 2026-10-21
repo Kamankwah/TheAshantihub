@@ -154,6 +154,7 @@ BUSINESS_KYC = ApprovalKind(
     validate=_kyc_validate,
     on_rejected=returned_task,
     consequences=_kyc_consequences,
+    two_people=True,  # a Super Admin's own registration waits for someone else too: nobody verifies their own business
 )
 
 BUSINESS_UPDATE = ApprovalKind(

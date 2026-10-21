@@ -16,7 +16,7 @@ from accounts.models import BusinessOwner, BusinessOwnerProfile
 from accounts.testing import make_staff, staff_token
 from activity.models import ActivityEvent
 from approvals.models import ApprovalRequest
-from approvals.services import reject
+from approvals.services import can_decide, reject
 from fraud.models import FraudFlag
 from listings.models import Category, Zone
 from notifications.models import Notification
@@ -240,15 +240,20 @@ class RegistrationTests(RegistrationBase):
         self.client.credentials()
         self.assertEqual(self.client.post(REGISTER_URL, self.form(), format="multipart").status_code, 401)
 
-    def test_a_super_admin_registration_waits_in_the_kyc_queue(self):
+    def test_super_admin_registered_business_kyc_waits_for_someone_else(self):
+        # business.kyc is a two_people kind: a Super Admin's own registration is staged like anyone's.
         boss = make_staff("super_admin", "boss@example.com")
         response = self.register(staff=boss)
         self.assertEqual(response.status_code, 201, response.content)
-        self.assertEqual((response.json()["approval_id"], response.json()["approver_name"]), (None, None))
-        self.assertFalse(ApprovalRequest.objects.exists())
+        approval = ApprovalRequest.objects.get(kind="business.kyc")
+        self.assertEqual((response.json()["approval_id"], response.json()["approver_name"]), (approval.pk, "Operations"))
+        self.assertEqual((approval.status, approval.stage, approval.maker), ("pending", "pool", boss))
         owner = BusinessOwner.objects.get(pk=response.json()["id"])
         self.assertEqual((owner.kyc_status, owner.registered_by), ("pending", boss))
-        self.assertTrue(Notification.objects.filter(staff=self.lead, kind="kyc_needs_approval").exists())
+        self.assertTrue(Notification.objects.filter(staff=self.lead, kind="approval_waiting").exists())
+        self.assertFalse(can_decide(approval, boss))
+        self.assertTrue(can_decide(approval, self.lead))
+        self.assertTrue(can_decide(approval, make_staff("super_admin", "boss2@example.com")))
 
     def test_an_operations_registration_goes_to_the_operations_pool_unassigned(self):
         kojo = make_staff("operations", "kojo@example.com")
@@ -460,8 +465,9 @@ class KycResubmitTests(RegistrationBase):
             f"/api/portfolio/businesses/{boss_owner.pk}/kyc/", {"maker_note": "Checked the card by phone"},
             format="multipart",
         )
-        self.assertEqual((response.status_code, response.json()), (201, {"approval_id": None, "approver_name": None}))
-        self.assertFalse(ApprovalRequest.objects.filter(status="pending").exists())
+        approval = ApprovalRequest.objects.get(status="pending")
+        self.assertEqual((response.status_code, response.json()), (201, {"approval_id": approval.pk, "approver_name": "Operations"}))
+        self.assertEqual(approval.maker, boss)
 
     def test_a_super_admin_who_is_not_the_account_manager_gets_a_404_and_changes_nothing(self):
         reject(self.approval_id, self.lead, "Blurry")

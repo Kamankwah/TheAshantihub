@@ -23,7 +23,6 @@ from approvals.models import ApprovalRequest
 from approvals.services import submit
 from fraud.models import FraudFlag
 from fraud.services import raise_flag
-from notifications.services import notify_staff_role
 
 from . import checks
 from .serializers import KycResubmitSerializer, ScoutRegistrationSerializer
@@ -243,16 +242,6 @@ def _raise_flags(registrar, owner, values):
 
 
 def _submit_kyc(maker, owner, business_name, *, maker_note, http_request, resubmitted=False):
-    if maker.role.name == Role.SUPER_ADMIN:
-        # Decision 14: a Super Admin's own request applies at once, which
-        # would skip the KYC check — the business waits in the KYC queue.
-        what = f"sent {business_name} again" if resubmitted else f"registered {business_name}"
-        notify_staff_role(
-            "kyc.approve", "kyc_needs_approval", "New KYC submission",
-            body=f"{maker.full_name} {what}. It needs KYC review.",
-            link="kyc", icon="🪪",
-        )
-        return None
     title = f"New business: {business_name}" + (" (sent again)" if resubmitted else "")
     return submit(
         maker, KYC_KIND, title=title,

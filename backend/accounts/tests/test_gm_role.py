@@ -21,7 +21,7 @@ class GmSeedTests(TestCase):
 
     def test_gm_holds_operations_desk_work_but_not_client_onboarding(self):
         gm = perms("general_manager")
-        makers = {"businesses.register", "users.manage"}  # users.manage would rewrite an owner's phone and email
+        makers = {"businesses.register", "users.manage", "listings.stage"}  # users.manage would rewrite an owner's phone and email
         self.assertEqual((perms("operations") - makers) - gm, set())
         self.assertEqual(gm & makers, set())
         self.assertTrue({"kyc.approve", "listings.moderate", "event.approve", "hero_media.approve"} <= gm)
