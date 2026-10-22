@@ -419,6 +419,8 @@ REST_FRAMEWORK = {
         "password_reset_request": "5/min",
         # Public claim page and the scout's hand-over (preview + claim).
         "owner_claim": "10/min",
+        # The owner answering a staff-made registration or listing from a texted link (portfolio.views_confirm).
+        "owner_confirm": "10/min",
         # A staff member emailing owners claim links (portfolio.views.ClaimLinkView).
         "claim_link": "5/hour",
         # A business asking to change its name, sign-in phone or email (portfolio.detail_changes).

@@ -34,6 +34,8 @@ ALREADY_DECIDED = "This business has already been decided."
 SELF_DEALING_HOLD = "Decide the self-dealing case in Fraud cases first."
 REASON_REQUIRED = "Write the reason the owner will see."
 ADDRESS_FIRST = "Record the Ghana Post address decision first."
+CONFIRMATION_MISSING = "The owner has not confirmed this registration yet."
+CONFIRMATION_MISSING_CODE = "confirmation_missing"
 # Every KYC door's refusal of a submitter (is_kyc_submitter). The approvals
 # engine's own maker refusal is unchanged; the queue door maps it to this.
 OWN_REGISTRATION = "You supplied or changed this business's details, so someone else decides its KYC."
@@ -41,10 +43,11 @@ NOT_FOUND = "We couldn't find that business."
 
 
 class KycError(Exception):
-    def __init__(self, message, status_code=400):
+    def __init__(self, message, status_code=400, code=""):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
+        self.code = code  # a machine-readable reason the API answers beside the message, when there is one
 
 
 def self_dealing_open(owner):
@@ -115,6 +118,15 @@ def address_decision_missing(owner):
     return profile is None or profile.address_verified_at is None
 
 
+def confirmation_missing(owner):
+    """A business a staff member registered cannot be verified until its owner confirms the registration from the
+    texted link (portfolio.confirmations). Either door refuses it with 409 `confirmation_missing`. An online owner, or
+    one from before the pipeline, has no registration row and counts as confirmed."""
+    from portfolio.confirmations import registration_confirmed  # portfolio imports accounts: keep the import lazy
+
+    return not registration_confirmed(owner)
+
+
 def _close_pending(owner_id, staff, *, approved, note):
     """close_pending_for_target for the queue door, with the KYC refusal: the
     maker of a pending business.kyc request is a KYC submitter."""
@@ -141,6 +153,8 @@ def approve_owner(owner_id, staff, *, http_request=None, from_approval=None):
             raise KycError(ADDRESS_FIRST)
         if self_dealing_open(owner):
             raise KycError(SELF_DEALING_HOLD)
+        if confirmation_missing(owner):
+            raise KycError(CONFIRMATION_MISSING, status_code=409, code=CONFIRMATION_MISSING_CODE)
         owner.kyc_status = BusinessOwner.VERIFIED
         owner.kyc_rejection_reason = None
         owner.reviewed_by = staff

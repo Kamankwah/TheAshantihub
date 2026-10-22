@@ -392,7 +392,7 @@ class BusinessReviewTests(PortfolioApiBase):
             set(sheet),
             {
                 "owner", "business", "photos", "location", "checks", "consent", "flags", "registered_by_name", "created_at",
-                "address_correction",
+                "address_correction", "owner_confirmation",
             },
         )
         self.assertEqual(sheet["owner"]["ghana_card_number"], "GHA-712345678-2")

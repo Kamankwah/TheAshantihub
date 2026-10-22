@@ -5,7 +5,17 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from accounts.kyc import ADDRESS_FIRST, KYC_KIND, SELF_DEALING_HOLD, KycError, approve_owner, self_dealing_open
+from accounts.kyc import (
+    ADDRESS_FIRST,
+    CONFIRMATION_MISSING,
+    CONFIRMATION_MISSING_CODE,
+    KYC_KIND,
+    SELF_DEALING_HOLD,
+    KycError,
+    approve_owner,
+    confirmation_missing,
+    self_dealing_open,
+)
 from accounts.models import BusinessOwner, BusinessOwnerProfile
 from accounts.phones import mask_phone
 from approvals.registry import ApprovalKind
@@ -13,7 +23,7 @@ from approvals.services import ApprovalError
 from staff_tasks.models import Task
 from staff_tasks.services import create_task
 
-from . import detail_changes
+from . import confirmations, detail_changes
 from .proposals import (
     BUSINESS_UPDATE_KEY,
     LISTING_CREATE_KEY,
@@ -35,6 +45,13 @@ from .proposals import (
 NOT_WAITING = "This business isn't waiting for KYC any more."
 
 
+class ConfirmationMissing(ApprovalError):
+    """The owner has not confirmed the registration: 409 with `code: confirmation_missing`."""
+
+    status_code = 409
+    code = CONFIRMATION_MISSING_CODE
+
+
 def _profile(owner_id):
     return BusinessOwnerProfile.objects.filter(business_owner_id=owner_id).first()
 
@@ -53,6 +70,8 @@ def _kyc_validate(request):
         raise ApprovalError(ADDRESS_FIRST)
     if self_dealing_open(owner):
         raise ApprovalError(SELF_DEALING_HOLD)
+    if confirmation_missing(owner):
+        raise ConfirmationMissing(CONFIRMATION_MISSING)
 
 
 def _kyc_apply(request):
@@ -61,6 +80,8 @@ def _kyc_apply(request):
     try:
         approve_owner(int(request.target_id), request.decided_by, from_approval=request)
     except KycError as exc:
+        if exc.code == CONFIRMATION_MISSING_CODE:
+            raise ConfirmationMissing(exc.message) from exc
         raise ApprovalError(exc.message) from exc
 
 
@@ -70,6 +91,11 @@ def _address_text(profile):
     if profile.address_verified_at is None:
         return f"{profile.gps_address} · not checked yet"
     return f"{profile.gps_address} · {'verified' if profile.address_verified else 'marked wrong'}"
+
+
+def _confirmation_rows(owner):
+    line = confirmations.registration_line(owner)
+    return [] if line is None else [{"field": "Owner confirmation", "before": None, "after": line}]
 
 
 def _kyc_diff(request):
@@ -83,6 +109,7 @@ def _kyc_diff(request):
         {"field": "Owner", "before": None, "after": f"{owner.full_name} · {mask_phone(owner.login_phone)}"},
         {"field": "Registered by", "before": None, "after": registered_by},
         {"field": "Ghana Post address", "before": None, "after": _address_text(_profile(owner.pk))},
+        *_confirmation_rows(owner),
     ]
 
 
@@ -120,6 +147,9 @@ def _kyc_consequences(request):
     if owner is None:
         return []
     lines = ["The business is verified and can go live."]
+    line = confirmations.registration_line(owner)
+    if line is not None:
+        lines.insert(0, f"Owner confirmation: {line}.")
     registrar = owner.registered_by
     if registrar is not None and registrar.role.name == "scout":
         first = registrar.full_name.split(" ")[0]

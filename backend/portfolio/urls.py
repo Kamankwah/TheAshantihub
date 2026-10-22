@@ -1,8 +1,12 @@
 from django.urls import path
 
-from . import oversight, views
+from . import oversight, views, views_confirm
 
 urlpatterns = [
+    # The owner's side of a texted confirmation link. Public; POST only so the token never lands in an access log.
+    path("confirm/preview/", views_confirm.ConfirmPreviewView.as_view(), name="portfolio-confirm-preview"),
+    path("confirm/decline/", views_confirm.ConfirmDeclineView.as_view(), name="portfolio-confirm-decline"),
+    path("confirm/", views_confirm.ConfirmView.as_view(), name="portfolio-confirm"),
     path("register/check/", views.RegisterCheckView.as_view(), name="portfolio-register-check"),
     path("register/", views.RegisterBusinessView.as_view(), name="portfolio-register"),
     path("businesses/<int:pk>/kyc/", views.KycResubmitView.as_view(), name="portfolio-kyc-resubmit"),

@@ -523,7 +523,10 @@ class KYCApproveView(APIView):
         try:
             owner = kyc.approve_owner(pk, request.user, http_request=request)
         except (kyc.KycError, ApprovalError) as exc:
-            return Response({"detail": exc.message}, status=exc.status_code)
+            body = {"detail": exc.message}
+            if exc.code:
+                body["code"] = exc.code
+            return Response(body, status=exc.status_code)
         return Response({"id": owner.id, "kyc_status": owner.kyc_status})
 
 

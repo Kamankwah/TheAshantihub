@@ -370,6 +370,33 @@ def state_of(draft):
     }
 
 
+def _day(moment):
+    return f"{timezone.localtime(moment):%-d %b %Y}"
+
+
+def registration_line(owner):
+    """The KYC approver's "Owner confirmation" line, from the records: None when no registration confirmation was ever
+    requested (an online owner). Masked number only, with the honest send note; no token, link or whole number."""
+    rows = OwnerConfirmation.objects.filter(business_owner=owner, scope=OwnerConfirmation.REGISTRATION)
+    if not rows.exists():
+        return None
+    done = rows.filter(confirmed_at__isnull=False).order_by("-confirmed_at").first()
+    if done is not None:
+        return f"Confirmed {_day(done.confirmed_at)}"
+    row = rows.order_by("-pk").first()
+    if row.declined_at is not None:
+        return f"Declined {_day(row.declined_at)}"
+    masked = mask_phone(row.sent_to) if row.sent_to else ""
+    if row.send_state == OwnerConfirmation.SENT and row.sent_at is not None:
+        sent = f"text sent to {masked} on {_day(row.sent_at)}"
+    else:
+        sent = SEND_NOTES[row.send_state][0].lower() + SEND_NOTES[row.send_state][1:]
+        sent += f" ({masked})" if masked else ""
+    if row.revoked_at is None and row.expires_at <= timezone.now():
+        return f"Waiting — the link expired {_day(row.expires_at)}; {sent}"
+    return f"Waiting — {sent}, expires {_day(row.expires_at)}"
+
+
 # --- the owner's side (Task 6 exposes these) -------------------------------------------------------------------------
 
 def _find(raw):
@@ -426,7 +453,7 @@ def confirm(raw, request=None):
     """The owner confirms: their drafts become owner_confirmed and the registration confirmed, in one transaction."""
     with transaction.atomic():
         now = timezone.now()
-        _owner, row = _lock_usable(raw, now)
+        owner, row = _lock_usable(raw, now)
         drafts = list(
             ListingDraft.objects.select_for_update().filter(
                 confirmation=row, status=ListingDraft.AWAITING_OWNER,
@@ -438,6 +465,17 @@ def confirm(raw, request=None):
         row.confirmed_at = now
         row.save(update_fields=["confirmed_at"])
         _after_owner_confirmed(drafts)
+        # The owner is the actor. Nothing here carries the token, the link or a phone number. Activity chain last.
+        if row.scope == OwnerConfirmation.REGISTRATION:
+            record(
+                owner, "business.registration_confirmed", target=owner,
+                summary="The owner confirmed the registration", request=request,
+            )
+        for draft in drafts:
+            record(
+                owner, "listing_draft.owner_confirmed", target=draft,
+                summary="The owner confirmed this item", after={"kind": draft.kind}, request=request,
+            )
     return row
 
 
@@ -466,6 +504,16 @@ def decline(raw, reason, request=None):
                 staff, "owner_declined", f"{owner.display_name} declined {count} item(s)",
                 body=f"The owner declined what you sent for confirmation. Reason: {reason or 'none given'}",
                 link="portfolio", icon="✋",
+            )
+        for draft in drafts:  # the reason is for staff only: it is not put in the activity chain
+            record(
+                owner, "listing_draft.owner_declined", target=draft,
+                summary="The owner declined this item", after={"kind": draft.kind}, request=request,
+            )
+        if row.scope == OwnerConfirmation.REGISTRATION:
+            record(
+                owner, "business.registration_declined", target=owner,
+                summary="The owner declined the registration", request=request,
             )
     return row
 

@@ -20,6 +20,7 @@ from fraud.models import FraudFlag
 from listings.models import Category, Zone
 
 from . import checks
+from .confirmations import registration_confirmed, registration_line
 from .health import calls_about, last_contact
 from .models import AppliedChange
 from .services import approver_name
@@ -414,6 +415,11 @@ def business_review_sheet(owner, request):
         "created_at": owner.created_at,
         # U6: the latest field correction of the Ghana Post address, or None.
         "address_correction": address_correction(owner),
+        # The text to the owner: masked number and state only (portfolio.confirmations); never a token or link.
+        "owner_confirmation": {
+            "confirmed": registration_confirmed(owner),
+            "line": registration_line(owner),
+        },
     }
 
 
