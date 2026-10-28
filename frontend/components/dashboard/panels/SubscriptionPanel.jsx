@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useSubscriptionPlans } from "../../../hooks/useSubscriptionPlans.js";
+import { noPlansOffered } from "../../../lib/plansOffered.js";
 import { useMySubscription } from "../../../hooks/useMySubscription.js";
 import { D, glassCard, tint } from "../theme.js";
 
@@ -23,7 +24,10 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast, b
   const [showPayModal, setShowPayModal] = useState(false);
   const [actionError, setActionError] = useState(null);
 
-  const { data: subPlans, isLoading: plansLoading, isError: plansError } = useSubscriptionPlans();
+  const plansQuery = useSubscriptionPlans();
+  const { data: subPlans, isLoading: plansLoading, isError: plansError } = plansQuery;
+  // Only an answered empty list: loading and errors keep today's screen.
+  const plansGone = noPlansOffered(plansQuery);
   const { data: subscription, isLoading: subLoading, isError: subError, refetch: refetchSubscription } = useMySubscription();
 
   // A product business only buys product-tier plans; a service business only
@@ -100,7 +104,13 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast, b
         subscription?.id ? (
           <div style={{ ...glassCard, padding: "18px", marginBottom: 16, background: "linear-gradient(135deg, rgba(0,100,0,0.16), rgba(0,100,0,0.03))", border: `1px solid rgba(0,100,0,0.3)` }}>
             <div style={{ fontWeight: 900, fontSize: "1rem", color: D.gold, marginBottom: 4 }}>💳 {subscription.plan?.name} Plan — {subscription.status}{subscription.is_trial && <span style={{ marginLeft: 8, fontSize: "0.68rem", fontWeight: 800, color: D.textDim, background: D.panelBg2, borderRadius: 20, padding: "2px 10px", verticalAlign: "middle" }}>🎁 Free trial</span>}</div>
-            <div style={{ fontSize: "0.78rem", color: D.textDim }}>Billing: every {subscription.cycle_months} month{subscription.cycle_months === 1 ? "" : "s"} • Renews <strong style={{ color: D.text }}>{subscription.current_period_end?.slice(0, 10)}</strong></div>
+            {plansGone
+              ? <div style={{ fontSize: "0.78rem", color: D.textDim }}>Subscriptions are not being offered right now, so nothing can be renewed or bought. Your current plan runs until {subscription.current_period_end?.slice(0, 10)}.</div>
+              : <div style={{ fontSize: "0.78rem", color: D.textDim }}>Billing: every {subscription.cycle_months} month{subscription.cycle_months === 1 ? "" : "s"} • Renews <strong style={{ color: D.text }}>{subscription.current_period_end?.slice(0, 10)}</strong></div>}
+          </div>
+        ) : plansGone ? (
+          <div style={{ ...glassCard, padding: "18px", marginBottom: 16 }}>
+            <div style={{ fontSize: "0.82rem", color: D.textDim }}>Subscriptions are not being offered right now.</div>
           </div>
         ) : (
           <div style={{ ...glassCard, padding: "18px", marginBottom: 16, background: "linear-gradient(135deg, rgba(0,100,0,0.12), rgba(0,100,0,0.02))", border: `1px solid rgba(0,100,0,0.22)` }}>
@@ -109,7 +119,7 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast, b
           </div>
         )
       )}
-      {isExpired && (
+      {isExpired && !plansGone && (
         <div style={{ ...glassCard, padding: "18px", marginBottom: 16, background: "linear-gradient(135deg, rgba(204,0,0,0.14), rgba(204,0,0,0.03))", border: `1px solid rgba(204,0,0,0.32)`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div>
             <div style={{ fontWeight: 900, fontSize: "0.95rem", color: D.red, marginBottom: 4 }}>⏰ Your subscription has expired</div>
@@ -118,16 +128,16 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast, b
           <button onClick={handleRenewClick} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "9px 18px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", whiteSpace: "nowrap" }}>Renew Now</button>
         </div>
       )}
-      <div style={{ display: "inline-flex", background: D.panelBg2, borderRadius: 30, padding: 3, gap: 3, marginBottom: 16, flexWrap: "wrap" }}>
+      {!plansGone && <div style={{ display: "inline-flex", background: D.panelBg2, borderRadius: 30, padding: 3, gap: 3, marginBottom: 16, flexWrap: "wrap" }}>
         {CYCLE_OPTIONS.map(c => (
           <button key={c.months} onClick={() => setCycleMonths(c.months)} style={{ background: cycleMonths === c.months ? D.gold : "transparent", border: "none", borderRadius: 28, padding: "6px 16px", fontWeight: cycleMonths === c.months ? 800 : 600, fontSize: "0.75rem", cursor: "pointer", fontFamily: "inherit", color: cycleMonths === c.months ? "#1a1205" : D.textDim }}>
             {c.label}
           </button>
         ))}
-      </div>
+      </div>}
       {plansLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading plans…</div>}
       {plansError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load subscription plans.</div>}
-      {!plansLoading && !plansError && (
+      {!plansLoading && !plansError && !plansGone && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 12 }}>
           {visiblePlans.map(plan => (
             <div key={plan.id} style={{ ...glassCard, padding: "18px", border: `2px solid ${plan.is_recommended ? D.cardBorderStrong : D.cardBorder}`, position: "relative" }}>

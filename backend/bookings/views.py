@@ -20,13 +20,20 @@ from storefront.permissions import MarketplaceOpen
 
 from .availability import is_available, min_units_free
 from .models import Booking
-from .serializers import BookingCreateSerializer, BookingSerializer
+from .serializers import BookingCreateSerializer, BookingSerializer, CustomerBookingSerializer
+
+
+def stay_total(nightly_rate, nights, units):
+    """The price of a stay: nightly rate x nights x units. One place, so what
+    availability quotes is what booking charges."""
+    return nightly_rate * nights * units
 
 
 class BookingAvailabilityView(APIView):
     """GET /api/bookings/availability/?listing=&check_in=&check_out= — how many
     units are free across a date range, for the customer's date-picker. Public
-    to any authenticated caller.
+    to any authenticated caller. Optional `units` (a whole number, 1 or more,
+    default 1) also quotes the server-priced `total_price`.
     """
 
     permission_classes = [IsAuthenticated]
@@ -37,13 +44,22 @@ class BookingAvailabilityView(APIView):
         check_out = parse_date(request.query_params.get("check_out") or "")
         if not check_in or not check_out or check_out <= check_in:
             return Response({"detail": "Valid check_in and check_out dates are required."}, status=400)
+        raw_units = request.query_params.get("units")
+        units = 1
+        if raw_units is not None:
+            if not raw_units.isascii() or not raw_units.isdigit() or len(raw_units) > 9 or int(raw_units) < 1:
+                return Response({"units": "Enter a whole number of units, 1 or more."}, status=400)
+            units = int(raw_units)
         free = min_units_free(listing, check_in, check_out)
         nights = (check_out - check_in).days
+        rate = listing.price_amount
         return Response({
             "units_free": free,
             "available": free > 0,
             "nights": nights,
-            "nightly_rate": str(listing.price_amount) if listing.price_amount is not None else None,
+            "nightly_rate": str(rate) if rate is not None else None,
+            "units": units,
+            "total_price": str(stay_total(rate, nights, units)) if rate is not None else None,
         })
 
 
@@ -89,7 +105,7 @@ class BookingCreateView(APIView):
                     )
 
                 nights = (data["check_out"] - data["check_in"]).days
-                total = listing.price_amount * nights * data["units"]
+                total = stay_total(listing.price_amount, nights, data["units"])
                 booking = Booking.objects.create(
                     customer=request.user,
                     listing=listing,
@@ -127,11 +143,11 @@ class BookingCreateView(APIView):
 class MyBookingsView(generics.ListAPIView):
     """GET /api/bookings/mine/ — the customer's own bookings."""
 
-    serializer_class = BookingSerializer
+    serializer_class = CustomerBookingSerializer
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def get_queryset(self):
-        return Booking.objects.filter(customer=self.request.user).select_related("listing")
+        return Booking.objects.filter(customer=self.request.user).select_related("listing", "sale", "sale__dispute")
 
 
 class IncomingBookingsView(generics.ListAPIView):
@@ -178,7 +194,8 @@ class BookingCancelView(APIView):
             body=f"A booking for “{booking.listing.name}” was cancelled.",
             link="/business-dashboard", icon="⚠️",
         )
-        body = BookingSerializer(booking).data
+        booking = Booking.objects.select_related("listing", "sale", "sale__dispute").get(pk=booking.pk)  # fresh, so `money` reflects the cancel
+        body = CustomerBookingSerializer(booking).data
         if refund is not None:
             back = from_pesewas(refund.amount_pesewas)
             notify_customer(

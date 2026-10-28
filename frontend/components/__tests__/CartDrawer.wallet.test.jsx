@@ -99,6 +99,19 @@ describe('CartDrawer wallet checkout', () => {
     expect(await screen.findByText('Kente Cloth')).toBeInTheDocument()
   })
 
+  it('test_pickup_note_promises_a_code_only_when_the_ledger_is_on', async () => {
+    server.use(cart(), walletOff())
+    const off = renderDrawer()
+    await toConfirm()
+    await screen.findByTestId('pickup-collection-note')
+    expect(screen.queryByText(/once you have paid/)).not.toBeInTheDocument()
+    off.unmount()
+    server.use(cart(), walletOn(), processing())
+    renderDrawer()
+    await toConfirm()
+    expect(await screen.findByText('You get a one-time collection code once you have paid.')).toBeInTheDocument()
+  })
+
   it('test_ledger_off_checkout_is_unchanged', async () => {
     let body = null
     server.use(cart(), walletOff(), http.post(`${API}/api/orders/checkout/`, async ({ request }) => {

@@ -37,7 +37,7 @@ function releaseLine(sr) {
 
 function RequestCard({ sr, onChanged }) {
   const [mode, setMode] = useState(null); // "accept" | "decline" | "progress" | null
-  const [price, setPrice] = useState(sr.budget || "");
+  const [price, setPrice] = useState(sr.budget != null ? String(sr.budget) : "");
   const [reason, setReason] = useState("");
   const [note, setNote] = useState(sr.progress_note || "");
   const [actionError, setActionError] = useState(null);
@@ -88,8 +88,8 @@ function RequestCard({ sr, onChanged }) {
 
       {mode === "accept" && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <input type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="Your price (GHS)" style={{ ...inputStyle, width: 160 }} />
-          <button onClick={() => call("respond", { action: "accept", price })} disabled={!price} style={{ ...btn, background: D.green, color: "#fff", cursor: price ? "pointer" : "default" }}>Send quote</button>
+          <input type="text" inputMode="decimal" value={price} onChange={e => setPrice(e.target.value)} placeholder="Your price (GHS)" style={{ ...inputStyle, width: 160 }} />
+          <button onClick={() => call("respond", { action: "accept", price: price.trim() })} disabled={!price.trim()} style={{ ...btn, background: D.green, color: "#fff", cursor: price.trim() ? "pointer" : "default" }}>Send quote</button>
         </div>
       )}
       {mode === "decline" && (

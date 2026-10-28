@@ -51,7 +51,7 @@ export function bandsFromRows(rows) {
   });
 }
 
-export default function MoneyRulesFees({ category, pending, onSaved }) {
+export default function MoneyRulesFees({ category, pending, onSaved, canPropose = true }) {
   const [rows, setRows] = useState(null); // null = not editing
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -94,7 +94,7 @@ export default function MoneyRulesFees({ category, pending, onSaved }) {
             ))}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button type="button" onClick={() => { setNotice(""); setError(""); setRows(toRows(category.bands)); }} style={button(D.panelBg, D.text)}>Edit tiers</button>
+            {canPropose && <button type="button" onClick={() => { setNotice(""); setError(""); setRows(toRows(category.bands)); }} style={button(D.panelBg, D.text)}>Edit tiers</button>}
             {notice && <span role="status" style={{ color: D.green, fontWeight: 700, fontSize: "0.8rem" }}>{notice}</span>}
           </div>
         </>

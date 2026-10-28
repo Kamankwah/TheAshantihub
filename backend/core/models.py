@@ -34,6 +34,10 @@ class SiteSettings(models.Model):
     warranty_returns_policy = models.TextField(blank=True)
     service_dispute_policy = models.TextField(blank=True)
 
+    # Where a store-pickup customer collects their order. Set only by a Super Admin
+    # (PickupAddressView); blank until then, and never invented.
+    pickup_office_address = models.CharField(max_length=300, blank=True)
+
     def save(self, *args, **kwargs):
         self.pk = 1
         # Force an upsert regardless of how save() was invoked (e.g.

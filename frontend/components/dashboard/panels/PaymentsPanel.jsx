@@ -13,6 +13,7 @@ import { D, glassCard, sectionTitle, tint } from "../theme.js";
 import { apiDownload, apiPost } from "../../../apiClient.js";
 import { useMyTransactions } from "../../../hooks/useMyTransactions.js";
 import { useSubscriptionPlans } from "../../../hooks/useSubscriptionPlans.js";
+import { noPlansOffered } from "../../../lib/plansOffered.js";
 import { useMySubscription } from "../../../hooks/useMySubscription.js";
 import { useMyEvents } from "../../../hooks/useMyEvents.js";
 import { useOwnerSalesReport } from "../../../hooks/useOwnerSalesReport.js";
@@ -45,7 +46,10 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
   const [exporting, setExporting] = useState(false);
 
   const { data: transactions, isLoading: txLoading, isError: txError, refetch: refetchTx } = useMyTransactions();
-  const { data: subPlans, isLoading: plansLoading, isError: plansError } = useSubscriptionPlans();
+  const plansQuery = useSubscriptionPlans();
+  const { data: subPlans, isLoading: plansLoading, isError: plansError } = plansQuery;
+  // Only an answered empty list: loading and errors keep today's screen.
+  const plansGone = noPlansOffered(plansQuery);
   const { data: subscription } = useMySubscription();
   const { data: myEvents } = useMyEvents();
   const report = useOwnerSalesReport({ dateFrom, dateTo, kind });
@@ -69,10 +73,12 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
       title: subDays < 0 ? "Your subscription has lapsed" : `Subscription renews in ${subDays} day${subDays === 1 ? "" : "s"}`,
       // With the subscription pause switched off (clock.pause_enabled false)
       // an unpaid plan hides nothing, so don't promise to keep listings live.
-      body: subscription.clock?.pause_enabled === false
-        ? "Renew from the plans below to keep your plan."
-        : "Renew from the plans below to keep your listings live.",
-      action: () => setPayTab("subscription"),
+      body: plansGone
+        ? "Subscriptions are not being offered right now, so it cannot be renewed."
+        : subscription.clock?.pause_enabled === false
+          ? "Renew from the plans below to keep your plan."
+          : "Renew from the plans below to keep your listings live.",
+      action: plansGone ? null : () => setPayTab("subscription"),
     });
   }
   (myEvents || []).filter(e => e.status === "approved" && !e.paid_at).forEach(e => {
@@ -232,7 +238,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
                   {subEnd && <> · renews {subEnd.slice(0, 10)}{subDays != null && subDays >= 0 ? ` (${subDays}d)` : ""}</>}
                 </div>
               ) : (
-                <div style={{ color: D.textDim, fontSize: "0.78rem" }}>No active subscription — choose a plan below.</div>
+                <div style={{ color: D.textDim, fontSize: "0.78rem" }}>{plansGone ? "Subscriptions are not being offered right now." : "No active subscription — choose a plan below."}</div>
               )}
             </div>
 
@@ -264,7 +270,8 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
               </div>
             )}
 
-            {/* Plan grid (kind-gated) */}
+            {/* Plan grid (kind-gated); gone once the server offers no plans */}
+            {!plansGone && <>
             <div style={{ textAlign: "center", marginBottom: 16 }}>
               <div style={{ ...sectionTitle, margin: "0 0 6px", fontWeight: 900, fontSize: "0.95rem" }}>⭐ Plans</div>
               <div style={{ display: "inline-flex", background: D.panelBg2, borderRadius: 30, padding: 3, gap: 3 }}>
@@ -303,6 +310,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
                 ))}
               </div>
             )}
+            </>}
           </>
         )}
 

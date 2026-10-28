@@ -90,13 +90,14 @@ describe('My Work group', () => {
 })
 
 // Super Admin screens that are built (no longer placeholders) but still no other role's.
-const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'money-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center', 'opening']
+const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'money-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center', 'opening', 'pickup-desk', 'support-verification']
 const SA_ONLY = NAV_ITEMS.filter((i) => i.placeholder === 'super_admin').map((i) => i.id).concat('invites', SA_BUILT)
 // 'leave' is also Super Admin's (the canvas's Leave & holidays), but no other role's.
 // The Accounting canvas screens (2026-10-07): the Accountant's alone, except Commissions, Refunds and
 // Reconciliation, which are Super Admin's panels opened to the Accountant as well.
 const ACCT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('acct-')).map((i) => i.id)
-const ACCT_SHARED = ['commissions', 'refunds', 'reconciliation']
+// 1F opens Money rules to the Accountant, who proposes fee and setting changes
+const ACCT_SHARED = ['commissions', 'refunds', 'reconciliation', 'money-rules']
 // The Support canvas screens (placeholder or built) appear for no other role.
 const SUPPORT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('support-') && !['support-team', 'support-issues'].includes(i.id)).map((i) => i.id)
 // The Marketing canvas screens are Marketing's alone.
@@ -118,6 +119,13 @@ describe('per-role menus', () => {
     expect(groupOf(groups, 'activity')).toBe('Activity')
     expect(groupOf(groups, 'calls')).toBe('My work')
     expect(groupOf(groups, 'site-settings')).toBe('Settings')
+  })
+
+  it("adds Verification calls to Support's Calls group only with orders.verify", () => {
+    const base = ['messaging.manage', 'calls.log']
+    const calls = (perms) => buildNavGroups(authAs('support', perms)).find((g) => g.label === 'Calls').items.map((i) => i.label)
+    expect(calls(base)).toEqual(['Call log', 'Log a call'])
+    expect(calls([...base, 'orders.verify'])).toEqual(['Call log', 'Log a call', 'Verification calls'])
   })
 
   it("gives Support the canvas's seven groups and eighteen items, in order", () => {
@@ -161,6 +169,17 @@ describe('per-role menus', () => {
   it('keeps the original grouping for a session without a known role', () => {
     const groups = buildNavGroups({ user: { role: 'not-a-role' }, hasPermission: () => true })
     expect(groups.map((g) => g.id)).toEqual(['moderation', 'finance', 'users-roles', 'field-ops', 'content', 'system', 'my-work'])
+  })
+})
+
+describe('Money rules for the Accountant (1F)', () => {
+  it('the Accountant reaches Money rules under More tools', () => {
+    for (const perm of ['fees.view', 'fees.manage']) {
+      const accountant = buildNavGroups({ user: { role: 'accountant' }, hasPermission: (c) => c === perm })
+      expect(accountant.find((g) => g.label === 'More tools').items.map((i) => i.id)).toContain('money-rules')
+    }
+    const none = buildNavGroups({ user: { role: 'accountant' }, hasPermission: () => false }).flatMap((g) => g.items.map((i) => i.id))
+    expect(none).not.toContain('money-rules')
   })
 })
 
@@ -507,7 +526,9 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
       ['Home', ['My approvals']],
       ['People', ['Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays']],
       ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
-      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Scheduled orders', 'Re-deliveries', 'Free delivery', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
+      // Verification calls and Pickup desk (Plan 1F), then Re-deliveries and Free delivery (wallet 5F), joined
+      // Marketplace after Scheduled orders (Director ruling 8, 2026-10-20).
+      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Scheduled orders', 'Verification calls', 'Pickup desk', 'Re-deliveries', 'Free delivery', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
       ['Listing for clients', ['Prospects', 'Register a business', 'Client listings']],
       ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets', 'Withdrawals']],
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
@@ -736,8 +757,8 @@ describe('Re-deliveries and Free delivery (wallet 5F, Director ruling 8)', () =>
   const ids = (role, perms) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
   const groupLabel = (role, perms, id) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).find((g) => g.items.some((i) => i.id === id))?.label
 
-  it('the Pickup Desk finds Re-deliveries (no menu of its own until Plan 1F: the default grouping, System, offers it)', () => {
-    expect(groupLabel('pickup_desk', ['orders.redeliver'], 'redeliveries')).toBe('System')
+  it('the Pickup Desk finds Re-deliveries in its own Desk group (Plan 1F menu)', () => {
+    expect(groupLabel('pickup_desk', ['orders.redeliver'], 'redeliveries')).toBe('Desk')
     expect(ids('pickup_desk', [])).not.toContain('redeliveries')
   })
 
@@ -754,5 +775,32 @@ describe('Re-deliveries and Free delivery (wallet 5F, Director ruling 8)', () =>
   it('Marketing keeps Free delivery in On the site', () => {
     expect(groupLabel('marketing', ['site_promo.manage'], 'mk-delivery-promos')).toBe('On the site')
     expect(ids('operations', ['site_promo.manage'])).not.toContain('mk-delivery-promos')
+  })
+})
+
+describe('Pickup Desk role menu', () => {
+  const auth = { user: { role: 'pickup_desk' }, hasPermission: () => true }
+
+  it('gives the Pickup Desk only Re-deliveries and its Account tools, exhaustively', () => {
+    // Every permission granted, yet nothing leaks into "More tools": the menu is exhaustive.
+    expect(buildNavGroups(auth).map((g) => [g.label, g.items.map((i) => i.id)])).toEqual([['Desk', ['redeliveries']], ['Account', ['security', 'activity']]])
+  })
+
+  it('drops the Desk group when orders.redeliver is not granted (wallet 5F gate)', () => {
+    const noRedeliver = { user: { role: 'pickup_desk' }, hasPermission: (c) => c !== 'orders.redeliver' }
+    expect(buildNavGroups(noRedeliver).map((g) => [g.label, g.items.map((i) => i.id)])).toEqual([['Account', ['security', 'activity']]])
+  })
+
+  it('names the Pickup Desk overview "Pickup desk"', () => {
+    expect(overviewLabel('pickup_desk')).toBe('Pickup desk')
+  })
+
+  it('gives the Super Admin Pickup desk in Marketplace after Scheduled orders', () => {
+    const marketplace = (perms) => buildNavGroups({ user: { role: 'super_admin' }, hasPermission: (c) => perms.includes(c) }).find((g) => g.id === 'marketplace')?.items.map((i) => i.id) || []
+    // 5F's Free delivery is always the Super Admin's; Re-deliveries needs orders.redeliver, not granted here.
+    expect(marketplace(['orders.manage_delivery', 'pickup.confirm'])).toEqual(['delivery', 'delivery-scheduled', 'pickup-desk', 'mk-delivery-promos'])
+    expect(marketplace(['users.view'])).not.toContain('pickup-desk')
+    const other = buildNavGroups({ user: { role: 'operations' }, hasPermission: () => true }).flatMap((g) => g.items.map((i) => i.id))
+    expect(other).not.toContain('pickup-desk')
   })
 })

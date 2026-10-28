@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { C } from "../theme.js";
-import { apiFetch, apiPut } from "../apiClient.js";
+import { apiFetch, apiPost, apiPut } from "../apiClient.js";
+import { apiErrorMessage } from "../lib/apiErrorMessage.js";
+import { noPlansOffered } from "../lib/plansOffered.js";
 import BusinessHoursEditor from "./BusinessHoursEditor.jsx";
 import { useSubscriptionPlans } from "../hooks/useSubscriptionPlans.js";
 import { BUSINESS_TERMS_COPY } from "./businessTerms.js";
@@ -24,6 +26,11 @@ import { isOtpChallenge } from "../lib/otp.js";
 // BusinessDashboard, starting at business_info) correctly skip straight
 // back to the dashboard when that was the only thing missing, instead of
 // forcing plan_selection/payment_info/terms to be redone.
+//
+// Step 3 is "Choose Your Plan" while subscriptions are offered. Once
+// GET /api/billing/plans/ has answered [] it becomes "Your Business Type"
+// (POST /api/billing/business-kind/). While the plans are still loading, or
+// failed to load, the plan screen stays: only an answered empty list counts.
 
 const STEP_LABELS = {
   personal_info: "1 of 5: Personal Information",
@@ -32,6 +39,8 @@ const STEP_LABELS = {
   payment_info: "4 of 5: Payment Account Information",
   terms: "5 of 5: Terms & Conditions",
 };
+
+const TYPE_STEP_LABEL = "3 of 5: Your Business Type";
 
 const CYCLE_OPTIONS = [1, 3, 6, 12];
 
@@ -67,6 +76,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
   const [selectedPlanTier, setSelectedPlanTier] = useState(null);
   const [cycleMonths, setCycleMonths] = useState(1);
   const plansQuery = useSubscriptionPlans();
+  const typeOnly = noPlansOffered(plansQuery);
 
   // Step 4 — Payment Account Information
   const [payoutMomoNumber, setPayoutMomoNumber] = useState("");
@@ -187,6 +197,33 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
     }
   };
 
+  const handleBusinessKindSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await apiPost("/api/billing/business-kind/", { business_kind: businessKind });
+      const fresh = await auth.refreshUser();
+      if (fresh.registration_step === "complete") {
+        setShowBizDash(true);
+      } else if (["business_info", "plan_selection", "payment_info", "terms"].includes(fresh.registration_step)) {
+        setStep(fresh.registration_step);
+      } else {
+        setError("Something went wrong determining your next step. Please refresh the page and try again.");
+      }
+    } catch (err) {
+      if (err?.body?.code === "use_plan_selection") {
+        // Subscriptions came back on: show the server's line and reload the plans.
+        setError(apiErrorMessage(err, "Choose a plan to continue."));
+        plansQuery.refetch();
+      } else {
+        setError(apiErrorMessage(err, "Could not save your business type. Please try again."));
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handlePaymentInfoSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -233,6 +270,34 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
     }
   };
 
+  const kindButtons = (
+    <>
+            <label style={labelStyle}>What do you sell?</label>
+            <div style={{display:"flex",gap:10,marginBottom:14}}>
+              <button
+                type="button"
+                onClick={()=>{ setBusinessKind("product"); setSelectedPlanTier(null); }}
+                style={{
+                  flex:1,padding:"12px",borderRadius:12,cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:"0.8rem",
+                  border:businessKind==="product"?`2px solid ${C.gold}`:`1.5px solid ${C.line}`,
+                  background:businessKind==="product"?C.warnBg:C.surface,
+                  color:C.ink,
+                }}
+              >📦 I sell products</button>
+              <button
+                type="button"
+                onClick={()=>{ setBusinessKind("service"); setSelectedPlanTier(null); }}
+                style={{
+                  flex:1,padding:"12px",borderRadius:12,cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:"0.8rem",
+                  border:businessKind==="service"?`2px solid ${C.gold}`:`1.5px solid ${C.line}`,
+                  background:businessKind==="service"?C.warnBg:C.surface,
+                  color:C.ink,
+                }}
+              >🛠️ I offer services</button>
+            </div>
+    </>
+  );
+
   return (
     <div style={{fontFamily:"'Georgia',serif",background:C.surface2,minHeight:"100vh"}}>
       <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.black})`,padding:"0 16px",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.4)"}}>
@@ -247,7 +312,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
       </div>
 
       <div style={{maxWidth:440,margin:"0 auto",padding:"24px 20px 60px"}}>
-        <div style={{fontSize:"0.68rem",fontWeight:800,color:C.trust,marginBottom:16,letterSpacing:1}}>STEP {STEP_LABELS[step]}</div>
+        <div style={{fontSize:"0.68rem",fontWeight:800,color:C.trust,marginBottom:16,letterSpacing:1}}>STEP {step==="plan_selection" && typeOnly ? TYPE_STEP_LABEL : STEP_LABELS[step]}</div>
 
         {error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
@@ -300,33 +365,20 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
           </form>
         )}
 
-        {step==="plan_selection" && (
+        {step==="plan_selection" && typeOnly && (
+          <form onSubmit={handleBusinessKindSubmit}>
+            <h2 style={{color:C.ink,fontSize:"1.05rem",margin:"0 0 14px"}}>What kind of business is this?</h2>
+            {kindButtons}
+            <div style={{fontSize:"0.74rem",color:C.inkDim,margin:"-2px 0 14px",lineHeight:1.5}}>This is set once and decides which tools your dashboard shows.</div>
+            <button type="submit" disabled={submitting || !businessKind} style={submitStyle}>{submitting?"Saving…":"Continue"}</button>
+          </form>
+        )}
+
+        {step==="plan_selection" && !typeOnly && (
           <form onSubmit={handlePlanSelectionSubmit}>
             <h2 style={{color:C.ink,fontSize:"1.05rem",margin:"0 0 14px"}}>Choose your plan</h2>
 
-            <label style={labelStyle}>What do you sell?</label>
-            <div style={{display:"flex",gap:10,marginBottom:14}}>
-              <button
-                type="button"
-                onClick={()=>{ setBusinessKind("product"); setSelectedPlanTier(null); }}
-                style={{
-                  flex:1,padding:"12px",borderRadius:12,cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:"0.8rem",
-                  border:businessKind==="product"?`2px solid ${C.gold}`:`1.5px solid ${C.line}`,
-                  background:businessKind==="product"?C.warnBg:C.surface,
-                  color:C.ink,
-                }}
-              >📦 I sell products</button>
-              <button
-                type="button"
-                onClick={()=>{ setBusinessKind("service"); setSelectedPlanTier(null); }}
-                style={{
-                  flex:1,padding:"12px",borderRadius:12,cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:"0.8rem",
-                  border:businessKind==="service"?`2px solid ${C.gold}`:`1.5px solid ${C.line}`,
-                  background:businessKind==="service"?C.warnBg:C.surface,
-                  color:C.ink,
-                }}
-              >🛠️ I offer services</button>
-            </div>
+            {kindButtons}
 
             {businessKind && (
               <>

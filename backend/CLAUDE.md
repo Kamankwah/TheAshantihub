@@ -345,6 +345,13 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   dispute first (dispute, then subject, then sale, as disputes resolve). The three pay endpoints take
   `payment_method` and add "payment processing" on MoMo through `payments/booking_pay.py`; a service request's price
   must be above GH₵ 0.00 with at most two decimals (this check is always on, ledger on or off: spec §13 (lxvii)).
+- **Support's verification queues and the pickup desk are paginated** (DRF envelope). The desk lists only
+  ledger-recorded orders and the queue answers `409 ledger_off` while the ledger is off; the hand-over door
+  (`PickupCollectedView`) has no ledger gate on purpose, because it needs the order's collection code, which only a
+  ledger-paid order has (an unrecorded order has none and stays with a person). The collection
+  code is made at payment, checked with `compare_digest`, five wrong tries lock the order (`423 code_locked`), and it
+  is never in a staff payload or log (only the customer's own order carries it). `SiteSettings.pickup_office_address`
+  is set only through the Super Admin's door (`PATCH /api/core/site-settings/pickup-address/`).
 - **Pickup Desk** is the `pickup_desk` staff role with the permissions `pickup.confirm` (store-pickup queue and
   collection) and `orders.redeliver` (open a re-delivery request, spec gate (cxxix)); only a Super Admin invites it.
 - **One-time codes (`otp/`).** One OTP service for every account kind: 6-digit codes kept only as a salted HMAC

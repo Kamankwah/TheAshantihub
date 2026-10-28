@@ -12,6 +12,7 @@ import { useStaffGate } from "../hooks/useStaffGate.js";
 import { useCanBuy } from "../hooks/useCanBuy.js";
 import LocationPicker from "./LocationPicker.jsx";
 import StaffGateNotice from "./StaffGateNotice.jsx";
+import PickupCollectionNote from "./PickupCollectionNote.jsx";
 import PaymentMethodPicker from "./wallet/PaymentMethodPicker.jsx";
 import { useWallet } from "../hooks/useWallet.js";
 import { useWalletProcessing } from "../hooks/useWalletProcessing.js";
@@ -445,6 +446,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                 </button>
               ))}
             </div>
+            {deliveryMethod === "store_pickup" && <PickupCollectionNote codeComing={pickerShown} />}
             {deliveryMethod === "door_to_door" && (
               <div style={{ marginBottom: 12 }}>
                 <input

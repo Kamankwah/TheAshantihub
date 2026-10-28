@@ -1,5 +1,6 @@
 import FlashPriceTag from "./FlashPriceTag.jsx";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { C, tint } from "../theme.js";
 import { apiPost } from "../apiClient.js";
 import { useListing } from "../hooks/useListing.js";
@@ -18,6 +19,11 @@ import StaffGateNotice from "./StaffGateNotice.jsx";
 import BookingTermsNote from "./BookingTermsNote.jsx";
 import { useBookingTerms } from "../hooks/useBookingTerms.js";
 import { stayStart } from "../lib/bookingTerms.js";
+import { useWallet } from "../hooks/useWallet.js";
+import { useBookingPayment } from "../hooks/useBookingPayment.js";
+import { useStayQuote } from "../hooks/useStayQuote.js";
+import PaymentMethodPicker from "./wallet/PaymentMethodPicker.jsx";
+import { walletStyles } from "./wallet/walletStyles.js";
 import { ReviewsList, ReviewWriteForm, starString, textareaStyle, submitBtnStyle } from "./ReviewComponents.jsx";
 
 // ─── ListingDetailPage ──────────────────────────────────────────────────────
@@ -71,6 +77,7 @@ export default function ListingDetailPage({
   onOpenListing,
   onAddToCart,
   CardComponent,
+  PaymentComponent,
 }) {
   const { data: item, isLoading, isError, refetch } = useListing(id);
   const bookingTerms = useBookingTerms();
@@ -89,8 +96,8 @@ export default function ListingDetailPage({
   const [requesting, setRequesting] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
   const [requestError, setRequestError] = useState(null);
-  // Accommodation booking (Wave H3): dates + units, priced client-side from the
-  // nightly rate; the server re-checks availability and re-prices on submit.
+  // Accommodation booking (Wave H3): dates + units. With the wallet ledger on the total is the
+  // server's quote; the server re-checks availability and re-prices on submit.
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
   const [bookingUnits, setBookingUnits] = useState(1);
@@ -104,6 +111,23 @@ export default function ListingDetailPage({
   // Before the marketplace opens, Add to Cart and Book are greyed with
   // "Opens <D Mon>" unless this account may buy (see useCanBuy).
   const { canBuy, label: opensLabel } = useCanBuy();
+
+  // Paying for a stay (wallet ledger): only a customer on an accommodation
+  // listing after the marketplace opens asks the wallet; otherwise the pay
+  // state is "off" and the stay flow is exactly as it was before wallets.
+  // useWallet shares its query with useBookingPayment and the picker; the
+  // server's stay quote is asked only with dates set and the ledger on.
+  const stayPayActive = user?.accountType === "customer" && canBuy && !!item?.category?.is_accommodation;
+  const ledger = useWallet({ enabled: stayPayActive });
+  const stayQuote = useStayQuote({
+    listingId: item?.id, checkIn, checkOut, units: bookingUnits,
+    enabled: stayPayActive && !!ledger.data && !!checkIn && !!checkOut,
+  });
+  const stayTotal = stayQuote.data?.total_price ?? null;
+  const pay = useBookingPayment({ amount: stayTotal ?? "", enabled: stayPayActive });
+  const [momoOpen, setMomoOpen] = useState(false);
+  const stayInFlight = useRef(false);
+  const queryClient = useQueryClient();
 
   if (isLoading) {
     return (
@@ -136,6 +160,46 @@ export default function ListingDetailPage({
   // prompt them to sign in as a customer. Staff see the controls too, gated
   // at click time by staffGate above.
   const isBusinessAccount = !!user && !staffGate.isStaff && user.accountType !== "customer";
+
+  // Stay payment (wallet ledger on): every figure shown is the server's quote.
+  const stayStyles = walletStyles("light");
+  const fewFree = !!stayQuote.data && stayQuote.data.units_free < stayQuote.data.units;
+  const stayReady = pay.ready && !!stayQuote.data && stayQuote.data.available === true && stayTotal !== null && !fewFree;
+
+  const submitBooking = async () => {
+    if (stayInFlight.current) return;
+    stayInFlight.current = true;
+    setBooking(true);
+    let redirecting = false;
+    try {
+      const created = await apiPost("/api/bookings/", {
+        listing: item.id, check_in: checkIn, check_out: checkOut, units: bookingUnits, ...pay.body,
+      });
+      // Hubtel: a redirect body is not a booking. The in-flight guard stays set while the browser leaves.
+      if (created?.mode === "redirect") {
+        redirecting = true;
+        setMomoOpen(false);
+        window.location.href = created.checkout_url;
+        return;
+      }
+      setMomoOpen(false);
+      setBookingDone(created);
+      queryClient.invalidateQueries({ queryKey: ["wallet"] });
+    } catch (err) {
+      setMomoOpen(false);
+      const code = err?.body?.code;
+      if ((err?.status === 409 && (code === "insufficient_funds" || code === "ledger_off")) || (err?.status === 403 && code === "not_open")) {
+        setBookingError(err.body.detail || apiErrorMessage(err, "We could not take the payment."));
+      } else {
+        setBookingError(err?.status === 409 ? "Those dates aren't available — try different dates." : (err?.body?.detail || "Could not book. Please try again."));
+      }
+    } finally {
+      if (!redirecting) {
+        stayInFlight.current = false;
+        setBooking(false);
+      }
+    }
+  };
   const tabs = isService ? SERVICE_TABS : PRODUCT_TABS;
 
   const renderSection = (tabId) => {
@@ -257,6 +321,9 @@ export default function ListingDetailPage({
             bookingDone ? (
               <div style={{ marginTop: 16, background: `${C.kente2}22`, color: "white", borderRadius: 14, padding: "14px 16px", fontSize: "0.8rem" }}>
                 ✓ Booked! {bookingDone.check_in} → {bookingDone.check_out} · GHS {bookingDone.total_price}. Manage it in “My Account”.
+                {bookingDone.payment_processing && bookingDone.payment_processing !== "0.00" && (
+                  <div>Payment processing GH₵ {bookingDone.payment_processing}</div>
+                )}
               </div>
             ) : (
               <div style={{ marginTop: 16 }}>
@@ -272,30 +339,47 @@ export default function ListingDetailPage({
                 <label style={{ display: "block", color: "rgba(255,255,255,0.75)", fontSize: "0.68rem", marginBottom: 8 }}>Units / rooms
                   <input type="number" min={1} value={bookingUnits} onChange={(e) => setBookingUnits(Number(e.target.value) || 1)} style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box", marginTop: 3 }} />
                 </label>
+                {pay.ledgerOn && (
+                  <div style={{ ...stayStyles.card, marginBottom: 10 }}>
+                    {stayQuote.isError && <div role="alert" style={stayStyles.error}>We could not price this stay. Try different dates.</div>}
+                    {stayQuote.data && stayTotal !== null && (
+                      <div data-testid="stay-total" style={stayStyles.value}>
+                        {stayQuote.data.nights} {stayQuote.data.nights === 1 ? "night" : "nights"} × {stayQuote.data.units}: <span style={stayStyles.amount}>GH₵ {stayTotal}</span>
+                      </div>
+                    )}
+                    {stayQuote.data && stayTotal === null && <div style={stayStyles.note}>This listing has no nightly rate set, so it cannot be booked here.</div>}
+                    {fewFree && <div role="status" style={{ ...stayStyles.note, marginTop: 6 }}>Only {stayQuote.data.units_free} free for those dates.</div>}
+                    {stayTotal !== null && (
+                      <PaymentMethodPicker value={pay.method} onChange={pay.setMethod} amount={stayTotal} tone="light" />
+                    )}
+                    {pay.problem && <div role="alert" style={{ ...stayStyles.error, marginTop: 8 }}>{pay.problem}</div>}
+                  </div>
+                )}
+                {!pay.ledgerOn && pay.problem && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{pay.problem}</div>}
+                {stayPayActive && pay.state === "unknown" && !pay.problem && <div role="status" style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.72rem", marginBottom: 8 }}>Checking payment options…</div>}
                 {checkIn && <BookingTermsNote kind="stay" policy={item.cancellation_policy} start={stayStart(checkIn, bookingTerms.data?.stay_check_in_time)} />}
-                {bookingError && <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{bookingError}</div>}
+                {bookingError && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{bookingError}</div>}
                 <button
-                  disabled={booking || !checkIn || !checkOut || !canBuy}
-                  onClick={async () => {
+                  disabled={booking || !checkIn || !checkOut || !canBuy || (pay.ledgerOn && !stayReady) || pay.state === "unknown"}
+                  onClick={() => {
                     setBookingError(null);
                     if (!canBuy || staffGate.blocked()) return;
                     if (!user) { setBookingError("Sign in as a customer to book."); return; }
-                    setBooking(true);
-                    try {
-                      const created = await apiPost("/api/bookings/", {
-                        listing: item.id, check_in: checkIn, check_out: checkOut, units: bookingUnits,
-                      });
-                      setBookingDone(created);
-                    } catch (err) {
-                      setBookingError(err?.status === 409 ? "Those dates aren't available — try different dates." : (err?.body?.detail || "Could not book. Please try again."));
-                    } finally {
-                      setBooking(false);
-                    }
+                    if (pay.ledgerOn && pay.method === "momo") { setMomoOpen(true); return; }
+                    submitBooking();
                   }}
                   style={{ width: "100%", minHeight: 44, background: canBuy && checkIn && checkOut ? C.gold : "rgba(255,255,255,0.08)", color: canBuy && checkIn && checkOut ? C.darkBrown : "rgba(255,255,255,0.45)", border: "none", borderRadius: 20, fontSize: "0.82rem", fontWeight: 900, cursor: canBuy && checkIn && checkOut ? "pointer" : "not-allowed", fontFamily: "inherit" }}
                 >
-                  {!canBuy ? opensLabel : booking ? "Booking…" : item.price_amount != null ? `Book · GHS ${item.price_amount}/night` : "Book"}
+                  {!canBuy ? opensLabel : booking ? "Booking…" : pay.ledgerOn ? "Book and pay" : item.price_amount != null ? `Book · GHS ${item.price_amount}/night` : "Book"}
                 </button>
+                {momoOpen && PaymentComponent && (
+                  <PaymentComponent
+                    amount={parseFloat(stayTotal) || 0}
+                    processing={pay.processing}
+                    onSuccess={() => submitBooking()}
+                    onClose={() => setMomoOpen(false)}
+                  />
+                )}
               </div>
             )
           ) : isService ? (

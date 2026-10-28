@@ -98,7 +98,7 @@ class HeroMediaModerationTests(TestCase):
         response = self.client.post(f"/api/listings/hero/{self.submission.id}/approve/")
         self.assertEqual(response.status_code, 200, response.content)
 
-    def test_approve_with_no_subscription_grants_zero_hero_days(self):
+    def test_approve_with_no_subscription_grants_seven_hero_days(self):
         no_sub_owner = BusinessOwner.objects.create(
             full_name="No Sub Trader", login_phone="+233207991144", password_hash="x",
         )
@@ -110,7 +110,7 @@ class HeroMediaModerationTests(TestCase):
         response = self.client.post(f"/api/listings/hero/{submission.id}/approve/")
         self.assertEqual(response.status_code, 200, response.content)
         submission.refresh_from_db()
-        self.assertLessEqual(submission.expires_at - submission.approved_at, timedelta(seconds=1))
+        self.assertEqual(submission.expires_at - submission.approved_at, timedelta(days=7))
         self.assertGreaterEqual(submission.expires_at, before)
 
     def test_marketing_can_reject_with_reason(self):

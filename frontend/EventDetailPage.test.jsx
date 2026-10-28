@@ -489,3 +489,106 @@ describe('EventDetailPage — before the marketplace opens', () => {
     } finally { setStoredAuth(null) }
   })
 })
+
+// Buying tickets: payment method and the server's processing quote (gates (lxiv), (lxv)).
+describe('EventDetailPage — buying tickets with a payment method (plan 1F task 14)', () => {
+  const CUSTOMER = { id: 5, fullName: 'Kofi', accountType: 'customer' }
+  const TICKET_TYPES = [{ id: 7, name: 'VIP', description: '', price: '80.00', delivery_method: 'digital', quantity_remaining: 10 }]
+  const API = 'http://localhost:8000'
+  let posts
+  const setup = ({ organizer = { kind: 'business', id: 9, full_name: 'Manhyia Palace Events Ltd' }, ledgerOff = false, balance = '500.00', post } = {}) => {
+    posts = []
+    server.use(
+      http.get(`${API}/api/events/1/`, () => HttpResponse.json({ ...PUBLIC_DETAIL, has_tickets: true, organizer })),
+      http.get(`${API}/api/events/1/ticket-types/`, () => HttpResponse.json(TICKET_TYPES)),
+      http.get(`${API}/api/wallet/`, () => (ledgerOff
+        ? HttpResponse.json({ code: 'ledger_off', detail: 'Wallets are not switched on.' }, { status: 409 })
+        : HttpResponse.json({ kind: 'customer', balance }))),
+      http.get(`${API}/api/wallet/processing/`, ({ request }) => {
+        const amount = new URL(request.url).searchParams.get('amount')
+        return HttpResponse.json({ amount, payment_processing: '2.40', you_pay: '242.40', provider: 'simulated' })
+      }),
+      http.post(`${API}/api/events/1/tickets/purchase/`, async ({ request }) => {
+        posts.push(await request.json())
+        return post ? post() : HttpResponse.json([{ code: 'TK-1' }, { code: 'TK-2' }, { code: 'TK-3' }], { status: 201 })
+      }),
+    )
+  }
+  const openSheet = async (qty = 3) => {
+    const PaymentComponent = vi.fn(({ onSuccess }) => <button onClick={onSuccess}>confirm momo</button>)
+    renderPage({ user: CUSTOMER, PaymentComponent })
+    await screen.findByText('VIP')
+    fireEvent.change(screen.getByLabelText('Quantity for VIP'), { target: { value: String(qty) } })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Buy' })).not.toBeDisabled())
+    await new Promise((r) => setTimeout(r, 50))
+    fireEvent.click(screen.getByRole('button', { name: 'Buy' }))
+    return PaymentComponent
+  }
+
+  it('a business event shows the pay sheet with the total and the server processing line', async () => {
+    setup()
+    await openSheet(3)
+    expect(await screen.findByRole('group', { name: 'Pay for tickets' })).toHaveTextContent('3 × VIP · GH₵ 240.00')
+    expect(await screen.findByTestId('processing-line')).toHaveTextContent('Payment processing')
+    expect(screen.getByTestId('processing-line')).toHaveTextContent('GH₵ 2.40')
+    expect(screen.getByRole('button', { name: 'Pay' })).toBeInTheDocument()
+    expect(posts).toHaveLength(0)
+  })
+
+  it('a customer-organised event keeps the old buy flow and offers no wallet', async () => {
+    setup({ organizer: { kind: 'customer', id: 3, full_name: 'Ama' } })
+    const Pay = await openSheet(2)
+    await waitFor(() => expect(Pay).toHaveBeenCalled())
+    expect(screen.queryByText('AshantiHub wallet')).not.toBeInTheDocument()
+    expect(Pay.mock.calls[0][0].amount).toBe(160)
+    expect(Pay.mock.calls[0][0].processing).toBeUndefined()
+    fireEvent.click(screen.getByText('confirm momo'))
+    await waitFor(() => expect(posts).toEqual([{ ticket_type: 7, quantity: 2 }]))
+  })
+
+  it('wallet buys once without the payment modal', async () => {
+    setup()
+    const Pay = await openSheet(3)
+    fireEvent.click(await screen.findByLabelText(/AshantiHub wallet/))
+    const pay = screen.getByRole('button', { name: 'Pay' })
+    fireEvent.click(pay)
+    fireEvent.click(pay)
+    await screen.findByText(/Purchased!/)
+    expect(posts).toEqual([{ ticket_type: 7, quantity: 3, payment_method: 'wallet' }])
+    expect(Pay).not.toHaveBeenCalled()
+  })
+
+  it('insufficient funds shows the server text', async () => {
+    setup({ post: () => HttpResponse.json({ code: 'insufficient_funds', detail: 'Your wallet balance is too low.' }, { status: 409 }) })
+    await openSheet(3)
+    fireEvent.click(await screen.findByLabelText(/AshantiHub wallet/))
+    fireEvent.click(screen.getByRole('button', { name: 'Pay' }))
+    expect(await screen.findByText('Your wallet balance is too low.')).toBeInTheDocument()
+    expect(screen.queryByText(/Purchased!/)).not.toBeInTheDocument()
+  })
+
+  it('momo posts payment_method momo after the modal', async () => {
+    setup()
+    const Pay = await openSheet(3)
+    await screen.findByTestId('processing-line')
+    fireEvent.click(screen.getByRole('button', { name: 'Pay' }))
+    await waitFor(() => expect(Pay).toHaveBeenCalled())
+    const props = Pay.mock.calls.at(-1)[0]
+    expect(props.amount).toBe(240)
+    expect(props.processing).toBe('2.40')
+    expect(posts).toHaveLength(0)
+    fireEvent.click(screen.getByText('confirm momo'))
+    await screen.findByText(/Purchased!/)
+    expect(posts).toEqual([{ ticket_type: 7, quantity: 3, payment_method: 'momo' }])
+  })
+
+  it('ledger off keeps the old flow', async () => {
+    setup({ ledgerOff: true })
+    const Pay = await openSheet(3)
+    await waitFor(() => expect(Pay).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: 'Pay' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('confirm momo'))
+    await screen.findByText(/Purchased!/)
+    expect(posts).toEqual([{ ticket_type: 7, quantity: 3 }])
+  })
+})
