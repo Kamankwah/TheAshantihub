@@ -69,6 +69,7 @@ export default function ListingDetailPage({
   currency,
   onMessage,
   onOpenListing,
+  onOpenSeller,
   onAddToCart,
   CardComponent,
 }) {
@@ -81,6 +82,8 @@ export default function ListingDetailPage({
   const [addingToCart, setAddingToCart] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
   const [cartError, setCartError] = useState(null);
+  // Variant picker: quantity wanted per variant id (rows with 0 are left out of the add).
+  const [variantQty, setVariantQty] = useState({});
   // Service request flow (business item 2 / Wave H2) — for a service listing,
   // a customer sends a request instead of adding to cart; the owner accepts
   // with a quote before any payment.
@@ -136,6 +139,8 @@ export default function ListingDetailPage({
   // prompt them to sign in as a customer. Staff see the controls too, gated
   // at click time by staffGate above.
   const isBusinessAccount = !!user && !staffGate.isStaff && user.accountType !== "customer";
+  const variants = Array.isArray(item.variants) ? item.variants : [];
+  const videos = (Array.isArray(item.videos) ? item.videos : []).filter(playableVideo);
   const tabs = isService ? SERVICE_TABS : PRODUCT_TABS;
 
   const renderSection = (tabId) => {
@@ -204,6 +209,11 @@ export default function ListingDetailPage({
               ))}
             </div>
           )}
+          {videos.length > 0 && (
+            <div data-testid="media-videos" style={{ display: "grid", gap: 10, marginTop: 12 }}>
+              {videos.map((v) => <VideoPlayer key={v.id} video={v} title={item.name} />)}
+            </div>
+          )}
         </div>
 
         {/* Details (persistent buy-box) */}
@@ -223,6 +233,17 @@ export default function ListingDetailPage({
           <div style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.8rem", marginBottom: 10 }}>
             {item.category?.icon} {item.category?.label} · 📍 {item.zone?.name}
           </div>
+          {item.business_owner?.id != null && (
+            <div style={{ marginBottom: 10 }}>
+              <a
+                href={`/seller/${item.business_owner.id}`}
+                onClick={(e) => { if (onOpenSeller) { e.preventDefault(); onOpenSeller(item.business_owner.id); } }}
+                style={{ color: C.lightGold, fontSize: "0.8rem", fontWeight: 700 }}
+              >
+                Sold by {item.business_owner.full_name}
+              </a>
+            </div>
+          )}
           {item.tag && (
             <span style={{ display: "inline-block", background: accentColor, color: "white", fontSize: "0.65rem", fontWeight: 700, padding: "3px 10px", borderRadius: 20, marginBottom: 12 }}>
               {item.tag}
@@ -361,6 +382,34 @@ export default function ListingDetailPage({
             {cartBlocked.code !== "not_deliverable" && <div style={{ fontWeight: 900, marginBottom: 4 }}>{cartBlocked.code === "food_far" || cartBlocked.code === "food_unlocated" ? "Too far for this delivery" : "Delivery limit reached"}</div>}
             {cartBlocked.detail}
           </div>
+          ) : variants.length > 0 ? (
+          <VariantPicker
+            variants={variants}
+            qty={variantQty}
+            setQty={setVariantQty}
+            canBuy={canBuy}
+            opensLabel={opensLabel}
+            adding={addingToCart}
+            added={addedToCart}
+            onAdd={async () => {
+              if (!onAddToCart || !canBuy) return;
+              setCartError(null);
+              if (staffGate.blocked()) return;
+              const lines = variants.filter((v) => (variantQty[v.id] || 0) > 0).map((v) => ({ variant: v.id, quantity: variantQty[v.id] }));
+              if (lines.length === 0) return;
+              setAddingToCart(true);
+              try {
+                await onAddToCart(item, 1, lines);
+                setVariantQty({});
+                setAddedToCart(true);
+                setTimeout(() => setAddedToCart(false), 2000);
+              } catch (err) {
+                setCartError(apiErrorMessage(err, err?.message || "Could not add this item to your cart."));
+              } finally {
+                setAddingToCart(false);
+              }
+            }}
+          />
           ) : (
           <button
             disabled={addingToCart || item.price_amount == null || !onAddToCart || !canBuy}
@@ -440,6 +489,80 @@ export default function ListingDetailPage({
       )}
     </div>
   );
+}
+
+// ─── VariantPicker ──────────────────────────────────────────────────────────
+// One row per active variant: label, its price (the struck-through original only when the server sends
+// was_price), "Out of stock" at a counted zero, and a stepper bounded by the count when stock is counted
+// (stock_quantity null = not counted, no bound). Plan 4 restyles this; the data fields stay.
+function VariantPicker({ variants, qty, setQty, canBuy, opensLabel, adding, added, onAdd }) {
+  const total = variants.reduce((n, v) => n + (qty[v.id] || 0), 0);
+  const change = (v, delta) => setQty((q) => {
+    const max = v.stock_quantity == null ? Infinity : v.stock_quantity;
+    const next = Math.max(0, Math.min(max, (q[v.id] || 0) + delta));
+    return { ...q, [v.id]: next };
+  });
+  const stepBtn = { width: 44, height: 44, borderRadius: 10, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.08)", color: "white", fontSize: "1.1rem", cursor: "pointer", fontFamily: "inherit" };
+  const enabled = canBuy && total > 0 && !adding;
+  return (
+    <div data-testid="variant-picker" style={{ marginTop: 16 }}>
+      <div style={{ color: C.lightGold, fontSize: "0.78rem", fontWeight: 800, marginBottom: 8 }}>Choose an option</div>
+      {variants.map((v) => {
+        const out = v.stock_quantity === 0;
+        const detail = v.attributes && typeof v.attributes === "object" ? Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(", ") : "";
+        return (
+          <div key={v.id} data-testid="variant-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.08)", flexWrap: "wrap" }}>
+            <div style={{ minWidth: 120 }}>
+              <div style={{ color: "white", fontWeight: 700, fontSize: "0.85rem" }}>{v.label}</div>
+              {detail && <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.7rem" }}>{detail}</div>}
+              <PriceLine item={v} tone="dark" size="0.85rem" />
+            </div>
+            {out ? (
+              <span style={{ color: "#ffb4b4", fontSize: "0.78rem", fontWeight: 700 }}>Out of stock</span>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button type="button" aria-label={`One fewer ${v.label}`} style={stepBtn} onClick={() => change(v, -1)} disabled={(qty[v.id] || 0) === 0}>−</button>
+                <span data-testid="variant-qty" style={{ minWidth: 24, textAlign: "center", color: "white", fontWeight: 800 }}>{qty[v.id] || 0}</span>
+                <button type="button" aria-label={`One more ${v.label}`} style={stepBtn} onClick={() => change(v, 1)} disabled={v.stock_quantity != null && (qty[v.id] || 0) >= v.stock_quantity}>+</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <button
+        type="button"
+        disabled={!enabled}
+        onClick={onAdd}
+        style={{ marginTop: 12, width: "100%", minHeight: 44, background: enabled ? (added ? C.kente2 : C.gold) : "rgba(255,255,255,0.08)", color: enabled ? (added ? "white" : C.darkBrown) : "rgba(255,255,255,0.45)", border: "none", borderRadius: 20, fontSize: "0.82rem", fontWeight: 900, cursor: enabled ? "pointer" : "not-allowed", fontFamily: "inherit" }}
+      >
+        {!canBuy ? opensLabel : adding ? "Adding…" : added ? "Added to Cart ✓" : "Add to cart"}
+      </button>
+    </div>
+  );
+}
+
+// ─── Videos ─────────────────────────────────────────────────────────────────
+// Only ready videos reach the public payload. A YouTube id is embedded only when it is exactly 11 URL-safe
+// characters; anything else renders nothing rather than a guessed URL.
+const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
+function playableVideo(v) {
+  if (v?.kind === "youtube") return YOUTUBE_ID.test(v.youtube_id || "");
+  return !!v?.url;
+}
+
+function VideoPlayer({ video, title }) {
+  if (video.kind === "youtube") {
+    return (
+      <iframe
+        title={`${title} video`}
+        src={`https://www.youtube-nocookie.com/embed/${video.youtube_id}`}
+        allow="encrypted-media; picture-in-picture"
+        allowFullScreen
+        style={{ width: "100%", aspectRatio: "16 / 9", border: 0, borderRadius: 12 }}
+      />
+    );
+  }
+  return <video controls src={video.url} poster={video.poster || undefined} style={{ width: "100%", borderRadius: 12, background: "#000" }} />;
 }
 
 // ─── Tab sets ───────────────────────────────────────────────────────────────

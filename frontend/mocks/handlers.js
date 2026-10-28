@@ -778,4 +778,9 @@ export const handlers = [
   // Promotion hub: sponsored ads are free until priced; no flash-sale invitations by default.
   http.get('http://localhost:8000/api/listings/promotions/pricing/', () => HttpResponse.json({ enabled: false })),
   http.get('http://localhost:8000/api/marketing/owner/flash-sales/', () => HttpResponse.json({ results: [] })),
+  // Public seller page: a seller with nothing live by default; the lists it reads honour ?seller= in the tests that need them.
+  http.get('http://localhost:8000/api/listings/sellers/:id/', ({ params }) => HttpResponse.json({
+    id: Number(params.id), name: 'Adwoa Fabrics', since: '2026-03-02T10:00:00Z',
+    counts: { products: 0, services: 0, stays: 0, events: 0 },
+  })),
 ]

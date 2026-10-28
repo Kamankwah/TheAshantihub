@@ -362,6 +362,10 @@ class PublicListingListView(generics.ListAPIView):
         if verified and verified.lower() in ("true", "1"):
             queryset = queryset.filter(business_owner__kyc_status=BusinessOwner.VERIFIED)
 
+        seller = self.request.query_params.get("seller")
+        if seller and seller.isdigit():  # the seller page's grid (GET /api/listings/sellers/<id>/)
+            queryset = queryset.filter(business_owner_id=int(seller))
+
         queryset = queryset.annotate(is_promoted=Exists(self._promoted_subquery()))
         ctx = self._cart_guard()
         if ctx is not None:

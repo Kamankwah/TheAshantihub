@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_discounts, views_media, views_revisions
+from . import views, views_discounts, views_media, views_revisions, views_sellers
 
 urlpatterns = [
     path("mine/", views.OwnerListingCreateListView.as_view(), name="listing-mine-list-create"),
@@ -79,6 +79,7 @@ urlpatterns = [
         views.PromotionCancelView.as_view(),
         name="promotion-cancel",
     ),
+    path("sellers/<int:pk>/", views_sellers.SellerDetailView.as_view(), name="listing-seller"),
     path("sponsored/", views.SponsoredListView.as_view(), name="listing-sponsored-list"),
     path("", views.PublicListingListView.as_view(), name="listing-list"),
     path("<int:pk>/", views.PublicListingDetailView.as_view(), name="listing-detail"),

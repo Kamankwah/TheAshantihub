@@ -380,6 +380,37 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
   )
 
   it(
+    'mounting directly at /seller/9 renders the public seller page, not the 404 page, and a card opens its listing',
+    async () => {
+      window.history.pushState({}, '', '/seller/9')
+      server.use(
+        http.get('http://localhost:8000/api/listings/sellers/9/', () =>
+          HttpResponse.json({ id: 9, name: 'Adwoa Fabrics', since: '2026-03-02T10:00:00Z', counts: { products: 1, services: 0, stays: 0, events: 0 } }),
+        ),
+        http.get('http://localhost:8000/api/listings/', () =>
+          HttpResponse.json({
+            count: 1, next: null, previous: null,
+            results: [{ id: 31, name: 'Kente cloth', price_amount: '90.00', photos: [], main_photo: null, category: { kind: 'product', color: '#000080', label: 'Shops' }, zone: { name: 'Manhyia' }, business_owner: { id: 9, full_name: 'Adwoa', kyc_status: 'verified' } }],
+          }),
+        ),
+      )
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      render(
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <AshantiHub />
+          </BrowserRouter>
+        </QueryClientProvider>,
+      )
+      expect(await screen.findByRole('heading', { name: 'Adwoa Fabrics' }, { timeout: 4000 })).toBeInTheDocument()
+      expect(screen.queryByText(/page not found/i)).not.toBeInTheDocument()
+      expect(await screen.findByText('Kente cloth')).toBeInTheDocument()
+      window.history.pushState({}, '', '/')
+    },
+    10000,
+  )
+
+  it(
     'clicking ListingDetailPage\'s "Back to results" navigates the URL from /business/123 back to /business',
     async () => {
       window.history.pushState({}, '', '/business/123')
