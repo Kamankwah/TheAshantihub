@@ -158,4 +158,16 @@ describe('SaListingsPanel', () => {
     await screen.findByRole('table', { name: 'Listings' })
     expect(screen.queryByRole('button', { name: /as sponsored/ })).toBeNull()
   })
+
+  it('reaches the changes-to-live-listings queue from a toggle', async () => {
+    setup()
+    server.use(http.get(`${API}/api/listings/revisions/pending/`, () => HttpResponse.json([
+      { id: 5, listing: 1, listing_name: 'Handwoven kente stole', business_owner_name: 'Akosua Ntoma Kente', status: 'pending', changed_fields: ['name'], made_by_staff: false, created_by_staff: null, submitted_at: '2026-10-20T09:00:00Z' },
+    ])))
+    renderPanel(<SaListingsPanel auth={SA} />)
+    await screen.findByRole('table', { name: 'Listings' })
+    fireEvent.click(screen.getByRole('button', { name: 'Changes to live listings' }))
+    expect(await screen.findByRole('group', { name: 'Handwoven kente stole' })).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: 'Listings' })).toBeNull()
+  })
 })

@@ -147,22 +147,22 @@ export default function ListingsModerationPanel({ auth }) {
         ))}
       </div>
       {view === "changes" ? <ListingRevisionsPanel auth={auth} /> : (
-    <>
-      <div style={{ ...dim, marginBottom: 10 }}>Listings owners submit themselves. Listings a scout adds for a business come through your Approvals inbox — that approval is their moderation.</div>
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
-      <ModerationQueueTabs
-        tab={tab}
-        onTab={setTab}
-        queries={queries}
-        title="Listings moderation"
-        labels={{ approved: "Published" }}
-        renderRow={renderRow}
-      />
-      <div style={{ ...dim, marginTop: 10 }}>
-        {stats ? `This week: ${stats.week_published} published · ${stats.week_rejected} rejected. ` : ""}
-        Every decision records who made it, shown on the Published and Rejected tabs.
-      </div>
-    </>
+        <>
+          <div style={{ ...dim, marginBottom: 10 }}>Listings owners submit themselves. Listings a scout adds for a business come through your Approvals inbox — that approval is their moderation.</div>
+          {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
+          <ModerationQueueTabs
+            tab={tab}
+            onTab={setTab}
+            queries={queries}
+            title="Listings moderation"
+            labels={{ approved: "Published" }}
+            renderRow={renderRow}
+          />
+          <div style={{ ...dim, marginTop: 10 }}>
+            {stats ? `This week: ${stats.week_published} published · ${stats.week_rejected} rejected. ` : ""}
+            Every decision records who made it, shown on the Published and Rejected tabs.
+          </div>
+        </>
       )}
     </>
   );

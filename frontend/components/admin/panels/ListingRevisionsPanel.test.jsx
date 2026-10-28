@@ -144,7 +144,7 @@ describe('ListingRevisionsPanel', () => {
     renderPanel()
     fireEvent.click(await screen.findByRole('button', { name: /Rejected/ }))
     expect(await screen.findByText(/Photo is blurry/)).toBeInTheDocument()
-    expect(screen.getByText(/Changed: name, photos/)).toBeInTheDocument()
+    expect(screen.getByText(/Changed: Name, Photos/)).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Review Again/ })).toBeInTheDocument()
   })

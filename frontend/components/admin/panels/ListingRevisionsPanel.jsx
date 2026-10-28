@@ -164,7 +164,7 @@ function RevisionRow({ rev, state, onDone, staffId }) {
             {`🏢 ${rev.business_owner_name}`}{rev.submitted_at ? ` • sent ${shortDay(rev.submitted_at)}${state === "pending" ? `, ${clockTime(rev.submitted_at)}` : ""}` : ""}
           </div>
           {state !== "pending" && (rev.changed_fields || []).length > 0 && (
-            <div style={{ color: D.textDim, fontSize: "0.7rem", marginTop: 2 }}>{`Changed: ${rev.changed_fields.join(", ")}`}</div>
+            <div style={{ color: D.textDim, fontSize: "0.7rem", marginTop: 2 }}>{`Changed: ${rev.changed_fields.map(labelOf).join(", ")}`}</div>
           )}
           {state === "approved" && <ApprovedByLine name={rev.reviewed_by_name} at={rev.reviewed_at} verb="Published" />}
           {state === "rejected" && <RejectedReason reason={rev.rejection_reason} />}
