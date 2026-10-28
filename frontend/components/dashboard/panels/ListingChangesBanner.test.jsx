@@ -46,6 +46,7 @@ describe('ListingChangesBanner', () => {
     const onEdit = vi.fn()
     render(<ListingChangesBanner listing={{ id: 4, pending_revision: { id: 1, status: 'rejected', rejection_reason: 'The photo is blurry.' } }} onChanged={vi.fn()} onEdit={onEdit} />)
     expect(screen.getByText(/The photo is blurry\./)).toBeInTheDocument()
+    expect(screen.getByText(/back in draft/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit and resubmit' }))
     expect(onEdit).toHaveBeenCalled()
   })

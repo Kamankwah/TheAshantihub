@@ -5,6 +5,7 @@ import { D, glassCard, sectionTitle, tint } from "../theme.js";
 import ListingChangesBanner from "./ListingChangesBanner.jsx";
 import MediaManager from "./MediaManager.jsx";
 import VariantEditor from "./VariantEditor.jsx";
+import { DecisionFields } from "./listingFormFields.jsx";
 import { Chip, DEFAULT_LISTINGS_PATH, btn, inputStyle, noteStyle, quietBtn, serverMessage } from "./listingEditorShared.jsx";
 
 // Shared owner-facing listing card for an approved listing. Only price and stock go live at
@@ -48,43 +49,68 @@ const CONFIRM_TEXT = {
 
 // The "Edit price & specs" form. The price is live (it goes through /manage/); name, description,
 // tag and specs go into a draft edit of the approved listing and need approval.
-function DetailsEditor({ listing, basePath, onSaved, onCancel }) {
+function DetailsEditor({ listing, basePath, kind, onSaved, onCancel }) {
   const revision = useListingRevision(listing.id, { basePath });
   if (revision.isLoading) return <div style={{ ...noteStyle, marginTop: 10 }}>Loading your edit…</div>;
   const waiting = revision.data?.status === "pending";
-  return <DetailsForm listing={listing} basePath={basePath} staged={waiting ? {} : (revision.data?.changes || {})} waiting={waiting} onSaved={onSaved} onCancel={onCancel} />;
+  return <DetailsForm listing={listing} basePath={basePath} kind={kind} staged={waiting ? {} : (revision.data?.changes || {})} waiting={waiting} onSaved={onSaved} onCancel={onCancel} />;
 }
 
-function DetailsForm({ listing, basePath, staged, waiting, onSaved, onCancel }) {
+// Fields that go into the draft edit besides name/description/tag/specs, by kind of listing.
+const PRODUCT_FIELDS = ["has_warranty", "warranty_details", "has_expiry", "expiry_date", "return_policy", "brand", "condition", "dimensions", "weight", "barcode"];
+const SERVICE_FIELDS = ["service_duration", "whats_included", "requirements", "revisions", "delivery_time"];
+const STAY_FIELDS = ["service_duration", "whats_included", "requirements", "cancellation_policy", "units_total"];
+const BOOLEAN_FIELDS = ["has_warranty", "has_expiry"];
+
+// One value in the shape the API stores it, so a form value and the live listing compare equal.
+const normalise = (field, value) => {
+  if (BOOLEAN_FIELDS.includes(field)) return value === true || value === "yes";
+  if (field === "expiry_date") return value || null;
+  if (field === "units_total") return value === "" || value == null ? null : Number(value);
+  if (field === "tag") return value || null;
+  return value ?? "";
+};
+const toForm = (field, value) => (BOOLEAN_FIELDS.includes(field) ? (value ? "yes" : "no") : value ?? "");
+
+function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCancel }) {
+  const fields = ["name", "description", "tag", "contact_phone", ...(kind === "product" ? PRODUCT_FIELDS : kind === "stay" ? STAY_FIELDS : SERVICE_FIELDS)];
   const [price, setPrice] = useState(listing.price_amount ?? "");
-  const start = (field, fallback) => (staged[field] !== undefined ? staged[field] : listing[field] ?? fallback);
-  const [name, setName] = useState(start("name", ""));
-  const [description, setDescription] = useState(start("description", ""));
-  const [tag, setTag] = useState(start("tag", "") || "");
-  const [specs, setSpecs] = useState(start("specs", []) || []);
+  const [form, setForm] = useState(() => Object.fromEntries(fields.map(f => [f, toForm(f, staged[f] !== undefined ? staged[f] : listing[f])])));
+  const [specs, setSpecs] = useState((staged.specs !== undefined ? staged.specs : listing.specs) || []);
   const [error, setError] = useState(null);
+  const update = (field, value) => setForm(f => ({ ...f, [field]: value }));
   const setSpec = (i, key, val) => setSpecs(prev => prev.map((s, idx) => idx === i ? { ...s, [key]: val } : s));
+  const label = { fontSize: "0.72rem", fontWeight: 700, color: D.text, display: "block", marginBottom: 4 };
 
   const save = async () => {
     setError(null);
     const cleanSpecs = specs.filter(s => s.label || s.value);
-    const wanted = { name, description, tag: tag || null, specs: cleanSpecs };
-    const current = { name: listing.name ?? "", description: listing.description ?? "", tag: listing.tag || null, specs: listing.specs || [] };
-    const changes = waiting ? {} : Object.fromEntries(Object.keys(wanted).filter(k => JSON.stringify(wanted[k]) !== JSON.stringify(current[k])).map(k => [k, wanted[k]]));
+    const changes = {};
+    if (!waiting) {
+      for (const f of fields) {
+        const wanted = normalise(f, form[f]);
+        if (JSON.stringify(wanted) !== JSON.stringify(normalise(f, listing[f]))) changes[f] = wanted;
+      }
+      if (JSON.stringify(cleanSpecs) !== JSON.stringify(listing.specs || [])) changes.specs = cleanSpecs;
+    }
     const priceChanged = !listing.has_variants && String(price) !== String(listing.price_amount ?? "");
     if (!priceChanged && Object.keys(changes).length === 0) { setError("You have not changed anything yet."); return; }
+    let priceSaved = false;
     try {
-      if (priceChanged) await apiPatch(`${basePath}/${listing.id}/manage/`, { price_amount: price === "" ? null : price });
+      if (priceChanged) { await apiPatch(`${basePath}/${listing.id}/manage/`, { price_amount: price === "" ? null : price }); priceSaved = true; }
       if (Object.keys(changes).length > 0) await apiPut(`${basePath}/${listing.id}/revision/`, { changes });
       onSaved();
-    } catch (err) { setError(serverMessage(err, "Could not save your changes. Please try again.")); }
+    } catch (err) {
+      const words = serverMessage(err, "Could not save your changes. Please try again.");
+      setError(priceSaved ? `Price saved; the other changes were not. ${words}` : words);
+    }
   };
 
   return (
     <div style={{ marginTop: 12 }}>
       {!listing.has_variants && (
         <div style={{ marginBottom: 12 }}>
-          <label htmlFor={`price-${listing.id}`} style={{ fontSize: "0.72rem", fontWeight: 700, color: D.text, display: "block", marginBottom: 4 }}>Price (GHS)</label>
+          <label htmlFor={`price-${listing.id}`} style={label}>Price (GHS)</label>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input id={`price-${listing.id}`} type="number" value={price} onChange={e => setPrice(e.target.value)} style={{ ...inputStyle, width: 160 }} />
             <Chip color={D.green}>Live now</Chip>
@@ -95,18 +121,27 @@ function DetailsForm({ listing, basePath, staged, waiting, onSaved, onCancel }) 
         <div style={{ color: D.amber, fontSize: "0.74rem", marginBottom: 8 }}>This edit is waiting for review, so the other details cannot change until it is decided.</div>
       ) : (
       <>
-      <div style={{ ...noteStyle, marginBottom: 8 }}>Name, description, tag and specs need approval. Your approved version stays live until then.</div>
-      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: D.text, display: "block", marginBottom: 4 }}>Name</label>
-      <input value={name} onChange={e => setName(e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
-      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: D.text, display: "block", marginBottom: 4 }}>Description</label>
-      <textarea value={description} onChange={e => setDescription(e.target.value)} style={{ ...inputStyle, width: "100%", minHeight: 64, marginBottom: 8, resize: "vertical" }} />
-      <label style={{ fontSize: "0.72rem", fontWeight: 700, color: D.text, display: "block", marginBottom: 4 }}>Tag</label>
-      <input value={tag} onChange={e => setTag(e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
+      <div style={{ ...noteStyle, marginBottom: 8 }}>Everything below needs approval. Your approved version stays live until then.</div>
+      <label style={label}>Name</label>
+      <input value={form.name} onChange={e => update("name", e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
+      <label style={label}>Description</label>
+      <textarea value={form.description} onChange={e => update("description", e.target.value)} style={{ ...inputStyle, width: "100%", minHeight: 64, marginBottom: 8, resize: "vertical" }} />
+      <label style={label}>Tag</label>
+      <input value={form.tag} onChange={e => update("tag", e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
+      <label style={label}>Contact phone</label>
+      <input value={form.contact_phone} onChange={e => update("contact_phone", e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
+      <DecisionFields kind={kind === "product" ? "product" : "service"} isAccommodation={kind === "stay"} form={form} update={update} hideStock />
+      {kind === "product" && (
+        <div style={{ marginBottom: 8 }}>
+          <label style={label}>Barcode</label>
+          <input value={form.barcode} onChange={e => update("barcode", e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+        </div>
+      )}
       <div style={{ ...sectionTitle, fontSize: "0.72rem", marginBottom: 6 }}>Specs</div>
       {specs.map((s, i) => (
         <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-          <input value={s.label || ""} onChange={e => setSpec(i, "label", e.target.value)} placeholder="Label" style={{ ...inputStyle, flex: 1 }} />
-          <input value={s.value || ""} onChange={e => setSpec(i, "value", e.target.value)} placeholder="Value" style={{ ...inputStyle, flex: 1 }} />
+          <input value={s.label || ""} onChange={e => setSpec(i, "label", e.target.value)} placeholder="Label" style={{ ...inputStyle, flex: 1, width: "auto" }} />
+          <input value={s.value || ""} onChange={e => setSpec(i, "value", e.target.value)} placeholder="Value" style={{ ...inputStyle, flex: 1, width: "auto" }} />
           <button type="button" onClick={() => setSpecs(prev => prev.filter((_, idx) => idx !== i))} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>✕</button>
         </div>
       ))}
@@ -221,7 +256,7 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
       )}
 
       {editing && !discontinued && (
-        <DetailsEditor listing={listing} basePath={basePath} onCancel={() => setEditing(false)} onSaved={() => { setEditing(false); onChanged(); }} />
+        <DetailsEditor listing={listing} basePath={basePath} kind={variant === "accommodation" ? "stay" : isProduct ? "product" : "service"} onCancel={() => setEditing(false)} onSaved={() => { setEditing(false); onChanged(); }} />
       )}
     </div>
   );

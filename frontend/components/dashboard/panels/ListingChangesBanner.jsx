@@ -31,6 +31,7 @@ export default function ListingChangesBanner({ listing, onChanged, onEdit, baseP
         <>
           <div style={{ fontWeight: 800 }}>Your approved version is live. Your changes were not approved.</div>
           {revision.rejection_reason && <div style={{ color: D.red, marginTop: 3 }}>Reason: {revision.rejection_reason}</div>}
+          <div style={{ color: D.textDim, marginTop: 3 }}>Saving your edit puts it back in draft. Send it for approval again afterwards.</div>
         </>
       ) : pending ? (
         <>

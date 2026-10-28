@@ -80,6 +80,15 @@ function ExistingRow({ variant, mode, locked, staged, onLive, onRemove, onAttrib
   const [stock, setStock] = useState(variant.stock_quantity ?? "");
   const [error, setError] = useState(null);
   const revisionMode = mode === "revision";
+  // Stock tracking cannot be switched on or off from here, so a blank stock is never sent.
+  const untracked = variant.stock_quantity == null;
+  const saveLive = async () => {
+    const body = {};
+    if (String(price) !== String(variant.price_amount ?? "")) body.price_amount = price;
+    if (!untracked && stock !== "" && String(stock) !== String(variant.stock_quantity)) body.stock_quantity = Number(stock);
+    if (Object.keys(body).length === 0) throw Object.assign(new Error("unchanged"), { body: { detail: "You have not changed the price or stock." } });
+    await onLive(body);
+  };
   const attributesChanged = !sameAttributes(objectOf(pairs), variant.attributes || {});
 
   const guard = async (call, fallback) => {
@@ -103,9 +112,10 @@ function ExistingRow({ variant, mode, locked, staged, onLive, onRemove, onAttrib
       )}
       <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
         <input aria-label={`Price for ${variant.label || "variant"}`} type="number" min={0} step="0.01" value={price} onChange={e => setPrice(e.target.value)} style={{ ...inputStyle, width: 120 }} />
-        <input aria-label={`Stock for ${variant.label || "variant"}`} type="number" min={0} value={stock} onChange={e => setStock(e.target.value)} placeholder="Not tracked" style={{ ...inputStyle, width: 120 }} />
-        <button type="button" onClick={() => guard(() => onLive({ price_amount: price, stock_quantity: stockOf(stock) }), "Could not save price and stock.")} style={{ ...btn, background: D.gold, color: "#1a1205" }}>Save price &amp; stock</button>
+        <input aria-label={`Stock for ${variant.label || "variant"}`} type="number" min={0} value={stock} disabled={untracked} onChange={e => setStock(e.target.value)} placeholder="Stock not tracked" style={{ ...inputStyle, width: 120 }} />
+        <button type="button" onClick={() => guard(saveLive, "Could not save price and stock.")} style={{ ...btn, background: D.gold, color: "#1a1205" }}>Save price &amp; stock</button>
         {revisionMode && <Chip color={D.green}>Live now</Chip>}
+        {untracked && <span style={noteStyle}>Stock is not tracked for this variant; tracking cannot be switched on or off here.</span>}
         <button type="button" disabled={locked || staged === "remove"} onClick={() => guard(onRemove, "Could not remove that variant.")} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>Remove</button>
         {revisionMode && <Chip color={D.amber}>Removal needs approval</Chip>}
       </div>

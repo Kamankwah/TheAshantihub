@@ -18,7 +18,7 @@ export default function ProductsPanel({ basePath = DEFAULT_LISTINGS_PATH }) {
   return (
     <div style={{ maxWidth: 720 }}>
       <div style={{ color: D.text, fontWeight: 800, fontSize: "0.95rem", marginBottom: 4 }}>Your products</div>
-      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>Approved listings. Price and stock changes go live at once. Anything else you change waits for our approval, and your approved version stays live meanwhile.</div>
+      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>Approved listings. Price and stock changes go live at once. Anything else you change waits for our approval, and your approved version stays live meanwhile. Discontinued listings are listed under the Listings tab.</div>
       {approved.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem" }}>No approved products yet. Once a listing is approved it appears here.</div>}
       {approved.map(l => <OwnerListingCard key={l.id} listing={l} onChanged={refetch} variant="product" basePath={basePath} />)}
     </div>

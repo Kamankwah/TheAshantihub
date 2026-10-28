@@ -117,7 +117,7 @@ export default function ServicesPanel({ basePath = DEFAULT_LISTINGS_PATH }) {
     <div style={{ maxWidth: 720 }}>
       {/* Your listings — view/edit price, specs and photos (bug fix 4) */}
       <div style={{ ...sectionTitle, marginBottom: 4 }}>Your service listings</div>
-      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>Approved services. Price changes go live at once. Anything else you change waits for our approval, and your approved version stays live meanwhile.</div>
+      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>Approved services. Price changes go live at once. Anything else you change waits for our approval, and your approved version stays live meanwhile. Discontinued listings are listed under the Listings tab.</div>
       {!listings.isLoading && myServices.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem", marginBottom: 20 }}>No approved service listings yet. Once a service is approved it appears here.</div>}
       {myServices.map(l => <OwnerListingCard key={l.id} listing={l} onChanged={listings.refetch} variant="service" basePath={basePath} />)}
 

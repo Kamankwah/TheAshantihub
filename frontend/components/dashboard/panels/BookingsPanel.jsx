@@ -76,7 +76,7 @@ export default function BookingsPanel({ basePath = DEFAULT_LISTINGS_PATH }) {
     <div style={{ maxWidth: 720 }}>
       {/* Your accommodation listings — view/edit price, specs, photos (bug fix 4) */}
       <div style={{ ...sectionTitle, marginBottom: 4 }}>Your accommodation listings</div>
-      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>Approved rooms and properties. Price changes go live at once. Anything else you change waits for our approval, and your approved version stays live meanwhile.</div>
+      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>Approved rooms and properties. Price changes go live at once. Anything else you change waits for our approval, and your approved version stays live meanwhile. Discontinued listings are listed under the Listings tab.</div>
       {!listings.isLoading && myAccommodations.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem", marginBottom: 20 }}>No approved accommodation listings yet. A listing appears here once it's approved under an accommodation category.</div>}
       {myAccommodations.map(l => <OwnerListingCard key={l.id} listing={l} onChanged={listings.refetch} variant="accommodation" basePath={basePath} />)}
 

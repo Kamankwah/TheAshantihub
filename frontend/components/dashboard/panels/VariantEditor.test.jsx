@@ -82,7 +82,21 @@ describe('VariantEditor', () => {
     let hit = false
     server.use(http.patch(`${API}/api/direct/listings/9/variants/5/live/`, () => { hit = true; return HttpResponse.json({}) }))
     renderEditor({ listing: published, onChanged: vi.fn(), basePath: '/api/direct/listings' })
+    fireEvent.change(screen.getByLabelText('Price for Size: Large'), { target: { value: '11.00' } })
     fireEvent.click(screen.getByRole('button', { name: /Save price & stock/ }))
     await waitFor(() => expect(hit).toBe(true))
+  })
+
+  it('changes only the price of a variant whose stock is not tracked', async () => {
+    let body = null
+    server.use(http.patch(`${API}/api/listings/mine/9/variants/5/live/`, async ({ request }) => { body = await request.json(); return HttpResponse.json({}) }))
+    const onChanged = vi.fn()
+    renderEditor({ listing: { id: 9, status: 'published', variants: [{ ...VARIANT, stock_quantity: null }] }, onChanged })
+    expect(screen.getByLabelText('Stock for Size: Large')).toBeDisabled()
+    expect(screen.getByText(/tracking cannot be switched on or off here/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Price for Size: Large'), { target: { value: '15.00' } })
+    fireEvent.click(screen.getByRole('button', { name: /Save price & stock/ }))
+    await waitFor(() => expect(onChanged).toHaveBeenCalled())
+    expect(body).toEqual({ price_amount: '15.00' })
   })
 })

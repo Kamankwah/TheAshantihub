@@ -57,7 +57,7 @@ describe('OwnerListingCard live edits and approval', () => {
     renderCard({ ...LISTING, description: 'Old', tag: null, specs: [] }, { onChanged })
     fireEvent.click(screen.getByRole('button', { name: /Edit price & specs/ }))
     fireEvent.change(await screen.findByDisplayValue('Old'), { target: { value: 'New words' } })
-    expect(screen.getByText(/need approval/)).toBeInTheDocument()
+    expect(screen.getByText(/needs approval/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
     expect(revision).toEqual({ changes: { description: 'New words' } })
@@ -120,5 +120,42 @@ describe('OwnerListingCard drop, restore and discontinue', () => {
     renderCard({ ...LISTING, status: 'dropped' }, { basePath: '/api/direct/listings' })
     fireEvent.click(screen.getByRole('button', { name: 'Restore' }))
     await waitFor(() => expect(hit).toBe(true))
+  })
+})
+
+
+describe('OwnerListingCard decision fields', () => {
+  const PRODUCT = { ...LISTING, description: 'Soft', tag: null, specs: [], has_warranty: false, warranty_details: '', has_expiry: false, expiry_date: null, return_policy: 'No returns', brand: 'Bonwire', condition: 'new', dimensions: '', weight: '', barcode: '', contact_phone: '' }
+
+  it('sends a changed decision field to the revision, not to manage', async () => {
+    let manage = 0
+    let revision = null
+    server.use(
+      http.patch(`${API}/api/listings/mine/1/manage/`, () => { manage += 1; return HttpResponse.json({}) }),
+      http.put(`${API}/api/listings/mine/1/revision/`, async ({ request }) => { revision = await request.json(); return HttpResponse.json({}) }),
+    )
+    const onChanged = vi.fn()
+    renderCard(PRODUCT, { onChanged })
+    fireEvent.click(screen.getByRole('button', { name: /Edit price & specs/ }))
+    fireEvent.change(await screen.findByDisplayValue('No returns'), { target: { value: 'Returns within 7 days' } })
+    fireEvent.change(screen.getByDisplayValue('Bonwire'), { target: { value: 'Adanwomase' } })
+    expect(screen.queryByText('Stock quantity')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(onChanged).toHaveBeenCalled())
+    expect(revision).toEqual({ changes: { return_policy: 'Returns within 7 days', brand: 'Adanwomase' } })
+    expect(manage).toBe(0)
+  })
+
+  it('says the price was saved when the other changes were refused', async () => {
+    server.use(
+      http.patch(`${API}/api/listings/mine/1/manage/`, () => HttpResponse.json({})),
+      http.put(`${API}/api/listings/mine/1/revision/`, () => HttpResponse.json({ detail: 'That barcode is not valid.' }, { status: 400 })),
+    )
+    renderCard(PRODUCT)
+    fireEvent.click(screen.getByRole('button', { name: /Edit price & specs/ }))
+    fireEvent.change(await screen.findByDisplayValue('Bonwire'), { target: { value: 'Other' } })
+    fireEvent.change(screen.getByLabelText('Price (GHS)'), { target: { value: '300' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    expect(await screen.findByText(/Price saved; the other changes were not\. That barcode is not valid\./)).toBeInTheDocument()
   })
 })
