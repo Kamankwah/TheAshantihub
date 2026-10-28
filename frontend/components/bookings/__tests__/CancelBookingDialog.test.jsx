@@ -20,6 +20,15 @@ const mount = (props) => render(
 )
 
 describe('CancelBookingDialog', () => {
+  it('shows a service only its own full-refund line, not the listing policy text', async () => {
+    quote({ refund: '150.00', whole: true })
+    mount({ kind: 'service', money: money({ start: null }) })
+    expect(await screen.findByText('Full refund any time before the business marks the job done')).toBeInTheDocument()
+    expect(screen.queryByText(/Moderate/)).toBeNull()
+    expect(screen.queryByText(/5 days before the start/)).toBeNull()
+    expect(screen.queryByText(/Free cancellation until|refund until/)).toBeNull()
+  })
+
   it('shows the snapshot policy text with the booking-terms label', async () => {
     quote({ refund: '150.00', whole: false })
     mount()

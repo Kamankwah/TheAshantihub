@@ -516,6 +516,9 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
     if (hasAutoSelectedRef.current || conversations.length === 0) return;
     hasAutoSelectedRef.current = true;
     const bySubject = initialBusiness && conversations.find(c => c.subject?.includes(initialBusiness.name));
+    // Opened for a business or listing with no conversation about it: leave the new-conversation pane open so the
+    // "Re: <name>" subject is used, rather than landing in an unrelated conversation.
+    if (initialBusiness && !bySubject) return;
     setActiveConvId((bySubject || conversations[0]).id);
   }, [conversations, initialBusiness]);
 

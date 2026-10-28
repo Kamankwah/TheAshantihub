@@ -16,7 +16,7 @@ from .booking_helpers import BookingBase
 
 BLOCK_KEYS = {
     "sale", "release_at", "released_at", "accepted_at", "refunded", "refunded_whole", "problem", "policy", "start",
-    "can_cancel", "can_report",
+    "can_cancel", "can_report", "cancelled_by_you",
 }
 
 
@@ -62,6 +62,7 @@ class MoneyBlockTests(BookingBase):
         self.assertIsNone(block["refunded"])
         self.assertFalse(block["refunded_whole"])
         self.assertIsNone(block["problem"])
+        self.assertFalse(block["cancelled_by_you"])
         self.assertEqual(block["policy"], sale.policy_snapshot)
         self.assertTrue(block["can_cancel"])
         self.assertTrue(block["can_report"])
@@ -109,6 +110,15 @@ class MoneyBlockTests(BookingBase):
         self.assertFalse(block["refunded_whole"])
         self.assertFalse(block["can_cancel"])
         self.assertFalse(block["can_report"])
+        self.assertTrue(block["cancelled_by_you"])
+
+    def test_a_staff_partial_refund_is_not_a_customer_cancel(self):
+        sale = self.stay("moderate")
+        sales.refund(sale, 5000, source="dispute-1", note="Settled by Support")
+        block = customer_money.money_block(BookingSale.objects.get(pk=sale.pk))
+        self.assertIsNotNone(block["refunded"])
+        self.assertFalse(block["refunded_whole"])
+        self.assertFalse(block["cancelled_by_you"])
 
     def test_whole_refund_marks_refunded_whole(self):
         sale = self.stay("flexible")

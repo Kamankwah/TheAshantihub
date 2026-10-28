@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { D, tint } from "../dashboard/theme.js";
 import { useBookingTerms } from "../../hooks/useBookingTerms.js";
-import { moneyLines, payeeWord, policyLabel, policyLines } from "./bookingMoney.js";
+import { lineColor, moneyLines, payeeWord, policyLabel, policyLines } from "./bookingMoney.js";
 import CancelBookingDialog from "./CancelBookingDialog.jsx";
 import ReportProblemForm from "./ReportProblemForm.jsx";
 
@@ -42,15 +42,15 @@ export default function BookingMoneyBar({ kind, money, cancelPath, reportPath, a
   return (
     <div style={{ marginTop: 10, padding: 12, borderRadius: 12, border: `1px solid ${D.cardBorder}`, background: D.panelBg2, display: "flex", flexDirection: "column", gap: 8 }}>
       {showResult ? (
-        <div role="status" style={{ color: D.text, fontSize: "0.76rem", fontVariantNumeric: "tabular-nums" }}>{result.message}</div>
+        <div role="status" style={{ color: lineColor(result.message, D), fontSize: "0.76rem", fontVariantNumeric: "tabular-nums" }}>{result.message}</div>
       ) : (
         <>
           <div role="status" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {moneyLines(money, kind).map((l) => <div key={l} style={{ color: D.text, fontSize: "0.76rem", fontVariantNumeric: "tabular-nums" }}>{l}</div>)}
+            {moneyLines(money, kind).map((l) => <div key={l} style={{ color: lineColor(l, D), fontSize: "0.76rem", fontVariantNumeric: "tabular-nums" }}>{l}</div>)}
           </div>
           {pending && (
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {money.policy.text && <div style={line}>{label ? `${label}: ${money.policy.text}` : money.policy.text}</div>}
+              {money.start != null && money.policy.text && <div style={line}>{label ? `${label}: ${money.policy.text}` : money.policy.text}</div>}
               {policyLines(money).map((l) => <div key={l} style={line}>{l}</div>)}
             </div>
           )}
@@ -73,7 +73,7 @@ export default function BookingMoneyBar({ kind, money, cancelPath, reportPath, a
           {!panel && (money.can_cancel || money.can_report || contact) && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {money.can_cancel && <button type="button" onClick={() => setPanel("cancel")} style={pill(tint(D.red, "22"), D.red)}>{kind === "tickets" ? "Cancel tickets" : "Cancel booking"}</button>}
-              {money.can_report && <button type="button" onClick={() => setPanel("report")} style={pill(D.panelBg2, D.text)}>Report a problem</button>}
+              {money.can_report && <button type="button" onClick={() => setPanel("report")} style={pill(tint(D.red, "22"), D.red)}>Report a problem</button>}
               {contact}
             </div>
           )}

@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from '../../../mocks/server.js'
 import BookingMoneyBar from '../BookingMoneyBar.jsx'
+import { D } from '../../dashboard/theme.js'
 
 const API = 'http://localhost:8000'
 const money = (extra = {}) => ({
@@ -72,6 +73,23 @@ describe('BookingMoneyBar', () => {
     expect(screen.queryByRole('button', { name: 'Cancel booking' })).toBeNull()
   })
 
+  it('draws Report a problem as the same red-tint pill as the other destructive actions', () => {
+    mount()
+    const cancel = screen.getByRole('button', { name: 'Cancel booking' })
+    const report = screen.getByRole('button', { name: 'Report a problem' })
+    expect(report.style.color).toBe(cancel.style.color)
+    expect(report.style.background).toBe(cancel.style.background)
+  })
+
+  it('draws a refund amount in the price colour', () => {
+    mount({ money: money({ refunded: '50.00', can_cancel: false, can_report: false }) })
+    const line = screen.getByText('GH₵ 50.00 went back to your AshantiHub wallet.')
+    const probe = document.createElement('div')
+    probe.style.color = D.price
+    expect(line.style.color).toBe(probe.style.color)
+    expect(line.style.fontVariantNumeric).toBe('tabular-nums')
+  })
+
   it('omits the Contact button without the prop', () => {
     mount({ money: money({ policy: null, can_cancel: false, can_report: false }), onContactSupport: undefined })
     expect(screen.getByText('Only AshantiHub Support can cancel this booking.')).toBeInTheDocument()
@@ -130,7 +148,7 @@ describe('BookingMoneyBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel booking' }))
     expect(await screen.findByText(/^Cancelled\./)).toBeInTheDocument()
-    rerender(tree(money({ refunded: '150.00', refunded_whole: false, can_cancel: false, can_report: false })))
+    rerender(tree(money({ refunded: '150.00', refunded_whole: false, cancelled_by_you: true, can_cancel: false, can_report: false })))
     expect(await screen.findByText('GH₵ 150.00 went back to your AshantiHub wallet.')).toBeInTheDocument()
     expect(screen.queryByText(/^Cancelled\./)).toBeNull()
   })

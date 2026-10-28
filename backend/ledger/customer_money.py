@@ -47,5 +47,6 @@ def money_block(sale, now=None):
         "policy": sale.policy_snapshot,
         "start": _iso(sales._policy_start(sale)),
         "can_cancel": can_cancel,
+        "cancelled_by_you": customer_cancelled,
         "can_report": not settled and sale.dispute_id is None and not customer_cancelled,
     }

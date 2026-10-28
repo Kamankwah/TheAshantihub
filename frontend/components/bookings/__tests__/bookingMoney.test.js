@@ -4,7 +4,7 @@ import { payeeWord, moneyLines, policyLines, policyLabel, groupTicketsByPurchase
 const NOW = new Date('2026-11-10T12:00:00Z')
 const base = {
   sale: 1, release_at: null, released_at: null, accepted_at: null, refunded: null, refunded_whole: false,
-  problem: null, policy: null, start: null, can_cancel: false, can_report: false,
+  problem: null, policy: null, start: null, can_cancel: false, can_report: false, cancelled_by_you: false,
 }
 const m = (over) => ({ ...base, ...over })
 
@@ -18,9 +18,27 @@ describe('bookingMoney', () => {
   it('writes the whole-refund and part-refund lines from the server amount', () => {
     expect(moneyLines(m({ refunded: '150.00', refunded_whole: true }), 'stay', NOW)[0])
       .toBe('Refunded in full: GH₵ 150.00 went back to your AshantiHub wallet.')
-    const part = moneyLines(m({ refunded: '75.00', release_at: '2026-11-20T10:00:00Z' }), 'stay', NOW)
+    const part = moneyLines(m({ refunded: '75.00', cancelled_by_you: true, release_at: '2026-11-20T10:00:00Z' }), 'stay', NOW)
     expect(part[0]).toBe('GH₵ 75.00 went back to your AshantiHub wallet.')
     expect(part[1]).toBe('The host keeps the rest under the cancellation policy.')
+  })
+
+  it('does not say the host keeps the rest after a refund the customer did not make', () => {
+    const lines = moneyLines(m({ refunded: '50.00', release_at: '2026-11-20T10:00:00Z', can_report: true }), 'tickets', NOW)
+    expect(lines).toEqual([
+      'GH₵ 50.00 went back to your AshantiHub wallet.',
+      'The organiser is paid on Fri 20 Nov, 10:00 unless you report a problem before then.',
+    ])
+    expect(lines.join(' ')).not.toMatch(/keeps the rest/)
+  })
+
+  it('drops the report clause once Support closed the problem or Report is not offered', () => {
+    expect(moneyLines(m({ problem: 'closed', release_at: '2026-11-20T10:00:00Z' }), 'stay', NOW)[1])
+      .toBe('The host is paid on Fri 20 Nov, 10:00.')
+    expect(moneyLines(m({ problem: 'closed', release_at: '2026-11-20T10:00:00Z' }), 'service', NOW)[1])
+      .toBe('Accepts automatically on Fri 20 Nov, 10:00.')
+    expect(moneyLines(m({ can_report: false, release_at: '2026-11-20T10:00:00Z' }), 'tickets', NOW))
+      .toEqual(['The organiser is paid on Fri 20 Nov, 10:00.'])
   })
 
   it('stops at the on-hold line while a problem is open', () => {
@@ -48,9 +66,9 @@ describe('bookingMoney', () => {
   })
 
   it('keeps the service auto-accept wording', () => {
-    expect(moneyLines(m({ release_at: '2026-11-12T10:00:00Z' }), 'service', NOW))
+    expect(moneyLines(m({ release_at: '2026-11-12T10:00:00Z', can_report: true }), 'service', NOW))
       .toEqual(['Accepts automatically on Thu 12 Nov, 10:00 unless you report a problem.'])
-    expect(moneyLines(m({ release_at: '2026-11-12T10:00:00Z', start: '2026-11-15T10:00:00Z' }), 'stay', NOW))
+    expect(moneyLines(m({ release_at: '2026-11-12T10:00:00Z', start: '2026-11-15T10:00:00Z', can_report: true }), 'stay', NOW))
       .toEqual(['The host is paid on Thu 12 Nov, 10:00 unless you report a problem before then.'])
   })
 

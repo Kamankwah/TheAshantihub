@@ -11,7 +11,7 @@ import { payeeWord, policyLabel, policyLines } from "./bookingMoney.js";
 // afterwards is the cancel response's `wallet_refund`, never the quote. With the ledger off (`money` null) nothing is
 // refunded in the app and the dialog says so.
 const pill = (bg, color) => ({ background: bg, color, border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.76rem", cursor: "pointer", fontFamily: "inherit" });
-const money_ = { color: D.text, fontWeight: 800, fontVariantNumeric: "tabular-nums" };
+const money_ = { color: D.price, fontWeight: 800, fontVariantNumeric: "tabular-nums" };
 const line = { color: D.textDim, fontSize: "0.74rem" };
 
 const HEADING = {
@@ -51,7 +51,7 @@ export default function CancelBookingDialog({ kind, money, cancelPath, ticketCou
     const label = policyLabel(money.policy, terms.data);
     policyBlock = (
       <>
-        {money.policy?.text && <div style={line}>{label ? `${label}: ${money.policy.text}` : money.policy.text}</div>}
+        {money.start != null && money.policy?.text && <div style={line}>{label ? `${label}: ${money.policy.text}` : money.policy.text}</div>}
         {policyLines(money).map((l) => <div key={l} style={line}>{l}</div>)}
       </>
     );

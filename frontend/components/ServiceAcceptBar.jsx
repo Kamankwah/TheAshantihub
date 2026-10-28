@@ -4,7 +4,7 @@ import { D, tint } from "./dashboard/theme.js";
 import { apiPost } from "../apiClient.js";
 import { apiErrorMessage } from "../lib/apiErrorMessage.js";
 import { formatAccra } from "../lib/bookingTerms.js";
-import { moneyLines } from "./bookings/bookingMoney.js";
+import { lineColor, moneyLines, refundLine } from "./bookings/bookingMoney.js";
 import CancelBookingDialog from "./bookings/CancelBookingDialog.jsx";
 import ReportProblemForm from "./bookings/ReportProblemForm.jsx";
 
@@ -15,7 +15,7 @@ import ReportProblemForm from "./bookings/ReportProblemForm.jsx";
 // release stops). After a release or refund the bar states what happened, from the server's `money` block. Without
 // `money` (ledger off) it behaves exactly as it did before 7G.
 const pill = (bg, color) => ({ background: bg, color, border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.76rem", cursor: "pointer", fontFamily: "inherit" });
-const lineStyle = { color: D.text, fontSize: "0.76rem", fontVariantNumeric: "tabular-nums" };
+const lineStyle = { fontSize: "0.76rem", fontVariantNumeric: "tabular-nums" };
 
 // The wallet query client is only read when there is a money block, so the legacy bar needs no query provider.
 export default function ServiceAcceptBar(props) {
@@ -55,14 +55,15 @@ function Bar({ request, onChanged, onContactSupport, onWalletChanged }) {
 
   // The local confirmation shows only while the server's state is unchanged; once the refetched request differs, the
   // server-driven lines below take over.
-  if (result && result.signature === signature) return <div role="status" style={{ ...lineStyle, marginTop: 10 }}>{result.message}</div>;
+  if (result && result.signature === signature) return <div role="status" style={{ ...lineStyle, color: lineColor(result.message, D), marginTop: 10 }}>{result.message}</div>;
 
-  // Settled by release or refund: say what happened.
-  if (money && (money.released_at || money.refunded)) {
+  // Settled by release, a whole refund or the customer's own cancel: say what happened. A partial refund the customer
+  // did not make (one ticket, a Support settlement) leaves a completed service in the normal flow below.
+  if (money && (money.released_at || money.refunded_whole || money.cancelled_by_you)) {
     return (
       <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
         <div role="status" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {moneyLines(money, "service").map((l) => <div key={l} style={lineStyle}>{l}</div>)}
+          {moneyLines(money, "service").map((l) => <div key={l} style={{ ...lineStyle, color: lineColor(l, D) }}>{l}</div>)}
         </div>
         {money.released_at && onContactSupport && (
           <div>
@@ -102,10 +103,11 @@ function Bar({ request, onChanged, onContactSupport, onWalletChanged }) {
 
   return (
     <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-      {problem === "closed" && <div role="status" style={lineStyle}>Support has settled the problem you reported.</div>}
+      {refundLine(money) && <div role="status" style={{ ...lineStyle, color: D.price }}>{refundLine(money)}</div>}
+      {problem === "closed" && <div role="status" style={{ ...lineStyle, color: D.text }}>Support has settled the problem you reported.</div>}
       {request.auto_accept_at && (
         <div style={{ color: D.textDim, fontSize: "0.72rem" }}>
-          Accepts automatically on {formatAccra(new Date(request.auto_accept_at))} unless you report a problem.
+          Accepts automatically on {formatAccra(new Date(request.auto_accept_at))}{canReport ? " unless you report a problem" : ""}.
         </div>
       )}
       {panel !== "report" && (

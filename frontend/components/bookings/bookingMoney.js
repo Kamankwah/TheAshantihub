@@ -9,17 +9,23 @@ export const payeeWord = (kind) => PAYEE[kind]
 
 const at = (iso) => formatAccra(new Date(iso))
 
+// The refund sentence, or null when nothing was refunded. Only the server's amount is shown.
+export function refundLine(money) {
+  if (!money?.refunded) return null
+  return money.refunded_whole
+    ? `Refunded in full: GH₵ ${money.refunded} went back to your AshantiHub wallet.`
+    : `GH₵ ${money.refunded} went back to your AshantiHub wallet.`
+}
+
+// Amount lines use the price token, every other line the body text colour (DESIGN.md trust surfaces).
+export const lineColor = (text, D) => (text.includes('GH₵') ? D.price : D.text)
+
 export function moneyLines(money, kind, now = new Date()) {
   if (!money) return []
   const P = payeeWord(kind)
   const lines = []
-  if (money.refunded) {
-    lines.push(
-      money.refunded_whole
-        ? `Refunded in full: GH₵ ${money.refunded} went back to your AshantiHub wallet.`
-        : `GH₵ ${money.refunded} went back to your AshantiHub wallet.`,
-    )
-  }
+  const refund = refundLine(money)
+  if (refund) lines.push(refund)
   if (money.problem === 'open') {
     lines.push(`Problem reported. Support is looking into it, and the payment to the ${P} is on hold until it is settled.`)
     return lines
@@ -29,14 +35,15 @@ export function moneyLines(money, kind, now = new Date()) {
     lines.push(`You accepted this on ${at(money.accepted_at)}. The business has been paid.`)
   } else if (money.released_at) {
     lines.push(`The ${P} was paid on ${at(money.released_at)}.`)
-  } else if (money.refunded && !money.refunded_whole) {
+  } else if (money.refunded && !money.refunded_whole && money.cancelled_by_you) {
     lines.push(`The ${P} keeps the rest under the cancellation policy.`)
   } else if (money.release_at && new Date(money.release_at) <= now) {
     lines.push(`The ${P} is due to be paid now.`)
-  } else if (money.release_at && kind === 'service') {
-    lines.push(`Accepts automatically on ${at(money.release_at)} unless you report a problem.`)
   } else if (money.release_at) {
-    lines.push(`The ${P} is paid on ${at(money.release_at)} unless you report a problem before then.`)
+    // Once Report is gone (Support closed the problem, or the server does not offer it) the line must not invite one.
+    const canReport = money.problem !== 'closed' && money.can_report !== false
+    if (kind === 'service') lines.push(`Accepts automatically on ${at(money.release_at)}${canReport ? ' unless you report a problem' : ''}.`)
+    else lines.push(`The ${P} is paid on ${at(money.release_at)}${canReport ? ' unless you report a problem before then' : ''}.`)
   }
   return lines
 }

@@ -460,4 +460,20 @@ describe('Account bookings and tickets — 7G', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Contact AshantiHub Support' }))
     expect(await screen.findByText(/start a new conversation about Ashanti Lodge/)).toBeInTheDocument()
   })
+
+  it('opens a new conversation, not an unrelated one, when none is about the listing', async () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    server.use(http.get(`${API}/api/messaging/conversations/`, () => HttpResponse.json([
+      {
+        id: 1, customer: 1, business_owner: null, starter_name: 'Ama Boateng', subject: 'Royal Kente Hall', status: 'open',
+        messages: [{ id: 1, conversation: 1, sender_type: 'staff', body: 'About your other order.', created_at: '2026-07-01T10:00:00Z' }],
+        created_at: '2026-07-01T09:00:00Z', updated_at: '2026-07-01T10:00:00Z',
+      },
+    ])))
+    await openBookings([stay({ money: money({ policy: null, can_cancel: false, can_report: false }) })])
+    fireEvent.click(await screen.findByRole('button', { name: 'Contact AshantiHub Support' }))
+    // Wait for the list to load so the auto-select has run before asserting.
+    expect((await screen.findAllByText('Re: Royal Kente Hall')).length).toBeGreaterThan(0)
+    expect(screen.getByText(/start a new conversation about Ashanti Lodge/)).toBeInTheDocument()
+  })
 })

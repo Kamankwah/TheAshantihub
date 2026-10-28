@@ -82,6 +82,25 @@ describe('ServiceAcceptBar', () => {
       expect(screen.queryByRole('button', { name: 'Report a problem' })).toBeNull()
     })
 
+    it('still offers Accept on a completed service after a partial refund the customer did not make', () => {
+      mount(request({ money: money({ can_cancel: false, can_report: true, refunded: '30.00', refunded_whole: false, cancelled_by_you: false, release_at: '2026-10-23T14:05:00Z' }) }))
+      expect(screen.getByText('GH₵ 30.00 went back to your AshantiHub wallet.')).toBeInTheDocument()
+      expect(screen.queryByText(/keeps the rest/)).toBeNull()
+      expect(screen.getByRole('button', { name: 'Accept service' })).toBeInTheDocument()
+      expect(screen.getByText(/Accepts automatically on/)).toBeInTheDocument()
+    })
+
+    it('states a customer partial cancel as settled with no Accept', () => {
+      mount(request({ money: money({ can_cancel: false, can_report: false, refunded: '30.00', refunded_whole: false, cancelled_by_you: true, release_at: '2026-10-23T14:05:00Z' }) }))
+      expect(screen.getByText('The business keeps the rest under the cancellation policy.')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Accept service' })).toBeNull()
+    })
+
+    it('drops the report clause from the auto-accept time once Report is not offered', () => {
+      mount(request({ money: money({ problem: 'closed', can_cancel: false, can_report: false, release_at: '2026-10-23T14:05:00Z' }) }))
+      expect(screen.getByText(/Accepts automatically on/)).not.toHaveTextContent(/unless you report/)
+    })
+
     it('says the customer accepted it once released by accept', () => {
       const onContactSupport = vi.fn()
       mount(request({ settled: true, listing_name: 'Kofi Plumbing', money: money({ can_cancel: false, released_at: '2026-10-22T10:00:00Z', accepted_at: '2026-10-22T10:00:00Z' }) }), { onContactSupport })

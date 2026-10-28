@@ -19,7 +19,7 @@ const STATES = {
   'problem closed': { ...base, problem: 'closed', can_cancel: false, can_report: false },
   released: { ...base, released_at: '2026-10-12T14:00:00Z', can_cancel: false, can_report: false },
   accepted: { ...base, released_at: '2026-10-12T14:00:00Z', accepted_at: '2026-10-12T13:00:00Z', can_cancel: false, can_report: false },
-  'partial refund': { ...base, refunded: '75.00', refunded_whole: false, can_cancel: false, can_report: false },
+  'partial refund': { ...base, refunded: '75.00', refunded_whole: false, cancelled_by_you: true, can_cancel: false, can_report: false },
   'whole refund': { ...base, refunded: '150.00', refunded_whole: true, can_cancel: false, can_report: false },
   legacy: { ...base, policy: null, can_cancel: false, can_report: false },
   null: null,
