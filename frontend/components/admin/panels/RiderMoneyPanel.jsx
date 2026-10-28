@@ -137,7 +137,7 @@ export default function RiderMoneyPanel({ fallback = null, embedded = false }) {
   return (
     <div style={page}>
       {embedded
-        ? <div style={{ display: "flex", justifyContent: "flex-end" }}><button type="button" onClick={refresh} style={button(D.panelBg, D.text, false)}>Refresh</button></div>
+        ? null
         : <Title right={<button type="button" onClick={refresh} style={button(D.panelBg, D.text, false)}>Refresh</button>}>Rider money</Title>}
       <div role="group" aria-label="Rider money tabs" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {TABS.map(([id, label]) => (

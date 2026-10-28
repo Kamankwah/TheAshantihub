@@ -80,6 +80,8 @@ export default function WalletsPanel({ auth }) {
   const [round, setRound] = useState(0);
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["staff-wallets"] });
+    queryClient.invalidateQueries({ queryKey: ["staff-rider-commission"] });
+    queryClient.invalidateQueries({ queryKey: ["staff-rider-wallet"] });
     setRound((n) => n + 1);
   };
   return (
@@ -91,7 +93,7 @@ export default function WalletsPanel({ auth }) {
         ))}
       </div>
       <section aria-label="Wallets list" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-        {kind === "rider" ? <RiderMoneyPanel key={round} auth={auth} embedded /> : <WalletList key={`${kind}-${round}`} kind={kind} />}
+        {kind === "rider" ? <RiderMoneyPanel auth={auth} embedded /> : <WalletList key={`${kind}-${round}`} kind={kind} />}
       </section>
     </div>
   );

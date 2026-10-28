@@ -77,7 +77,7 @@ export default function RiderWalletDetail({ riderId, onBack }) {
         </Figure>
         <Figure label="Commission held" note={d.reserve_note}>{formatGhs(d.reserve)}</Figure>
         {has(d.commission_bp) && <Figure label="Commission rate">{percentFromBp(d.commission_bp)}</Figure>}
-        {has(d.awaiting_release) && <Figure label="Awaiting release">{d.awaiting_release}</Figure>}
+        {has(d.awaiting_release) && <Figure label="Awaiting release">{d.awaiting_release} delivered {Number(d.awaiting_release) === 1 ? "order" : "orders"}</Figure>}
       </div>
       {count && (
         <div style={dim}>
@@ -122,8 +122,8 @@ export default function RiderWalletDetail({ riderId, onBack }) {
                   <tr key={w.id ?? w.reference}>
                     <td style={td}>{w.reference}</td>
                     <td style={{ ...td, ...amount }}>{formatGhs(w.amount)}</td>
-                    <td style={{ ...td, ...amount }}>{formatGhs(w.fee)}</td>
-                    <td style={{ ...td, ...amount }}>{formatGhs(w.net)}</td>
+                    <td style={{ ...td, ...amount }}>{formatGhs(w.charge)}</td>
+                    <td style={{ ...td, ...amount }}>{formatGhs(w.you_receive)}</td>
                     <td style={td}>{w.status_label}</td>
                     <td style={td}>{w.destination?.account_number_masked}</td>
                   </tr>

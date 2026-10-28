@@ -26,7 +26,7 @@ const detail = (o = {}) => ({
   ],
   days: [{ day: '2026-10-18', deliveries: 2, gross: '20.00', commission: '2.00', net: '18.00', given_back: '0.00' }],
   withdrawals: [
-    { id: 4, reference: 'WD-0004', amount: '50.00', fee: '1.00', net: '49.00', status: 'paid', status_label: 'Paid', destination: { account_number_masked: '******4321' } },
+    { id: 4, reference: 'WD-0004', amount: '50.00', charge: '1.00', you_receive: '49.00', status: 'paid', status_label: 'Paid', destination: { account_number_masked: '******4321' } },
   ],
   ...o,
 })
@@ -68,7 +68,9 @@ describe('Rider money: wallets', () => {
     expect(screen.getByText('Order #501').closest('tr')).toHaveTextContent('GH₵ 9.00')
     expect(screen.getByText('Paid to wallet')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Days' })).toHaveTextContent('GH₵ 18.00')
-    expect(screen.getByText('WD-0004').closest('tr')).toHaveTextContent('GH₵ 49.00')
+    const wd = screen.getByText('WD-0004').closest('tr')
+    expect(within(wd).getAllByRole('cell')[2]).toHaveTextContent('GH₵ 1.00')
+    expect(within(wd).getAllByRole('cell')[3]).toHaveTextContent('GH₵ 49.00')
     expect(screen.getByText('Includes 2.00 still to be released.')).toBeInTheDocument()
     expect(screen.getByText('Held against returns.')).toBeInTheDocument()
     expect(screen.getByText(/10\.5%/)).toBeInTheDocument()
