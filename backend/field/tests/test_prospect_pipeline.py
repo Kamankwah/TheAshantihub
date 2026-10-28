@@ -157,6 +157,50 @@ class PipelineStageTests(PipelineBase):
             {"drafts": 1, "awaiting_owner": 0, "lapsed": 0, "pending_approval": 0, "live": 1},
         )
 
+    def approval(self, status):
+        return ApprovalRequest.objects.create(
+            kind="listing.staff_create", title="t", maker=self.kwame, status=status,
+            due_at=timezone.now() + timedelta(days=1),
+        )
+
+    def test_owner_confirmed_declined_and_decided_submissions_are_counted_once(self):
+        prospect, owner = self.registered(confirmation="confirmed")
+        self.draft(owner, status=ListingDraft.OWNER_CONFIRMED)
+        self.draft(owner, status=ListingDraft.OWNER_DECLINED)
+        self.draft(owner, status=ListingDraft.SUBMITTED, approval=self.approval(ApprovalRequest.APPROVED))
+        self.draft(owner, status=ListingDraft.SUBMITTED, approval=self.approval(ApprovalRequest.REJECTED))
+        self.draft(owner, status=ListingDraft.SUBMITTED, approval=self.approval(ApprovalRequest.CANCELLED))
+        self.listing(owner)  # what the approved submission published
+        counts = self.row(prospect)["pipeline"]["listings"]
+        self.assertEqual(counts, {"drafts": 3, "awaiting_owner": 0, "lapsed": 0, "pending_approval": 1, "live": 1})
+
+    def test_sub_counts_account_for_every_non_withdrawn_draft(self):
+        prospect, owner = self.registered(confirmation="confirmed")
+        statuses = [
+            ListingDraft.DRAFT, ListingDraft.OWNER_CONFIRMED, ListingDraft.OWNER_DECLINED, ListingDraft.WITHDRAWN,
+            ListingDraft.AWAITING_OWNER,
+        ]
+        for status in statuses:
+            kwargs = {}
+            if status == ListingDraft.AWAITING_OWNER:
+                kwargs["confirmation"] = self.confirmation(owner, "open", scope="listings")
+            self.draft(owner, status=status, **kwargs)
+        for approval_status in (ApprovalRequest.PENDING, ApprovalRequest.APPROVED, ApprovalRequest.REJECTED):
+            self.draft(owner, status=ListingDraft.SUBMITTED, approval=self.approval(approval_status))
+        self.draft(owner, status=ListingDraft.SUBMITTED)  # approval gone
+        self.listing(owner)
+        self.listing(owner, status=Listing.PENDING_REVIEW)
+        self.event(owner)
+        self.event(owner, status=Event.PENDING)
+        self.listing(owner, scout=self.efua)
+        counts = self.row(prospect)["pipeline"]["listings"]
+        not_yet_published = ListingDraft.objects.filter(business_owner=owner, created_by=self.kwame).exclude(
+            status=ListingDraft.WITHDRAWN).exclude(approval__status=ApprovalRequest.APPROVED).count()
+        self.assertEqual(
+            counts["drafts"] + counts["awaiting_owner"] + counts["lapsed"] + counts["pending_approval"], not_yet_published,
+        )
+        self.assertEqual(counts["live"], 2)
+
     def test_listings_live_this_month_counts_approved_this_month_only(self):
         _, owner = self.registered()
         self.listing(owner)

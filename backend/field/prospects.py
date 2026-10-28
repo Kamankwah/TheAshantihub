@@ -158,8 +158,8 @@ STAGES = ("prospect", "registered", "awaiting_owner", "confirmed", "listing", "l
 def attach_pipelines(prospects):
     """Set `.pipeline` on each prospect: {stage, listings: {drafts, awaiting_owner, lapsed, pending_approval, live}}.
     Four queries however many prospects there are. The counts are the prospect's own scout's work on the business:
-    drafts = still being prepared (not yet sent), awaiting_owner / lapsed = sent and waiting / link ran out
-    (confirmations.is_lapsed), pending_approval = submitted and not yet decided, live = published listings plus
+    drafts = with the scout (unsent, owner-declined, or a returned submission), awaiting_owner / lapsed = sent and waiting / link ran out
+    (confirmations.is_lapsed), pending_approval = owner-confirmed or submitted and undecided (an approved submission shows once, in live), live = published listings plus
     approved events. Stage is the furthest step reached (see STAGES): `awaiting_owner` is an open, unexpired
     registration link, `registered` is registered with the owner neither confirmed nor waiting, `confirmed` is
     confirmations.registration_confirmed (grandfathered owners included), `listing` is any non-withdrawn draft or any
@@ -191,13 +191,18 @@ def attach_pipelines(prospects):
         for owner_id, scout_id, status, confirmed_at, expires_at, approval_status in drafts:
             row = bucket(owner_id, scout_id)
             row["made"] += 1
-            if status == ListingDraft.DRAFT:
-                row["drafts"] += 1
-            elif status == ListingDraft.AWAITING_OWNER:
+            if status == ListingDraft.AWAITING_OWNER:
                 lapsed = expires_at is not None and confirmations.is_lapsed(status, confirmed_at, expires_at, now)
                 row["lapsed" if lapsed else "awaiting_owner"] += 1
-            elif status == ListingDraft.SUBMITTED and approval_status == "pending":
-                row["pending_approval"] += 1
+            elif status == ListingDraft.OWNER_CONFIRMED:
+                row["pending_approval"] += 1  # waits on staff, not the owner
+            elif status == ListingDraft.SUBMITTED:
+                if approval_status == "pending":
+                    row["pending_approval"] += 1
+                elif approval_status != "approved":  # approved: counted through its published listing or event (live)
+                    row["drafts"] += 1  # returned or cancelled (normally reopened already): back with the scout
+            else:  # draft, owner_declined: with the scout to finish, fix or withdraw
+                row["drafts"] += 1
         for owner_id, scout_id, status in Listing.objects.filter(
             business_owner_id__in=owner_ids, created_by_staff_id__in=scout_ids,
         ).values_list("business_owner_id", "created_by_staff_id", "status"):
