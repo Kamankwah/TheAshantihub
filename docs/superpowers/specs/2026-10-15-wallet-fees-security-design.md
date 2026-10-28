@@ -1122,6 +1122,8 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   or a Plan 4b) must add `BookingSale` as a second row source (`kind: "booking"`) to `vendor.sale_groups` / `rows` /
   `statement` and the `awaiting_call` count, the three booking kinds to `vendor.FOLD`, and booking paid / release texts
   to `vendor_texts`, before `LEDGER_ENABLED` is turned on.
+  *Progress (plan 4F Tasks 1-2): booking rows (`vendor/bookings/`), the overview's `awaiting_call` count, the three booking
+  `FOLD` kinds in the daily summary and one statement row per booking sale are done. The booking texts arrive with Task 4.*
 - (lxxxiv) **Retention.** `VendorText` rows (amounts and order numbers only) are kept indefinitely; decide a purge beside
   `otp.retention`.
 - (lxxxv) **Frontend (Plan 4F):** the overview with the cap meter, sales with filters, the daily summary, the export,

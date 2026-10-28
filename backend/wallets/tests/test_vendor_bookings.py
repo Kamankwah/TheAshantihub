@@ -1,7 +1,11 @@
 """The business's booking sales on its money API (plan 4F, Task 1): services, stays and event tickets as rows beside
 the order rows. Privacy (no customer detail, no problem reason; Director G3), the server's release time and wording,
 refunds, filters and the fixed query count."""
+import csv
+import io
 from datetime import datetime, time, timedelta, timezone as dt_timezone
+from decimal import Decimal
+from unittest.mock import patch
 
 from django.db import connection
 from django.test import override_settings
@@ -15,10 +19,11 @@ from events.models import Event
 from ledger import sales
 from ledger.models import Account, MoneySetting
 from ledger.tests.booking_helpers import BookingBase
+from wallets import vendor
 from wallets.models import Withdrawal
 
 from .helpers import destination
-from .vendor_helpers import Shop, customer, paid_order
+from .vendor_helpers import Shop, customer, hold, paid_order
 
 BOOKINGS, OVERVIEW, SALES = "/api/wallet/vendor/bookings/", "/api/wallet/vendor/", "/api/wallet/vendor/sales/"
 
@@ -241,3 +246,97 @@ class OverviewBookingTests(BookingsBase):
                 request_id=request_id, amount_pesewas=amount, charge_pesewas=0, net_pesewas=amount, status=status, provider="simulated",
             )
         self.assertEqual(self.client.get(OVERVIEW).json()["withdrawing"], "50.00")
+
+
+DAILY, EXPORT = "/api/wallet/vendor/daily/", "/api/wallet/vendor/statement/export/"
+
+
+def csv_lines(response):
+    return list(csv.reader(io.StringIO(response.content.decode("utf-8"))))[1:]
+
+
+@override_settings(LEDGER_ENABLED=True)
+class BookingDailyAndStatementTests(BookingsBase):
+    def daily(self):
+        self.as_owner()
+        response = self.client.get(DAILY)
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
+    def statement(self, params=None):
+        self.as_owner()
+        return self.client.get(EXPORT, params or {})
+
+    def test_booking_payment_release_and_refund_fold_into_their_columns(self):
+        sale = self.paid_service("200.00")
+        totals = self.daily()["totals"]
+        self.assertEqual((totals["orders"], totals["sold"], totals["fees"], totals["released"], totals["other"]), (1, "200.00", "0.00", "0.00", "0.00"))
+        self.done(sale)
+        sales.accept(sale, self.customer)
+        sale.refresh_from_db()
+        fee = Decimal(sale.charged_pesewas) / 100
+        self.assertGreater(fee, 0)
+        totals = self.daily()["totals"]
+        self.assertEqual((totals["orders"], Decimal(totals["fees"]), Decimal(totals["released"]), totals["other"]), (1, fee, 200 - fee, "0.00"))
+        sales.refund(sale, 5000, source="partial-daily", by=make_staff("support", "s-daily@example.com"))
+        totals = self.daily()["totals"]
+        self.assertGreater(Decimal(totals["refunded"]), 0)
+        self.assertEqual(totals["other"], "0.00")
+
+    def test_review_focus_columns_still_add_up_with_bookings(self):
+        listing = self.listing("Phone case", "60.00", self.service.category)
+        paid_order(customer(), [(listing, 2)])
+        sale = self.paid_service("200.00")
+        self.done(sale)
+        sales.accept(sale, self.customer)
+        self.paid_stay(starts_in=3)
+        hold(self.owner, 5000, "hold-bookings")
+        totals = self.daily()["totals"]
+
+        def figure(key):
+            return Decimal(totals[key])
+
+        self.assertEqual(totals["other"], "0.00")
+        self.assertEqual(totals["orders"], 3)
+        self.assertEqual(
+            figure("sold") - figure("fees") - figure("refunded") - figure("free_delivery_promo") - figure("withdrawn") + figure("other"),
+            figure("net_change"),
+        )
+
+    def test_statement_lists_booking_sales_by_paid_day_with_their_status_word(self):
+        waiting = self.paid_service("200.00")
+        released = self.paid_service("120.00")
+        self.done(released)
+        sales.accept(released, self.customer)
+        refunded = self.paid_service("80.00")
+        sales.refund(refunded, source="whole-stmt", by=make_staff("support", "s-stmt@example.com"))
+        response = self.statement()
+        self.assertEqual(response.status_code, 200, response.content)
+        lines = {line[2]: line for line in csv_lines(response)}
+        day = timezone.localdate().isoformat()
+        released.refresh_from_db()
+        fee = f"{Decimal(released.charged_pesewas) / 100:.2f}"
+        self.assertEqual(lines[f"Booking #{waiting.pk}"][:2] + lines[f"Booking #{waiting.pk}"][3:4] + lines[f"Booking #{waiting.pk}"][-1:], [day, "Booking", "200.00", "Pending"])
+        row = lines[f"Booking #{released.pk}"]
+        self.assertEqual((row[3], row[4], row[5], row[6], row[7], row[8], row[9]), ("120.00", fee, "", "0.00", "", f"{Decimal('120.00') - Decimal(fee):.2f}", "Available"))
+        row = lines[f"Booking #{refunded.pk}"]
+        self.assertEqual((row[3], row[4], row[6], row[8], row[9]), ("80.00", "0.00", "80.00", "0.00", "Refunded"))
+
+    def test_statement_booking_rows_hold_no_customer_detail_or_item_name(self):
+        self.paid_service()
+        self.paid_stay(starts_in=3)
+        self.paid_tickets()
+        text = self.statement().content.decode()
+        self.assertEqual(text.count("Booking #"), 3)
+        for forbidden in ("Ama Owusu", "233200770001", "Home Cleaning", "customer", "phone"):
+            self.assertNotIn(forbidden, text)
+
+    def test_the_row_ceiling_counts_bookings(self):
+        self.paid_service()
+        self.assertEqual(self.statement().status_code, 200)
+        with patch.object(vendor, "EXPORT_MAX_ROWS", 1):
+            self.assertEqual(self.statement().status_code, 200)
+            self.paid_service()
+            response = self.statement()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"date_from": "Too many rows \u2014 choose a shorter date range."})
