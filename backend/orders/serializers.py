@@ -73,15 +73,21 @@ class OrderSerializer(serializers.ModelSerializer):
             return None
         return assignment.drop_code or None
 
-    def get_collection_code(self, obj):
+    def _collection_code(self, obj):
+        """Worked out once per order, however many fields read it."""
         from ledger import verification
 
-        return verification.collection_code(obj)
+        if not hasattr(obj, "_collection_code_value"):
+            obj._collection_code_value = verification.collection_code(obj)
+        return obj._collection_code_value
+
+    def get_collection_code(self, obj):
+        return self._collection_code(obj)
 
     def get_collect_by(self, obj):
         from ledger import verification
 
-        if verification.collection_code(obj) is None:
+        if self._collection_code(obj) is None:
             return None
         if not hasattr(self, "_pickup_window"):  # one read for the whole list: the child serializer is shared by every order
             self._pickup_window = verification._pickup_window(timezone.now())

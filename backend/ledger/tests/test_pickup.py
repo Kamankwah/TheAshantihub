@@ -258,7 +258,7 @@ class CollectionCodeTests(PickupBase):
             self.assertEqual(self.collect(order, bad).json()["attempts_left"], left)
         self.assertEqual(Notification.objects.filter(kind="pickup_code_locked").count(), 0)
         fifth = self.collect(order, bad)
-        self.assertEqual((fifth.status_code, fifth.json()["code"]), (400, "wrong_code"))
+        self.assertEqual((fifth.status_code, fifth.json()["code"]), (423, "code_locked"))
         locked = self.collect(order, self.code(order))
         self.assertEqual((locked.status_code, locked.json()), (423, {
             "detail": "Too many wrong codes for this order. Support has been told.", "code": "code_locked"}))
@@ -330,3 +330,30 @@ class CollectionCodeTests(PickupBase):
         self.assertEqual(self.client.get("/api/ledger/orders/awaiting-verification/").json()["results"], [])
         row = verification.pickup_queue()[0]
         self.assertNotIn("collection_code", row)
+
+
+class CustomerListQueryTests(PickupBase):
+    def test_the_customer_order_list_costs_the_same_queries_with_pickup_orders(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from accounts.authentication import issue_token
+
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.customer, 'customer')}")
+
+        def count():
+            with CaptureQueriesContext(connection) as ctx:
+                response = client.get("/api/orders/")
+            self.assertEqual(response.status_code, 200)
+            return len(ctx.captured_queries), len(response.json()["results"] if isinstance(response.json(), dict) else response.json())
+
+        for ledger_on in (True, False):
+            with override_settings(LEDGER_ENABLED=ledger_on):
+                self.pickup_order(in_ledger=ledger_on)
+                few, rows_few = count()
+                self.pickup_order(in_ledger=ledger_on)
+                self.pickup_order(in_ledger=ledger_on)
+                many, rows_many = count()
+                self.assertEqual(rows_many - rows_few, 2)
+                self.assertEqual(many, few, f"ledger_on={ledger_on}")

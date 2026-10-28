@@ -173,7 +173,10 @@ def collection_code(order):
         return None
     if check is not None and check.collection_code:
         return check.collection_code  # only ever created by the ledger's payment, or below
-    if not Journal.objects.filter(key=escrow.pay_key(order)).exists():
+    recorded = getattr(order, "pay_recorded", None)   # annotated by the customer's order list, so no query per order
+    if recorded is None:
+        recorded = Journal.objects.filter(key=escrow.pay_key(order)).exists()
+    if not recorded:
         return None
     with transaction.atomic():
         locked = Order.objects.select_for_update(of=("self",)).get(pk=order.pk)
@@ -224,9 +227,12 @@ def mark_collected(order, staff, code=None, now=None):
                 check.save(update_fields=["code_attempts", "updated_at"])
                 if check.code_attempts >= CODE_ATTEMPT_LIMIT:
                     _tell_support_of_lock(order)
-                refusal = VerificationError(
-                    "That code is not right.", 400, "wrong_code", attempts_left=max(0, CODE_ATTEMPT_LIMIT - check.code_attempts),
-                )
+                if check.code_attempts >= CODE_ATTEMPT_LIMIT:
+                    refusal = VerificationError("Too many wrong codes for this order. Support has been told.", 423, "code_locked")
+                else:
+                    refusal = VerificationError(
+                        "That code is not right.", 400, "wrong_code", attempts_left=CODE_ATTEMPT_LIMIT - check.code_attempts,
+                    )
         if refusal is None:
             from . import refunds
 
