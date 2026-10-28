@@ -11,6 +11,7 @@ from accounts.gps import validate_ashanti_gps
 from accounts.kyc import address_correction
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
 from accounts.serializers import hours_payload
+from accounts.permissions import can_stage_for
 from accounts.phones import mask_phone, normalize_gh_phone
 from accounts.validators import validate_image_content_type
 from approvals.models import ApprovalRequest
@@ -233,6 +234,19 @@ def subscription_due_item(row, masked=False):
     return item
 
 
+def _owner_confirmation(owner, user):
+    """The owner's registration confirmation: masked line and state only, never a token or link. `can_ask_again` is
+    true only for a person who could actually ask (the draft-endpoint scope: never the General Manager) and only when
+    asking would be accepted."""
+    ask = registration_ask(owner)
+    return {
+        "confirmed": registration_confirmed(owner),
+        "line": registration_line(owner),
+        "state": ask["state"],
+        "can_ask_again": ask["can_ask_again"] and can_stage_for(user, owner),
+    }
+
+
 def business_detail(row, request):
     """The business page: the list item plus details, listings, waiting
     requests, recent calls, assignment history and open fraud cases.
@@ -337,6 +351,7 @@ def business_detail(row, request):
             for flag in FraudFlag.objects.filter(business_owner=owner, status=FraudFlag.OPEN).order_by("-created_at", "-id")
         ],
         "can_manage": owner.account_manager_id == request.user.pk,
+        "owner_confirmation": _owner_confirmation(owner, request.user),
     })
     return data
 
@@ -416,11 +431,7 @@ def business_review_sheet(owner, request):
         # U6: the latest field correction of the Ghana Post address, or None.
         "address_correction": address_correction(owner),
         # The text to the owner: masked number and state only (portfolio.confirmations); never a token or link.
-        "owner_confirmation": {
-            "confirmed": registration_confirmed(owner),
-            "line": registration_line(owner),
-            **registration_ask(owner),
-        },
+        "owner_confirmation": _owner_confirmation(owner, request.user),
     }
 
 

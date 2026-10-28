@@ -140,6 +140,17 @@ class RegistrationReaskTests(ReaskBase):
         self.lapse()
         lapsed = self.client.get(f"/api/portfolio/businesses/{self.owner.pk}/review/").json()["owner_confirmation"]
         self.assertEqual((lapsed["state"], lapsed["can_ask_again"]), ("lapsed", True))
+        # the business page carries the same, for the people who can ask: the manager and Operations, not another scout
+        for who, expected in ((self.scout, True), (self.lead, True), (self.other_scout, None)):
+            self.as_staff(who)
+            response = self.client.get(f"/api/portfolio/businesses/{self.owner.pk}/")
+            if expected is None:
+                self.assertEqual(response.status_code, 404)
+                continue
+            body = response.json()["owner_confirmation"]
+            self.assertEqual((body["state"], body["can_ask_again"]), ("lapsed", expected))
+        self.as_staff(self.gm)  # the General Manager reads the review but can never ask
+        self.assertFalse(self.client.get(f"/api/portfolio/businesses/{self.owner.pk}/review/").json()["owner_confirmation"]["can_ask_again"])
 
 
 class ResendHonestyTests(ReaskBase):

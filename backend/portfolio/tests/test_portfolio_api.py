@@ -44,7 +44,7 @@ DETAIL_KEYS = ITEM_KEYS | {
     "business_kind", "business_category", "gps_address", "lat", "lng", "location_accuracy_m",
     "location_is_manual", "location_set_by", "business_contact_phone", "business_description", "opening_hours", "hours",
     "signboard_photo", "email", "registered_by", "created_at", "listings", "pending_requests", "recent_calls", "recent_visits",
-    "assignments", "open_flags", "can_manage",
+    "assignments", "open_flags", "can_manage", "owner_confirmation",
 }
 
 
