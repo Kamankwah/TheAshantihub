@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
+import { useBookingTerms } from "../../../hooks/useBookingTerms.js";
 import { useEscrowLedger, useEscrowSummary } from "../../../hooks/useEscrowLedger.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D, ESCROW_STATUS_META, glassCard } from "../theme.js";
@@ -22,6 +23,8 @@ function Row({ t, canRelease, canRefund, onDone }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [refundNote, setRefundNote] = useState("");
+  const terms = useBookingTerms().data;
   const meta = ESCROW_STATUS_META[t.escrow_status] || { label: t.escrow_status, color: D.textDim };
   const refunded = Boolean(t.refunded_at);
   const delivered = Boolean(t.delivered_at);
@@ -30,7 +33,8 @@ function Row({ t, canRelease, canRefund, onDone }) {
     setBusy(true);
     setError("");
     try {
-      await apiPost(`/api/events/tickets/${t.id}/escrow/${action}/`, { [field_]: note.trim() });
+      const answer = await apiPost(`/api/events/tickets/${t.id}/escrow/${action}/`, { [field_]: note.trim() });
+      if (action === "refund" && answer?.wallet_refund) setRefundNote(`Refunded: GH₵ ${answer.wallet_refund} went back to the buyer's AshantiHub wallet.`);
       setNote("");
       onDone();
     } catch (err) {
@@ -39,7 +43,9 @@ function Row({ t, canRelease, canRefund, onDone }) {
       setBusy(false);
     }
   };
-  const actions = !refunded && ((canRelease && (t.escrow_status === "held" || t.escrow_status === "released")) || (canRefund && t.escrow_status === "held" && !delivered));
+  const ledgerPays = Boolean(t.in_ledger) && !refunded;
+  const canRelease_ = canRelease && !t.in_ledger;
+  const actions = !refunded && ((canRelease_ && (t.escrow_status === "held" || t.escrow_status === "released")) || (canRefund && t.escrow_status === "held" && !delivered));
   return (
     <li style={{ padding: "12px 0", borderBottom: `1px solid ${D.divider}`, listStyle: "none" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -54,11 +60,18 @@ function Row({ t, canRelease, canRefund, onDone }) {
         </div>
         <div style={{ ...figures, fontWeight: 800, color: D.text }}>{money(t.price)}</div>
       </div>
+      {ledgerPays && (
+        <div style={dim}>
+          Paid out by the ledger
+          {terms?.enabled ? `: ${terms.event_release_delay_hours} hours after the event day ends, unless a dispute is open.` : "."}
+        </div>
+      )}
+      {refundNote && <div role="status" style={dim}>{refundNote}</div>}
       {actions && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <input aria-label={`Note for ticket ${t.code}`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (required)" maxLength={500} style={{ ...field, flex: 1, minWidth: 160 }} />
-          {canRelease && t.escrow_status === "held" && <button type="button" disabled={!ready || busy} onClick={() => act("release", "note", "Could not release this ticket's escrow.")} style={button(D.green, "#fff", !ready || busy)}>Release</button>}
-          {canRelease && t.escrow_status === "released" && <button type="button" disabled={!ready || busy} onClick={() => act("hold", "note", "Could not hold this ticket's escrow.")} style={button(D.amber, "#2a1a00", !ready || busy)}>Hold</button>}
+          {canRelease_ && t.escrow_status === "held" && <button type="button" disabled={!ready || busy} onClick={() => act("release", "note", "Could not release this ticket's escrow.")} style={button(D.green, "#fff", !ready || busy)}>Release</button>}
+          {canRelease_ && t.escrow_status === "released" && <button type="button" disabled={!ready || busy} onClick={() => act("hold", "note", "Could not hold this ticket's escrow.")} style={button(D.amber, "#2a1a00", !ready || busy)}>Hold</button>}
           {canRefund && t.escrow_status === "held" && !delivered && <button type="button" disabled={!ready || busy} onClick={() => act("refund", "reason", "Could not refund this ticket.")} style={button(D.red, "#fff", !ready || busy)}>Refund</button>}
         </div>
       )}

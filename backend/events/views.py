@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction as db_transaction
-from django.db.models import Avg, Count, Exists, OuterRef, Q, Sum
+from django.db.models import Avg, BooleanField, Count, Exists, OuterRef, Q, Sum, Value
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import filters, generics
@@ -26,6 +26,7 @@ from notifications.services import (
     notify_staff_role,
 )
 from ledger import posting, sales
+from ledger import settings_store
 from ledger.models import BookingSale
 from ledger.money import from_pesewas
 from payments import booking_pay
@@ -1054,7 +1055,10 @@ def _checkin_serializer_for(user):
     return StaffTicketCheckinListSerializer if isinstance(user, StaffUser) else TicketCheckinListSerializer
 
 
-LEDGER_RELEASES = "With the ledger on, this ticket's money is released by Support's call to the customer."
+LEDGER_RELEASES = (
+    "With the ledger on, this ticket's money is paid out by the ledger: automatically after the event, "
+    "or earlier when Support records the call."
+)
 
 
 def _in_ledger_exists():
@@ -1152,9 +1156,13 @@ class EscrowLedgerListView(generics.ListAPIView):
         return [HasRolePermission("escrow.view")]
 
     def get_queryset(self):
+        from ledger import escrow
+
+        # One subquery for the whole page, never a query per row; with the ledger off nothing is marked.
+        in_ledger = _in_ledger_exists() if escrow.enabled() else Value(False, output_field=BooleanField())
         return Ticket.objects.select_related(
             "ticket_type__event", "purchased_by", "escrow_released_by_staff", "refunded_by_staff"
-        ).annotate(in_ledger=_in_ledger_exists()).order_by("-created_at")
+        ).annotate(in_ledger=in_ledger).order_by("-created_at")
 
     def filter_queryset(self, queryset):
         status_param = self.request.query_params.get("status")
@@ -1195,6 +1203,20 @@ class EscrowSummaryView(APIView):
     def get_permissions(self):
         return [HasRolePermission("escrow.view")]
 
+    @staticmethod
+    def _not_recorded():
+        from ledger import escrow
+
+        if escrow.enabled():
+            return [
+                {"name": "Orders and bookings", "why": "With the ledger on, their money is held as each business's Pending balance in the ledger, not as ticket escrow, so none is listed here."},
+                {"name": "Tickets bought with the ledger on", "why": f"Their money is released automatically {settings_store.current('event_release_delay_hours')} hours after the event day ends, or earlier on Support's call, not by Release or Hold here."},
+            ]
+        return [
+            {"name": "Orders and bookings", "why": "Order and booking money is not held in escrow yet, so none is listed here."},
+            {"name": "Release timers", "why": "No release-after-delivery rule is built; a ticket outside the ledger is released only by Accounting; a door scan never releases."},
+        ]
+
     def get(self, request):
         zero = Decimal("0.00")
         held = Q(escrow_status=Ticket.HELD, refunded_at__isnull=True)
@@ -1217,10 +1239,7 @@ class EscrowSummaryView(APIView):
             "refunded": {"amount": money(totals["refunded"]), "count": totals["refunded_n"]},
             "held_after_event": {"amount": money(totals["late"]), "count": totals["late_n"]},
             "legacy_held": {"amount": money(legacy["amount"]), "count": legacy["n"]},
-            "not_recorded": [
-                {"name": "Orders and bookings", "why": "Order and booking money is not held in escrow yet, so none is listed here."},
-                {"name": "Release timers", "why": "No release-after-delivery rule is built; a ticket outside the ledger is released only by Accounting; a door scan never releases."},
-            ],
+            "not_recorded": self._not_recorded(),
         })
 
 

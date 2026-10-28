@@ -437,8 +437,11 @@ class TicketEscrowLedgerSerializer(serializers.ModelSerializer):
         annotated = getattr(obj, "in_ledger", None)
         if annotated is not None:
             return bool(annotated)
+        from ledger import escrow
         from ledger.models import BookingSale
 
+        if not escrow.enabled():
+            return False
         return BookingSale.objects.filter(session__transaction_id=obj.transaction_id).exists()
 
     class Meta:
