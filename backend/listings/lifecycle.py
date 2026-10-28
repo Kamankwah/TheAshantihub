@@ -6,7 +6,7 @@ refused move raises LifecycleError, which the view answers as 400 {"status": mes
 from django.db import transaction
 from django.utils import timezone
 
-from . import models
+from . import revisions
 from .models import Listing
 
 DISCONTINUABLE = (Listing.PUBLISHED, Listing.DROPPED, Listing.DRAFT, Listing.REJECTED)
@@ -55,11 +55,7 @@ def discontinue(listing):
         row = _locked(listing)
         if row.status not in DISCONTINUABLE:
             raise LifecycleError("This listing cannot be discontinued while it waits for review.")
-        # The revision model arrives with the edit-an-approved-listing work; until then there is nothing to delete.
-        # (Listing.revisions is already a text field, so the lookup goes through the model, not the listing.)
-        revision_model = getattr(models, "ListingRevision", None)
-        if revision_model is not None:
-            revision_model.objects.filter(listing=row, status__in=("draft", "pending")).delete()
+        revisions.delete_open(row)  # the open edit goes, with the files it staged
         row.status = Listing.DISCONTINUED
         row.discontinued_at = timezone.now()
         row.save(update_fields=["status", "discontinued_at", "updated_at"])

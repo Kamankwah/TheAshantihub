@@ -454,3 +454,50 @@ class ListingRevisionTests(TestCase):
     def test_a_discontinued_listing_cannot_be_revised(self):
         Listing.objects.filter(pk=self.listing.pk).update(status=Listing.DISCONTINUED)
         self.assertEqual(self.client.put(self.url(), {"changes": {"name": "X"}}, format="json").status_code, 400)
+
+    # ── fix round 1 ──
+
+    def test_over_long_or_over_large_variant_ops_are_a_400_at_put(self):
+        one, _ = self.two_variants()
+        put = lambda op: self.client.put(self.url(), {"variants": [op]}, format="json").status_code
+        self.assertEqual(put({"op": "add", "label": "x" * 101, "price_amount": "5"}), 400)
+        self.assertEqual(put({"op": "update", "id": one.pk, "label": "y" * 101}), 400)
+        self.assertEqual(put({"op": "update", "id": one.pk, "position": 32768}), 400)
+        self.assertEqual(put({"op": "add", "label": "Big", "price_amount": "5", "stock_quantity": 2147483648}), 400)
+        self.assertEqual(put({"op": "update", "id": one.pk, "position": 32767}), 200)
+        self.assertEqual(put({"op": "add", "label": "Big", "price_amount": "5", "stock_quantity": 2147483647}), 200)
+        live = self.client.patch(
+            f"/api/listings/mine/{self.listing.pk}/variants/{one.pk}/live/", {"stock_quantity": 2147483648}, format="json",
+        )
+        self.assertEqual(live.status_code, 400)
+
+    def test_approve_rechecks_the_changes_and_answers_400_not_500(self):
+        revision = self.send(changes={"name": "Better"})
+        ListingRevision.objects.filter(pk=revision.pk).update(changes={"category": 999999})
+        self.auth_staff()
+        response = self.client.post(f"/api/listings/revisions/{revision.pk}/approve/")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(ListingRevision.objects.get(pk=revision.pk).status, "pending")
+
+    def test_approving_a_revision_that_was_just_deleted_is_a_400(self):
+        revision = self.send()
+        ListingRevision.objects.filter(pk=revision.pk).delete()
+        with self.assertRaises(revisions.RevisionError):
+            revisions.apply_revision(revision, self.staff)
+
+    def test_discontinue_removes_the_staged_file_too(self):
+        response = self.client.put(self.url(), {"new_main_photo": png("gone.png")}, format="multipart")
+        revision = ListingRevision.objects.get(pk=response.json()["id"])
+        storage, name = revision.new_main_photo.storage, revision.new_main_photo.name
+        self.assertTrue(storage.exists(name))
+        self.client.post(f"/api/listings/mine/{self.listing.pk}/discontinue/")
+        self.assertFalse(storage.exists(name))
+
+    def test_changes_published_note_says_saved_for_a_dropped_listing(self):
+        self.client.post(f"/api/listings/mine/{self.listing.pk}/drop/")
+        revision = self.send(changes={"name": "Quiet"})
+        self.auth_staff()
+        self.client.post(f"/api/listings/revisions/{revision.pk}/approve/")
+        note = Notification.objects.get(business_owner=self.owner, title="Changes published")
+        self.assertIn("saved", note.body)
+        self.assertNotIn("now live", note.body)

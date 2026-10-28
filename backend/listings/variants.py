@@ -13,6 +13,9 @@ from .models import Listing, ListingVariant
 
 MAX_VARIANTS = 40
 MAX_ATTRIBUTES = 4
+MAX_STOCK = 2147483647  # PositiveIntegerField
+MAX_POSITION = 32767  # PositiveSmallIntegerField
+MAX_LABEL = 100
 LIVE_FIELDS = ("price_amount", "stock_quantity", "add")
 STRUCTURE_LOCKED = "Changes to a live listing are sent for approval."
 VARIANT_LISTING_MESSAGE = "Edit each variant's price and stock."
@@ -47,7 +50,7 @@ def sync_listing(listing):
     return listing
 
 
-def _whole(value, field, minimum):
+def _whole(value, field, minimum, maximum=None):
     if isinstance(value, bool) or value is None:
         raise VariantError("Must be a whole number.", field)
     try:
@@ -58,6 +61,8 @@ def _whole(value, field, minimum):
         raise VariantError("Must be a whole number.", field)
     if number < minimum:
         raise VariantError("Cannot be negative." if minimum == 0 else "Must be greater than zero.", field)
+    if maximum is not None and number > maximum:
+        raise VariantError("That number is too large.", field)
     return number
 
 
@@ -82,8 +87,8 @@ def set_live(variant, data):
     if "stock_quantity" in data and "add" in data:
         raise VariantError("Send either stock_quantity or add, not both.")
     price = positive_price(data["price_amount"]) if "price_amount" in data else None
-    stock = _whole(data["stock_quantity"], "stock_quantity", 0) if "stock_quantity" in data else None
-    add = _whole(data["add"], "add", 1) if "add" in data else None
+    stock = _whole(data["stock_quantity"], "stock_quantity", 0, MAX_STOCK) if "stock_quantity" in data else None
+    add = _whole(data["add"], "add", 1, MAX_STOCK) if "add" in data else None
     with transaction.atomic():
         listing = Listing.objects.select_for_update().get(pk=variant.listing_id)
         if listing.status == Listing.DISCONTINUED:
@@ -95,6 +100,8 @@ def set_live(variant, data):
             row.stock_quantity = stock
         if add is not None:
             row.stock_quantity = (row.stock_quantity or 0) + add
+            if row.stock_quantity > MAX_STOCK:
+                raise VariantError("That number is too large.", "add")
         row.save()
         if row.is_active:
             sync_listing(listing)

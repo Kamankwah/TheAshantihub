@@ -19,6 +19,7 @@ result the operations would produce. On apply: add creates, update changes label
 the row off (never deleted), then `variants.sync_listing`.
 
 `diff(revision)` answers {"fields": {name: {"old", "new"}}, "media": {...}, "variants": [ops]} for the staff detail."""
+from django.core.exceptions import ObjectDoesNotExist
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Max
@@ -119,7 +120,10 @@ def _label_for(label, attributes):
     label = (label or "").strip() if isinstance(label, (str, type(None))) else None
     if label is None:
         raise RevisionError("The name must be text.", "label")
-    return label or " / ".join(attributes.values())[:100]
+    label = label or " / ".join(attributes.values())[:variants.MAX_LABEL]
+    if len(label) > variants.MAX_LABEL:
+        raise RevisionError(f"A name can have at most {variants.MAX_LABEL} characters.", "label")
+    return label
 
 
 def clean_variant_ops(listing, ops):
@@ -149,7 +153,7 @@ def clean_variant_ops(listing, ops):
                 raise RevisionError("Give the variant a name or at least one attribute.", where)
             try:
                 price = variants.positive_price(op.get("price_amount"))
-                stock = None if op.get("stock_quantity") is None else variants._whole(op["stock_quantity"], "stock_quantity", 0)
+                stock = None if op.get("stock_quantity") is None else variants._whole(op["stock_quantity"], "stock_quantity", 0, variants.MAX_STOCK)
             except variants.VariantError as exc:
                 raise RevisionError(next(iter(exc.payload.values())), where) from None
             clean.append({
@@ -174,7 +178,7 @@ def clean_variant_ops(listing, ops):
                 raise RevisionError("The name cannot be empty.", where)
         if "position" in op:
             try:
-                item["position"] = variants._whole(op["position"], "position", 0)
+                item["position"] = variants._whole(op["position"], "position", 0, variants.MAX_POSITION)
             except variants.VariantError as exc:
                 raise RevisionError(next(iter(exc.payload.values())), where) from None
         clean.append(item)
@@ -329,6 +333,13 @@ def discard(revision):
         revision.delete()
 
 
+def delete_open(listing):
+    """Delete the listing's draft and pending revisions with the files they staged (a discontinued listing is final)."""
+    for revision in ListingRevision.objects.filter(listing=listing, status__in=(ListingRevision.DRAFT, ListingRevision.PENDING)):
+        _delete_staged(revision)
+        revision.delete()
+
+
 def _delete_staged(revision):
     """The files a revision holds. Task 5 adds staged gallery photos and videos here."""
     _drop_staged_main_photo(revision)
@@ -342,13 +353,19 @@ def apply_revision(revision, staff):
     unchanged (a dropped listing stays dropped). Existing variants' price and stock are never touched."""
     with transaction.atomic():
         listing = Listing.objects.select_for_update().get(pk=revision.listing_id)
-        revision = ListingRevision.objects.select_for_update().get(pk=revision.pk)
+        try:
+            revision = ListingRevision.objects.select_for_update().get(pk=revision.pk)
+        except ListingRevision.DoesNotExist:
+            raise RevisionError("This edit is no longer there.", "status") from None
         if revision.status != ListingRevision.PENDING:
             raise RevisionError("Only a pending edit can be approved.", "status")
         if listing.status not in REVISABLE_STATUSES:
             raise RevisionError(WRONG_STATUS_MESSAGE, "status")
-        ops = clean_variant_ops(listing, revision.variants)
-        _check_category_for_variants(listing, revision.changes, ops)
+        # Checked again under the lock, with the rules used at save: the world may have moved since it was sent.
+        try:
+            revision.changes, ops = _validate(listing, listing.business_owner, revision.changes, revision.variants)
+        except ObjectDoesNotExist:
+            raise RevisionError("Part of this edit no longer exists. Ask the owner to edit and send it again.") from None
         _apply_changes(listing, revision)
         _apply_photos(listing, revision)
         _apply_variants(listing, ops)
@@ -358,7 +375,11 @@ def apply_revision(revision, staff):
         revision.save()
     notify_business_owner(
         listing.business_owner, "listing_approved", "Changes published",
-        body=f"Your changes to “{listing.name}” are now live.", link="/business-dashboard", icon="✅",
+        body=(
+            f"Your changes to “{listing.name}” are saved. They show once you restore it."
+            if listing.status == Listing.DROPPED else f"Your changes to “{listing.name}” are now live."
+        ),
+        link="/business-dashboard", icon="✅",
     )
     return revision
 
@@ -394,7 +415,7 @@ def _apply_photos(listing, revision):
 def _apply_variants(listing, ops):
     if not ops:
         return
-    rows = {row.pk: row for row in ListingVariant.objects.select_for_update().filter(listing=listing, is_active=True)}
+    rows = {row.pk: row for row in ListingVariant.objects.select_for_update().filter(listing=listing, is_active=True).order_by("pk")}
     top = listing.variants.aggregate(top=Max("position"))["top"]
     next_position = 0 if top is None else top + 1
     for op in ops:

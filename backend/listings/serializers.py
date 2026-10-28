@@ -93,7 +93,7 @@ class ListingVariantSerializer(PublicVariantSerializer):
 
     label = serializers.CharField(max_length=100, required=False, allow_blank=True)
     price_amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.01"))
-    stock_quantity = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    stock_quantity = serializers.IntegerField(min_value=0, max_value=variants.MAX_STOCK, required=False, allow_null=True)
     attributes = serializers.JSONField(required=False)
 
     class Meta(PublicVariantSerializer.Meta):
