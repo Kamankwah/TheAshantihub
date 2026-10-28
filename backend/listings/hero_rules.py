@@ -14,6 +14,8 @@ from django.utils import timezone
 from accounts.validators import validate_image_content_type, validate_video_content_type
 
 MAX_DAYS = 30
+# Banner days an approved hero image gets when the business has no plan (Director ruling 4).
+HERO_DAYS_WITHOUT_PLAN = 7
 MAX_WINDOW_MESSAGE = "A hero slide can run for at most 30 days."
 
 _YT_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
