@@ -7,6 +7,7 @@ import { D } from "../../theme.js";
 import { button, chip, dim, field } from "../panelStyles.js";
 import { scroll, table, td, th } from "../opsPeopleParts.jsx";
 import { Kpi, Status, Title, kpiGrid, page, section, sectionTitle } from "../insightsParts.jsx";
+import RiderEmploymentSection from "./RiderEmploymentSection.jsx";
 import { Empty, ErrorLine, Filters, Note, WARN, clock, dayOnly, dayTime, fixAge, linkStyle, mono, money } from "./deliveryParts.jsx";
 
 // ─── Delivery Manager 07 Riders & drivers and 08 Rider profile ───────────────
@@ -208,6 +209,8 @@ export function RiderProfile({ id, onBack, onOpenDelivery, onNavigate }) {
               </div>
             </section>
 
+            {data.employment && <RiderEmploymentSection riderId={id} employment={data.employment} onDone={refetch} />}
+
             <section aria-labelledby="dev" style={section}>
               <h3 id="dev" style={sectionTitle}>Phone and sign-ins</h3>
               {data.devices.length === 0 ? <Empty>No signed-in device.</Empty> : data.devices.map((d) => (
@@ -220,6 +223,7 @@ export function RiderProfile({ id, onBack, onOpenDelivery, onNavigate }) {
             <section aria-labelledby="pay" style={section}>
               <h3 id="pay" style={sectionTitle}>Pay</h3>
               <span style={{ fontSize: "0.82rem", color: D.text }}>Rider pay is recorded per delivered job. Weekly payout runs arrive with Accounting; payments are simulated until Hubtel is connected.</span>
+              {data.employment?.wallet && <span style={{ fontSize: "0.82rem", color: D.text }}>This rider is a third-party rider. Deliveries on orders paid through the wallet ledger are paid into their AshantiHub wallet when Support confirms the order, and Rider payouts does not count them.</span>}
               <div><button type="button" onClick={() => onNavigate?.("dm-payouts")} style={button(D.panelBg, D.text)}>Open rider payouts</button></div>
             </section>
           </>
