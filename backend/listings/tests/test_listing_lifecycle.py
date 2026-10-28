@@ -71,6 +71,7 @@ class ListingLifecycleTests(TestCase):
         self.auth(self.customer, "customer")
         added = self.client.post("/api/cart/items/", {"listing": self.listing.pk, "quantity": 1}, format="json")
         self.assertEqual(added.status_code, 400, added.content)
+        self.assertTrue(added.json(), "the refusal must say why")
 
     def test_restore_returns_it_without_re_approval(self):
         Listing.objects.filter(pk=self.listing.pk).update(reviewed_at=timezone.now())
@@ -170,3 +171,15 @@ class ListingLifecycleTests(TestCase):
         self.act(Listing.objects.filter(business_owner=self.owner).first(), "drop")
         response = self.client.post("/api/listings/mine/", body, format="json")
         self.assertEqual(response.status_code, 201, response.content)
+
+    def test_restore_is_refused_when_it_would_exceed_the_plan_cap(self):
+        cap = Subscription.objects.get(business_owner=self.owner).plan.max_active_listings
+        self.assertIsNotNone(cap)
+        Listing.objects.filter(pk=self.listing.pk).delete()
+        listings = [self.make(f"Live {i}") for i in range(cap)]
+        self.assertEqual(self.act(listings[0], "drop").status_code, 200)
+        self.make("Took the freed slot")
+        response = self.act(listings[0], "restore")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("status", response.json())
+        self.assertEqual(Listing.objects.get(pk=listings[0].pk).status, Listing.DROPPED)

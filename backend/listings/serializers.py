@@ -301,6 +301,16 @@ def subscriptions_on():
     return subscriptions_enabled()
 
 
+def active_listing_cap_reached(owner):
+    """True when the owner's plan caps active (published) listings and they already hold that many. Shared by the
+    create rule below and by lifecycle.restore, so a drop cannot be used to get past the cap."""
+    subscription = getattr(owner, "subscription", None)
+    cap = subscription.plan.max_active_listings if subscription is not None else None
+    if cap is None:
+        return False
+    return Listing.objects.filter(business_owner=owner, status=Listing.PUBLISHED).count() >= cap
+
+
 def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None):
     """The rules a business's listing must meet — shared by the owner's own
     form (OwnerListingSerializer.validate) and a scout's proposed listing
@@ -347,13 +357,8 @@ def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None)
         ):
             raise serializers.ValidationError({"subscription": SUBSCRIPTION_INACTIVE_MESSAGE})
 
-        max_active_listings = subscription.plan.max_active_listings
-        if max_active_listings is not None:
-            active_count = Listing.objects.filter(
-                business_owner=owner, status=Listing.PUBLISHED
-            ).count()
-            if active_count >= max_active_listings:
-                raise serializers.ValidationError({"max_active_listings": LISTING_LIMIT_MESSAGE})
+        if active_listing_cap_reached(owner):
+            raise serializers.ValidationError({"max_active_listings": LISTING_LIMIT_MESSAGE})
 
     # ── Product decision-field enforcement (comprehensive listing-
     # creation work). "Mandatory" here means "the form makes the user

@@ -38,6 +38,11 @@ def restore(listing):
         row = _locked(listing)
         if row.status != Listing.DROPPED:
             raise LifecycleError("Only a dropped listing can be restored.")
+        # Dropping frees a plan slot, so restoring must fit under the cap again (same rule as creating).
+        from .serializers import LISTING_LIMIT_MESSAGE, active_listing_cap_reached, subscriptions_on
+
+        if subscriptions_on() and active_listing_cap_reached(row.business_owner):
+            raise LifecycleError(LISTING_LIMIT_MESSAGE)
         row.status = Listing.PUBLISHED
         row.dropped_at = None
         row.save(update_fields=["status", "dropped_at", "updated_at"])
