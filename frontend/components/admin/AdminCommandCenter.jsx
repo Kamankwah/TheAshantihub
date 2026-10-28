@@ -69,7 +69,8 @@ import DispatchPanel from "./panels/DispatchPanel.jsx";
 import { useRiderLocation } from "../../lib/riderTracking.js";
 import RiderTracker from "./panels/rider/RiderTracker.jsx";
 import ShiftPanel from "./panels/rider/ShiftPanel.jsx";
-import { EarningsScreen, JobsScreen, ReportIssueScreen, RiderCashScreen, RiderDocumentsScreen, RiderMenuScreen } from "./panels/rider/RiderScreens.jsx";
+import RiderEarningsTab from "./panels/rider/RiderEarningsTab.jsx";
+import { JobsScreen, ReportIssueScreen, RiderCashScreen, RiderDocumentsScreen, RiderMenuScreen } from "./panels/rider/RiderScreens.jsx";
 import RiderBottomBar from "./shell/RiderBottomBar.jsx";
 import DeliveryZonesPanel from "./panels/delivery/DeliveryZonesPanel.jsx";
 import DocumentsPanel from "./panels/delivery/DocumentsPanel.jsx";
@@ -511,7 +512,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "scout-assignments" && <ScoutAssignmentsPanel />}
           {activeTab === "field-verification" && <ScoutPanel />}
           {activeTab === "dr-jobs" && <JobsScreen />}
-          {activeTab === "dr-earnings" && <EarningsScreen />}
+          {activeTab === "dr-earnings" && <RiderEarningsTab onNavigate={selectTab} />}
           {activeTab === "dr-cash" && <RiderCashScreen />}
           {activeTab === "dr-issue" && <ReportIssueScreen />}
           {activeTab === "dr-documents" && <RiderDocumentsScreen />}

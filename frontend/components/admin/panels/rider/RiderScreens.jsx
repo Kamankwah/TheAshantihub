@@ -6,7 +6,7 @@ import { useRiderCash, useRiderDocuments, useRiderEarnings, useRiderJobs, useRid
 import { D } from "../../theme.js";
 import { chip, dim, field } from "../panelStyles.js";
 import { ScoutDevices } from "../../shell/ScoutProfile.jsx";
-import { Err, Info, Warn, bigButton, card, h2, hhmm, mono, money, quietButton, screen } from "./riderParts.jsx";
+import { Err, Info, Tabs, Warn, bigButton, card, h2, hhmm, mono, money, quietButton, screen } from "./riderParts.jsx";
 
 // ─── Dispatch 10 Jobs, 11 Earnings, 12 Cash, 13 Report an issue, 14 Documents, 16 Menu ───
 // Everything is the rider's own data. Pay is a record of what each job earned under the rate card
@@ -15,14 +15,6 @@ import { Err, Info, Warn, bigButton, card, h2, hhmm, mono, money, quietButton, s
 const day = (iso) => new Date(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 const PERIODS = [["today", "Today"], ["week", "This week"], ["all", "Earlier"]];
 const STATUS = { delivered: ["Delivered", D.green], confirmed: ["Delivered", D.green], failed: ["Could not deliver", D.red], assigned: ["Assigned", D.amber], accepted: ["Accepted", D.gold], at_pickup: ["At pickup", D.gold], picked_up: ["On the way", D.blue], at_customer: ["At the customer", D.amber] };
-
-function Tabs({ value, onChange, options, label }) {
-  return (
-    <div role="tablist" aria-label={label} style={{ display: "flex", gap: 4, borderBottom: `1px solid ${D.cardBorder}` }}>
-      {options.map(([id, text]) => <button key={id} type="button" role="tab" aria-selected={value === id} onClick={() => onChange(id)} style={{ flex: 1, minHeight: 44, border: 0, borderBottom: `3px solid ${value === id ? D.text : "transparent"}`, background: "transparent", color: D.text, fontWeight: value === id ? 800 : 600, fontFamily: "inherit", cursor: "pointer" }}>{text}</button>)}
-    </div>
-  );
-}
 
 export function JobsScreen() {
   const [scope, setScope] = useState("today");
