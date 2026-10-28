@@ -10,7 +10,8 @@ from payments.models import CheckoutSession
 from portfolio.models import AccountManagerAssignment
 from portfolio.tests.health_fixtures import make_business
 from targets import services
-from listings.models import Category, Listing, Zone
+from approvals.models import ApprovalRequest
+from listings.models import Category, Zone
 from targets.models import METRIC_CHOICES, METRICS, Leave, PublicHoliday, TargetPlan, WorkPattern
 
 from .base import MON, SAT, SUN, WED, TargetsBase, at
@@ -156,36 +157,57 @@ class ListingsMetricTests(TargetsBase):
         self.category = Category.objects.create(slug="t-goods", icon="x", label="Goods", color="#15803d", kind=Category.PRODUCT)
         self.zone = Zone.objects.get_or_create(name="Bantama")[0]
 
-    def listing(self, by, status=Listing.PUBLISHED, reviewed=None, created=None, name="Gari"):
-        item = Listing.objects.create(
-            business_owner=self.owner, category=self.category, zone=self.zone, name=name, description="D.",
-            contact_phone="+233241110001", status=status, created_by_staff=by, reviewed_at=reviewed,
+    def approval(self, maker, decided, *, kind="listing.staff_create", status=ApprovalRequest.APPROVED, label="Gari"):
+        return ApprovalRequest.objects.create(
+            kind=kind, title=label, status=status, maker=maker, decided_by=self.lead if decided else None,
+            decided_at=decided, due_at=timezone.now() + timedelta(days=1), target_label=label,
         )
-        if created:
-            Listing.objects.filter(pk=item.pk).update(created_at=created)
-        return item
 
     def test_metrics_exclude_renewals_include_listings(self):
         self.assertEqual(METRICS, ("registrations", "visits", "calls", "listings"))
         self.assertIn("renewals", dict(METRIC_CHOICES))
 
-    def test_counts_only_approved_listing_made_by_scout(self):
-        self.listing(self.kwame, Listing.PUBLISHED, at(WED), name="A")
-        self.listing(self.kwame, Listing.PENDING_REVIEW, None, name="B")
-        self.listing(self.kwame, Listing.REJECTED, at(WED), name="C")
+    def test_counts_only_approved_requests_made_by_the_scout(self):
+        self.approval(self.kwame, at(WED), label="A")
+        self.approval(self.kwame, None, status=ApprovalRequest.PENDING, label="B")
+        self.approval(self.kwame, at(WED), status=ApprovalRequest.REJECTED, label="C")
+        self.approval(self.kwame, at(WED), status=ApprovalRequest.CANCELLED, label="D")
+        self.approval(self.kwame, at(WED), kind="business.update", label="E")
         self.assertEqual(services.actual(self.kwame, "listings", WED, WED), 1)
 
-    def test_counts_once_by_approval_day_not_creation_day(self):
-        two_days_ago = at(date(2026, 10, 5))
-        self.listing(self.kwame, Listing.PUBLISHED, at(WED), created=two_days_ago)
+    def test_both_listing_kinds_count_once_each(self):
+        self.approval(self.kwame, at(WED), kind="listing.create", label="old proposal")
+        self.approval(self.kwame, at(WED), kind="listing.staff_create", label="staff listing")
+        self.assertEqual(services.actual(self.kwame, "listings", WED, WED), 2)
+
+    def test_counts_on_the_approval_day_not_the_creation_day(self):
+        request = self.approval(self.kwame, at(WED))
+        ApprovalRequest.objects.filter(pk=request.pk).update(created_at=at(date(2026, 10, 5)))
         self.assertEqual(services.actual(self.kwame, "listings", WED, WED), 1)
         self.assertEqual(services.actual(self.kwame, "listings", MON, MON), 0)
 
-    def test_other_scouts_listing_and_owner_made_listing_not_counted(self):
-        self.listing(self.efua, Listing.PUBLISHED, at(WED), name="A")
-        self.listing(None, Listing.PUBLISHED, at(WED), name="B")
+    def test_other_scouts_requests_are_not_counted(self):
+        self.approval(self.efua, at(WED), label="A")
         self.assertEqual(services.actual(self.kwame, "listings", WED, WED), 0)
         self.assertEqual(services.actual(self.efua, "listings", WED, WED), 1)
+
+    def test_a_past_day_does_not_move_when_the_listing_later_changes(self):
+        # The count reads the decision, not the listing: an expired event, a moved listing, an owner edit cannot change it.
+        from events.models import Event
+
+        self.approval(self.kwame, at(MON), label="Launch")
+        event = Event.objects.create(
+            name="Launch", description="d", address="a", event_date=at(WED), status=Event.APPROVED,
+            created_by_staff=self.kwame, reviewed_at=at(MON), category=Category.objects.create(
+                slug="t-ev", icon="x", label="E", color="#fff", kind="event"), zone=self.zone,
+            submitted_by_business=self.owner, visibility_days=30,
+        )
+        before = services.actual(self.kwame, "listings", MON, MON)
+        Event.objects.filter(pk=event.pk).update(status=Event.EXPIRED)
+        Event.objects.filter(pk=event.pk).update(status=Event.PENDING, reviewed_at=None)  # an owner edit resets it
+        Event.objects.filter(pk=event.pk).update(status=Event.APPROVED, reviewed_at=at(WED))  # and it is re-approved
+        self.assertEqual((before, services.actual(self.kwame, "listings", MON, MON)), (1, 1))
+        self.assertEqual(services.actual(self.kwame, "listings", WED, WED), 0)
 
     def test_historic_renewals_plan_row_survives(self):
         self.plan(self.kwame, "renewals", 2)

@@ -176,6 +176,31 @@ class SubmitAtConfirmTests(Base):
         tomorrow = today + timedelta(days=1)
         self.assertEqual(targets.actual(self.scout, "listings", tomorrow, tomorrow), 0)
 
+    def test_a_listing_counts_once_on_its_approval_day_whatever_happens_to_it_after(self):
+        # F3: the target reads the decision, so expiring, an owner edit and a legacy-queue re-approval change nothing.
+        self.as_staff(self.scout)
+        draft = ListingDraft.objects.get(pk=self.call("post", self.url(), self.event_body()).json()["id"])
+        self.send([draft])
+        confirmations.confirm(self.raw())
+        approvals.approve(self.approval_of(draft).pk, self.lead)
+        day = timezone.localdate()
+        event = Event.objects.get()
+        self.assertEqual(targets.actual(self.scout, "listings", day, day), 1)
+        Event.objects.filter(pk=event.pk).update(status=Event.EXPIRED)  # the event window ended
+        self.assertEqual(targets.actual(self.scout, "listings", day, day), 1)
+        # the owner edits it: back to pending with reviewed_at cleared; a second person re-approves in the event queue
+        Event.objects.filter(pk=event.pk).update(status=Event.PENDING, reviewed_by=None, reviewed_at=None)
+        self.as_staff(self.second)
+        self.assertEqual(self.client.post(f"/api/events/moderation/{event.pk}/approve/").status_code, 200)
+        self.assertEqual(targets.actual(self.scout, "listings", day, day), 1)
+        self.assertEqual(targets.actual(self.second, "listings", day, day), 0)
+
+    def test_a_returned_or_rejected_listing_never_counts(self):
+        draft = self.confirmed()
+        approvals.reject(draft.approval_id, self.lead, "Fix the price")
+        day = timezone.localdate()
+        self.assertEqual(targets.actual(self.scout, "listings", day, day), 0)
+
     def test_stay_draft_creates_accommodation_listing(self):
         self.as_staff(self.scout)
         body = self.service_body(

@@ -22,6 +22,7 @@ HOW = {
     LISTINGS: "Count when Operations approves a listing you made for a business",
     RENEWALS: "Owner pays the subscription in the app",
 }
+LISTING_APPROVAL_KINDS = ("listing.create", "listing.staff_create")  # the scout's old proposal and a staff listing
 WORKING, OFF, HOLIDAY, ON_LEAVE = "working", "off", "holiday", "leave"
 
 
@@ -97,13 +98,6 @@ def target(staff, metric, start, end):
     return Calendar(staff, start, end).total(metric)
 
 
-def _events_record_their_staff():
-    """Event.created_by_staff arrives in marketplace M3 Task 4; Task 7 relies on this guard being true."""
-    from events.models import Event
-
-    return "created_by_staff" in {f.name for f in Event._meta.get_fields()}
-
-
 def actual(staff, metric, start, end):
     """What the scout did over the local days start..end, from source records."""
     low, high = day_bounds(start, end)
@@ -125,18 +119,15 @@ def actual(staff, metric, start, end):
 
         return CallLog.objects.filter(staff=staff, started_at__gte=low, started_at__lt=high).count()
     if metric == LISTINGS:
-        from listings.models import Listing
+        from approvals.models import ApprovalRequest
 
-        count = Listing.objects.filter(
-            created_by_staff=staff, status=Listing.PUBLISHED, reviewed_at__gte=low, reviewed_at__lt=high,
+        # One count per approval, on the day it was decided: a decision never changes, so a listing that later expires,
+        # is edited and re-approved, or is moved by moderation never moves a past day or counts twice. Only approved
+        # requests count, attributed to the maker (the lister).
+        return ApprovalRequest.objects.filter(
+            kind__in=LISTING_APPROVAL_KINDS, status=ApprovalRequest.APPROVED, maker=staff,
+            decided_at__gte=low, decided_at__lt=high,
         ).count()
-        if _events_record_their_staff():
-            from events.models import Event
-
-            count += Event.objects.filter(
-                created_by_staff=staff, status=Event.APPROVED, reviewed_at__gte=low, reviewed_at__lt=high,
-            ).count()
-        return count
     if metric == RENEWALS:
         from billing.models import Transaction
 
