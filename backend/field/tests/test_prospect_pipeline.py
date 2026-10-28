@@ -121,6 +121,30 @@ class PipelineStageTests(PipelineBase):
         self.event(owner, status=Event.PENDING)
         self.assertEqual(self.stage(prospect), "listing")
 
+    def test_registration_field_is_explicit_and_independent_of_the_stage(self):
+        """R-T11b: a draft pushes the stage to `listing` whatever the owner has answered, so the UI reads this."""
+        def registration(prospect):
+            return self.row(prospect)["pipeline"]["registration"]
+
+        plain = Prospect.objects.create(scout=self.kwame, name="Plain", phone="+233241119998")
+        self.as_staff(self.kwame)
+        listed = {r["id"]: r for r in self.client.get(PROSPECTS).json()["results"]}
+        self.assertEqual(listed[plain.pk]["pipeline"]["registration"], "none")
+        for state, expected in [
+            (None, "confirmed"), ("confirmed", "confirmed"), ("open", "waiting"),
+            ("expired", "not_confirmed"), ("declined", "not_confirmed"), ("revoked", "not_confirmed"),
+        ]:
+            prospect, _ = self.registered(confirmation=state)
+            self.assertEqual(registration(prospect), expected, state)
+        prospect, owner = self.registered(confirmation="open")
+        self.draft(owner)
+        row = self.row(prospect)["pipeline"]
+        self.assertEqual((row["stage"], row["registration"]), ("listing", "waiting"))
+        prospect, owner = self.registered(confirmation="declined")
+        self.draft(owner)
+        row = self.row(prospect)["pipeline"]
+        self.assertEqual((row["stage"], row["registration"]), ("listing", "not_confirmed"))
+
     def test_listing_counts_only_this_scouts_drafts(self):
         prospect, owner = self.registered(confirmation="confirmed")
         self.draft(owner)

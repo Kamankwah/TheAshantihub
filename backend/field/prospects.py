@@ -156,7 +156,7 @@ STAGES = ("prospect", "registered", "awaiting_owner", "confirmed", "listing", "l
 
 
 def attach_pipelines(prospects):
-    """Set `.pipeline` on each prospect: {stage, listings: {drafts, awaiting_owner, lapsed, pending_approval, live}}.
+    """Set `.pipeline` on each prospect: {stage, registration (none | waiting | confirmed | not_confirmed), listings: {drafts, awaiting_owner, lapsed, pending_approval, live}}.
     Four queries however many prospects there are. The counts are the prospect's own scout's work on the business:
     drafts = with the scout (unsent, owner-declined, or a returned submission), awaiting_owner / lapsed = sent and waiting / link ran out
     (confirmations.is_lapsed), pending_approval = owner-confirmed or submitted and undecided (an approved submission shows once, in live), live = published listings plus
@@ -230,5 +230,10 @@ def attach_pipelines(prospects):
             stage = {
                 confirmations.CONFIRMED: "confirmed", confirmations.WAITING: "awaiting_owner",
             }.get(states[owner_id], "registered")
-        prospect.pipeline = {"stage": stage, "listings": row}
+        # The owner's answer to the registration text, separate from the stage: a draft moves the stage to `listing`
+        # whatever the owner has said, so a screen showing "Owner confirmed" must read this (R-T11b).
+        registration = {
+            None: "none", confirmations.CONFIRMED: "confirmed", confirmations.WAITING: "waiting",
+        }.get(states[owner_id] if owner_id is not None else None, "not_confirmed")
+        prospect.pipeline = {"stage": stage, "registration": registration, "listings": row}
     return prospects
