@@ -595,6 +595,9 @@ def _notify_event_organizer(event, kind, title, body="", link="", icon=""):
         notify_customer(event.submitted_by_customer, kind, title, body=body, link=link, icon=icon)
 
 
+OWN_EVENT = "You made this event for the client, so someone else has to approve it."
+
+
 class EventApproveView(APIView):
     """POST /api/events/{id}/approve/ — sets status=approved and approved_by.
     Does not itself start the paid visibility window (see Event's class
@@ -611,6 +614,8 @@ class EventApproveView(APIView):
             event = generics.get_object_or_404(Event.objects.select_for_update(), pk=pk)
             if event.status == Event.CANCELLED:
                 return _cancelled_response()
+            if event.created_by_staff_id == request.user.id:
+                return Response({"detail": OWN_EVENT, "code": "own_listing"}, status=403)
             return self._approve(request, event)
 
     def _approve(self, request, event):

@@ -54,7 +54,8 @@ BREAKER_KEY = "vendor-texts-provider-down"                   # set (cache, share
 BREAKER_COUNT_KEY = "vendor-texts-provider-failures"
 BREAKER_TTL = 120                                           # seconds the breaker stays open, and the window failures are counted in
 MAX_LENGTH = 306                                            # two GSM-7 parts of 153 characters
-PLAIN = frozenset(string.ascii_letters + string.digits + " .,:;#'()-/!?&%+")
+# "=" and "_" are GSM-7 basic characters (one septet each), so they are allowed (links carry both).
+PLAIN = frozenset(string.ascii_letters + string.digits + " .,:;#'()-/!?&%+=_")
 STATUS_LABELS = {
     VendorText.QUEUED: "Waiting to send", VendorText.SENT: "Sent", VendorText.FAILED: "Could not be sent",
     VendorText.NO_PHONE: "Not sent: no confirmed Ghana mobile number on your account",

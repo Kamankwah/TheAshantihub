@@ -7,8 +7,8 @@ import { API, SA, page, param, renderPanel } from './saTestUtils.jsx'
 
 const base = { business_id: 1, business_name: 'Akosua Ntoma Kente', type: 'product', category: 'Fashion', price_amount: '450.00', price_unit: null, created_at: '2026-10-01T00:00:00Z', reviewed_by: null, reviewed_at: null, rejection_reason: null, added_by: null }
 const ROWS = [
-  { ...base, id: 1, name: 'Handwoven kente stole', status: 'published', state: 'live', state_note: '' },
-  { ...base, id: 2, name: 'Graduation stole', status: 'pending_review', state: 'waiting', state_note: 'Waiting for a decision', added_by: 'Efua Mensah' },
+  { ...base, id: 1, name: 'Handwoven kente stole', status: 'published', state: 'live', state_note: '', paid_count: 12, refunded_count: 2 },
+  { ...base, id: 2, name: 'Graduation stole', status: 'pending_review', state: 'waiting', state_note: 'Waiting for a decision', added_by: 'Efua Mensah', added_by_role: 'Scout', paid_count: 0, refunded_count: 0 },
   { ...base, id: 3, name: 'Kente cloth', status: 'published', state: 'hidden', state_note: 'Business suspended' },
   { ...base, id: 4, name: 'Old stole', status: 'rejected', state: 'rejected', state_note: 'Blurry photo', reviewed_by: 'Ama Boateng', reviewed_at: '2026-10-02T00:00:00Z' },
 ]
@@ -35,6 +35,32 @@ function setup(counts = COUNTS) {
   return seen
 }
 
+describe('SaListingsPanel paid and refunded', () => {
+  it('shows each row\'s paid and refunded numbers, a real 0 as 0, and what each counts', async () => {
+    setup()
+    renderPanel(<SaListingsPanel auth={SA} />)
+    const table = await screen.findByRole('table', { name: 'Listings' })
+    const heads = within(table).getAllByRole('columnheader').map((th) => th.textContent)
+    const paidAt = heads.findIndex((t) => t.startsWith('Paid'))
+    expect(paidAt).toBeGreaterThan(-1)
+    expect(heads[paidAt + 1].startsWith('Refunded')).toBe(true)
+    expect(within(table).getByRole('columnheader', { name: /^Paid/ })).toHaveAttribute('title', expect.stringMatching(/paid/i))
+    expect(within(table).getByRole('columnheader', { name: /^Refunded/ })).toHaveAttribute('title', expect.stringMatching(/refund/i))
+    const cells = (name) => within(within(table).getByText(name).closest('tr')).getAllByRole('cell').map((td) => td.textContent)
+    expect(cells('Handwoven kente stole').slice(paidAt, paidAt + 2)).toEqual(['12', '2'])
+    expect(cells('Graduation stole').slice(paidAt, paidAt + 2)).toEqual(['0', '0'])
+  })
+
+  it('shows a skeleton, never a dash, when a row has no count yet', async () => {
+    setup()
+    renderPanel(<SaListingsPanel auth={SA} />)
+    const table = await screen.findByRole('table', { name: 'Listings' })
+    const row = within(table).getByText('Old stole').closest('tr')
+    expect(within(row).getAllByRole('status', { name: 'Loading' }).length).toBe(2)
+    expect(row.textContent).not.toMatch(/—\s*—/)
+  })
+})
+
 describe('SaListingsPanel', () => {
   it('shows every state, why a listing is hidden, and who moderated', async () => {
     setup()
@@ -44,7 +70,23 @@ describe('SaListingsPanel', () => {
     const old = within(table).getByText('Old stole').closest('tr')
     expect(within(old).getByText('Blurry photo')).toBeInTheDocument()
     expect(within(old).getByText(/Ama Boateng/)).toBeInTheDocument()
-    expect(within(within(table).getByText('Graduation stole').closest('tr')).getByText(/Efua Mensah \(scout, for the owner\)/)).toBeInTheDocument()
+    expect(within(within(table).getByText('Graduation stole').closest('tr')).getByText(/Efua Mensah \(Scout, for the owner\)/)).toBeInTheDocument()
+  })
+
+  it('names the lister by their real role, and does not promise a 7-day owner undo on a listing made for an owner', async () => {
+    setup()
+    server.use(http.get(`${API}/api/marketplace/listings/`, () => HttpResponse.json({
+      count: 1, next: null, previous: null,
+      results: [{ ...ROWS[1], id: 9, name: 'Ops-made stole', added_by: 'Ama Boateng', added_by_role: 'Operations' }],
+    })))
+    renderPanel(<SaListingsPanel auth={SA} />)
+    const table = await screen.findByRole('table', { name: 'Listings' })
+    const row = within(table).getByText('Ops-made stole').closest('tr')
+    expect(within(row).getByText(/Ama Boateng \(Operations, for the owner\)/)).toBeInTheDocument()
+    expect(within(row).queryByText(/scout, for the owner/i)).toBeNull()
+    const rules = screen.getByRole('region', { name: 'How moderation works' })
+    expect(rules).toHaveTextContent(/confirms it by text first/i)
+    expect(rules.textContent).not.toMatch(/every change a scout makes and can undo/)
   })
 
   it('shows everything the owner submitted before a Super Admin approves, and only for waiting listings', async () => {

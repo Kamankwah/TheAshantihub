@@ -11,7 +11,7 @@ import { when } from "../panels/sessionParts.jsx";
 // The scout's profile in the drawer (canvas 20): who they are and who they
 // report to, taken from GET /api/accounts/me/; and the devices signed in,
 // reusing the phase 1B sessions endpoints. No place names: sessions carry none.
-const ROLE_NAMES = { super_admin: "Super Admin", operations: "Operations", accountant: "Accountant", marketing: "Marketing", support: "Support", scout: "Scout", delivery_manager: "Delivery Manager", dispatch: "Dispatch" };
+const ROLE_NAMES = { super_admin: "Super Admin", general_manager: "General Manager", operations: "Operations", accountant: "Accountant", marketing: "Marketing", support: "Support", scout: "Scout", delivery_manager: "Delivery Manager", dispatch: "Dispatch" };
 const initials = (name = "") => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join("");
 
 export function ScoutProfileBlock({ user, roleColor }) {

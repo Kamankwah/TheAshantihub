@@ -13,6 +13,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from accounts.models import BusinessOwner, Role
+from accounts.permissions import sees_every_team
 from approvals import services as approval_services
 from fraud.models import FraudFlag
 from fraud.views import visible_flags
@@ -76,7 +77,7 @@ def _issues(user, scouts):
     """Open fraud cases on the team's businesses (or about the team's scouts)."""
     ids = [s.pk for s in scouts]
     team = Q(business_owner__account_manager_id__in=ids) | Q(staff_subject_id__in=ids)
-    if user.role.name == Role.SUPER_ADMIN:
+    if sees_every_team(user):
         team = Q()
     flags = visible_flags(user).filter(status=FraudFlag.OPEN).filter(team).order_by("created_at", "id")
     now = timezone.now()

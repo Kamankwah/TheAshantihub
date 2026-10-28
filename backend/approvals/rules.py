@@ -8,7 +8,7 @@ from accounts.models import Role
 from accounts.permissions import staff_holding
 
 from .models import ApprovalRule, ApprovalSettings
-from .registry import get_kind
+from .registry import all_kinds, get_kind
 
 COSIGN = "approvals.cosign"
 MANAGE_RULES = "approvals.manage_rules"
@@ -48,6 +48,19 @@ def cosigners():
         staff_holding(COSIGN).exclude(pk__in=staff_holding(VIEW_ALL).values("pk"))
         .filter(invite_token__isnull=True)  # an invite not yet accepted is not a named co-signer
     )
+
+
+def barred(kind_key, staff):
+    """True when `staff` may never decide requests of this kind: the General Manager and a money kind."""
+    kind = get_kind(kind_key)
+    return kind is not None and kind.money and staff.role.name == Role.GENERAL_MANAGER
+
+
+def barred_kind_keys(staff):
+    """The kinds `staff` is barred from (empty for everyone but the General Manager)."""
+    if staff.role.name != Role.GENERAL_MANAGER:
+        return []
+    return [key for key, kind in all_kinds().items() if kind.money]
 
 
 def cosigner_named():

@@ -64,6 +64,7 @@ import { AboutFaqSection } from "./components/ui/about-faq-section.tsx";
 import { ContactPage } from "./components/ui/contact-page.tsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 import BusinessClaimPage from "./components/BusinessClaimPage.jsx";
+import OwnerConfirmPage from "./components/OwnerConfirmPage.jsx";
 import MarketingConsentCard from "./components/MarketingConsentCard.jsx";
 import AccountSecurityCard from "./components/security/AccountSecurityCard.jsx";
 import UnsubscribePage from "./components/UnsubscribePage.jsx";
@@ -2641,6 +2642,8 @@ const PATH_TO_PAGE = {
   // early return like the pages above, and never a listing (see
   // businessDetailMatch below).
   "/business/claim": "business-claim",
+  // The owner's texted confirmation link (staff listing pipeline): public, token in the #fragment. Never a listing.
+  "/business/confirm": "business-confirm",
 };
 const PAGE_TO_PATH = {
   home: "/",
@@ -2654,6 +2657,7 @@ const PAGE_TO_PATH = {
   "reset-password": "/reset-password",
   "payment-return": "/payment/return",
   "business-claim": "/business/claim",
+  "business-confirm": "/business/confirm",
 };
 // Full-page dashboard "routes" (isAdmin/showBizDash-style early returns) that
 // now have real URLs too. Same two-map convention as PATH_TO_PAGE/
@@ -2692,7 +2696,8 @@ export default function AshantiHub() {
   // /business/claim is the owner claim page (PATH_TO_PAGE), so "claim" is
   // never read as a listing id.
   const businessPathMatch = useMatch("/business/:id");
-  const businessDetailMatch = businessPathMatch?.params.id === "claim" ? null : businessPathMatch;
+  // Likewise /business/confirm, the owner's texted confirmation page.
+  const businessDetailMatch = ["claim", "confirm"].includes(businessPathMatch?.params.id) ? null : businessPathMatch;
   const eventDetailMatch = useMatch("/events/:id");
   // The stop link in a marketing message (Marketing consent): a standalone page keyed by a signed token.
   const unsubscribeMatch = useMatch("/unsubscribe/:token");
@@ -3173,6 +3178,7 @@ export default function AshantiHub() {
   if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
   if(page==="payment-return") return <PaymentReturnPage setPage={setPage}/>;
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
+  if(page==="business-confirm") return <OwnerConfirmPage/>;
   if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
   if(unsubscribeMatch) return <UnsubscribePage token={unsubscribeMatch.params.token} onHome={()=>navigate("/")}/>;
   if(notifyStopMatch) return <NotifyStopPage token={notifyStopMatch.params.token} onHome={()=>navigate("/")}/>;

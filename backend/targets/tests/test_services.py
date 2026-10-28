@@ -10,7 +10,9 @@ from payments.models import CheckoutSession
 from portfolio.models import AccountManagerAssignment
 from portfolio.tests.health_fixtures import make_business
 from targets import services
-from targets.models import Leave, PublicHoliday, TargetPlan, WorkPattern
+from approvals.models import ApprovalRequest
+from listings.models import Category, Zone
+from targets.models import METRIC_CHOICES, METRICS, Leave, PublicHoliday, TargetPlan, WorkPattern
 
 from .base import MON, SAT, SUN, WED, TargetsBase, at
 from datetime import date
@@ -41,7 +43,7 @@ class WorkingDayTests(TargetsBase):
 class TargetSumTests(TargetsBase):
     def setUp(self):
         super().setUp()
-        self.plan_all(self.kwame, registrations=1, visits=6, calls=10, renewals=1)
+        self.plan_all(self.kwame, registrations=1, visits=6, calls=10, listings=1)
 
     def test_a_working_day_has_the_plan_value_and_sunday_has_none(self):
         self.assertEqual(services.daily_target(self.kwame, "visits", MON), 6)
@@ -144,14 +146,84 @@ class ActualTests(TargetsBase):
         self.assertEqual(services.actual(self.kwame, "renewals", MON, SUN), 1)
 
     def test_a_scout_with_nothing_has_zero_everywhere(self):
-        for metric in ("registrations", "visits", "calls", "renewals"):
+        for metric in ("registrations", "visits", "calls", "listings", "renewals"):
             self.assertEqual(services.actual(self.efua, metric, MON, SUN), 0)
+
+
+class ListingsMetricTests(TargetsBase):
+    def setUp(self):
+        super().setUp()
+        self.owner = make_business("Adwoa Fabrics")
+        self.category = Category.objects.create(slug="t-goods", icon="x", label="Goods", color="#15803d", kind=Category.PRODUCT)
+        self.zone = Zone.objects.get_or_create(name="Bantama")[0]
+
+    def approval(self, maker, decided, *, kind="listing.staff_create", status=ApprovalRequest.APPROVED, label="Gari"):
+        return ApprovalRequest.objects.create(
+            kind=kind, title=label, status=status, maker=maker, decided_by=self.lead if decided else None,
+            decided_at=decided, due_at=timezone.now() + timedelta(days=1), target_label=label,
+        )
+
+    def test_metrics_exclude_renewals_include_listings(self):
+        self.assertEqual(METRICS, ("registrations", "visits", "calls", "listings"))
+        self.assertIn("renewals", dict(METRIC_CHOICES))
+
+    def test_counts_only_approved_requests_made_by_the_scout(self):
+        self.approval(self.kwame, at(WED), label="A")
+        self.approval(self.kwame, None, status=ApprovalRequest.PENDING, label="B")
+        self.approval(self.kwame, at(WED), status=ApprovalRequest.REJECTED, label="C")
+        self.approval(self.kwame, at(WED), status=ApprovalRequest.CANCELLED, label="D")
+        self.approval(self.kwame, at(WED), kind="business.update", label="E")
+        self.assertEqual(services.actual(self.kwame, "listings", WED, WED), 1)
+
+    def test_both_listing_kinds_count_once_each(self):
+        self.approval(self.kwame, at(WED), kind="listing.create", label="old proposal")
+        self.approval(self.kwame, at(WED), kind="listing.staff_create", label="staff listing")
+        self.assertEqual(services.actual(self.kwame, "listings", WED, WED), 2)
+
+    def test_counts_on_the_approval_day_not_the_creation_day(self):
+        request = self.approval(self.kwame, at(WED))
+        ApprovalRequest.objects.filter(pk=request.pk).update(created_at=at(date(2026, 10, 5)))
+        self.assertEqual(services.actual(self.kwame, "listings", WED, WED), 1)
+        self.assertEqual(services.actual(self.kwame, "listings", MON, MON), 0)
+
+    def test_other_scouts_requests_are_not_counted(self):
+        self.approval(self.efua, at(WED), label="A")
+        self.assertEqual(services.actual(self.kwame, "listings", WED, WED), 0)
+        self.assertEqual(services.actual(self.efua, "listings", WED, WED), 1)
+
+    def test_a_past_day_does_not_move_when_the_listing_later_changes(self):
+        # The count reads the decision, not the listing: an expired event, a moved listing, an owner edit cannot change it.
+        from events.models import Event
+
+        self.approval(self.kwame, at(MON), label="Launch")
+        event = Event.objects.create(
+            name="Launch", description="d", address="a", event_date=at(WED), status=Event.APPROVED,
+            created_by_staff=self.kwame, reviewed_at=at(MON), category=Category.objects.create(
+                slug="t-ev", icon="x", label="E", color="#fff", kind="event"), zone=self.zone,
+            submitted_by_business=self.owner, visibility_days=30,
+        )
+        before = services.actual(self.kwame, "listings", MON, MON)
+        Event.objects.filter(pk=event.pk).update(status=Event.EXPIRED)
+        Event.objects.filter(pk=event.pk).update(status=Event.PENDING, reviewed_at=None)  # an owner edit resets it
+        Event.objects.filter(pk=event.pk).update(status=Event.APPROVED, reviewed_at=at(WED))  # and it is re-approved
+        self.assertEqual((before, services.actual(self.kwame, "listings", MON, MON)), (1, 1))
+        self.assertEqual(services.actual(self.kwame, "listings", WED, WED), 0)
+
+    def test_historic_renewals_plan_row_survives(self):
+        self.plan(self.kwame, "renewals", 2)
+        self.plan(self.kwame, "listings", 1)
+        self.assertEqual(TargetPlan.objects.filter(staff=self.kwame, metric="renewals").count(), 1)
+        summary = services.period_summary(self.kwame, "day", WED)
+        self.assertEqual([m["metric"] for m in summary["measures"]], ["registrations", "visits", "calls", "listings"])
+
+    def test_actual_renewals_still_computable_for_history(self):
+        self.assertEqual(services.actual(self.kwame, "renewals", MON, SUN), 0)
 
 
 class PeriodSummaryTests(TargetsBase):
     def setUp(self):
         super().setUp()
-        self.plan_all(self.kwame, registrations=1, visits=6, calls=10, renewals=1)
+        self.plan_all(self.kwame, registrations=1, visits=6, calls=10, listings=1)
         Leave.objects.create(staff=self.kwame, start=SAT, end=SAT, recorded_by=self.lead)
 
     def test_the_week(self):

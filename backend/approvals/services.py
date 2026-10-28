@@ -90,7 +90,8 @@ def default_chain(approval):
     kind's pool permission, then a Super Admin (spec F5)."""
     steps = []
     manager = approval.maker.manager
-    if manager is not None and manager.is_active and not manager.is_suspended:
+    if (manager is not None and manager.is_active and not manager.is_suspended
+            and not rules.barred(approval.kind, manager)):  # a General Manager as manager never holds a money request
         steps.append((ApprovalRequest.MANAGER, manager))
     if approval.pool_permission:
         steps.append((ApprovalRequest.POOL, None))
@@ -144,6 +145,9 @@ def _regular_approvers(approval):
         approvers = staff_holding(approval.pool_permission)
     else:
         approvers = staff_holding(VIEW_ALL)
+    kind = get_kind(approval.kind)
+    if kind is not None and kind.money:
+        approvers = approvers.exclude(role__name=Role.GENERAL_MANAGER)
     return approvers.exclude(pk=approval.maker_id)
 
 
@@ -158,12 +162,16 @@ def approvers_for(approval):
     if approval.required_approvals > 1 and waiting is not None and not slot_filled(approval, ApprovalDecision.COSIGNER):
         pks |= set(rules.cosigners().values_list("pk", flat=True))
     done = [d.staff_id for d in approval.decisions.all()]
-    return StaffUser.objects.filter(pk__in=pks).exclude(pk__in=done).exclude(pk=approval.maker_id)
+    people = StaffUser.objects.filter(pk__in=pks).exclude(pk__in=done).exclude(pk=approval.maker_id)
+    kind = get_kind(approval.kind)
+    return people.exclude(role__name=Role.GENERAL_MANAGER) if kind is not None and kind.money else people
 
 
 def was_eligible(approval, staff):
     """Whether this person was ever an approver of the request (even if it is decided now), so a
     loser of a race hears "already decided" instead of a 404."""
+    if rules.barred(approval.kind, staff):
+        return False
     return _regular_approvers(approval).filter(pk=staff.pk).exists() or (
         approval.required_approvals > 1 and rules.can_cosign(staff)
     )
@@ -175,6 +183,8 @@ def slot_for(approval, staff):
     stage); "cosigner": a co-signer on a request needing two. Maker and anyone
     who has already signed get nothing: no one counts twice."""
     if approval.status != ApprovalRequest.PENDING or staff.pk == approval.maker_id or _already_decided(approval, staff):
+        return None
+    if rules.barred(approval.kind, staff):
         return None
     waiting = waiting_on(approval)
     if waiting == "approver" and (
@@ -208,7 +218,7 @@ def waiting_for(staff):
             slot=ApprovalDecision.COSIGNER, decision=ApprovalDecision.APPROVED).values("request_id"))
     return (
         ApprovalRequest.objects.filter(status=ApprovalRequest.PENDING).filter(scope)
-        .exclude(maker=staff).exclude(pk__in=ApprovalDecision.objects.filter(staff=staff).values("request_id"))
+        .exclude(kind__in=rules.barred_kind_keys(staff)).exclude(maker=staff).exclude(pk__in=ApprovalDecision.objects.filter(staff=staff).values("request_id"))
     )
 
 
@@ -611,10 +621,11 @@ def pool_label(approval):
     kind's permission ("Operations"), else "anyone who can approve this"."""
     if not approval.pool_permission:
         return "anyone who can approve this"
-    names = list(
-        Role.objects.filter(permissions__codename=approval.pool_permission)
-        .exclude(name=Role.SUPER_ADMIN).order_by("name").values_list("name", flat=True)
-    )
+    roles = Role.objects.filter(permissions__codename=approval.pool_permission).exclude(name=Role.SUPER_ADMIN)
+    kind = get_kind(approval.kind)
+    if kind is not None and kind.money:
+        roles = roles.exclude(name=Role.GENERAL_MANAGER)
+    names = list(roles.order_by("name").values_list("name", flat=True))
     if not names:
         return "anyone who can approve this"
     return " or ".join(f"any {Role(name=n).get_name_display()}" for n in names)

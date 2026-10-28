@@ -170,13 +170,14 @@ class BusinessSideUnchanged(PlatformBase):
         def roles(code):
             return set(Role.objects.filter(permissions__codename=code).values_list("name", flat=True))
         self.assertEqual(roles("delivery_promo.fund"), {"marketing", "super_admin"})
-        self.assertEqual(roles("delivery_promo.approve"), {"operations", "super_admin"})
+        self.assertEqual(roles("delivery_promo.approve"), {"operations", "super_admin"})  # not the GM (0063)
 
     def test_coupon_and_campaign_kinds_unchanged(self):
         from approvals.registry import get_kind
         for key in ("marketing.coupon", "marketing.campaign", "marketing.banner", "marketing.send_policy"):
             kind = get_kind(key)
-            self.assertEqual((kind.chain_note, kind.pool_permission), ("Super Admin only", ""), key)
+            note = "Super Admin only" if key == "marketing.coupon" else "Super Admin or General Manager"  # coupons are money
+            self.assertEqual((kind.chain_note, kind.pool_permission), (note, ""), key)
         kind = get_kind("marketing.delivery_promo_funding")
         self.assertEqual((kind.chain_note, kind.requires_sudo), ("Operations or Super Admin", True))
 

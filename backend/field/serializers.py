@@ -166,4 +166,7 @@ def prospect_item(prospect):
         "registered_business_id": prospect.registered_business_id,
         "registered_at": prospect.registered_at,
         "created_at": prospect.created_at,
+        "pipeline": getattr(prospect, "pipeline", None),
+        "scout_id": prospect.scout_id,
+        "scout_name": prospect.scout.full_name,
     }

@@ -14,7 +14,14 @@ from listings.models import Listing, ListingPhoto
 from notifications.models import Notification
 from portfolio import proposals, undo
 from portfolio.models import AppliedChange
-from portfolio.tests.change_fixtures import ChangeTestBase, jpeg, make_business, make_listing, product_body
+from portfolio.tests.change_fixtures import (
+    ChangeTestBase,
+    allow_legacy_listing_create,
+    jpeg,
+    make_business,
+    make_listing,
+    product_body,
+)
 
 CHANGES_URL = "/api/portfolio/owner/changes/"
 
@@ -132,6 +139,7 @@ class OwnerUndoTests(UndoTestBase):
         self.assertFalse(FraudFlag.objects.exists())
 
     def test_undoing_a_new_listing_takes_it_down(self):
+        allow_legacy_listing_create(self)
         approval = proposals.propose_listing(self.scout, self.owner, product_body(), main_photo_id=self.staged().pk,
                                              photo_ids=[], reason="Owner showed me the stock")
         services.approve(approval.pk, self.lead)
@@ -186,6 +194,7 @@ class OwnerUndoTests(UndoTestBase):
     def test_the_owner_row_is_locked_before_the_listing(self):
         # The same order as the appliers (owner, then listing), so an undo and an
         # approval on the same business can't deadlock.
+        allow_legacy_listing_create(self)
         approval = proposals.propose_listing(self.scout, self.owner, product_body(), main_photo_id=self.staged().pk,
                                              photo_ids=[], reason="Owner showed me the stock")
         services.approve(approval.pk, self.lead)

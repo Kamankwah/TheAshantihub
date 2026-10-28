@@ -122,6 +122,16 @@ monolith holding most components, with extractions living in `components/`,
   hand-over) keeps the password in its own state only and clears it after submitting; never lift
   it into a parent, a query cache or storage. The hand-over overlay holds a same-URL history guard
   against Back and its password fields use `autocomplete="off"`.
+- **`/business/confirm` is a page too.** `App.jsx` excludes it from `/business/:id` like `claim`.
+  `OwnerConfirmPage` reads the token from the URL fragment (falls back to `?token=` for links already sent), strips it
+  with `history.replaceState` and keeps it in component state only - never in a query key, cache, storage or log. It
+  calls the public endpoints through `apiPostPublic` (no session, no view-as, never ends a stored session), all POST.
+  The General Manager menu has no Register, Prospects or Client listings (a checker, not a maker).
+  The preview query key is constant (the token rides only in the closure), with `gcTime: 0`.
+- **Prospects work for Operations and Super Admin too.** They list every scout's (`?scout=<id>` narrows; the card names
+  the scout), the add sheet needs a scout picker for non-scouts, and the header shows the listings-live figure only when
+  the server sends it (a one-scout list). `AskOwnerAgain` offers the registration re-ask only when
+  `owner_confirmation.can_ask_again` is true; Resend on a draft only when `confirmation.can_resend` is true.
 - **`ProposeChangeForm` diffs against the business it opened with**, not the live query data.
 - **The public claim page retries once after a 401** (`lib/withoutStaleSignIn.js`): an expired
   sign-in stored in the browser must not block it. Never use that helper on the hand-over, whose

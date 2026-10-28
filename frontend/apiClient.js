@@ -165,8 +165,8 @@ function noteUnauthorized(response) {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(hadSession ? SESSION_ENDED_EVENT : UNAUTHORIZED_EVENT))
 }
 
-async function handleResponse(response, path) {
-  noteUnauthorized(response)
+async function handleResponse(response, path, { session = true } = {}) {
+  if (session) noteUnauthorized(response)
   if (!response.ok) {
     // Attach the raw status + (best-effort) parsed JSON body onto the thrown
     // Error so a caller that needs to distinguish *why* a request failed
@@ -229,6 +229,18 @@ export async function apiPost(path, body) {
     body: JSON.stringify(body),
   }))
   return handleResponse(response, path)
+}
+
+// A public endpoint (the owner's texted confirmation link): sends no stored sign-in and no view-as headers, and is
+// not refused while a Super Admin is viewing as someone, because the visitor's session must never touch the call. A
+// failure is parsed like any other (error.status, error.body) but never ends a stored session.
+export async function apiPostPublic(path, body) {
+  const response = await request(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return handleResponse(response, path, { session: false })
 }
 
 export async function apiPatch(path, body) {

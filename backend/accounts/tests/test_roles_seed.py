@@ -12,7 +12,7 @@ DEFAULT_MATRIX = {
     "operations": {
         "kyc.approve", "listings.moderate", "users.view",
         "businesses.register", "portfolio.manage", "targets.manage", "leave.record",
-        "fraud.manage", "fraud.flag",
+        "fraud.manage", "fraud.flag", "listings.stage", "listings.approve_staffed",
     },
     "accountant": {
         "escrow.view", "escrow.release", "disputes.resolve_financial", "transactions.report",
@@ -22,7 +22,7 @@ DEFAULT_MATRIX = {
     "support": {"messaging.manage", "disputes.flag", "users.view", "fraud.flag", "otp.recovery"},
     "scout": {
         "scouts.verify", "users.view", "calls.log",
-        "businesses.register", "businesses.manage_portfolio", "commission.view_own",
+        "businesses.register", "businesses.manage_portfolio", "commission.view_own", "listings.stage",
     },
     # delivery.fleet/cash/rates/disputes: the Delivery Manager build (migration 0047).
     "delivery_manager": {
@@ -32,6 +32,7 @@ DEFAULT_MATRIX = {
     "dispatch": {"delivery.dispatch"},
     "pickup_desk": {"pickup.confirm"},
     "cosigner": {"approvals.cosign"},
+    "general_manager": {"kyc.approve", "listings.moderate", "approvals.view_all", "listings.approve_staffed"},
 }
 
 

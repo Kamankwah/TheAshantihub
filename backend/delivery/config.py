@@ -289,7 +289,7 @@ def _make_kind(key, label, model, cleaner, describe, response_hours=48):
 
     return ApprovalKind(
         key=key, label=label, pool_permission="", current_state=current_state, apply=apply, response_hours=response_hours,
-        resolve_approver=resolve_approver, render_diff=render_diff, validate=validate, chain_note="Super Admin only",
+        resolve_approver=resolve_approver, render_diff=render_diff, validate=validate, chain_note="Super Admin only", money=True,
         consequences=lambda request: [describe],
     )
 
@@ -366,7 +366,7 @@ def refund_consequences(request):
 
 REFUND_KIND = ApprovalKind(
     key=REFUND, label="Refund asked for a delivery case", pool_permission="", current_state=refund_current_state, apply=refund_apply, response_hours=48,
-    resolve_approver=lambda request: [(ApprovalRequest.SUPER_ADMIN, None)], chain_note="Super Admin only", requires_sudo=True,
+    resolve_approver=lambda request: [(ApprovalRequest.SUPER_ADMIN, None)], chain_note="Super Admin only", requires_sudo=True, money=True,
     consequences=refund_consequences,
     render_diff=lambda request: [{"field": "Refund (GH₵)", "before": None, "after": (
         f"{request.payload.get('amount')} (whole order: nothing is left to give the customer)" if request.payload.get("whole")

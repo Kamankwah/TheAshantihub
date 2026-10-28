@@ -86,10 +86,10 @@ QUEUE_INVALIDATIONS = [
     # A scout's delivery flag gives every Delivery Manager a task (portfolio/delivery.py).
     (("delivery.problem_flagged",), ("delivery.manage",), ("my-tasks", "staff-badges")),
     # Targets, leave and holidays change what a scout's Targets screen shows; a KYC approval
-    # (registrations) and a subscription payment (renewals) change the counts.
-    (("targets.", "leave.", "calendar.", "kyc-approve", "subscription."), ("businesses.manage_portfolio",), ("my-targets",)),
+    # (registrations) and a listing approval (listings) change the counts.
+    (("targets.", "leave.", "calendar.", "kyc-approve", "approval.", "moderation-"), ("businesses.manage_portfolio",), ("my-targets",)),
     # Operations' scoreboard (screen 04) follows targets, leave, visits, calls, reports and the counts they come from.
-    (("targets.", "leave.", "calendar.", "visit.", "kyc-approve", "subscription.", "call-", "report.", "fraud."), ("portfolio.manage",), ("ops-scouts", "ops-overview")),
+    (("targets.", "leave.", "calendar.", "visit.", "kyc-approve", "approval.", "moderation-", "call-", "report.", "fraud."), ("portfolio.manage",), ("ops-scouts", "ops-overview")),
     # The Operations Visit map (20) follows check-ins and check-outs.
     (("visit.",), ("portfolio.manage",), ("team-visits",)),
     # The Operations overview (01) also follows approvals waiting and the businesses' health.

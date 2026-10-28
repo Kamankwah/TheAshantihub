@@ -132,6 +132,7 @@ import CommissionPanel from "./panels/CommissionPanel.jsx";
 import LeaderboardPanel from "./panels/LeaderboardPanel.jsx";
 import CommissionPolicyPanel from "./panels/CommissionPolicyPanel.jsx";
 import VisitsPanel from "./panels/VisitsPanel.jsx";
+import ClientListingsPanel from "./panels/ClientListingsPanel.jsx";
 import ProspectsPanel from "./panels/ProspectsPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
 import InvitePanel from "./panels/InvitePanel.jsx";
@@ -483,7 +484,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
               ? <ShiftPanel />
             : role === "delivery_manager"
               ? <LiveOperationsPanel auth={auth} onNavigate={selectTab} onOpenDelivery={(id) => openAt("dm-active", id)} onOpenCase={(id) => openAt("dm-cases", id)} />
-            : role === "super_admin"
+            : role === "super_admin" || role === "general_manager"
               ? <SuperAdminOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} />
             : role === "accountant" && auth.hasPermission("transactions.report")
               ? <AccountingOverviewPanel auth={auth} onNavigate={selectTab} />
@@ -493,9 +494,9 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
               ? <OperationsOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} onOpenBusiness={openBusiness} />
               : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
           {activeTab === "kyc" && <KYCQueuePanel auth={auth} />}
-          {activeTab === "moderation" && (role === "super_admin" ? <SaListingsPanel auth={auth} onOpenBusiness={openBusiness} /> : <ListingsModerationPanel auth={auth} />)}
+          {activeTab === "moderation" && (role === "super_admin" || role === "general_manager" ? <SaListingsPanel auth={auth} onOpenBusiness={openBusiness} /> : <ListingsModerationPanel auth={auth} />)}
           {activeTab === "hero" && <HeroApprovalPanel auth={auth} />}
-          {activeTab === "events-moderation" && (role === "super_admin" ? <SaEventsPanel /> : <EventsModerationPanel auth={auth} />)}
+          {activeTab === "events-moderation" && (role === "super_admin" || role === "general_manager" ? <SaEventsPanel /> : <EventsModerationPanel auth={auth} />)}
           {activeTab === "event-pricing" && <EventPricingPanel auth={auth} />}
           {activeTab === "reviews" && (role === "support" ? <SupportReviewsPanel /> : <ReviewsModerationPanel auth={auth} />)}
           {activeTab === "subscription-plans" && <SubscriptionPlansManagePanel />}
@@ -545,11 +546,11 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "tasks" && (role === "scout"
             ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} leadName={leadName} />
             : <TasksPanel auth={auth} />)}
-          {activeTab === "activity" && (role === "operations" || role === "super_admin" ? <StaffActivityPanel live={live.live} superAdmin={role === "super_admin"} /> : <ActivityPanel />)}
+          {activeTab === "activity" && (role === "operations" || role === "super_admin" || role === "general_manager" ? <StaffActivityPanel live={live.live} superAdmin={role === "super_admin"} /> : <ActivityPanel />)}
           {activeTab === "visit-map" && <TeamVisitMapPanel onOpenBusiness={openBusiness} />}
           {activeTab === "calls" && <CallLogPanel auth={auth} onLogCall={() => selectTab("support-log-call")} />}
           {activeTab === "support-log-call" && <SupportLogCallPage presetLink={callLink} onDone={() => selectTab("calls")} onSeeLog={() => selectTab("calls")} />}
-          {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
+          {activeTab === "prospects" && <ProspectsPanel auth={auth} onRegister={openRegisterFromProspect} />}
           {activeTab === "targets" && (role === "super_admin" ? <TargetLimitsPanel onOpenApproval={openApproval} /> : role !== "super_admin" && auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
           {activeTab === "ops-scouts" && <OpsScoutsPanel auth={auth} onNavigate={selectTab} onOpenScout={openScoutPortfolio} />}
           {activeTab === "leave" && <LeavePanel auth={auth} />}
@@ -609,7 +610,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "staff-announcements" && <StaffAnnouncementsPanel />}
           {activeTab === "sessions" && (role === "super_admin" ? <SaSessionsPanel /> : <SessionsPanel auth={auth} />)}
           {activeTab === "invites" && <SaInvitesPanel />}
-          {activeTab === "my-team" && (role === "operations" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
+          {activeTab === "my-team" && (role === "operations" || role === "general_manager" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "approval-rules" && <ApprovalRulesPanel onNavigate={selectTab} />}
           {activeTab === "money-rules" && <MoneyRulesPanel canPropose={auth.hasPermission("fees.manage")} superAdmin={role === "super_admin"} />}
@@ -627,6 +628,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "subscriptions-due" && <SubscriptionsDuePanel auth={auth} onOpenBusiness={openBusiness} />}
           {activeTab === "fraud-cases" && (role === "super_admin" ? <FraudAlertsPanel auth={auth} onOpenBusiness={openBusiness} /> : <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />)}
           {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "client-listings" && <ClientListingsPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
         </main>
       </div>
 

@@ -907,6 +907,30 @@ describe('AshantiHub routing — /business/claim', () => {
   }, 8000)
 })
 
+// Staff listing pipeline — /business/confirm also matches /business/:id, but it is the owner's texted confirmation
+// page (token in the #fragment), never a listing whose id is "confirm".
+describe('AshantiHub routing — /business/confirm', () => {
+  it('opens the owner confirmation page, not a listing called "confirm"', async () => {
+    let listingFetched = false
+    let body = null
+    server.use(
+      http.get('http://localhost:8000/api/listings/confirm/', () => { listingFetched = true; return HttpResponse.json({ detail: 'Not found.' }, { status: 404 }) }),
+      http.post('http://localhost:8000/api/portfolio/confirm/preview/', async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json({ business_name: "Akosua's Kitchen", owner_name_first: 'Akosua', registration: false, items: [{ kind: 'product', name: 'Banku', price: '12.00' }], expires_at: '2099-01-01T00:00:00Z' })
+      }),
+    )
+    window.history.replaceState(null, '', '/business/confirm#token=frag-tok')
+    renderStaffAt('/business/confirm')
+    expect(await screen.findByText("Akosua's Kitchen", {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByTestId('location').textContent).toBe('/business/confirm')
+    expect(body).toEqual({ token: 'frag-tok' })
+    expect(screen.queryByText('Page Not Found')).not.toBeInTheDocument()
+    expect(listingFetched).toBe(false)
+    window.history.replaceState(null, '', '/')
+  }, 8000)
+})
+
 // Dark mode covers every page (owner decision, plan M1B task 4): the app root
 // and the marketplace home both paint from the --ah-* theme tokens.
 describe('AshantiHub — dark theme scope', () => {

@@ -112,6 +112,7 @@ describe('KYCQueuePanel (staff phase 2A)', () => {
     [400, 'Decide the self-dealing case in Fraud cases first.'],
     [400, 'This business has already been decided.'],
     [403, "You supplied or changed this business's details, so someone else decides its KYC."],
+    [409, 'The owner has not confirmed this registration yet.'],
   ])("shows the server's reason when Approve is refused (%i %s)", async (statusCode, message) => {
     mockQueue([owner()])
     server.use(http.post(`${API}/api/accounts/kyc/41/approve/`, () => HttpResponse.json({ detail: message }, { status: statusCode })))
