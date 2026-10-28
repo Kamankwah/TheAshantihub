@@ -28,3 +28,17 @@ export function useBookingsAwaitingCall({ page = 1 } = {}) {
     refetchOnWindowFocus: true,
   })
 }
+
+// GET /api/ledger/bookings/?q= — Support's booking search (orders.support_update). NOT paginated: it answers
+// {results} (newest paid first, at most 20), so read `data?.results`. Each row: sale_id, kind, what, paid_at, business,
+// customer_name, customer_phone (MASKED, "024 *** 5531"), amount (GH₵ string), handed_over_at, cancellable,
+// release_at. 409 {code:"ledger_off"} while the ledger is off. Same key prefix as the queues, so Refresh covers it.
+export function useBookingLookup(q = '') {
+  const term = q.trim()
+  return useQuery({
+    queryKey: ['ledger-verification', 'lookup', term],
+    queryFn: () => apiFetch(`/api/ledger/bookings/?q=${encodeURIComponent(term)}`),
+    retry: retryUnlessLedgerOff,
+    refetchOnWindowFocus: true,
+  })
+}

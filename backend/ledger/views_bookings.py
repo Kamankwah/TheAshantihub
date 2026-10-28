@@ -47,6 +47,21 @@ class AwaitingBookingsView(APIView):
         return paginator.get_paginated_response([sales.queue_row(sale, now) for sale in page])
 
 
+class BookingLookupView(APIView):
+    """GET bookings/?q= — Support's search for a paid booking to cancel (gate (lxxiii)): up to 20, newest paid first,
+    with the customer's phone masked. `cancellable` is false once the booking was handed over."""
+
+    def get_permissions(self):
+        return [HasRolePermission(SUPPORT)]
+
+    def get(self, request):
+        if not escrow.enabled():
+            return ledger_off()
+        now = timezone.now()
+        found = sales.lookup(request.query_params.get("q"), now)[:20]
+        return Response({"results": [sales.lookup_row(sale, now) for sale in found]})
+
+
 class BookingVerificationView(APIView):
     """POST bookings/<id>/verification/ {outcome: matches|does_not_match|unreachable, note?, customer_confirmed_by_phone?}.
     A positive outcome releases the booking's money at once, and needs the password re-entered (RequiresSudo)."""

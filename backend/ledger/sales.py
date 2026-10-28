@@ -514,6 +514,54 @@ def queue_row(sale, now):
     }
 
 
+def lookup(q, now=None):
+    """Support's booking search (gate (lxxiii)): sales neither released nor reversed, newest paid first, whose number,
+    customer, business, listing or phone matches `q`. A number (# stripped, at most 9 digits) is the sale, service
+    request or booking id; text matches the customer, business, service, stay or event name; a phone matches the
+    customer's. No `q`: all of them. A queryset; the view caps it."""
+    from accounts.phones import filter_by_phone, phone_key
+
+    qs = (
+        BookingSale.objects.filter(released_at__isnull=True, reversed_at__isnull=True)
+        .select_related(
+            "session", "customer", "business_owner__profile", "service_request__listing", "booking__listing", "event",
+        )
+        .order_by("-paid_at", "-id")
+    )
+    q = (q or "").strip()
+    if not q:
+        return qs
+    found = Q()
+    number = q.lstrip("#")
+    if number.isdigit() and len(number) <= 9:
+        found |= Q(pk=int(number)) | Q(service_request_id=int(number)) | Q(booking_id=int(number))
+    found |= (
+        Q(customer__full_name__icontains=q)
+        | Q(business_owner__profile__business_name__icontains=q)
+        | Q(business_owner__full_name__icontains=q)
+        | Q(service_request__listing__name__icontains=q)
+        | Q(booking__listing__name__icontains=q)
+        | Q(event__name__icontains=q)
+    )
+    if phone_key(q):
+        found |= Q(pk__in=filter_by_phone(BookingSale.objects.all(), "customer__phone", q).values("pk"))
+    return qs.filter(found)
+
+
+def lookup_row(sale, now):
+    """One row of the lookup. Only the masked phone: the full number is for the orders.verify screens."""
+    from accounts.phones import mask_phone
+
+    handed = handed_over_at(sale, now)
+    return {
+        "sale_id": sale.pk, "kind": sale.kind, "what": description(sale), "paid_at": sale.paid_at,
+        "business": sale.business_owner.display_name, "customer_name": sale.customer.full_name,
+        "customer_phone": mask_phone(sale.customer.phone) if sale.customer.phone else "",
+        "amount": str(from_pesewas(sale.base_pesewas - sale.refunded_base_pesewas)),
+        "handed_over_at": handed, "cancellable": handed is None, "release_at": release_at(sale, now),
+    }
+
+
 # --- refunds, always to the customer's wallet (spec §2.2 steps 3-4, §5; Plan 1b S12) -------------------------------
 
 def _processing_share(sale, customer, whole):

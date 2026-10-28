@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useBookingsAwaitingCall, useOrdersAwaitingCall } from "../../../hooks/useVerificationCalls.js";
 import { walletMessage } from "../../wallet/walletErrors.js";
 import { D, glassCard } from "../theme.js";
+import BookingCancelTab from "./BookingCancelTab.jsx";
 import CallOutcomeForm from "./CallOutcomeForm.jsx";
 import { button, callout, chip, dim, pill } from "./panelStyles.js";
 import { Title, page } from "./insightsParts.jsx";
@@ -153,7 +154,8 @@ function BookingsTab({ onNotice }) {
   );
 }
 
-export default function VerificationCallsPanel({ onNavigate }) {
+export default function VerificationCallsPanel({ auth, onNavigate }) {
+  const canCancel = Boolean(auth?.hasPermission?.("orders.support_update"));
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("orders");
   const [notice, setNotice] = useState("");
@@ -165,10 +167,12 @@ export default function VerificationCallsPanel({ onNavigate }) {
       <div role="group" aria-label="Queues" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button type="button" aria-pressed={tab === "orders"} onClick={() => switchTab("orders")} style={pill(tab === "orders")}>Orders</button>
         <button type="button" aria-pressed={tab === "bookings"} onClick={() => switchTab("bookings")} style={pill(tab === "bookings")}>Bookings</button>
+        {canCancel && <button type="button" aria-pressed={tab === "cancel"} onClick={() => switchTab("cancel")} style={pill(tab === "cancel")}>Cancel a booking</button>}
       </div>
       {notice && <div role="status" style={callout(D.green)}>{notice}</div>}
       {tab === "orders" && <OrdersTab onNavigate={onNavigate} onNotice={setNotice} />}
       {tab === "bookings" && <BookingsTab onNotice={setNotice} />}
+      {tab === "cancel" && canCancel && <BookingCancelTab />}
     </div>
   );
 }
