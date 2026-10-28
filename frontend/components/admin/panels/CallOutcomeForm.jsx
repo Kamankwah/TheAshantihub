@@ -18,9 +18,10 @@ const OUTCOMES = [
 ];
 const PATHS = { order: "orders", booking: "bookings" };
 
-export function resultLine(answer) {
-  if (answer?.released) return "Released to the business.";
-  if (answer?.dispute_id) return `Dispute #${answer.dispute_id} opened.`;
+// The line follows the outcome that was sent, never a stale field on the answer.
+export function resultLine(answer, outcome) {
+  if (outcome === "matches") return answer?.released ? "Released to the business." : (answer?.detail || "Recorded.");
+  if (outcome === "does_not_match") return answer?.dispute_id ? `Dispute #${answer.dispute_id} opened.` : "Recorded.";
   return "Recorded. It stays on the list.";
 }
 
@@ -46,7 +47,7 @@ export default function CallOutcomeForm({ subject, id, customerConfirmed, confir
         outcome, note: trimmed, ...(needsTick && spoke && { customer_confirmed_by_phone: true }),
       });
       await queryClient.invalidateQueries({ queryKey: ["ledger-verification"] });
-      onDone?.(resultLine(answer));
+      onDone?.(resultLine(answer, outcome));
       return;
     } catch (err) {
       setError(walletMessage(err).text);
@@ -61,7 +62,7 @@ export default function CallOutcomeForm({ subject, id, customerConfirmed, confir
         <legend style={{ color: D.text, fontWeight: 700, fontSize: "0.85rem", padding: 0, marginBottom: 6 }}>What did the customer say?</legend>
         {OUTCOMES.map(([value, label]) => (
           <label key={value} style={{ display: "flex", gap: 8, alignItems: "center", color: D.text, fontSize: "0.82rem" }}>
-            <input type="radio" name={`outcome-${subject}-${id}`} value={value} checked={outcome === value} onChange={() => setOutcome(value)} />
+            <input type="radio" name={`outcome-${subject}-${id}`} value={value} checked={outcome === value} onChange={() => { setOutcome(value); setSpoke(false); }} />
             {label}
           </label>
         ))}

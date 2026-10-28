@@ -837,6 +837,16 @@ describe('ListingDetailPage — booking a stay with the wallet ledger (plan 1F)'
     expect(posts).toEqual([{ listing: 3, check_in: '2030-06-10', check_out: '2030-06-13', units: 1 }])
   })
 
+  it('a wallet failure shows its reason and keeps Book disabled', async () => {
+    setup()
+    server.use(http.get(`${API}/api/wallet/`, () => HttpResponse.json({ detail: 'boom' }, { status: 500 })))
+    await pickDates()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('boom')
+    expect(screen.getByRole('button', { name: /^Book/ })).toBeDisabled()
+    expect(posts).toHaveLength(0)
+  })
+
   it('warns when fewer units are free than asked for', async () => {
     setup()
     server.use(http.get(`${API}/api/bookings/availability/`, () => HttpResponse.json({

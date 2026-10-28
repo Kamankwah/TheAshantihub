@@ -29,9 +29,13 @@ export default function ServiceRequestPay({ sr, PaymentComponent, onPaid }) {
     inFlight.current = true
     setBusy(true)
     setError(null)
+    let redirecting = false
     try {
       const res = await apiPost(`/api/services/requests/${sr.id}/pay/`, pay.body)
       if (res?.mode === 'redirect') {
+        // The in-flight guard stays set while the browser leaves, and the modal closes.
+        redirecting = true
+        setModal(false)
         window.location.href = res.checkout_url
         return
       }
@@ -50,8 +54,10 @@ export default function ServiceRequestPay({ sr, PaymentComponent, onPaid }) {
         setError(apiErrorMessage(err, 'We could not take the payment. Try again.'))
       }
     } finally {
-      inFlight.current = false
-      setBusy(false)
+      if (!redirecting) {
+        inFlight.current = false
+        setBusy(false)
+      }
     }
   }
 

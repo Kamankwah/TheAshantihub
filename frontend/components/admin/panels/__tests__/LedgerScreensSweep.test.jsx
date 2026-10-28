@@ -10,6 +10,7 @@ import VerificationCallsPanel from '../VerificationCallsPanel.jsx'
 // tabular figures and never gold.
 const API = 'http://localhost:8000/api'
 const CODE = '482913'
+const BUSINESS_PHONE = '0200000000'
 const wrap = (ui) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>)
 const envelope = (results) => HttpResponse.json({ count: results.length, next: null, previous: null, results })
 const desk = { user: { role: 'pickup_desk' }, hasPermission: (c) => c === 'pickup.confirm' }
@@ -31,9 +32,16 @@ function sweep(container, { allowTel = false } = {}) {
   expect(container.querySelector('a[href*="wa.me"]')).toBeNull()
   expect(text).not.toMatch(/wa\.me/i)
   if (!allowTel) expect(container.querySelector('a[href^="tel:"]')).toBeNull()
-  expect(text).not.toContain('business_phone')
+  expect(text).not.toContain(BUSINESS_PHONE)
   expect(text).not.toContain(CODE)
   expect(text).not.toMatch(/\bNaN\b|\bundefined\b/)
+  // Every GH₵ amount is inside a [data-amount] element (deepest element whose text carries one).
+  const moneyRe = /GH₵\s?\d/
+  container.querySelectorAll('*').forEach((el) => {
+    if (!moneyRe.test(el.textContent)) return
+    if ([...el.children].some((c) => moneyRe.test(c.textContent))) return
+    expect(el.closest('[data-amount]'), `unmarked amount: ${el.textContent}`).not.toBeNull()
+  })
   container.querySelectorAll('[data-amount]').forEach((el) => {
     expect(el.style.fontVariantNumeric).toBe('tabular-nums')
     expect(el.outerHTML.toLowerCase()).not.toContain('#d4a017')
@@ -44,7 +52,7 @@ function sweep(container, { allowTel = false } = {}) {
 describe('1F screens sweep', () => {
   it('pickup desk with an address and without', async () => {
     server.use(
-      http.get(`${API}/ledger/pickup/`, () => envelope([{ ...pickupRow, collection_code: CODE, business_phone: '0200000000' }])),
+      http.get(`${API}/ledger/pickup/`, () => envelope([{ ...pickupRow, collection_code: CODE, business_phone: BUSINESS_PHONE }])),
       http.get(`${API}/core/site-settings/`, () => HttpResponse.json({ pickup_office_address: 'Adum, next to the Post Office' })),
     )
     const a = wrap(<PickupDeskPanel auth={desk} />)
@@ -60,9 +68,9 @@ describe('1F screens sweep', () => {
 
   it('the three verification tabs', async () => {
     server.use(
-      http.get(`${API}/ledger/orders/awaiting-verification/`, () => envelope([{ ...orderRow, business_phone: '0200000000' }])),
-      http.get(`${API}/ledger/bookings/awaiting-verification/`, () => envelope([{ ...bookingRow, business_phone: '0200000000' }])),
-      http.get(`${API}/ledger/bookings/`, () => HttpResponse.json({ results: [{ ...bookingRow, business_phone: '0200000000' }] })),
+      http.get(`${API}/ledger/orders/awaiting-verification/`, () => envelope([{ ...orderRow, business_phone: BUSINESS_PHONE }])),
+      http.get(`${API}/ledger/bookings/awaiting-verification/`, () => envelope([{ ...bookingRow, business_phone: BUSINESS_PHONE }])),
+      http.get(`${API}/ledger/bookings/`, () => HttpResponse.json({ results: [{ ...bookingRow, business_phone: BUSINESS_PHONE }] })),
     )
     const { container } = wrap(<VerificationCallsPanel auth={support} />)
     await screen.findByText('Order #41')
@@ -78,6 +86,8 @@ describe('1F screens sweep', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel a booking' }))
     await screen.findByRole('button', { name: 'Cancel booking…' })
     expect(container.querySelectorAll('[data-amount]').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking…' }))
+    await screen.findByText(/The payment processing charge is not refunded/)
     sweep(container) // the cancel tab shows the masked phone only: no tel: link
   })
 })

@@ -51,7 +51,7 @@ function CancelForm({ sale, onDone }) {
           <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={MAX_REASON} style={field} />
         </label>
         <span style={{ ...dim, ...figures }}>{reason.length}/{MAX_REASON}</span>
-        <div style={{ color: D.text, fontSize: "0.82rem" }}>
+        <div data-amount style={{ color: D.text, fontSize: "0.82rem", ...figures }}>
           Refunds GH₵ {sale.amount} to {sale.customer_name}'s AshantiHub wallet. The payment processing charge is not refunded. The customer and the business are told.
         </div>
       </fieldset>
@@ -98,7 +98,7 @@ export default function BookingCancelTab() {
       <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setOpenId(null); setNotice(""); }}
         aria-label="Sale, service request or booking number, customer name or phone, business"
         placeholder="Sale, service request or booking number, customer name or phone, business" style={field} />
-      {notice && <div role="status" style={callout(D.green)}>{notice}</div>}
+      {notice && <div role="status" data-amount style={{ ...callout(D.green), ...figures }}>{notice}</div>}
       {off ? <div role="status" style={dim}>Cancelling a booking opens when the ledger is switched on.</div>
         : query.error ? <div role="alert" style={callout(D.red)}>{walletMessage(query.error).text}</div>
         : !query.data ? <div role="status" style={dim}>Loading…</div>

@@ -355,6 +355,7 @@ export default function ListingDetailPage({
                     {pay.problem && <div role="alert" style={{ ...stayStyles.error, marginTop: 8 }}>{pay.problem}</div>}
                   </div>
                 )}
+                {!pay.ledgerOn && pay.problem && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{pay.problem}</div>}
                 {stayPayActive && pay.state === "unknown" && !pay.problem && <div role="status" style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.72rem", marginBottom: 8 }}>Checking payment options…</div>}
                 {checkIn && <BookingTermsNote kind="stay" policy={item.cancellation_policy} start={stayStart(checkIn, bookingTerms.data?.stay_check_in_time)} />}
                 {bookingError && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{bookingError}</div>}

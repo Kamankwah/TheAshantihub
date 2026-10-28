@@ -170,6 +170,31 @@ describe('ServiceRequestsTab — paying by method with the server charge', () =>
     }
   })
 
+  it('a redirect after mobile money closes the modal and posts once', async () => {
+    let posts = 0
+    server.use(
+      ledgerOn(), listAccepted(), quote('1.80'),
+      http.post(`${API}/api/services/requests/:id/pay/`, () => { posts += 1; return HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.example/c/9' }) }),
+    )
+    const original = window.location
+    Object.defineProperty(window, 'location', { configurable: true, value: { href: 'http://localhost/' } })
+    try {
+      renderTab()
+      const btn = await screen.findByRole('button', { name: /Pay GHS 120.00 to start/ })
+      await waitFor(() => expect(btn).toBeEnabled())
+      fireEvent.click(btn)
+      fireEvent.click(screen.getByText('Simulate paid'))
+      await waitFor(() => expect(window.location.href).toBe('https://pay.example/c/9'))
+      expect(screen.queryByText('Simulate paid')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /Pay GHS 120.00 to start/ }))
+      await new Promise((r) => setTimeout(r, 60))
+      expect(screen.queryByText('Simulate paid')).not.toBeInTheDocument()
+      expect(posts).toBe(1)
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: original })
+    }
+  })
+
   it("the paid line shows the server's processing charge", async () => {
     server.use(
       ledgerOn(), listAccepted(), quote('1.80'),

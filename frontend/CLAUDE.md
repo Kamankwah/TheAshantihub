@@ -165,5 +165,5 @@ monolith holding most components, with extractions living in `components/`,
   (`PickupCollectionNote`); the desk asks for it and no staff payload carries it. The pickup office address comes
   only from site settings (`pickup_office_address`) and reads "address to be confirmed" while blank. Customer pay
   screens (service, tickets, stay) go through `useBookingPayment` and never compute a charge. Amount elements in
-  these panels carry `data-amount` (tabular figures, never gold); `LedgerScreensSweep.test.jsx` is their contract.
+  1F's staff panels (pickup desk, verification calls, booking cancel, call outcome form) carry `data-amount` (tabular figures, never gold); `LedgerScreensSweep.test.jsx` is their contract and checks that every GH₵ amount sits inside one.
 - **The vendor tab is "Money"** (`id: "money"`, one tab for payouts and the wallet), not "Payouts".

@@ -127,6 +127,59 @@ describe('Verification calls: orders', () => {
     expect(screen.getByText('Order #41')).toBeInTheDocument()
   })
 
+  it('unreachable never claims a dispute even when the answer carries an old dispute id', async () => {
+    server.use(
+      http.get(ORDERS, () => envelope([row()])),
+      http.post(ORDER_POST, () => HttpResponse.json({ order: 41, outcome: 'unreachable', dispute_id: 9, released: false })),
+    )
+    wrap(<VerificationCallsPanel auth={support} />)
+    await openForm()
+    fireEvent.click(screen.getByRole('radio', { name: UNREACHED }))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+    expect(await screen.findByText('Recorded. It stays on the list.')).toBeInTheDocument()
+    expect(screen.queryByText(/Dispute #9/)).not.toBeInTheDocument()
+  })
+
+  it('matches that did not release says Recorded, not a release', async () => {
+    server.use(
+      http.get(ORDERS, () => envelope([row({ customer_confirmed: true })])),
+      http.post(ORDER_POST, () => HttpResponse.json({ order: 41, outcome: 'matches', dispute_id: null, released: false })),
+    )
+    wrap(<VerificationCallsPanel auth={support} />)
+    await openForm()
+    fireEvent.click(screen.getByRole('radio', { name: MATCHES }))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+    expect(await screen.findByText('Recorded.')).toBeInTheDocument()
+    expect(screen.queryByText('Released to the business.')).not.toBeInTheDocument()
+  })
+
+  it('a double click on Submit against a slow answer posts once', async () => {
+    let posts = 0
+    server.use(
+      http.get(ORDERS, () => envelope([row()])),
+      http.post(ORDER_POST, async () => { posts += 1; await new Promise((r) => setTimeout(r, 80)); return HttpResponse.json({ order: 41, outcome: 'unreachable', dispute_id: null, released: false }) }),
+    )
+    wrap(<VerificationCallsPanel auth={support} />)
+    await openForm()
+    fireEvent.click(screen.getByRole('radio', { name: UNREACHED }))
+    const submit = screen.getByRole('button', { name: 'Submit' })
+    fireEvent.click(submit)
+    fireEvent.click(submit)
+    expect(await screen.findByText('Recorded. It stays on the list.')).toBeInTheDocument()
+    expect(posts).toBe(1)
+  })
+
+  it('changing the outcome clears the spoke-to-customer tick', async () => {
+    server.use(http.get(ORDERS, () => envelope([row()])))
+    wrap(<VerificationCallsPanel auth={support} />)
+    await openForm()
+    fireEvent.click(screen.getByRole('radio', { name: MATCHES }))
+    fireEvent.click(screen.getByRole('checkbox', { name: TICK }))
+    fireEvent.click(screen.getByRole('radio', { name: UNREACHED }))
+    fireEvent.click(screen.getByRole('radio', { name: MATCHES }))
+    expect(screen.getByRole('checkbox', { name: TICK })).not.toBeChecked()
+  })
+
   it('a 409 shows the server text and refetches the list', async () => {
     let lists = 0
     server.use(

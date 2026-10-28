@@ -120,6 +120,20 @@ describe('Pickup desk', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('This order has already been collected.')
   })
 
+  it('a 409 closes the confirm and refetches the queue', async () => {
+    let lists = 0
+    server.use(
+      http.get(LIST, () => { lists += 1; return envelope([row()]) }),
+      http.post(COLLECTED, () => HttpResponse.json({ detail: 'This order has already been collected.' }, { status: 409 })),
+    )
+    wrap(<PickupDeskPanel auth={desk} />)
+    typeCode(await openHandOver(), '123456')
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm hand-over' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('This order has already been collected.')
+    expect(screen.queryByLabelText(CODE_LABEL)).toBeNull()
+    await waitFor(() => expect(lists).toBeGreaterThan(1))
+  })
+
   it('searches by number or name', async () => {
     const seen = []
     server.use(http.get(LIST, ({ request }) => { seen.push(new URL(request.url).searchParams.get('q')); return envelope([]) }))

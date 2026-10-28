@@ -11,8 +11,10 @@ import { formatAccra } from "../lib/bookingTerms.js";
 // No phone, no business name. Times are read in Accra time.
 //   code       the six-digit collection code, or null
 //   collectBy  ISO instant the order must be collected by, or null
+//   codeComing true when a code will be issued after payment (the wallet answered "on"); with the ledger off no code
+//              exists, so the "once you have paid" line is left out. Defaults to true.
 //   tone       "light" for the cart drawer, "dark" for the dark account shell
-export default function PickupCollectionNote({ code = null, collectBy = null, tone = "light" }) {
+export default function PickupCollectionNote({ code = null, collectBy = null, codeComing = true, tone = "light" }) {
   const settings = useSiteSettings();
   const address = (settings.data?.pickup_office_address || "").trim();
   const ink = tone === "dark" ? D.text : C.ink;
@@ -30,9 +32,9 @@ export default function PickupCollectionNote({ code = null, collectBy = null, to
           <div>Show it at the pickup desk. Nobody from AshantiHub will ask you for it by phone.</div>
           {collectByText && <div style={{ color: ink, fontWeight: 700, marginTop: 4 }}>Collect by {collectByText}.</div>}
         </>
-      ) : (
+      ) : codeComing ? (
         <div style={{ marginTop: 4 }}>You get a one-time collection code once you have paid.</div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -35,6 +35,12 @@ describe('PickupCollectionNote', () => {
     expect(screen.queryByLabelText('Collection code')).not.toBeInTheDocument()
   })
 
+  it('leaves out the code promise when no code is coming', async () => {
+    mount(<PickupCollectionNote codeComing={false} />)
+    expect(await screen.findByText(/Collect it at the AshantiHub pickup office/)).toBeInTheDocument()
+    expect(screen.queryByText(/once you have paid/)).not.toBeInTheDocument()
+  })
+
   it('renders no phone or tel link', async () => {
     const { container } = mount(<PickupCollectionNote code="482913" collectBy="2026-10-25T17:30:00Z" />)
     await screen.findByText(/pickup office/)

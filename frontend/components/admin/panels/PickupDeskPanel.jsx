@@ -72,7 +72,7 @@ function AddressLine({ canEdit }) {
   );
 }
 
-function HandOver({ order, onClose, onDone }) {
+function HandOver({ order, onClose, onDone, onRefused }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -90,6 +90,11 @@ function HandOver({ order, onClose, onDone }) {
       return;
     } catch (e) {
       const text = walletMessage(e).text;
+      if (e?.status === 409) {
+        // e.g. already collected: the queue moved on, so close this and show the server's words above the list.
+        onRefused(text);
+        return;
+      }
       if (refusalCode(e) === "wrong_code" && e.body?.attempts_left !== undefined) setError(`${text} ${e.body.attempts_left} tries left.`);
       else setError(text);
       if (refusalCode(e) === "code_locked") setLocked(true);
@@ -123,7 +128,7 @@ function HandOver({ order, onClose, onDone }) {
   );
 }
 
-function OrderRow({ order, open, onOpen, onClose, onDone }) {
+function OrderRow({ order, open, onOpen, onClose, onDone, onRefused }) {
   return (
     <li style={{ ...glassCard, padding: 14, display: "flex", flexDirection: "column", gap: 8, listStyle: "none" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -140,7 +145,7 @@ function OrderRow({ order, open, onOpen, onClose, onDone }) {
       <ul style={{ margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 2 }}>
         {order.items.map((item, i) => <li key={i} style={{ listStyle: "none", color: D.text, fontSize: "0.82rem" }}>{item.quantity} × {item.name}, {item.business}</li>)}
       </ul>
-      {open && <HandOver order={order} onClose={onClose} onDone={onDone} />}
+      {open && <HandOver order={order} onClose={onClose} onDone={onDone} onRefused={onRefused} />}
     </li>
   );
 }
@@ -152,6 +157,7 @@ export default function PickupDeskPanel({ auth }) {
   const [pageNo, setPageNo] = useState(1);
   const [openId, setOpenId] = useState(null);
   const [handedOver, setHandedOver] = useState("");
+  const [refusal, setRefusal] = useState("");
   const query = usePickupQueue({ q, page: pageNo });
   const canEdit = auth?.user?.role === "super_admin";
   const off = query.error && walletMessage(query.error).kind === "off";
@@ -161,9 +167,11 @@ export default function PickupDeskPanel({ auth }) {
   const search = (e) => { e.preventDefault(); setQ(draft.trim()); setPageNo(1); };
   const done = (order, result) => {
     setOpenId(null);
+    setRefusal("");
     setHandedOver(`Order #${order.order_id} handed over at ${when(result.collected_at)}.`);
     refresh();
   };
+  const refused = (text) => { setOpenId(null); setRefusal(text); refresh(); };
   return (
     <div style={page}>
       <Title right={<button type="button" onClick={refresh} style={button(D.panelBg, D.text, false)}>Refresh</button>}>Pickup desk</Title>
@@ -178,6 +186,7 @@ export default function PickupDeskPanel({ auth }) {
           {query.data && <span style={{ ...dim, ...figures }}>{count} waiting</span>}
         </form>
       )}
+      {refusal && <div role="alert" style={callout(D.red)}>{refusal}</div>}
       {handedOver && <div role="status" style={callout(D.green)}>{handedOver}</div>}
       {off ? <div role="status" style={dim}>The pickup desk opens when the ledger is switched on.</div>
         : query.error ? <div role="alert" style={callout(D.red)}>{walletMessage(query.error).text}</div>
@@ -187,7 +196,7 @@ export default function PickupDeskPanel({ auth }) {
           <ul aria-label="Orders waiting for collection" style={{ margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
             {rows.map((order) => (
               <OrderRow key={order.order_id} order={order} open={openId === order.order_id}
-                onOpen={() => { setHandedOver(""); setOpenId(order.order_id); }} onClose={() => setOpenId(null)} onDone={(result) => done(order, result)} />
+                onOpen={() => { setHandedOver(""); setRefusal(""); setOpenId(order.order_id); }} onClose={() => setOpenId(null)} onDone={(result) => done(order, result)} onRefused={refused} />
             ))}
           </ul>
         )}
