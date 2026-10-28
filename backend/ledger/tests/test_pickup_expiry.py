@@ -58,7 +58,7 @@ class PickupExpiryTests(RefundBase):
 
     def test_review_focus_a_collected_order_is_never_refunded(self):
         order = self.pickup(hours_ago=30)
-        FulfilmentCheck.objects.create(order=order, collected_at=timezone.now() - timedelta(hours=1))
+        FulfilmentCheck.objects.update_or_create(order=order, defaults=dict(collected_at=timezone.now() - timedelta(hours=1)))
         self.assertEqual(verification.expire_uncollected(), 0)
         order.refresh_from_db()
         self.assertEqual(order.status, Order.PAID)
@@ -66,7 +66,7 @@ class PickupExpiryTests(RefundBase):
 
     def test_review_focus_the_desk_collecting_after_the_job_read_its_list_wins(self):
         order = self.pickup(hours_ago=30)
-        FulfilmentCheck.objects.create(order=order, collected_at=timezone.now())              # collected after `due` was read
+        FulfilmentCheck.objects.update_or_create(order=order, defaults=dict(collected_at=timezone.now()))              # collected after `due` was read
         self.assertEqual(verification.expire_one(order.pk, 24), 0)
         order.refresh_from_db()
         self.assertEqual((order.status, self.wallet(), OrderRefund.objects.count()), (Order.PAID, 0, 0))

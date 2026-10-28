@@ -47,6 +47,21 @@ class AwaitingBookingsView(APIView):
         return paginator.get_paginated_response([sales.queue_row(sale, now) for sale in page])
 
 
+class BookingLookupView(APIView):
+    """GET bookings/?q= — Support's search for a paid booking to cancel (gate (lxxiii)): up to 20, newest paid first,
+    with the customer's phone masked. `cancellable` is false once the booking was handed over."""
+
+    def get_permissions(self):
+        return [HasRolePermission(SUPPORT)]
+
+    def get(self, request):
+        if not escrow.enabled():
+            return ledger_off()
+        now = timezone.now()
+        found = sales.lookup(request.query_params.get("q"), now)[:20]
+        return Response({"results": [sales.lookup_row(sale, now) for sale in found]})
+
+
 class BookingVerificationView(APIView):
     """POST bookings/<id>/verification/ {outcome: matches|does_not_match|unreachable, note?, customer_confirmed_by_phone?}.
     A positive outcome releases the booking's money at once, and needs the password re-entered (RequiresSudo)."""
@@ -129,3 +144,22 @@ class BookingReportProblemView(APIView):
             body=f"{sale.label().capitalize()} — dispute #{sale.dispute_id}.", link="/staff", icon="⚠️",
         )
         return Response({"dispute_id": sale.dispute_id}, status=201)
+
+
+class BookingCancelQuoteView(APIView):
+    """GET bookings/<sale id>/cancel-quote/ — what the customer's own cancel of this stay or ticket purchase would give
+    back to their wallet right now, as {"refund": "150.00", "whole": false}. Computed by the cancel's own function
+    (sales.cancel_quote), so the screen never works out a refund; it writes nothing. A refusal is the cancel's own
+    {detail} (409); another customer's sale is a 404 (Plan 7G)."""
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def get(self, request, pk):
+        if not escrow.enabled():
+            return ledger_off()
+        sale = get_object_or_404(BookingSale, pk=pk, customer=request.user)
+        try:
+            quote = sales.cancel_quote(sale)
+        except sales.CancelError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return Response({"refund": str(from_pesewas(quote.amount_pesewas)), "whole": quote.whole})

@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
@@ -52,3 +52,24 @@ class PayoutDetailUpdateTests(TestCase):
             "/api/accounts/business-owners/me/payout/", {"default_payout_method": "bank"}, format="json"
         )
         self.assertEqual(response.status_code, 403)
+
+    def _patch_bank(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+        return self.client.patch(
+            "/api/accounts/business-owners/me/payout/",
+            {"default_payout_method": "bank", "payout_bank_name": "GCB Bank",
+             "payout_bank_account_number": "1234567890", "payout_bank_account_name": "Efua Seller"},
+            format="json",
+        )
+
+    @override_settings(LEDGER_ENABLED=True, OTP_STEP_UP_ENFORCED=False)
+    def test_payout_patch_needs_a_code_while_the_ledger_is_on(self):
+        response = self._patch_bank()
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertEqual(response.json()["code"], "step_up_required")
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.default_payout_method, "momo")
+
+    @override_settings(LEDGER_ENABLED=False, OTP_STEP_UP_ENFORCED=False)
+    def test_payout_patch_needs_no_code_while_the_ledger_is_off(self):
+        self.assertEqual(self._patch_bank().status_code, 200)

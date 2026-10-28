@@ -103,7 +103,7 @@ class WholeRefundCancelTests(WiringBase):
     def test_the_desk_cannot_mark_a_wholly_refunded_order_collected(self):
         order = self.refunded_but_paid()
         with self.assertRaises(verification.VerificationError) as caught:
-            verification.mark_collected(order, self.support)
+            verification.mark_collected(order, self.support, code=verification.check_for(order).collection_code)
         self.assertIn("refunded", caught.exception.message)
         self.assertFalse(verification.FulfilmentCheck.objects.filter(order=order, collected_at__isnull=False).exists())
         self.assertTrue(OrderRefund.objects.filter(order=order, whole=True).exists())

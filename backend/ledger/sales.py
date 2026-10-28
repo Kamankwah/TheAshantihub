@@ -22,6 +22,7 @@ Refund journal booking-refund-<sale>-<source> (kind booking_refund), always to t
     after release   Dr vendor available (amount); Dr platform fee income / Cr vendor available (the fee share returned)
     on fault only   Dr provider fees (the processing charge returned)
     both            Cr customer wallet (amount + processing charge)."""
+from collections import namedtuple
 from datetime import datetime, time, timedelta, timezone as dt_timezone
 
 from django.db import transaction
@@ -539,6 +540,54 @@ def queue_row(sale, now):
     }
 
 
+def lookup(q, now=None):
+    """Support's booking search (gate (lxxiii)): sales neither released nor reversed, newest paid first, whose number,
+    customer, business, listing or phone matches `q`. A number (# stripped, at most 9 digits) is the sale, service
+    request or booking id; text matches the customer, business, service, stay or event name; a phone matches the
+    customer's. No `q`: all of them. A queryset; the view caps it."""
+    from accounts.phones import filter_by_phone, phone_key
+
+    qs = (
+        BookingSale.objects.filter(released_at__isnull=True, reversed_at__isnull=True)
+        .select_related(
+            "session", "customer", "business_owner__profile", "service_request__listing", "booking__listing", "event",
+        )
+        .order_by("-paid_at", "-id")
+    )
+    q = (q or "").strip()
+    if not q:
+        return qs
+    found = Q()
+    number = q.lstrip("#")
+    if number.isascii() and number.isdigit() and len(number) <= 9:
+        found |= Q(pk=int(number)) | Q(service_request_id=int(number)) | Q(booking_id=int(number))
+    found |= (
+        Q(customer__full_name__icontains=q)
+        | Q(business_owner__profile__business_name__icontains=q)
+        | Q(business_owner__full_name__icontains=q)
+        | Q(service_request__listing__name__icontains=q)
+        | Q(booking__listing__name__icontains=q)
+        | Q(event__name__icontains=q)
+    )
+    if phone_key(q):
+        found |= Q(pk__in=filter_by_phone(BookingSale.objects.all(), "customer__phone", q).values("pk"))
+    return qs.filter(found)
+
+
+def lookup_row(sale, now):
+    """One row of the lookup. Only the masked phone: the full number is for the orders.verify screens."""
+    from accounts.phones import mask_phone
+
+    handed = handed_over_at(sale, now)
+    return {
+        "sale_id": sale.pk, "kind": sale.kind, "what": description(sale), "paid_at": sale.paid_at,
+        "business": sale.business_owner.display_name, "customer_name": sale.customer.full_name,
+        "customer_phone": mask_phone(sale.customer.phone) if sale.customer.phone else "",
+        "amount": str(from_pesewas(sale.base_pesewas - sale.refunded_base_pesewas)),
+        "handed_over_at": handed, "cancellable": handed is None, "release_at": release_at(sale, now),
+    }
+
+
 # --- refunds, always to the customer's wallet (spec §2.2 steps 3-4, §5; Plan 1b S12) -------------------------------
 
 def _processing_share(sale, customer, whole):
@@ -661,10 +710,11 @@ class CancelError(Exception):
 
 
 CUSTOMER_SOURCE = "cancel-customer"
+RELEASED_MESSAGE = "This booking's money was already released to the business. If something is wrong, contact AshantiHub Support."
 ALREADY_HANDED_OVER = {
-    BookingSale.SERVICE: "The business has already marked this service done. Open a dispute instead.",
-    BookingSale.STAY: "The guest has already checked in. Open a dispute instead.",
-    BookingSale.TICKETS: "The event has taken place or a ticket was scanned. Open a dispute instead.",
+    BookingSale.SERVICE: "The business has already marked this service done. Report a problem instead.",
+    BookingSale.STAY: "The guest has already checked in. Report a problem instead.",
+    BookingSale.TICKETS: "The event has taken place or a ticket was scanned. Report a problem instead.",
 }
 
 
@@ -679,7 +729,7 @@ def cancel(sale, staff, reason, now=None):
         if sale.reversed_at is not None:
             raise CancelError("This booking was already refunded in full.")
         if sale.released_at is not None:
-            raise CancelError("This booking's money was already released to the business. Open a dispute instead.")
+            raise CancelError(RELEASED_MESSAGE)
         if handed_over_at(sale, now) is not None:
             raise CancelError(ALREADY_HANDED_OVER[sale.kind])
         cancelling = list(tickets_of(sale).filter(refunded_at__isnull=True, delivered_at__isnull=True).select_related("ticket_type__event", "purchased_by"))
@@ -699,37 +749,56 @@ def _policy_start(sale):
     return None
 
 
+CancelQuote = namedtuple("CancelQuote", "amount_pesewas whole")
+
+
+def cancel_quote(sale, now=None):
+    """What `cancel_by_customer` would refund `sale` at `now`, writing nothing: CancelQuote(amount_pesewas, whole), the
+    amount rule being `refund_share` of what is left of the price (all of it when the policy gives everything back).
+    It holds every check the cancel makes, in the same order, and raises the same CancelError (409) for a sale paid
+    before policies existed, one already cancelled or refunded in full, handed over, released, past its release time
+    (those are a report-a-problem, not a cancel), with a problem open, or when the policy gives nothing back now. The
+    cancel calls this inside lock(sale), so the quote the screen shows and the refund the cancel gives can never
+    disagree."""
+    now = now or timezone.now()
+    if not escrow.enabled():
+        raise CancelError("The ledger is off.")
+    if sale.policy_snapshot is None:
+        raise CancelError("This booking can only be cancelled by AshantiHub Support. Use Contact Support.")
+    if sale.reversed_at is not None or BookingRefund.objects.filter(sale=sale, source=CUSTOMER_SOURCE).exists():
+        raise CancelError("This booking was already cancelled.")
+    due = release_at(sale, now)
+    if handed_over_at(sale, now) is not None:
+        raise CancelError(ALREADY_HANDED_OVER[sale.kind])
+    if sale.released_at is not None:
+        raise CancelError(RELEASED_MESSAGE)
+    if due is not None and due <= now:
+        raise CancelError("This booking is past its cancellation window. Report a problem instead.")
+    if has_open_dispute(sale):
+        raise CancelError("A problem is open on this booking. Support will settle it first.")
+    share = cancellation.refund_share(sale.policy_snapshot, _policy_start(sale), now)
+    room = sale.base_pesewas - sale.refunded_base_pesewas
+    amount = room * share // cancellation.WHOLE if share < cancellation.WHOLE else room
+    if share == 0 or amount <= 0:
+        raise CancelError(f"Under this booking's cancellation policy nothing can be refunded now. {sale.policy_snapshot.get('text', '')}".strip())
+    return CancelQuote(amount, amount == room)
+
+
 def cancel_by_customer(sale, now=None):
     """The customer cancels their own paid booking under the policy it was paid under (Plan 7E): they get back
     `refund_share` of what is left of the price (the cut-off instant itself counts for them) plus the platform fee's
-    proportional share, through `refund`, and the booking is cancelled even when the host keeps a part. Raises
-    CancelError (409), changing nothing, for a sale paid before policies existed (only Support cancels it), one already
-    cancelled or refunded in full, released, handed over or past its release milestone (that is a dispute, not a cancel),
-    with a dispute open, or when the policy gives nothing back now. Returns the BookingRefund."""
+    proportional share, through `refund`, and the booking is cancelled even when the host keeps a part. What they get
+    is `cancel_quote`'s amount. Raises CancelError (409), changing nothing, for the reasons `cancel_quote` lists.
+    Returns the BookingRefund."""
     now = now or timezone.now()
     if not escrow.enabled():
         raise CancelError("The ledger is off.")
     with transaction.atomic():
         sale = lock(sale)
-        if sale.policy_snapshot is None:
-            raise CancelError("This booking can only be cancelled by AshantiHub Support. Use Contact Support.")
-        if sale.reversed_at is not None or BookingRefund.objects.filter(sale=sale, source=CUSTOMER_SOURCE).exists():
-            raise CancelError("This booking was already cancelled.")
-        due = release_at(sale, now)
-        if handed_over_at(sale, now) is not None:
-            raise CancelError(ALREADY_HANDED_OVER[sale.kind])
-        if sale.released_at is not None or (due is not None and due <= now):
-            raise CancelError("This booking is past its cancellation window. Open a dispute instead.")
-        if has_open_dispute(sale):
-            raise CancelError("A problem is open on this booking. Support will settle it first.")
-        share = cancellation.refund_share(sale.policy_snapshot, _policy_start(sale), now)
-        room = sale.base_pesewas - sale.refunded_base_pesewas
-        amount = room * share // cancellation.WHOLE if share < cancellation.WHOLE else room
-        if share == 0 or amount <= 0:
-            raise CancelError(f"Under this booking's cancellation policy nothing can be refunded now. {sale.policy_snapshot.get('text', '')}".strip())
+        quote = cancel_quote(sale, now)
         cancelling = list(tickets_of(sale).filter(refunded_at__isnull=True, delivered_at__isnull=True).select_related("ticket_type__event", "purchased_by"))
         note = "Cancelled by the customer"
-        given = refund(sale, None if amount == room else amount, source=CUSTOMER_SOURCE, note=note, now=now)
+        given = refund(sale, None if quote.whole else quote.amount_pesewas, source=CUSTOMER_SOURCE, note=note, now=now)
         if not given.whole:  # the host keeps a share, but the booking itself is over
             _cancel_if_not_handed_over(sale, None, note, now)
         for ticket in cancelling:

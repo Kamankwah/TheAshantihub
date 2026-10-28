@@ -132,6 +132,17 @@ class PublishTests(TestCase):
                     self.record(self.lead, verb, method="POST", target_type="x", target_id="1")
                     self.assertEqual(self.message(queue)["payload"]["invalidate"], keys)
 
+    def test_support_calls_and_the_pickup_desk_refresh_live(self):
+        calls = ["ledger-order-verification", "ledger-booking-verification", "ledger-booking-cancel", "ledger-pickup-collected",
+                 "delivery-rider-deliver", "delivery-deliver"]
+        cases = [(verb, "perm.orders.verify", ["ledger-verification"]) for verb in calls]
+        cases.append(("ledger-pickup-collected", "perm.pickup.confirm", ["ledger-pickup"]))
+        for verb, group, keys in cases:
+            with self.subTest(verb=verb, group=group):
+                queue = self.listen(group)
+                self.record(self.lead, verb, method="POST", target_type="x", target_id="1")
+                self.assertEqual(self.message(queue)["payload"]["invalidate"], keys)
+
     def test_the_delivery_screens_follow_a_riders_steps_and_the_fleet_edits(self):
         cases = [
             ("delivery-rider-pickup", "perm.delivery.manage", ["delivery-live", "delivery-active", "delivery-job", "staff-badges"]),

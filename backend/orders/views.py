@@ -312,8 +312,15 @@ _LEGACY_STOP_READS = ("items__listing__business_owner__profile", "items__listing
 
 
 def _customer_orders(customer):
+    from django.db.models import CharField, Exists, OuterRef, Value
+    from django.db.models.functions import Cast, Concat
+
+    from ledger.models import Journal
+
+    # Whether the ledger recorded the payment, read by ledger.verification.collection_code without a query per order.
+    recorded = Exists(Journal.objects.filter(key=Concat(Value("order-pay-"), Cast(OuterRef("pk"), CharField()))))
     return (
-        Order.objects.filter(customer=customer).select_related("delivery_assignment", "coupon")
+        Order.objects.filter(customer=customer).annotate(pay_recorded=recorded).select_related("delivery_assignment", "coupon", "fulfilment_check")
         .prefetch_related("delivery_assignment__stops", *_LEGACY_STOP_READS, _open_redeliveries())
     )
 

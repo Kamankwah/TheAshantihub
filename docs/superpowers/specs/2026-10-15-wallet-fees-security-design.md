@@ -179,6 +179,7 @@ paid before the policies existed keep Support-only cancellation. After the miles
 `verification_overdue_hours` (72) now applies to products only.
 
 Built in Plan 7E (docs/superpowers/plans/2026-10-18-wallet-rulings-7e-milestone-release-and-cancellation-policies.md).
+Customer screens: Plan 7G (docs/superpowers/plans/2026-10-20-wallet-rulings-7g-customer-booking-buttons.md).
 
 ### 4.3 Store pickup and the Pickup Desk
 
@@ -1056,12 +1057,16 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
 - (lxxii) **SA4: a customer's stay cancel has no date bound.** It is refused only after check-in, so a guest who stayed
   but whose owner never tapped check-in can cancel after check-out and take the refund from the business's Pending.
   Owner to decide a cut-off (for example the check-in date), or have Support's cancel be the only path then.
+  Update (7E, 7G): the customer cancel is now bounded by the release milestone, and the 7G screens offer it only while
+  the server says `can_cancel`; the check-in-date cut-off question above is otherwise unchanged.
 - (lxxiii) **Nothing lists sales not yet handed over.** `POST bookings/<sale id>/cancel/` takes a sale id, but Support's
   queue shows only handed-over bookings. Plan 1F needs a lookup (by customer, business or booking) before the cancel
   screen can find a sale.
 - (lxxiv) **No dispute path after release.** Once a booking's money is released a mismatch can no longer be logged
   through the call (`record_verification` refuses), and customers raise disputes only on orders. Owner to decide how a
   complaint after release is handled and recovered from the business's Available.
+  Update (7G): the customer screens send a released booking's complaint to Contact AshantiHub Support; recovery from
+  the business's Available is still open.
 - (lxxv) **Cross-reference to (lxvi):** a Hubtel success for a cancelled PENDING booking is not recorded; the fix there
   covers it.
 - (lxxvi) **Wallet-paid services, stays and tickets are also excluded from Collections.** The
@@ -1287,3 +1292,17 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   charges after the lock, and waives a fee only when it fits in what is left (else the customer pays the fee). The cart
   quote applies the same fit without a lock. Covered by `marketing/tests/test_platform_waivers.PlatformCapRaceTests`
   (threaded, run on its own).
+
+### Before LEDGER_ENABLED / SUBSCRIPTIONS_ENABLED change — Plan 1F (fees, verification, pickup screens)
+
+- **DONE 2026-10-28, Frontend screens (Plan 1F, built; both switches unchanged):** the Pickup Desk's overview is the desk (`PickupDeskPanel`, also the Super Admin's `pickup-desk` item), Support's `VerificationCallsPanel` (orders, bookings and a Cancel a booking tab, with `CallOutcomeForm`), the Super Admin's Verification calls and Pickup desk items after Scheduled orders, the Accountant's Money rules under More tools, the registration "business type" step, the dashboard with no plan UI when no plan is offered, and the pay screens (service, tickets, stay) through `useBookingPayment` with the server's processing charge. Query-key roots `ledger-verification`, `ledger-pickup`, `stay-quote`.
+- **Built gates and items:** (b) hero days; (f) registration uses `POST /api/billing/business-kind/`; gate (ii) (paginated queues, desk lists only ledger-recorded orders); gate (viii), screens (checkout, the customer's order, the business's order card say store pickup is collected at the AshantiHub office); (lxii) the Accountant's ticket screen follows the ledger; (lxiv) and (lxxiii) Support's booking queue, call and cancel; (lxv) the ticket purchase quotes the processing charge; (lxvii)/(lxxvii) the accept screen shows the server's price error and sends a decimal string; (xxxii) built: `PayoutDetailUpdateView` forces the payout step-up while the ledger is on (commit a6e70cb6), checked in Task 9 Step 6 now that 2F is merged.
+- **Director rulings recorded as built here:** 4 (homepage-banner days for a business with no plan = 7, maximum still 30), 5 (a one-time collection code; the office address is a Super Admin setting, "address to be confirmed" while blank, never invented) and 8 (Verification calls and Pickup desk in the Super Admin's Marketplace group).
+- **Facts of the collection code (Task 2):** made at payment, checked with `compare_digest`; the fifth wrong code answers 423 `code_locked` and tells Support once; a second collect of a collected order answers 409 "already collected"; the customer's order view shows the pickup note only when the server sent a `collection_code`; it is in no staff payload and no log. The Accountant reaches Money rules under More tools.
+- **Still open (backend, must be done before `SUBSCRIPTIONS_ENABLED` is turned off):** (a) the overdue clock with the switch off, (c) the "No subscription." moderation check, (d) paused businesses staying hidden, (e) drafts before `business_kind`.
+- **Not in 1F:** gate (lxxxiii) booking sales on the vendor money screens and their texts (Plan 4F Tasks 1, 2 and 4); the 7E customer side (a stay or ticket "Report a problem", the customer's ticket-purchase cancel), which is Plan 7G.
+- **Verification run 2026-10-28:** `LedgerScreensSweep.test.jsx` (no `wa.me`, no `tel:` on the desk or the cancel tab, no business phone value, no collection code, no `NaN`/`undefined`, every GH₵ amount inside a `[data-amount]` element, money in tabular figures and never gold). Before the final-review fixes: full Vitest 2849/2851 passed, the 2 failures being load timeouts that pass alone (StaffDashboard analytics and the AdminCommandCenter "reconciliation fraud link gate"), `npm run build` OK, backend (`ledger core listings orders bookings events accounts realtime insights`) Ran 2149 tests, OK. After the final-review fix wave: full Vitest 315 files, 2860/2860 passed; `npm run build` OK; backend `ledger core bookings` Ran 689 tests, OK.
+- **Final-review rulings (1F):** the pickup-lock notice to Support links to `support-order-status` (a locked, never-collected order is not on the verification list) and names the order number in its body, never the code; the hand-over door `PickupCollectedView` is deliberately not gated by the ledger flag (it needs the order's code, which only a ledger-paid order has), so only the queue answers `409 ledger_off`; checkout promises a collection code only when the wallet answered "on".
+- **Still open (wording):** before `SUBSCRIPTIONS_ENABLED` is turned off, the PaymentsPanel and reminder "renews" wording, which shows when no plans are offered, must change (`SubscriptionPanel` already says "runs until").
+- **Owed on staging before the switches are turned on (not performed in 1F):** with `LEDGER_ENABLED=1`, a store-pickup order paid with its code on the customer's order, the desk refusing a wrong code and handing over with the right one, five wrong codes locking it; the address blank ("to be confirmed") then set by a Super Admin; Support's call "Matches" with the password; a booking call; a booking cancel; a service paid by wallet and by MoMo; tickets for a business event and for a customer event; a stay. With `SUBSCRIPTIONS_ENABLED=0`: the business-type step, the dashboard with no plan UI, and an approved hero for a business with no plan running 7 days. Each new staff screen (the Super Admin's two items included) at 360, 768 and 1280 px, and `node scripts/staff-layout-audit.js` (needs a preview build and the API on 8110 with seeded staff).
+- **Found while building 1F:** (1) the new staff queues have no nav badge, because the server sends no count for them. (2) Plan 4F Task 12 makes the same `ServicesPanel` `call()` change and creates the same `ServicesPanel.test.jsx`: a merge conflict is expected. (3) The `AdminCommandCenter` "reconciliation fraud link gate" test times out at 5 s on the base commit under load (pre-existing).

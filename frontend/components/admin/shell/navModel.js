@@ -74,6 +74,10 @@ export const NAV_ITEMS = [
   // The Scheduled list for whoever manages deliveries without the Delivery Manager menu (orders.manage_delivery reads it
   // and, since Director ruling 7, may Send now as well). The Delivery Manager has dm-scheduled instead.
   { id: "delivery-scheduled", icon: "🕒", label: "Scheduled orders", show: (auth) => (auth.hasPermission("orders.manage_delivery") || auth.hasPermission("delivery.manage")) && auth.user?.role !== "delivery_manager" },
+  // Support rings the customer before a product order's money is paid out; the Super Admin opens it from Marketplace (Director ruling 8).
+  { id: "support-verification", icon: "📞", label: "Verification calls", show: (auth) => supportOnly(auth, "orders.verify") || (saOnly(auth) && auth.hasPermission("orders.verify")) },
+  // The Pickup Desk's own screen is its overview (no nav item); the Super Admin opens it here (Director ruling 8).
+  { id: "pickup-desk", icon: "🏬", label: "Pickup desk", show: (auth) => saOnly(auth) && auth.hasPermission("pickup.confirm") },
   { id: "my-deliveries", icon: "📦", label: "My Deliveries", show: (auth) => auth.hasPermission("delivery.dispatch") },
   { id: "categories-zones", icon: "🗂️", label: "Categories & Zones", show: (auth) => auth.hasPermission("categories.manage") || auth.hasPermission("zones.manage") },
   { id: "promotions", icon: "🎯", label: "Promotions", show: (auth) => auth.hasPermission("promotions.manage") },
@@ -180,7 +184,7 @@ export const NAV_ITEMS = [
   { id: "notification-center", icon: "🔔", label: "Notification center", show: saOnly },
   { id: "staff-announcements", icon: "📣", label: "Staff announcements", show: saOnly },
   { id: "approval-rules", icon: "⏱️", label: "Approval rules & timers", show: saOnly },
-  { id: "money-rules", icon: "💰", label: "Money rules", show: saOnly },
+  { id: "money-rules", icon: "💰", label: "Money rules", show: (auth) => saOnly(auth) || acctOnly(auth, "fees.view") || acctOnly(auth, "fees.manage") },
   { id: "delivery-pricing", icon: "🛵", label: "Delivery pricing", show: saOnly },
   { id: "tax-tables", icon: "📑", label: "Tax tables", show: saOnly },
   { id: "integrations", icon: "🔌", label: "Integrations", show: saOnly },
@@ -234,9 +238,9 @@ const ROLE_MENUS = {
     ["people", "People", ["staff", "teams-reporting", "invites", "roles-permissions", "sessions", "leave"]],
     ["teams", "Teams (step in)", ["step-in-operations", "step-in-support", "step-in-delivery", "step-in-marketing", "step-in-accounting"]],
     // Scheduled orders (paid orders held until their shops open, with Send now) sits beside Orders & deliveries:
-    // Director ruling 7 (2026-10-20) added it to the canvas menu. Re-deliveries and Free delivery follow it (wallet 5F,
-    // Director ruling 8). Plan 1F's Pickup Desk menu is not on this base, so the Pickup Desk finds Re-deliveries in its default "System" group until Plan 1F gives the role a Desk menu.
-    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "redeliveries", "mk-delivery-promos", "events-moderation", "hero", "disputes"]],
+    // Director ruling 7 (2026-10-20) added it to the canvas menu. Verification calls and Pickup desk (Plan 1F),
+    // then Re-deliveries and Free delivery (wallet 5F, Director ruling 8) follow it.
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "support-verification", "pickup-desk", "redeliveries", "mk-delivery-promos", "events-moderation", "hero", "disputes"]],
     ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation", "wallets", "withdrawals"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
@@ -295,7 +299,7 @@ const ROLE_MENUS = {
   // their panels and permissions are untouched (see EXHAUSTIVE_MENU_ROLES).
   support: [
     ["inbox", "Inbox", ["support-mine", "support-unassigned", "support-all-open", "support-past-limit", "support-snoozed", "support-resolved"]],
-    ["calls", "Calls", ["calls", "support-log-call"]],
+    ["calls", "Calls", ["calls", "support-log-call", "support-verification"]],
     ["queues", "Queues", ["contact-messages", "reviews", "disputes", "support-order-status"]],
     ["knowledge", "Knowledge", ["support-canned", "support-tags"]],
     ["people", "People", ["users"]],
@@ -331,11 +335,17 @@ const ROLE_MENUS = {
     ["decisions", "Decisions", ["approvals"]],
     ["account", "Account", ["security"]],
   ],
+  // The pickup desk: its one screen is the Overview; Re-deliveries (wallet 5F, gated by orders.redeliver)
+  // and the account tools sit in the menu.
+  pickup_desk: [
+    ["desk", "Desk", ["redeliveries"]],
+    ["account", "Account", ["security", "activity"]],
+  ],
 };
 
 // Roles whose menu is the whole menu: a screen the canvas leaves out is not
 // offered under "More tools" either (its permission and panel stay).
-const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner", "support", "delivery_manager", "dispatch", "marketing"]);
+const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner", "support", "delivery_manager", "dispatch", "marketing", "pickup_desk"]);
 
 // Nav ids whose screen is not built yet, per role; AdminCommandCenter renders the
 // "being built" panel for them. A package that builds one swaps its panel in and
@@ -378,7 +388,7 @@ const ROLE_LABELS = {
   },
 };
 // The pinned Overview: "Today" for a scout, the canvas's "Command center" for Super Admin, "Live operations" for the Delivery Manager.
-export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" ? "Command center" : role === "delivery_manager" ? "Live operations" : role === "dispatch" ? "Shift" : "Overview");
+export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" ? "Command center" : role === "delivery_manager" ? "Live operations" : role === "dispatch" ? "Shift" : role === "pickup_desk" ? "Pickup desk" : "Overview");
 const toNavItem = ({ id, icon, label }, role) => ({ id, icon, label: ROLE_LABELS[role]?.[id] || label });
 
 export function buildNavGroups(auth) {

@@ -9,7 +9,7 @@ import { when } from "./sessionParts.jsx";
 
 export const ROLE_LABEL = {
   super_admin: "Super Admin", operations: "Operations", delivery_manager: "Delivery Manager", accountant: "Accounting",
-  marketing: "Marketing", support: "Support", scout: "Scout", dispatch: "Dispatch", cosigner: "Co-signer",
+  marketing: "Marketing", support: "Support", scout: "Scout", dispatch: "Dispatch", cosigner: "Co-signer", pickup_desk: "Pickup Desk",
 };
 export const roleLabel = (role) => ROLE_LABEL[role] || role;
 
