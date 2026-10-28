@@ -62,7 +62,13 @@ class DeliveryPreviewView(APIView):
     def get(self, request):
         cart = Cart.objects.filter(customer=request.user).first()
         items = list(cart.items.select_related("listing")) if cart is not None else []
-        return Response(hold.quote(items, request.query_params.get("fulfilment") or Order.DOOR_TO_DOOR))
+        fulfilment = request.query_params.get("fulfilment") or Order.DOOR_TO_DOOR
+        params = request.query_params
+        # The delivery fee checkout will add, whether or not promotions are on (null for store pickup or fees off).
+        from delivery.rates import cart_delivery_quote
+
+        delivery = cart_delivery_quote(items, fulfilment, params.get("lat"), params.get("lng"))
+        return Response({**hold.quote(items, fulfilment), "delivery": delivery})
 
 
 class OrderCheckoutView(APIView):
