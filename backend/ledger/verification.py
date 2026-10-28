@@ -195,7 +195,7 @@ def _tell_support_of_lock(order):
 
     notify_staff_role(
         "orders.verify", "pickup_code_locked", "A collection code was entered wrongly 5 times",
-        body=f"Order #{order.pk} is locked at the pickup desk. Please call the customer.", link="support-verification", icon="🔒",
+        body=f"Order #{order.pk} is locked at the pickup desk. Look it up by number in Order status.", link="support-order-status", icon="🔒",
     )
 
 

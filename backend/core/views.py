@@ -87,7 +87,13 @@ class SiteSettingsView(generics.RetrieveUpdateAPIView):
     def perform_update(self, serializer):
         instance = serializer.instance
         before = {f: getattr(instance, f) for f in SITE_SETTINGS_FIELDS}
-        settings_row = serializer.save()
+        # Save only the fields this request validated: a whole-row save would write back a stale in-memory
+        # pickup_office_address (that one is set only through its own Super Admin door).
+        settings_row = serializer.instance
+        for field, value in serializer.validated_data.items():
+            setattr(settings_row, field, value)
+        if serializer.validated_data:
+            settings_row.save(update_fields=list(serializer.validated_data))
         after = {f: getattr(settings_row, f) for f in SITE_SETTINGS_FIELDS}
         changed = [f for f in SITE_SETTINGS_FIELDS if before[f] != after[f]]
         if changed:
@@ -115,6 +121,8 @@ class PickupAddressView(APIView):
 
     def patch(self, request):
         require_sudo(request)
+        if not isinstance(request.data, dict):
+            return Response({"pickup_office_address": ["Send the address as a JSON object."]}, status=400)
         value = request.data.get("pickup_office_address")
         if not isinstance(value, str):
             return Response({"pickup_office_address": ["Enter the address as text, or leave it blank."]}, status=400)

@@ -38,6 +38,11 @@ class BookingLookupApiTests(BookingBase):
         self.assertIn(stay.pk, self.ids(str(stay.booking_id)))
         self.assertIn(stay.pk, self.ids(f"#{stay.pk}"))
 
+    def test_a_non_ascii_digit_search_is_not_a_500(self):
+        self.paid_service()
+        for q in ("²", "#²", "٣٤"):
+            self.assertEqual(self.search(q).status_code, 200, q)
+
     def test_finds_by_customer_name_phone_and_business(self):
         sale = self.paid_service()
         self.assertEqual(self.ids("ama owu"), [sale.pk])

@@ -47,7 +47,7 @@ class BookingAvailabilityView(APIView):
         raw_units = request.query_params.get("units")
         units = 1
         if raw_units is not None:
-            if not raw_units.isascii() or not raw_units.isdigit() or int(raw_units) < 1:
+            if not raw_units.isascii() or not raw_units.isdigit() or len(raw_units) > 9 or int(raw_units) < 1:
                 return Response({"units": "Enter a whole number of units, 1 or more."}, status=400)
             units = int(raw_units)
         free = min_units_free(listing, check_in, check_out)

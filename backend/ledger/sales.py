@@ -533,7 +533,7 @@ def lookup(q, now=None):
         return qs
     found = Q()
     number = q.lstrip("#")
-    if number.isdigit() and len(number) <= 9:
+    if number.isascii() and number.isdigit() and len(number) <= 9:
         found |= Q(pk=int(number)) | Q(service_request_id=int(number)) | Q(booking_id=int(number))
     found |= (
         Q(customer__full_name__icontains=q)

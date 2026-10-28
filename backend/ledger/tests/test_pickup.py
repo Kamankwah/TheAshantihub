@@ -268,9 +268,16 @@ class CollectionCodeTests(PickupBase):
         self.assertEqual(self.collect(order, bad).status_code, 423)
         
         notice = notices.get()
-        self.assertEqual(notice.link, "support-verification")
+        self.assertEqual(notice.link, "support-order-status")
         self.assertIn(f"#{order.pk}", notice.body)
         self.assertNotIn(self.code(order), notice.title + notice.body)
+
+    def test_a_non_object_body_is_a_400_not_a_500(self):
+        order = self.pickup_order()
+        self.as_staff(self.desk)
+        for body in ([], ["123456"], "123456", 5):
+            response = self.client.post(f"/api/ledger/pickup/{order.pk}/collected/", body, format="json")
+            self.assertEqual(response.status_code, 400, body)
 
     def test_a_used_code_works_no_more(self):
         order = self.pickup_order()

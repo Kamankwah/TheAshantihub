@@ -157,7 +157,7 @@ class BookingFlowTests(BookingTestsBase):
         self.assertEqual(body["units"], 2)
 
     def test_availability_refuses_a_bad_units_value(self):
-        for bad in ("0", "-1", "abc", "1.5", ""):
+        for bad in ("0", "-1", "abc", "1.5", "", "9" * 5000, "²"):
             response = self._availability(f"&units={bad}")
             self.assertEqual(response.status_code, 400, bad)
             self.assertEqual(response.json(), {"units": "Enter a whole number of units, 1 or more."}, bad)

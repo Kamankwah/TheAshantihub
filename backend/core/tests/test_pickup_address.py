@@ -45,6 +45,12 @@ class PickupAddressTests(TestCase):
         self.assertEqual(history[0]["changes"], [
             {"field": "pickup_office_address", "label": "Pickup office address", "before": "", "after": "Adum, Kumasi"}])
 
+    def test_a_non_object_body_is_a_400_not_a_500(self):
+        self.as_staff(self.super_admin)
+        for body in ([], ["x"], "text", 5):
+            response = self.client.patch(URL, body, format="json")
+            self.assertEqual(response.status_code, 400, body)
+
     def test_a_blank_address_clears_it_and_301_characters_are_refused(self):
         self.as_staff(self.super_admin)
         self.client.patch(URL, {"pickup_office_address": "Adum"}, format="json")

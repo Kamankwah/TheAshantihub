@@ -215,6 +215,8 @@ class PickupCollectedView(APIView):
 
     def post(self, request, pk):
         order = get_object_or_404(Order, pk=pk)
+        if not isinstance(request.data, dict):
+            return Response({"detail": "Send the collection code as a JSON object."}, status=400)
         try:
             check = verification.mark_collected(order, request.user, code=request.data.get("code"))
         except verification.VerificationError as exc:
