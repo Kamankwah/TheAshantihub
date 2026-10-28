@@ -159,4 +159,11 @@ monolith holding most components, with extractions living in `components/`,
   MSW wallet defaults in `mocks/handlers.js` are "ledger on, empty"; override with `server.use(...)`.
   `WalletNoInventionSweep.test.jsx` is the conformance contract for every wallet screen: add a new wallet
   screen to its list.
+- **Rider wallet and dispatch money screens (Plan 5F).** `RiderWalletHome` and `RiderWalletHistory` mount 3F's
+  destination, withdrawal and history components on `RIDER_WALLET_BASE` (`/api/delivery/rider/wallet`). The rider
+  Earnings tab (`RiderEarningsTab`) branches on `rider/me.rider.wallet`, then on the wallet's own 409 (`ledger_off`
+  or `wallet_disabled` falls back to the payroll earnings); no wallet call is made for an AshantiHub rider.
+  `RiderMoneyPanel` (staff) renders `acct-rider-payouts` and falls back to `AccountingShellPanel` on `ledger_off`,
+  so the shell's "No rider rate exists" text is only the ledger-off fallback. Balances that can go below zero use
+  `signedGhs`. `RiderMoneyNoInventionSweep.test.jsx` is the conformance contract for these screens.
 - **The vendor tab is "Money"** (`id: "money"`, one tab for payouts and the wallet), not "Payouts".
