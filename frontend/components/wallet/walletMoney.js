@@ -64,11 +64,3 @@ export function formatWhen(iso) {
   const d = iso ? new Date(iso) : null
   return d && !Number.isNaN(d.getTime()) ? DATE.format(d) : null
 }
-
-// A signed amount for the owner and rider screens: "-5.00" -> "−GH₵ 5.00" (U+2212 before the
-// currency, the glyph TransactionsList shows); anything else is formatGhs as is.
-// formatGhs itself is unchanged: it writes an ASCII hyphen, which WalletsPanel.test pins.
-export function signedGhs(value) {
-  const text = String(value ?? '').trim()
-  return text.startsWith('-') ? `−${formatGhs(text.slice(1))}` : formatGhs(text)
-}
