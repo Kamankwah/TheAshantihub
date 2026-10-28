@@ -17,10 +17,23 @@ import TextsSettings from './TextsSettings.jsx'
 export default function VendorMoney({ businessKind }) {
   const s = walletStyles('dashboard')
   const [sub, setSub] = useState('overview')
-  const { error, isLoading } = useVendorWalletOverview()
+  const { error, isLoading, refetch } = useVendorWalletOverview()
 
   if (error && walletMessage(error).kind === 'off') {
     return <div style={s.card}><div style={s.note}>{walletMessage(error).text}</div></div>
+  }
+
+  // Any other failure: one card and no sub-tabs. Mounting them would add a second observer whose refetch-on-mount
+  // sends the query back to pending, which would unmount them again, in a loop that keeps hitting the server.
+  if (error) {
+    return (
+      <div style={s.card}>
+        <div role="alert" style={s.error}>
+          {walletMessage(error).text}{' '}
+          <button type="button" style={s.ghost} onClick={() => refetch()}>Try again</button>
+        </div>
+      </div>
+    )
   }
 
   if (isLoading) return <div style={s.card}><div style={s.note}>Loading your money…</div></div>

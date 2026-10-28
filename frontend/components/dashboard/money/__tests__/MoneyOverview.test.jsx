@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import BusinessCommandCenter from '../../BusinessCommandCenter.jsx'
@@ -34,6 +34,22 @@ describe('MoneyOverview', () => {
     wrap(<MoneyOverview onOpenPayouts={() => {}} />)
     expect(await screen.findByRole('alert', {}, { timeout: 10000 })).toBeInTheDocument() // the hook retries a 500 twice first
   }, 15000)
+
+  it('test_a_failing_overview_shows_one_alert_stops_requesting_and_retries_on_demand', async () => {
+    let calls = 0
+    server.use(
+      http.get(`${API}/api/wallet/`, () => HttpResponse.json({ kind: 'vendor', pending: '120.00', available: '48.50' })),
+      http.get(`${API}/api/wallet/vendor/`, () => { calls += 1; return HttpResponse.json({ detail: 'boom' }, { status: 500 }) }),
+    )
+    wrap(<VendorMoney businessKind="product" />)
+    expect(await screen.findByRole('alert', {}, { timeout: 10000 })).toBeInTheDocument()
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+    const settled = calls
+    await new Promise((r) => setTimeout(r, 2500))
+    expect(calls).toBe(settled)
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(calls).toBeGreaterThan(settled))
+  }, 20000)
 
   it('test_ledger_off_shows_one_line_and_no_sub_tabs', async () => {
     off()
