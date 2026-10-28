@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
+import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { useIncomingServiceRequests } from "../../../hooks/useIncomingServiceRequests.js";
 import { useMyListings } from "../../../hooks/useMyListings.js";
 import { useCategories } from "../../../hooks/useCategories.js";
@@ -25,7 +26,7 @@ const STATUS_META = {
 
 function RequestCard({ sr, onChanged }) {
   const [mode, setMode] = useState(null); // "accept" | "decline" | "progress" | null
-  const [price, setPrice] = useState(sr.budget || "");
+  const [price, setPrice] = useState(sr.budget != null ? String(sr.budget) : "");
   const [reason, setReason] = useState("");
   const [note, setNote] = useState(sr.progress_note || "");
   const [actionError, setActionError] = useState(null);
@@ -34,7 +35,7 @@ function RequestCard({ sr, onChanged }) {
   const call = async (path, body) => {
     setActionError(null);
     try { await apiPost(`/api/services/requests/${sr.id}/${path}/`, body || {}); setMode(null); onChanged(); }
-    catch { setActionError("Could not complete that action. Please try again."); }
+    catch (err) { setActionError(apiErrorMessage(err, "Could not complete that action. Please try again.")); }
   };
 
   return (
@@ -74,8 +75,8 @@ function RequestCard({ sr, onChanged }) {
 
       {mode === "accept" && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <input type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="Your price (GHS)" style={{ ...inputStyle, width: 160 }} />
-          <button onClick={() => call("respond", { action: "accept", price })} disabled={!price} style={{ ...btn, background: D.green, color: "#fff", cursor: price ? "pointer" : "default" }}>Send quote</button>
+          <input type="text" inputMode="decimal" value={price} onChange={e => setPrice(e.target.value)} placeholder="Your price (GHS)" style={{ ...inputStyle, width: 160 }} />
+          <button onClick={() => call("respond", { action: "accept", price: price.trim() })} disabled={!price.trim()} style={{ ...btn, background: D.green, color: "#fff", cursor: price.trim() ? "pointer" : "default" }}>Send quote</button>
         </div>
       )}
       {mode === "decline" && (
