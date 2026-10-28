@@ -9,6 +9,7 @@ import DailySummary from './DailySummary.jsx'
 import SalesList from './SalesList.jsx'
 import StatementDownload from './StatementDownload.jsx'
 import FeesPage from './FeesPage.jsx'
+import TextsSettings from './TextsSettings.jsx'
 
 // The business dashboard's one Money tab (Director: Money and Payouts in one
 // tab). Only the selected sub-tab is mounted, so no other request fires.
@@ -31,6 +32,7 @@ export default function VendorMoney({ businessKind }) {
     { id: 'daily', label: 'Daily', render: () => <DailySummary /> },
     { id: 'statement', label: 'Statement', render: () => <StatementDownload /> },
     { id: 'fees', label: 'Fees', render: () => <FeesPage /> },
+    { id: 'texts', label: 'Texts', render: () => <TextsSettings /> },
   ]
   const current = SUB_TABS.find((t) => t.id === sub) || SUB_TABS[0]
 
