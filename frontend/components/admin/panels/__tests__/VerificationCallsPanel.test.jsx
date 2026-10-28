@@ -163,3 +163,101 @@ describe('Verification calls: orders', () => {
     expect(screen.queryByRole('button', { name: 'Order #41' })).toBeNull()
   })
 })
+
+const BOOKINGS = 'http://localhost:8000/api/ledger/bookings/awaiting-verification/'
+const BOOKING_POST = 'http://localhost:8000/api/ledger/bookings/:id/verification/'
+const sale = (over = {}) => ({
+  sale_id: 7, kind: 'service', label: 'service request #3', what: 'Plumbing repair', paid_at: '2026-10-20T08:00:00Z',
+  handed_over_at: '2026-10-21T08:00:00Z', due_by: '2026-10-23T08:00:00Z', overdue: false, business: 'Pipe Pros',
+  customer_name: 'Esi Owusu', customer_phone: '+233205556677', amount: '120.00', customer_confirmed: false,
+  outcome: '', outcome_note: '', dispute_id: null, ...over,
+})
+const iso = (s) => new Date(s).toLocaleString('en-GH')
+const openBookings = async () => fireEvent.click(await screen.findByRole('button', { name: 'Bookings' }))
+
+describe('Verification calls: bookings', () => {
+  it('bookings tab lists each sale with its release time from the server', async () => {
+    server.use(http.get(BOOKINGS, () => envelope([
+      sale(),
+      sale({ sale_id: 8, kind: 'stay', what: 'Two nights, Kumasi', business: 'Lodge', amount: '900.50', dispute_id: 12, customer_confirmed: true }),
+      sale({ sale_id: 9, kind: 'tickets', what: 'Jazz night', business: 'Events Co', amount: '60.00' }),
+    ])))
+    wrap(<VerificationCallsPanel auth={support} />)
+    await openBookings()
+    expect(await screen.findByText('Service')).toBeInTheDocument()
+    expect(screen.getByText(/^Services, stays and tickets are paid to the business by themselves at the time shown, unless a dispute is open\. A call can release one earlier/)).toBeInTheDocument()
+    expect(screen.getByText('Service')).toBeInTheDocument()
+    expect(screen.getByText('Stay')).toBeInTheDocument()
+    expect(screen.getByText('Tickets')).toBeInTheDocument()
+    expect(screen.getByText('Plumbing repair')).toBeInTheDocument()
+    expect(screen.getByText('Pipe Pros')).toBeInTheDocument()
+    expect(screen.getByText('GH₵120.00')).toBeInTheDocument()
+    expect(screen.getByText('GH₵900.50')).toBeInTheDocument()
+    expect(screen.getAllByText(`Paid ${iso('2026-10-20T08:00:00Z')}`)).toHaveLength(3)
+    expect(screen.getAllByText(`Received ${iso('2026-10-21T08:00:00Z')}`)).toHaveLength(3)
+    expect(screen.getAllByText(`Releases by itself ${iso('2026-10-23T08:00:00Z')}`)).toHaveLength(3)
+    expect(screen.getByText('Dispute #12')).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'Call +233205556677' })[0]).toHaveAttribute('href', 'tel:+233205556677')
+    expect(screen.getAllByText('Customer confirmed')).toHaveLength(1)
+  })
+
+  it('a scanned ticket still needs the spoke-to-the-customer tick before matches', async () => {
+    server.use(http.get(BOOKINGS, () => envelope([sale({ kind: 'tickets', what: 'Jazz night', customer_confirmed: true })])))
+    wrap(<VerificationCallsPanel auth={support} />)
+    await openBookings()
+    expect(await screen.findByText("Scanned at the door (the organiser's scan)")).toBeInTheDocument()
+    fireEvent.click(await openForm())
+    const submit = screen.getByRole('button', { name: 'Submit' })
+    expect(submit).toBeDisabled()
+    const tick = screen.getByRole('checkbox', { name: TICK })
+    expect(tick).not.toBeChecked()
+    fireEvent.click(tick)
+    expect(submit).toBeEnabled()
+  })
+
+  it('overdue reads as not released past its release time', async () => {
+    server.use(http.get(BOOKINGS, () => envelope([sale({ overdue: true })])))
+    wrap(<VerificationCallsPanel auth={support} />)
+    await openBookings()
+    expect(await screen.findByText('Not released: past its release time')).toBeInTheDocument()
+    expect(screen.queryByText(/^Releases by itself/)).toBeNull()
+  })
+
+  it('matches posts to the booking verification url', async () => {
+    const posts = []
+    server.use(
+      http.get(BOOKINGS, () => envelope([sale()])),
+      http.post(BOOKING_POST, async ({ request, params }) => { posts.push([params.id, await request.json()]); return HttpResponse.json({ sale: 7, outcome: 'matches', dispute_id: null, released: true }) }),
+    )
+    setSudoHandler(async () => true)
+    wrap(<VerificationCallsPanel auth={support} />)
+    await openBookings()
+    fireEvent.click(await openForm())
+    fireEvent.click(screen.getByRole('checkbox', { name: TICK }))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+    expect(await screen.findByText('Released to the business.')).toBeInTheDocument()
+    expect(posts).toEqual([['7', { outcome: 'matches', note: '', customer_confirmed_by_phone: true }]])
+  })
+
+  it('bookings tab ledger off shows the off line', async () => {
+    server.use(http.get(BOOKINGS, () => HttpResponse.json({ detail: "The ledger isn't switched on yet.", code: 'ledger_off' }, { status: 409 })))
+    wrap(<VerificationCallsPanel auth={support} />)
+    await openBookings()
+    expect(await screen.findByText('Verification calls open when the ledger is switched on.')).toBeInTheDocument()
+  })
+
+  it('bookings paging follows next', async () => {
+    const pages = []
+    server.use(http.get(BOOKINGS, ({ request }) => {
+      const n = new URL(request.url).searchParams.get('page')
+      pages.push(n)
+      return envelope([sale({ sale_id: n === '2' ? 21 : 7, what: n === '2' ? 'Second page job' : 'Plumbing repair' })], 25, n === '2' ? null : `${BOOKINGS}?page=2`)
+    }))
+    wrap(<VerificationCallsPanel auth={support} />)
+    await openBookings()
+    expect(await screen.findByText('Plumbing repair')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByText('Second page job')).toBeInTheDocument()
+    expect(pages).toEqual(['1', '2'])
+  })
+})

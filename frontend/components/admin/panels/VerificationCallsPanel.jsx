@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useOrdersAwaitingCall } from "../../../hooks/useVerificationCalls.js";
+import { useBookingsAwaitingCall, useOrdersAwaitingCall } from "../../../hooks/useVerificationCalls.js";
 import { walletMessage } from "../../wallet/walletErrors.js";
 import { D, glassCard } from "../theme.js";
 import CallOutcomeForm from "./CallOutcomeForm.jsx";
@@ -56,6 +56,39 @@ function OrderRow({ order, onNavigate, open, onToggle, onDone }) {
   );
 }
 
+const KIND_WORDS = { service: "Service", stay: "Stay", tickets: "Tickets" };
+const SCAN_NOTE = "Scanned at the door (the organiser's scan)";
+
+function BookingRow({ sale, open, onToggle, onDone }) {
+  const scanned = sale.kind === "tickets" && sale.customer_confirmed;
+  return (
+    <li style={{ ...glassCard, padding: 14, display: "flex", flexDirection: "column", gap: 8, listStyle: "none" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={chip(D.textDim)}>{KIND_WORDS[sale.kind] || sale.kind}</span>
+          <span style={{ color: D.text, fontWeight: 800 }}>{sale.what}</span>
+        </div>
+        <span style={{ color: D.text, fontWeight: 800, ...figures }}>GH₵{sale.amount}</span>
+      </div>
+      <div style={{ color: D.text, fontSize: "0.85rem" }}>{sale.business}</div>
+      <CustomerLine name={sale.customer_name} phone={sale.customer_phone} />
+      <div style={{ ...dim, ...figures, display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <span>Paid {when(sale.paid_at)}</span>
+        <span>Received {when(sale.handed_over_at)}</span>
+        {!sale.overdue && sale.due_by && <span>Releases by itself {when(sale.due_by)}</span>}
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        {sale.overdue && <span style={chip(D.amber)}>Not released: past its release time</span>}
+        {sale.dispute_id && <span style={chip(D.red)}>Dispute #{sale.dispute_id}</span>}
+        {sale.customer_confirmed && <span style={chip(D.green)}>{scanned ? SCAN_NOTE : "Customer confirmed"}</span>}
+      </div>
+      <LastCall outcome={sale.outcome} note={sale.outcome_note} />
+      <div><button type="button" onClick={onToggle} aria-expanded={open} style={button(D.panelBg, D.text, false)}>Record the call</button></div>
+      {open && <CallOutcomeForm subject="booking" id={sale.sale_id} customerConfirmed={sale.customer_confirmed} confirmedByScan={scanned} onDone={onDone} />}
+    </li>
+  );
+}
+
 export function Paging({ pageNo, setPageNo, count }) {
   if (count <= PAGE_SIZE) return null;
   const first = pageNo <= 1;
@@ -85,34 +118,57 @@ export function QueueBody({ query, emptyText, label, renderRow, pageNo, setPageN
   );
 }
 
-export default function VerificationCallsPanel({ auth, onNavigate }) {
-  void auth;
-  const queryClient = useQueryClient();
-  const [tab, setTab] = useState("orders");
+// Each tab owns its hook, page and open form, so only the visible queue is fetched; switching tabs remounts it.
+function OrdersTab({ onNavigate, onNotice }) {
   const [pageNo, setPageNo] = useState(1);
   const [openId, setOpenId] = useState(null);
+  const query = useOrdersAwaitingCall({ page: pageNo });
+  return (
+    <>
+      <div style={dim}>A product order is paid to the business only after this call.</div>
+      <QueueBody query={query} emptyText="No order is waiting for a call." label="Orders waiting for a call" pageNo={pageNo} setPageNo={setPageNo}
+        renderRow={(order) => (
+          <OrderRow key={order.order_id} order={order} onNavigate={onNavigate} open={openId === order.order_id}
+            onToggle={() => { onNotice(""); setOpenId(openId === order.order_id ? null : order.order_id); }}
+            onDone={(text) => { setOpenId(null); onNotice(text); }} />
+        )} />
+    </>
+  );
+}
+
+function BookingsTab({ onNotice }) {
+  const [pageNo, setPageNo] = useState(1);
+  const [openId, setOpenId] = useState(null);
+  const query = useBookingsAwaitingCall({ page: pageNo });
+  return (
+    <>
+      <div style={dim}>Services, stays and tickets are paid to the business by themselves at the time shown, unless a dispute is open. A call can release one earlier (Matches), open a dispute (Does not match) or note that you could not reach the customer.</div>
+      <QueueBody query={query} emptyText="No booking is waiting for a call." label="Bookings waiting for a call" pageNo={pageNo} setPageNo={setPageNo}
+        renderRow={(sale) => (
+          <BookingRow key={sale.sale_id} sale={sale} open={openId === sale.sale_id}
+            onToggle={() => { onNotice(""); setOpenId(openId === sale.sale_id ? null : sale.sale_id); }}
+            onDone={(text) => { setOpenId(null); onNotice(text); }} />
+        )} />
+    </>
+  );
+}
+
+export default function VerificationCallsPanel({ onNavigate }) {
+  const queryClient = useQueryClient();
+  const [tab, setTab] = useState("orders");
   const [notice, setNotice] = useState("");
-  const orders = useOrdersAwaitingCall({ page: pageNo });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["ledger-verification"] });
-  const switchTab = (next) => { setTab(next); setPageNo(1); setOpenId(null); setNotice(""); };
-  const done = (text) => { setOpenId(null); setNotice(text); };
+  const switchTab = (next) => { setTab(next); setNotice(""); };
   return (
     <div style={page}>
       <Title right={<button type="button" onClick={refresh} style={button(D.panelBg, D.text, false)}>Refresh</button>}>Verification calls</Title>
       <div role="group" aria-label="Queues" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button type="button" aria-pressed={tab === "orders"} onClick={() => switchTab("orders")} style={pill(tab === "orders")}>Orders</button>
+        <button type="button" aria-pressed={tab === "bookings"} onClick={() => switchTab("bookings")} style={pill(tab === "bookings")}>Bookings</button>
       </div>
       {notice && <div role="status" style={callout(D.green)}>{notice}</div>}
-      {tab === "orders" && (
-        <>
-          <div style={dim}>A product order is paid to the business only after this call.</div>
-          <QueueBody query={orders} emptyText="No order is waiting for a call." label="Orders waiting for a call" pageNo={pageNo} setPageNo={setPageNo}
-            renderRow={(order) => (
-              <OrderRow key={order.order_id} order={order} onNavigate={onNavigate} open={openId === order.order_id}
-                onToggle={() => { setNotice(""); setOpenId(openId === order.order_id ? null : order.order_id); }} onDone={done} />
-            )} />
-        </>
-      )}
+      {tab === "orders" && <OrdersTab onNavigate={onNavigate} onNotice={setNotice} />}
+      {tab === "bookings" && <BookingsTab onNotice={setNotice} />}
     </div>
   );
 }
