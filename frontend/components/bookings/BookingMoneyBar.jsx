@@ -23,11 +23,14 @@ export default function BookingMoneyBar({ kind, money, cancelPath, reportPath, a
   const P = payeeWord(kind);
   const finish = (message) => {
     setPanel(null);
-    setResult(message);
+    setResult({ message, signature: JSON.stringify(money) });
     queryClient.invalidateQueries({ queryKey: ["wallet"] });
     onChanged?.();
   };
 
+  // The local confirmation shows only while the parent still passes the money it had at finish; a refetch hands over
+  // the server's new state, which then replaces the sentence.
+  const showResult = result && result.signature === JSON.stringify(money);
   const pending = !!money.policy && !money.released_at && !money.refunded && !money.problem;
   const label = pending ? policyLabel(money.policy, terms.data) : null;
   const legacy = !money.policy && !money.released_at && !money.refunded_whole;
@@ -38,8 +41,8 @@ export default function BookingMoneyBar({ kind, money, cancelPath, reportPath, a
 
   return (
     <div style={{ marginTop: 10, padding: 12, borderRadius: 12, border: `1px solid ${D.cardBorder}`, background: D.panelBg2, display: "flex", flexDirection: "column", gap: 8 }}>
-      {result ? (
-        <div role="status" style={{ color: D.text, fontSize: "0.76rem", fontVariantNumeric: "tabular-nums" }}>{result}</div>
+      {showResult ? (
+        <div role="status" style={{ color: D.text, fontSize: "0.76rem", fontVariantNumeric: "tabular-nums" }}>{result.message}</div>
       ) : (
         <>
           <div role="status" style={{ display: "flex", flexDirection: "column", gap: 4 }}>

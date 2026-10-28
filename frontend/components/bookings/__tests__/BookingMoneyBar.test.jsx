@@ -117,6 +117,35 @@ describe('BookingMoneyBar', () => {
     expect(onChanged).toHaveBeenCalledTimes(1)
   })
 
+  it('returns to the server money state after a refetch', async () => {
+    server.use(
+      http.get(`${API}/api/ledger/bookings/12/cancel-quote/`, () => HttpResponse.json({ refund: '150.00', whole: false })),
+      http.post(`${API}/api/bookings/5/cancel/`, () => HttpResponse.json({ id: 5, wallet_refund: '140.00' })),
+    )
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const props = { kind: 'stay', cancelPath: '/api/bookings/5/cancel/', reportPath: '/x/', about: { name: 'L' }, onChanged: () => {}, onContactSupport: () => {} }
+    const tree = (m) => <QueryClientProvider client={client}><BookingMoneyBar {...props} money={m} /></QueryClientProvider>
+    const first = money()
+    const { rerender } = render(tree(first))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel booking' }))
+    expect(await screen.findByText(/^Cancelled\./)).toBeInTheDocument()
+    rerender(tree(money({ refunded: '150.00', refunded_whole: false, can_cancel: false, can_report: false })))
+    expect(await screen.findByText('GH₵ 150.00 went back to your AshantiHub wallet.')).toBeInTheDocument()
+    expect(screen.queryByText(/^Cancelled\./)).toBeNull()
+  })
+
+  it('says only Cancelled when the server returns no refund', async () => {
+    server.use(
+      http.get(`${API}/api/ledger/bookings/12/cancel-quote/`, () => HttpResponse.json({ refund: '0.00', whole: false })),
+      http.post(`${API}/api/bookings/5/cancel/`, () => HttpResponse.json({ id: 5 })),
+    )
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel booking' }))
+    expect(await screen.findByText('Cancelled.')).toBeInTheDocument()
+  })
+
   it('says no refund for a no-refunds ticket policy and offers no Cancel', () => {
     mount({ kind: 'tickets', money: money({ policy: { policy: 'none', tiers: [], text: 'No refunds after purchase, except for a cancelled event.' }, can_cancel: false }) })
     expect(screen.getByText('No refunds after purchase, except for a cancelled event.')).toBeInTheDocument()
