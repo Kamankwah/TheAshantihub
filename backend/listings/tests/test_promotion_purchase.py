@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -10,6 +10,7 @@ from billing.models import Transaction
 from listings.models import Category, Listing, Promotion, Zone
 
 
+@override_settings(PROMOTION_PRICING_ENABLED=True)
 class PromotionPurchaseTests(TestCase):
     def setUp(self):
         self.client = APIClient()

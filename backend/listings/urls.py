@@ -62,6 +62,7 @@ urlpatterns = [
     path("zones/<int:pk>/", views.ZoneDetailView.as_view(), name="zone-detail"),
     # Before the `<int:pk>/` patterns below, so "promotions" is never parsed
     # as a listing id.
+    path("promotions/pricing/", views.PromotionPricingView.as_view(), name="promotion-pricing"),
     path("promotions/", views.PromotionAdminListView.as_view(), name="promotion-admin-list"),
     path(
         "promotions/<int:pk>/approve/",

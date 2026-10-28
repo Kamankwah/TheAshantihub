@@ -3,6 +3,7 @@ import { apiPost, apiPatch, apiPostForm } from "../../../apiClient.js";
 import { useMyListings, DEFAULT_LISTINGS_PATH } from "../../../hooks/useMyListings.js";
 import { useMyHeroSubmission } from "../../../hooks/useMyHeroSubmission.js";
 import HeroSlideForm from "../HeroSlideForm.jsx";
+import PromotionsHubPanel from "./PromotionsHubPanel.jsx";
 import { useCategories } from "../../../hooks/useCategories.js";
 import { CategoryOptions } from "../../../lib/categoryOptions.jsx";
 import { useZones } from "../../../hooks/useZones.js";
@@ -121,12 +122,6 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   const [heroExtendDays, setHeroExtendDays] = useState(7);
   const [showHeroExtendPay, setShowHeroExtendPay] = useState(false);
   const [promoteListingId, setPromoteListingId] = useState(null);
-  const [promoteKind, setPromoteKind] = useState("featured");
-  const [promoteDays, setPromoteDays] = useState(7);
-  const [promoteKeywords, setPromoteKeywords] = useState("");
-  const [promoteActionError, setPromoteActionError] = useState(null);
-  const [promoteResult, setPromoteResult] = useState(null);
-  const [showPromotePay, setShowPromotePay] = useState(false);
 
   const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings(true, basePath);
   const { data: heroSubmission, refetch: refetchHeroSubmission } = useMyHeroSubmission();
@@ -272,37 +267,6 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
     catch (err) { setHeroActionError("Payment was confirmed but we couldn't extend your Hero Spotlight. Please contact support with reference " + ref + "."); }
   };
 
-  const submitPromotion = async () => {
-    if (!promoteListingId) return;
-    if (promoteKind === "boost" && !promoteKeywords.trim()) return;
-    setPromoteActionError(null);
-    try {
-      const body = { kind: promoteKind, days: promoteDays };
-      if (promoteKind === "boost") body.keywords = promoteKeywords.trim();
-      const res = await apiPost(`/api/listings/${promoteListingId}/promote/`, body);
-      // Hubtel integration (docs/HUBTEL_INTEGRATION.md) — same "added for
-      // consistency, currently inert" note as extendHeroSubmission above:
-      // ListingPromoteView isn't routed through process_payment() yet, so
-      // `res` never actually carries a "mode" field today. Checked here
-      // (right after this apiPost, not in confirmPromotion below) because
-      // this flow is apiPost-first — the promotion is already fully applied
-      // by the time PaymentComponent opens, unlike the pay-first call sites
-      // elsewhere in this app.
-      if (res?.mode === "redirect") {
-        window.location.href = res.checkout_url;
-        return;
-      }
-      setPromoteResult(res); setPromoteListingId(null); setShowPromotePay(true);
-    } catch (err) {
-      setPromoteActionError("Could not create this promotion — it may already be active on this listing, or the listing isn't published yet.");
-    }
-  };
-
-  const confirmPromotion = () => {
-    setShowPromotePay(false); setPromoteResult(null); setPromoteKind("featured");
-    setPromoteDays(7); setPromoteKeywords(""); toast(); refetchListings();
-  };
-
   const daysSince = (date) => Math.floor((new Date() - new Date(date)) / 86400000);
   const freshnessColor = (date) => { const d = daysSince(date); return d <= 7 ? D.green : d <= 30 ? D.amber : D.red; };
   const freshnessLabel = (date) => { const d = daysSince(date); return d === 0 ? "Today" : d <= 7 ? `${d}d ago` : d <= 30 ? `${d}d ago ⚠️` : `${d}d ago 🔴`; };
@@ -311,9 +275,6 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
     <>
       {showHeroExtendPay && heroSubmission?.id && PaymentComponent && (
         <PaymentComponent amount={heroExtendDays * 5} purpose={`Extend Hero Spotlight — ${heroExtendDays} day${heroExtendDays === 1 ? "" : "s"}`} businessName={user?.fullName || "Your Business"} onSuccess={extendHeroSubmission} onClose={() => setShowHeroExtendPay(false)} />
-      )}
-      {showPromotePay && promoteResult && PaymentComponent && (
-        <PaymentComponent amount={Number(promoteResult.amount_paid)} purpose={`${promoteResult.kind === "boost" ? "Boost" : "Featured"} promotion — ${promoteResult.kind === "boost" ? promoteResult.keywords : "listing"}`} businessName={user?.fullName || "Your Business"} onSuccess={confirmPromotion} onClose={() => setShowPromotePay(false)} />
       )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
@@ -444,32 +405,11 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
 
       {promoteListingId && (
         <div style={{ ...glassCard, padding: "14px 16px", marginBottom: 14, border: `2px solid ${D.cardBorderStrong}` }}>
-          <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text, marginBottom: 10 }}>📣 Promote "{listingList.find(l => l.id === promoteListingId)?.name}"</div>
-          <div style={{ display: "grid", gridTemplateColumns: promoteKind === "boost" ? "1fr 1fr 1fr" : "1fr 1fr", gap: 10, marginBottom: 10 }}>
-            <div>
-              <label style={labelStyle}>Type</label>
-              <select value={promoteKind} onChange={e => setPromoteKind(e.target.value)} style={inputStyle}>
-                <option value="featured">Featured</option>
-                <option value="boost">Boost</option>
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Days</label>
-              <input type="number" min={1} value={promoteDays} onChange={e => setPromoteDays(Math.max(1, Number(e.target.value) || 1))} style={inputStyle} />
-            </div>
-            {promoteKind === "boost" && (
-              <div>
-                <label style={labelStyle}>Keywords</label>
-                <input value={promoteKeywords} onChange={e => setPromoteKeywords(e.target.value)} placeholder="e.g. jollof, catering" style={inputStyle} />
-              </div>
-            )}
-          </div>
-          <div style={{ color: D.textFaint, fontSize: "0.68rem", marginBottom: 8 }}>ℹ️ Promotions are reviewed by our team before they go live. Your listing starts ranking higher once approved.</div>
-          {promoteActionError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{promoteActionError}</div>}
-          <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={() => { setPromoteListingId(null); setPromoteActionError(null); }} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-            <button onClick={submitPromotion} disabled={promoteKind === "boost" && !promoteKeywords.trim()} style={{ flex: 2, background: (promoteKind === "boost" && !promoteKeywords.trim()) ? D.panelBg2 : D.kente1, color: (promoteKind === "boost" && !promoteKeywords.trim()) ? D.textFaint : "#fff", border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: (promoteKind === "boost" && !promoteKeywords.trim()) ? "default" : "pointer", fontFamily: "inherit" }}>📣 Promote {promoteDays}d</button>
-          </div>
+          <PromotionsHubPanel
+            basePath={basePath} promoteBase={basePath === DEFAULT_LISTINGS_PATH ? "/api/listings" : basePath} listingId={promoteListingId}
+            user={user} PaymentComponent={PaymentComponent} showToast={showToast} onChanged={refetchListings}
+            onClose={() => setPromoteListingId(null)}
+          />
         </div>
       )}
 
@@ -553,7 +493,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                       units_total: item.units_total ?? "",
                     }); }} style={{ background: D.goldSoft, color: D.gold, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>✏️ Edit</button>}
                     {(item.status === "draft" || item.status === "rejected") && <button onClick={() => submitForReview(item.id)} style={{ background: D.kente2, color: "#fff", border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📤 Submit for Review</button>}
-                    {item.status === "published" && <button onClick={() => { setPromoteListingId(item.id); setPromoteKind("featured"); setPromoteDays(7); setPromoteKeywords(""); setPromoteActionError(null); }} style={{ background: tint(D.red, "18"), color: D.red, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📣 Promote</button>}
+                    {item.status === "published" && <button onClick={() => setPromoteListingId(item.id)} style={{ background: tint(D.red, "18"), color: D.red, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📣 Promote</button>}
                   </div>
                 </div>
               )}

@@ -689,6 +689,11 @@ CATALOGUE_MATCHER_ENABLED = env.bool("CATALOGUE_MATCHER_ENABLED", default=False)
 # the listing's own page and the other-sellers list are not affected by it (see listings.visibility.sold_out_q).
 SOLD_OUT_HIDDEN_ENABLED = env.bool("SOLD_OUT_HIDDEN_ENABLED", default=False)
 
+# Sponsored ads (featured/boost promotions) are free until the owner sets prices (marketplace Plan 2, Task 9). Off by
+# default: a promotion costs 0 and writes no billing Transaction, and the dashboard says "Free for now". It still waits
+# for staff approval either way. Turn on only once prices are announced to businesses.
+PROMOTION_PRICING_ENABLED = env.bool("PROMOTION_PRICING_ENABLED", default=False)
+
 # The marketplace opening gate (storefront.opening). Off by default: while off the marketplace is open to everyone
 # and nothing is blocked. Turn on once the opening time is confirmed.
 MARKETPLACE_GATE_ENABLED = env.bool("MARKETPLACE_GATE_ENABLED", default=False)

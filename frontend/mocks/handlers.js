@@ -775,4 +775,7 @@ export const handlers = [
   // Discounts: nothing running by default (DiscountsPanel); a test overrides these for a running or refused one.
   http.get('http://localhost:8000/api/listings/mine/:id/discounts/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/direct/listings/:id/discounts/', () => HttpResponse.json([])),
+  // Promotion hub: sponsored ads are free until priced; no flash-sale invitations by default.
+  http.get('http://localhost:8000/api/listings/promotions/pricing/', () => HttpResponse.json({ enabled: false })),
+  http.get('http://localhost:8000/api/marketing/owner/flash-sales/', () => HttpResponse.json({ results: [] })),
 ]

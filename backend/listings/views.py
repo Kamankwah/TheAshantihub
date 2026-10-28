@@ -2,6 +2,7 @@ import os
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction as db_transaction
 from django.db.models import Avg, Case, Count, Max, Exists, F, FloatField, IntegerField, OuterRef, Q, Value, When
@@ -14,7 +15,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import BusinessOwner
+from accounts.models import BusinessOwner, StaffUser
 from activity.services import record as activity_record
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner
@@ -794,7 +795,9 @@ class ListingPromoteView(APIView):
                 status=400,
             )
 
-        amount = PROMOTION_DAILY_RATES[kind] * days
+        # Free until priced: with pricing off the promotion costs 0 and leaves no billing row.
+        free = not settings.PROMOTION_PRICING_ENABLED
+        amount = 0 if free else PROMOTION_DAILY_RATES[kind] * days
         with db_transaction.atomic():
             promotion = Promotion.objects.create(
                 listing=listing,
@@ -805,14 +808,28 @@ class ListingPromoteView(APIView):
                 amount_paid=amount,
                 status=Promotion.PENDING,
             )
-            Transaction.objects.create(
-                business_owner=request.user,
-                amount=amount,
-                purpose=f"{kind.capitalize()} promotion for listing #{listing.id} ({days} days)",
-                status=Transaction.SUCCESS,
-                reference=f"AH-PROMO-{promotion.id}-{get_random_string(8).upper()}",
-            )
-        return Response(PromotionSerializer(promotion).data, status=201)
+            if not free:
+                Transaction.objects.create(
+                    business_owner=request.user,
+                    amount=amount,
+                    purpose=f"{kind.capitalize()} promotion for listing #{listing.id} ({days} days)",
+                    status=Transaction.SUCCESS,
+                    reference=f"AH-PROMO-{promotion.id}-{get_random_string(8).upper()}",
+                )
+        return Response({**PromotionSerializer(promotion).data, "free": free}, status=201)
+
+
+class PromotionPricingView(APIView):
+    """GET /api/listings/promotions/pricing/ — {"enabled": bool}: whether sponsored ads are charged yet. Business
+    owners and staff only; the dashboard reads it to say "Free for now" (and never invents a price)."""
+
+    def get_permissions(self):
+        return [IsAuthenticated()]
+
+    def get(self, request):
+        if not isinstance(request.user, (BusinessOwner, StaffUser)):
+            return Response({"detail": "Not allowed."}, status=403)
+        return Response({"enabled": bool(settings.PROMOTION_PRICING_ENABLED)})
 
 
 # Staff moderation-queue restructuring — the canonical three-state queue
