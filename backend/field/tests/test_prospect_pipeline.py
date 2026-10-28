@@ -225,13 +225,19 @@ class PipelineStageTests(PipelineBase):
         )
         self.assertEqual(counts["live"], 2)
 
+    def approved(self, maker, *, days_ago=0, kind="listing.staff_create", status=ApprovalRequest.APPROVED):
+        decided = timezone.now() - timedelta(days=days_ago)
+        return ApprovalRequest.objects.create(
+            kind=kind, title="x", status=status, maker=maker, decided_at=decided, due_at=decided + timedelta(days=1),
+        )
+
     def test_listings_live_this_month_counts_approved_this_month_only(self):
-        _, owner = self.registered()
-        self.listing(owner)
-        self.event(owner)
-        self.listing(owner, status=Listing.PENDING_REVIEW)
-        self.listing(owner, reviewed_at=timezone.now() - timedelta(days=45))
-        self.listing(owner, scout=self.efua)
+        # F3: the figure is targets.actual's, which counts approved listing requests (one definition)
+        self.approved(self.kwame)
+        self.approved(self.kwame, kind="listing.create")
+        self.approved(self.kwame, status=ApprovalRequest.PENDING)
+        self.approved(self.kwame, days_ago=45)
+        self.approved(self.efua)
         body = self.get()
         self.assertEqual(body["listings_live_this_month"], 2)
         self.assertEqual(self.get(self.efua)["listings_live_this_month"], 1)

@@ -42,7 +42,7 @@ def event_scrubber():
     return EventScrubber(denylist=denylist, recursive=True)
 
 
-_TOKEN_PARAM = re.compile(r"((?:^|[?&])token=)[^&#\s'\"<>]*")
+_TOKEN_PARAM = re.compile(r"((?:^|[?&#])token=)[^&#\s'\"<>]*")
 _MAX_VAR_DEPTH = 6
 
 

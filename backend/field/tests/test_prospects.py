@@ -298,3 +298,79 @@ class StaffAddsProspectForScoutTests(ProspectBase):
         self.assertEqual(self.add_for(self.gm, self.kwame).status_code, 403)
         self.assertEqual(self.add_for(support, self.kwame).status_code, 403)
         self.assertFalse(Prospect.objects.exists())
+
+
+class StaffSeesEveryScoutsProspectsTests(ProspectBase):
+    """Final-fix F4: Operations and Super Admin list every scout's prospects (?scout= narrows); the monthly listings
+    figure is sent only when the list is one scout's."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = make_staff("super_admin", "root@example.com")
+        self.gm = make_staff("general_manager", "gm@example.com")
+        self.add(self.kwame, name="Kwame's find", phone="0241110001")
+        self.add(self.efua, name="Efua's find", phone="0241110002")
+
+    def listing(self, who, **query):
+        self.as_staff(who)
+        response = self.client.get(PROSPECTS, query)
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
+    def test_operations_and_super_admin_see_every_scouts_prospects_with_the_scout_named(self):
+        for who in (self.lead, self.admin):
+            body = self.listing(who)
+            self.assertEqual({row["name"]: row["scout_name"] for row in body["results"]},
+                             {"Kwame's find": self.kwame.full_name, "Efua's find": self.efua.full_name})
+            self.assertEqual(body["counts"]["all"], 2)
+
+    def test_the_scout_filter_narrows_and_a_scout_still_sees_only_their_own(self):
+        body = self.listing(self.lead, scout=self.kwame.pk)
+        self.assertEqual([row["name"] for row in body["results"]], ["Kwame's find"])
+        self.assertEqual(body["counts"]["all"], 1)
+        mine = self.listing(self.kwame, scout=self.efua.pk)  # a scout cannot widen or retarget the list
+        self.assertEqual([row["name"] for row in mine["results"]], ["Kwame's find"])
+
+    def test_a_bad_scout_filter_is_a_400(self):
+        self.as_staff(self.lead)
+        self.assertEqual(self.client.get(PROSPECTS, {"scout": "abc"}).status_code, 400)
+
+    def test_the_monthly_listings_figure_is_sent_only_for_one_scout(self):
+        from approvals.models import ApprovalRequest
+
+        ApprovalRequest.objects.create(
+            kind="listing.staff_create", title="x", status="approved", maker=self.kwame, decided_at=timezone.now(),
+            due_at=timezone.now() + timedelta(days=1),
+        )
+        everyone = self.listing(self.lead)
+        self.assertNotIn("listings_live_this_month", everyone)
+        self.assertEqual(self.listing(self.lead, scout=self.kwame.pk)["listings_live_this_month"], 1)
+        self.assertEqual(self.listing(self.lead, scout=self.efua.pk)["listings_live_this_month"], 0)
+        self.assertEqual(self.listing(self.kwame)["listings_live_this_month"], 1)
+
+    def test_the_all_scouts_list_costs_the_same_queries_however_many_prospects(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self.as_staff(self.lead)
+        with CaptureQueriesContext(connection) as small:
+            self.client.get(PROSPECTS)
+        for i in range(6):
+            self.add(self.kwame if i % 2 else self.efua, name=f"P{i}", phone=f"024222000{i}")
+        self.as_staff(self.lead)
+        with CaptureQueriesContext(connection) as big:
+            self.client.get(PROSPECTS)
+        self.assertEqual(len(small), len(big))
+
+    def test_operations_adds_for_a_named_scout_and_sees_it_in_the_list(self):
+        self.as_staff(self.lead)
+        response = self.client.post(
+            PROSPECTS, {"name": "Added by Ama", "phone": "0243330000", "zone": self.zone.pk, "scout": self.efua.pk}, format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["scout_name"], self.efua.full_name)
+        self.assertIn("Added by Ama", [row["name"] for row in self.listing(self.lead)["results"]])
+
+    def test_the_general_manager_is_refused(self):
+        self.as_staff(self.gm)
+        self.assertEqual(self.client.get(PROSPECTS).status_code, 403)

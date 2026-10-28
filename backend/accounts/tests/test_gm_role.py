@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import Role, StaffUser
 from accounts.testing import make_staff, staff_token
+from approvals import registry, rules
 from approvals.models import ApprovalRequest
 
 
@@ -44,6 +45,47 @@ class GmSeedTests(TestCase):
             "event_pricing.approve", "subscription_plans.approve", "transactions.report",
         }
         self.assertEqual(perms("general_manager") & never, set())
+
+
+class GmHoldsNoMoneyKindPermissionTests(TestCase):
+    """Integration-merge guard (final-fix F5). Another branch may add a money or sudo approval kind, or hand the
+    Operations role a new money permission that the General Manager copies from it (the redelivery_fee case). This fails
+    loudly then.
+
+    What guarantees the GM never decides money is the engine's `money` flag (`rules.barred`, `approvers_for`), not the
+    pool permission: two permissions are shared with kinds the GM may decide and so are held on purpose
+    (`portfolio.manage` also governs business.update, `delivery_promo.approve` is seeded to Operations as a whole). Those
+    two are listed here; any OTHER money or sudo kind whose pool permission the GM holds is a failure to fix."""
+
+    HELD_ON_PURPOSE = {"portfolio.manage", "delivery_promo.approve"}
+
+    def money_kinds(self):
+        return [kind for kind in registry.all_kinds().values() if kind.money or kind.requires_sudo]
+
+    def test_the_registry_has_money_and_sudo_kinds_to_check(self):
+        kinds = registry.all_kinds().values()
+        self.assertTrue(any(kind.money for kind in kinds))
+        self.assertTrue(any(kind.requires_sudo for kind in kinds))
+
+    def test_every_sudo_kind_is_a_money_kind_so_the_engine_bars_the_gm(self):
+        loose = [kind.key for kind in registry.all_kinds().values() if kind.requires_sudo and not kind.money]
+        self.assertEqual(loose, [], "a sudo kind must also be flagged money, or the General Manager could decide it")
+
+    def test_gm_holds_no_pool_permission_of_a_money_or_sudo_kind_except_the_listed_shared_ones(self):
+        gm = perms("general_manager")
+        held = {
+            (kind.key, kind.pool_permission) for kind in self.money_kinds()
+            if kind.pool_permission in gm and kind.pool_permission not in self.HELD_ON_PURPOSE
+        }
+        self.assertEqual(held, set(), "the General Manager must never decide a money kind; remove these from its role")
+
+    def test_gm_holds_none_of_the_sudo_money_permissions_except_the_listed_shared_ones(self):
+        sudo_permissions = {kind.pool_permission for kind in registry.all_kinds().values() if kind.requires_sudo}
+        self.assertEqual((perms("general_manager") & sudo_permissions) - self.HELD_ON_PURPOSE, set())
+
+    def test_the_engine_bars_the_gm_from_every_money_kind_even_where_it_holds_the_permission(self):
+        gm = make_staff("general_manager", "gm@example.com")
+        self.assertTrue(all(rules.barred(kind.key, gm) for kind in registry.all_kinds().values() if kind.money))
 
 
 class GmInviteTests(TestCase):
