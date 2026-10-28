@@ -590,6 +590,9 @@ export const handlers = [
     if (!amount) return HttpResponse.json({ amount: ['Enter an amount.'] }, { status: 400 })
     return HttpResponse.json({ amount, payment_processing: '0.00', you_pay: amount, provider: 'simulated' })
   }),
+  // The third-party rider's wallet (Plan 5F): off by default, so an unexpected mount shows the payroll screen; tests override.
+  http.get('http://localhost:8000/api/delivery/rider/wallet/*', () => HttpResponse.json({ detail: "Wallets aren't switched on yet.", code: 'ledger_off' }, { status: 409 })),
+  http.post('http://localhost:8000/api/delivery/rider/wallet/*', () => HttpResponse.json({ detail: "Wallets aren't switched on yet.", code: 'ledger_off' }, { status: 409 })),
   http.get('http://localhost:8000/api/wallet/staff/wallets/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/wallet/staff/withdrawals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/wallet/staff/reconciliation/', () => HttpResponse.json({ results: [] })),
