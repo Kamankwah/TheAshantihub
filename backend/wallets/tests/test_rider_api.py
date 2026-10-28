@@ -223,9 +223,10 @@ class RiderWalletEdgeTests(TestCase):
         rider_helpers.earning(self.swift, gross=1000, at=timezone.now())
         row = self.me.get(BASE + "earnings/").json()["results"][0]
         self.assertEqual(
-            set(row), {"id", "order", "delivered_at", "earned_at", "earned_on", "gross", "commission_bp", "commission", "you_got",
-                       "status", "status_label", "reversed_at"},
+            set(row), {"id", "order", "kind", "delivered_at", "earned_at", "earned_on", "gross", "commission_bp", "commission",
+                       "you_got", "status", "status_label", "reversed_at"},
         )
+        self.assertEqual(row["kind"], "delivery")           # "redelivery" for a re-delivery fee (Director ruling 2)
 
     def test_every_rider_write_view_is_activity_exempt(self):
         from wallets import views_rider_wallet as v

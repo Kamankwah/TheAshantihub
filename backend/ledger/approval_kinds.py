@@ -1,5 +1,6 @@
 """ledger.fee_rules and ledger.setting: a new fee ladder or money-setting value, proposed by Accounting and
-approved by a Super Admin (a Super Admin's own change applies at once). Applying never backdates: the
+approved by a Super Admin (a Super Admin's own change applies at once). ledger.redelivery_fee is the same change for the
+re-delivery fee alone, which Operations may also propose and decide (Director ruling 1, 2026-10-20). Applying never backdates: the
 change takes effect at the later of the proposed time and now, so orders already paid keep their snapshot."""
 from datetime import datetime
 
@@ -16,6 +17,10 @@ from .models import FeeBand, FeeRuleSet, MoneySetting
 
 FEE_RULES_KEY = "ledger.fee_rules"
 SETTING_KEY = "ledger.setting"
+# The re-delivery fee alone (Director ruling 1, 2026-10-20): Operations or a Super Admin decides it.
+REDELIVERY_FEE_KEY = "ledger.redelivery_fee"
+REDELIVERY_FEE_PERMISSION = "redelivery_fee.manage"
+SETTING_KINDS = (SETTING_KEY, REDELIVERY_FEE_KEY)
 CATEGORY_LABELS = dict(FeeRuleSet.CATEGORY_CHOICES)
 
 
@@ -187,5 +192,20 @@ MONEY_SETTING = ApprovalKind(
     key=SETTING_KEY, label="Change a money setting", pool_permission="", current_state=setting_current_state,
     apply=setting_apply, response_hours=48, chain_note="Super Admin only", resolve_approver=super_admin_only,
     render_diff=setting_diff, validate=setting_validate, requires_sudo=True,
+    consequences=setting_consequences,
+)
+
+
+def operations_or_super_admin(request):
+    return [(ApprovalRequest.POOL, None), (ApprovalRequest.SUPER_ADMIN, None)]
+
+
+# The re-delivery fee (Director ruling 1, 2026-10-20): editable by Operations as well as the Super Admin. Anyone holding
+# redelivery_fee.manage (Operations, Super Admin) decides it, never the maker; a Super Admin's own change applies at once
+# (approvals engine rule). The payload, checks, apply, diff and audit trail are the money setting's own.
+REDELIVERY_FEE_SETTING = ApprovalKind(
+    key=REDELIVERY_FEE_KEY, label="Change the re-delivery fee", pool_permission=REDELIVERY_FEE_PERMISSION,
+    current_state=setting_current_state, apply=setting_apply, response_hours=48, chain_note="Operations or Super Admin",
+    resolve_approver=operations_or_super_admin, render_diff=setting_diff, validate=setting_validate, requires_sudo=True,
     consequences=setting_consequences,
 )

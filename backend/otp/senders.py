@@ -51,6 +51,11 @@ def sms_provider():
     return provider
 
 
+def texts_simulated():
+    """While OTP_SMS_PROVIDER is "simulated" a text reaches nobody, yet its delivery reads as sent."""
+    return (getattr(settings, "OTP_SMS_PROVIDER", "simulated") or "simulated") == "simulated"
+
+
 def send_sms(to, body):
     provider = sms_provider()
     if provider == "locmem":

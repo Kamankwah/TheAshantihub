@@ -6,14 +6,14 @@ import { button, dim } from "../panelStyles.js";
 import { scroll, table, td, th } from "../opsPeopleParts.jsx";
 import { Status, Title, page, section, sectionTitle } from "../insightsParts.jsx";
 import { Empty, dayTime } from "./deliveryParts.jsx";
-import SendNow from "./SendNow.jsx";
+import SendNow, { canSendEarly } from "./SendNow.jsx";
 
 // ─── Delivery Manager: Scheduled ─────────────────────────────────────────────
 // Paid orders held until their vendors open (GET /api/delivery/scheduled/, the same set as the queue's
 // scheduled_count), soonest first. Each shows the held-until time and every vendor's own next opening; a vendor
 // the server gives no opening for (open now, or no hours) says so instead of showing a made-up time.
 export default function ScheduledPanel({ auth }) {
-  const canSend = Boolean(auth?.hasPermission?.("delivery.manage"));
+  const canSend = canSendEarly(auth);
   const [pageNo, setPageNo] = useState(1);
   const scheduled = useDeliveryScheduled(pageNo);
   const queryClient = useQueryClient();

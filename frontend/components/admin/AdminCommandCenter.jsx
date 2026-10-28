@@ -56,6 +56,9 @@ import RolesPermissionsPanel from "./panels/RolesPermissionsPanel.jsx";
 import SaSessionsPanel from "./panels/SaSessionsPanel.jsx";
 import { startViewAs } from "../../hooks/useViewAs.js";
 import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
+import WalletsPanel from "./panels/WalletsPanel.jsx";
+import WithdrawalsPanel from "./panels/WithdrawalsPanel.jsx";
+import WalletReconciliationPanel from "./panels/WalletReconciliationPanel.jsx";
 import DisputesPanel from "./panels/DisputesPanel.jsx";
 import TransactionsReportPanel from "./panels/TransactionsReportPanel.jsx";
 import CreditPanel from "./panels/CreditPanel.jsx";
@@ -134,6 +137,7 @@ import OpsTargetsPanel from "./panels/OpsTargetsPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
 import ApprovalRulesPanel from "./panels/ApprovalRulesPanel.jsx";
 import MoneyRulesPanel from "./panels/MoneyRulesPanel.jsx";
+import RedeliveryFeePanel from "./panels/RedeliveryFeePanel.jsx";
 import PortfolioPanel from "./panels/PortfolioPanel.jsx";
 import SubscriptionsDuePanel from "./panels/SubscriptionsDuePanel.jsx";
 import FraudCasesPanel from "./panels/FraudCasesPanel.jsx";
@@ -493,7 +497,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "subscription-plans-approval" && (role === "super_admin" ? <PlansPricesPanel /> : <SubscriptionPlanApprovalPanel />)}
           {activeTab === "delivery" && (role === "super_admin" ? <SaOrdersPanel /> : <DeliveryManagementPanel />)}
           {activeTab === "contact-messages" && (role === "support" ? <SupportContactPanel auth={auth} onNavigate={selectTab} /> : <ContactMessagesPanel auth={auth} />)}
-          {activeTab === "users" && (role === "super_admin" ? <SaCustomersPanel auth={auth} /> : role === "support" ? <SupportPeoplePanel profile={supportProfile} onOpenProfile={openSupportProfile} onBack={() => setSupportProfile(null)} onLogCall={openSupportLog} onNavigate={supportNavigate} /> : <UsersPanel auth={auth} />)}
+          {activeTab === "users" && (role === "super_admin" ? <SaCustomersPanel auth={auth} /> : role === "support" ? <SupportPeoplePanel profile={supportProfile} auth={auth} onOpenProfile={openSupportProfile} onBack={() => setSupportProfile(null)} onLogCall={openSupportLog} onNavigate={supportNavigate} canRecover={auth.hasPermission("otp.recovery")} /> : <UsersPanel auth={auth} />)}
           {activeTab === "categories-zones" && <CategoriesZonesPanel auth={auth} />}
           {activeTab === "site-settings" && <SiteSettingsPanel showToast={showToast} />}
           {activeTab === "staff" && (role === "super_admin" ? <StaffDirectoryPanel auth={auth} detailId={detail} onOpenDetail={openDetail} onNavigate={selectTab} onViewAs={auth.hasPermission("staff.view_as") ? startViewAs : undefined} /> : <StaffManagementPanel />)}
@@ -572,7 +576,9 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "leaderboard" && <LeaderboardPanel />}
           {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} showTaxRuling={role === "super_admin" || auth.hasPermission("commission.tax_ruling")} onOpenApproval={role === "super_admin" ? openApproval : undefined} />}
           {activeTab === "payouts-payroll" && <PayoutsPayrollPanel onNavigate={selectTab} />}
-          {activeTab === "reconciliation" && <ReconciliationPanel />}
+          {activeTab === "reconciliation" && <WalletReconciliationPanel fallback={<ReconciliationPanel />} onNavigate={auth.hasPermission("fraud.manage") || auth.hasPermission("fraud.flag") ? selectTab : undefined} />}
+          {activeTab === "wallets" && <WalletsPanel />}
+          {activeTab === "withdrawals" && <WithdrawalsPanel auth={auth} />}
           {activeTab === "delivery-pricing" && <DeliveryPricingPanel auth={auth} />}
           {activeTab === "tax-tables" && <TaxTablesPanel onNavigate={selectTab} />}
           {activeTab === "integrations" && <IntegrationsPanel />}
@@ -601,6 +607,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "approval-rules" && <ApprovalRulesPanel onNavigate={selectTab} />}
           {activeTab === "money-rules" && <MoneyRulesPanel />}
+          {activeTab === "redelivery-fee" && <RedeliveryFeePanel />}
           {/* The external co-signer has one screen: the requests waiting for their second approval. */}
           {activeTab === "overview" && role === "cosigner" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}

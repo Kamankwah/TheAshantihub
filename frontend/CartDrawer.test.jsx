@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
 import { gatedOpening } from './mocks/opening.js'
 import { setStoredAuth } from './apiClient.js'
@@ -15,6 +15,16 @@ vi.mock('./components/LocationPicker.jsx', async () => {
       createElement('button', { type: 'button', onClick: () => { onChange(6.7, -1.62); if (onAddress) onAddress('KNUST Ave, Kumasi') } }, 'drop-pin'),
       createElement('button', { type: 'button', onClick: () => onChange(6.69, -1.62) }, 'drop-pin-out')),
   }
+})
+
+// These tests pin checkout with the wallet ledger off (no payment picker, no payment_method field), so the
+// wallet endpoints answer the server's ledger_off refusal; CartDrawer.wallet.test.jsx covers the ledger-on flow.
+beforeEach(() => {
+  const off = () => HttpResponse.json({ detail: "Wallets aren't switched on yet.", code: 'ledger_off' }, { status: 409 })
+  server.use(
+    http.get('http://localhost:8000/api/wallet/', off),
+    http.get('http://localhost:8000/api/wallet/processing/', off),
+  )
 })
 
 function StubPayment({ amount, onSuccess, onClose }) {

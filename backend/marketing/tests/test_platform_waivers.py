@@ -1,10 +1,16 @@
 """AshantiHub-funded free-delivery promos (plan 7F-E Task 4, Ruling R2): created by Marketing, always approved by
-Operations or a Super Admin through the approvals engine, capped by a required budget."""
+Operations or a Super Admin through the approvals engine, capped by a required budget (a hard cap since the Director's
+2026-10-20 ruling: concurrent checkouts are serialised on the promo's row)."""
+import threading
+import time
 from datetime import timedelta
 from decimal import Decimal
+from unittest import mock
 
-from django.test import override_settings
+from django.db import connection
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from accounts.models import Permission, Role
 from accounts.testing import make_staff
@@ -18,6 +24,7 @@ from ledger.tests.test_refunds import RefundBase
 from marketing import waivers
 from marketing.models_waivers import DeliveryWaiver, WaivedFeeCharge
 from marketing.tests.test_waivers import DOOR, FEE_ON, WaiverBase, fee_patch
+from orders.models import Order
 
 URL = "/api/marketing/delivery-promos/platform/"
 
@@ -190,22 +197,49 @@ class CheckoutAndCap(PlatformBase):
         self.assertEqual((c.funded_by, c.amount), ("platform", Decimal("15.00")))
 
     def test_exhausted_cap_stops_waiving_the_fee(self):
+        # The cap is a hard cap (Director ruling, 2026-10-20): a fee is waived only when it fits in what is left, so the
+        # spend never passes the cap (it used to be soft by the fees of orders in flight, and could go below zero).
         w = self.live_platform_promo(cap="20.00")
-        self.assertEqual(self.order_for(self.stole).status_code, 201)       # 15 of 20 used, one more order still quoted waived
+        self.assertEqual(self.order_for(self.stole).status_code, 201)       # 15 of 20 used
         self.assertEqual(waivers.spent(w), Decimal("15.00"))
         self.assertEqual(waivers.cap_left(w), Decimal("5.00"))
-        self.assertEqual(self.order_for(self.stole).status_code, 201)       # the second is still waived (cap left > 0)
-        self.assertEqual(waivers.cap_left(w), Decimal("-10.00"))
-        self.assertEqual(waivers.live_waivers(self.owner.pk, timezone.now()), [])
-        self.assertIsNone(waivers.covering_waiver([self.stole], timezone.now()))
+        self.assertEqual(self.order_for(self.stole).status_code, 201)       # 15 does not fit in the 5 left: the customer pays it
+        self.assertEqual(WaivedFeeCharge.objects.count(), 1)
+        self.assertEqual(waivers.cap_left(w), Decimal("5.00"))
+        self.assertEqual(Order.objects.order_by("-id").first().delivery_fee, Decimal("15.00"))
+        self.assertIsNone(waivers.covering_waiver([self.stole], timezone.now(), fee=Decimal("15.00")))
+        self.assertEqual(waivers.covering_waiver([self.stole], timezone.now(), fee=Decimal("5.00")), w)    # a smaller fee still fits
         w.refresh_from_db()
         self.assertEqual(w.status, DeliveryWaiver.ACTIVE)                    # derived, not a status change
-        self.assertEqual(self.order_for(self.stole).status_code, 201)
-        self.assertEqual(WaivedFeeCharge.objects.count(), 2)                 # the third paid its own fee
+
+    def test_a_fee_that_fits_exactly_uses_the_whole_cap(self):
+        w = self.live_platform_promo(cap="30.00")
+        self.order_for(self.stole)
+        self.order_for(self.stole)
+        self.assertEqual((WaivedFeeCharge.objects.count(), waivers.spent(w), waivers.cap_left(w)), (2, Decimal("30.00"), Decimal("0.00")))
+        self.assertEqual(waivers.live_waivers(self.owner.pk, timezone.now()), [])
+
+    @override_settings(MARKETING_PROMOS_ENABLED=True)
+    def test_the_cart_quote_does_not_promise_a_waiver_the_cap_cannot_cover(self):
+        self.live_platform_promo(cap="20.00")
+        self.order_for(self.stole)                                           # 5 left, the fee is 15
+        self.add(self.ama, self.stole, 1)
+        self.as_customer(self.ama)
+        with fee_patch():
+            quote = self.client.post("/api/marketing/cart/quote/", DOOR, format="json").json()["delivery"]
+        self.assertEqual((quote["fee"], quote["waived"]), ("15.00", False))
+
+    def test_a_business_funded_promo_has_no_cap(self):
+        self.waiver()                                                        # funded by the business: no budget cap
+        for _ in range(3):
+            self.assertEqual(self.order_for(self.stole).status_code, 201)
+        self.assertEqual(WaivedFeeCharge.objects.count(), 3)
 
     def test_reversed_charge_frees_the_cap(self):
-        w = self.live_platform_promo(cap="10.00")
+        # Cap 15.00 holds exactly one 15.00 fee (with the hard cap a 10.00 cap would never have waived it).
+        w = self.live_platform_promo(cap="15.00")
         self.order_for(self.stole)
+        self.assertEqual(WaivedFeeCharge.objects.get().waiver, w)
         self.assertEqual(waivers.live_waivers(self.owner.pk, timezone.now()), [])
         WaivedFeeCharge.objects.update(status=WaivedFeeCharge.REVERSED)
         self.assertEqual(len(waivers.live_waivers(self.owner.pk, timezone.now())), 1)
@@ -258,3 +292,93 @@ class BusinessSearch(PlatformBase):
         self.owner.kyc_status, self.owner.is_suspended = "verified", True
         self.owner.save(update_fields=["kyc_status", "is_suspended"])
         self.assertEqual(self.get(name[:3]).json()["results"], [])
+
+
+@FEE_ON
+class PlatformCapRaceTests(TransactionTestCase):
+    """Two checkouts at the same moment against an AshantiHub-funded promo with room for one more fee: exactly one is
+    waived, the other pays its fee, and the spend never passes the cap (Director ruling, 2026-10-20: a hard cap).
+
+    Seams that exist before and after the fix: thread A pauses where it is about to write its charge
+    (waivers.record_charge) and waits up to two seconds for thread B to get past the waiver decision (waivers.apply_to_fee,
+    which checkout calls right after choosing the waiver). Without a lock B decides while A's charge is not yet written and
+    both are waived (the old soft cap); with the promo's row locked in the decision B waits until A has committed, then sees
+    A's charge and pays its own fee. Run it on its own: it is timing-based (each wait is bounded)."""
+
+    serialized_rollback = True
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
+    def test_two_concurrent_checkouts_never_overshoot_the_cap(self):
+        from accounts.authentication import issue_token
+        from accounts.models import BusinessOwner, Customer
+        from cart.models import Cart, CartItem
+        from listings.models import Category, Listing, Zone
+
+        owner = BusinessOwner.objects.create(full_name="Kente House", login_phone="+233207669981", password_hash="x", kyc_status="verified")
+        listing = Listing.objects.create(
+            business_owner=owner, category=Category.objects.get(slug="shops"), zone=Zone.objects.get(name="Manhyia"), name="Stole",
+            description="D.", contact_phone=owner.login_phone, price_amount="100.00", status=Listing.PUBLISHED, stock_quantity=20,
+        )
+        now = timezone.now()
+        promo = DeliveryWaiver.objects.create(
+            business_owner=owner, name="AshantiHub free", status=DeliveryWaiver.ACTIVE, all_items=True, source="staff",
+            funded_by="platform", budget_cap=Decimal("20.00"), starts_at=now - timedelta(hours=1), ends_at=now + timedelta(days=1),
+        )
+        customers = {}
+        for name, phone in (("a", "+233200669981"), ("b", "+233200669982")):
+            customers[name] = Customer.objects.create(full_name=f"Customer {name}", phone=phone, password_hash="x")
+            CartItem.objects.create(cart=Cart.objects.create(customer=customers[name]), listing=listing, quantity=1, unit_price_snapshot="100.00")
+
+        a_at_charge, b_past_check = threading.Event(), threading.Event()
+        times, errors, statuses, threads = {}, [], {}, {}
+        original_record, original_apply = waivers.record_charge, waivers.apply_to_fee
+
+        def record_seam(*args, **kwargs):
+            if threading.current_thread() is threads.get("a") and "a_at_charge" not in times:
+                times["a_at_charge"] = time.monotonic()
+                a_at_charge.set()
+                b_past_check.wait(timeout=2)
+                result = original_record(*args, **kwargs)
+                times["a_charged"] = time.monotonic()        # A's last write before its commit
+                return result
+            return original_record(*args, **kwargs)
+
+        def apply_seam(*args, **kwargs):
+            if threading.current_thread() is threads.get("b") and "b_past_check" not in times:
+                times["b_past_check"] = time.monotonic()
+                b_past_check.set()
+            return original_apply(*args, **kwargs)
+
+        def checkout(name):
+            try:
+                if name == "b":
+                    a_at_charge.wait(timeout=15)             # start once A has decided and is about to write its charge
+                client = APIClient()
+                client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(customers[name], 'customer')}")
+                statuses[name] = client.post("/api/orders/checkout/", DOOR, format="json").status_code
+            except Exception as exc:  # reported below, never swallowed
+                errors.append(exc)
+            finally:
+                connection.close()
+
+        with fee_patch(), mock.patch.object(waivers, "record_charge", side_effect=record_seam), \
+                mock.patch.object(waivers, "apply_to_fee", side_effect=apply_seam):
+            threads["a"], threads["b"] = threading.Thread(target=checkout, args=("a",)), threading.Thread(target=checkout, args=("b",))
+            threads["a"].start()
+            threads["b"].start()
+            for thread in threads.values():
+                thread.join(timeout=15)
+                self.assertFalse(thread.is_alive(), "a racing checkout hung")
+
+        self.assertEqual(errors, [])
+        self.assertEqual(statuses, {"a": 201, "b": 201})
+        self.assertEqual(WaivedFeeCharge.objects.count(), 1)
+        self.assertEqual(waivers.spent(promo), Decimal("15.00"))
+        self.assertLessEqual(waivers.spent(promo), promo.budget_cap)
+        self.assertLess(times["a_charged"], times["b_past_check"])     # B decided only after A's charge was written
+        fees = dict(Order.objects.values_list("customer__full_name", "delivery_fee"))
+        self.assertEqual(fees, {"Customer a": Decimal("0.00"), "Customer b": Decimal("15.00")})

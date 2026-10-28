@@ -15,6 +15,7 @@ from .services import money
 
 LABELS = {
     "rider_earning": "Delivery paid to you",
+    "rider_redelivery_earning": "Re-delivery paid to you",
     "rider_earning_reversal": "Delivery taken back (order refunded)",
     "rider_commission": "AshantiHub's commission",
     "withdrawal_hold": "Withdrawal",
@@ -54,7 +55,7 @@ def has_money_record(rider):
 
 
 def earnings(rider, day=None):
-    rows = RiderEarning.objects.filter(rider=rider).select_related("order__delivery_assignment")
+    rows = RiderEarning.objects.filter(rider=rider).select_related("order__delivery_assignment", "redelivery")
     if day is not None:
         rows = rows.filter(earned_on=day)
     return rows.order_by("-earned_at", "-id")
@@ -67,10 +68,16 @@ def status_of(earning):
 
 
 def earning_row(earning):
-    assignment = getattr(earning.order, "delivery_assignment", None)
+    """One earning: a delivery fee (`kind` "delivery") or a re-delivery fee (`kind` "redelivery": the second trip of an
+    order delivered again at the customer's request, done when the request completed)."""
     status = status_of(earning)
+    if earning.redelivery_id is not None:
+        order_id, kind, done_at = earning.redelivery.order_id, "redelivery", earning.redelivery.completed_at
+    else:
+        assignment = getattr(earning.order, "delivery_assignment", None)
+        order_id, kind, done_at = earning.order_id, "delivery", assignment.delivered_at if assignment else None
     return {
-        "id": earning.pk, "order": earning.order_id, "delivered_at": assignment.delivered_at if assignment else None,
+        "id": earning.pk, "order": order_id, "kind": kind, "delivered_at": done_at,
         "earned_at": earning.earned_at, "earned_on": earning.earned_on, "gross": money(earning.gross_pesewas),
         "commission_bp": earning.commission_bp, "commission": money(earning.reserve_pesewas),
         "you_got": money(earning.net_pesewas), "status": status, "status_label": STATUS_LABELS[status],
