@@ -159,4 +159,7 @@ monolith holding most components, with extractions living in `components/`,
   MSW wallet defaults in `mocks/handlers.js` are "ledger on, empty"; override with `server.use(...)`.
   `WalletNoInventionSweep.test.jsx` is the conformance contract for every wallet screen: add a new wallet
   screen to its list.
+- **Booking money states come from the server's `money` block;** a refund amount is shown only from `cancel-quote`,
+  `wallet_refund` or `money.refunded`; `components/bookings/` holds the bars. `BookingNoInventionSweep.test.jsx`
+  is the conformance contract for them.
 - **The vendor tab is "Money"** (`id: "money"`, one tab for payouts and the wallet), not "Payouts".

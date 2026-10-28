@@ -179,6 +179,7 @@ paid before the policies existed keep Support-only cancellation. After the miles
 `verification_overdue_hours` (72) now applies to products only.
 
 Built in Plan 7E (docs/superpowers/plans/2026-10-18-wallet-rulings-7e-milestone-release-and-cancellation-policies.md).
+Customer screens: Plan 7G (docs/superpowers/plans/2026-10-20-wallet-rulings-7g-customer-booking-buttons.md).
 
 ### 4.3 Store pickup and the Pickup Desk
 
@@ -1045,12 +1046,16 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
 - (lxxii) **SA4: a customer's stay cancel has no date bound.** It is refused only after check-in, so a guest who stayed
   but whose owner never tapped check-in can cancel after check-out and take the refund from the business's Pending.
   Owner to decide a cut-off (for example the check-in date), or have Support's cancel be the only path then.
+  Update (7E, 7G): the customer cancel is now bounded by the release milestone, and the 7G screens offer it only while
+  the server says `can_cancel`; the check-in-date cut-off question above is otherwise unchanged.
 - (lxxiii) **Nothing lists sales not yet handed over.** `POST bookings/<sale id>/cancel/` takes a sale id, but Support's
   queue shows only handed-over bookings. Plan 1F needs a lookup (by customer, business or booking) before the cancel
   screen can find a sale.
 - (lxxiv) **No dispute path after release.** Once a booking's money is released a mismatch can no longer be logged
   through the call (`record_verification` refuses), and customers raise disputes only on orders. Owner to decide how a
   complaint after release is handled and recovered from the business's Available.
+  Update (7G): the customer screens send a released booking's complaint to Contact AshantiHub Support; recovery from
+  the business's Available is still open.
 - (lxxv) **Cross-reference to (lxvi):** a Hubtel success for a cancelled PENDING booking is not recorded; the fix there
   covers it.
 - (lxxvi) **Wallet-paid services, stays and tickets are also excluded from Collections.** The
