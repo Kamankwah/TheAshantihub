@@ -382,6 +382,13 @@ export const handlers = [
   http.post('http://localhost:8000/api/accounts/customers/:id/unsuspend/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), is_suspended: false })
   }),
+  // Owner confirmation (staff listing pipeline): POST-only, token in the body (never a URL query).
+  http.post('http://localhost:8000/api/portfolio/confirm/preview/', () => HttpResponse.json({
+    business_name: "Akosua's Kitchen", owner_name_first: 'Akosua', registration: false,
+    items: [{ kind: 'product', name: 'Banku and tilapia', price: '35.00' }], expires_at: '2099-01-01T00:00:00Z',
+  })),
+  http.post('http://localhost:8000/api/portfolio/confirm/', () => HttpResponse.json({ confirmed: true })),
+  http.post('http://localhost:8000/api/portfolio/confirm/decline/', () => HttpResponse.json({ declined: true })),
   // Owner claim (staff phase 2A) — placed before business-owners/:id/,
   // which would otherwise read "claim" as an owner id. The preview's
   // login_phone is masked by the server to its last 3 digits (email_on_file

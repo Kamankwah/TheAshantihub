@@ -188,6 +188,7 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
           ["Login phone", fullPhone || owner.login_phone || "—"],
           ["Email", owner.email || "Not given"],
           ["Ghana Card number", owner.ghana_card_number || "Not given"],
+          ...(sheet.owner_confirmation?.line ? [["Owner confirmation", sheet.owner_confirmation.line]] : []),
         ]} />
         {owner.login_phone && !fullPhone && (
           <button type="button" onClick={revealPhone} style={{ ...button(D.panelBg, D.text), alignSelf: "flex-start" }}>Show full phone number (recorded)</button>

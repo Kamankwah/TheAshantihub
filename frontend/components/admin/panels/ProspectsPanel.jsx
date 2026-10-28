@@ -23,6 +23,48 @@ export function nextLine(prospect, now = new Date()) {
   return { text: `Next: ${shortDay(prospect.next_follow_up_at)}`, overdue: false };
 }
 
+// The five steps a business passes on its way to selling, from `pipeline.stage` (the furthest reached). awaiting_owner
+// means the registration link is open: Registered is done and Owner confirmed is waiting. Nothing here is guessed: a
+// prospect the server sent without a pipeline shows no step row.
+const STEPS = ["Prospect", "Registered", "Owner confirmed", "Listings", "Live"];
+// How many steps are done at each stage, and which step (if any) is waiting on someone.
+const REACHED = { prospect: [1, null], registered: [2, null], awaiting_owner: [2, 2], confirmed: [3, null], listing: [4, null], live: [5, null] };
+const COUNT_WORDS = [
+  ["drafts", "draft", "drafts"], ["awaiting_owner", "waiting for the owner", "waiting for the owner"], ["lapsed", "lapsed", "lapsed"],
+  ["pending_approval", "waiting for approval", "waiting for approval"], ["live", "live", "live"],
+];
+
+export function stepStates(stage) {
+  const [done, waiting] = REACHED[stage] || [0, null];
+  return STEPS.map((label, i) => [label, i < done ? "done" : i === waiting ? "waiting" : "not yet"]);
+}
+
+export function listingsLine(listings = {}) {
+  return COUNT_WORDS.filter(([key]) => listings[key] > 0).map(([key, one, many]) => `${listings[key]} ${listings[key] === 1 ? one : many}`).join(" · ");
+}
+
+function PipelineSteps({ pipeline }) {
+  if (!pipeline || !REACHED[pipeline.stage]) return null;
+  const line = listingsLine(pipeline.listings);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <ol aria-label="Pipeline steps" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", gap: 4, flexWrap: "wrap" }}>
+        {stepStates(pipeline.stage).map(([label, state]) => (
+          <li key={label} aria-label={`${label}: ${state}`} style={{
+            display: "inline-flex", alignItems: "center", gap: 4, borderRadius: 999, padding: "2px 8px", fontSize: "0.7rem", fontWeight: 700,
+            background: state === "done" ? D.okBg : state === "waiting" ? D.warnBg : D.panelBg2,
+            color: state === "done" ? D.okInk : state === "waiting" ? D.warnInk : D.textDim,
+            border: state === "waiting" ? `1px dashed ${D.warnInk}` : "1px solid transparent",
+          }}>
+            <span aria-hidden="true">{state === "done" ? "✓" : state === "waiting" ? "…" : "○"}</span>{label}
+          </li>
+        ))}
+      </ol>
+      {line && <div style={dim}>{line}</div>}
+    </div>
+  );
+}
+
 export default function ProspectsPanel({ onRegister }) {
   const [status, setStatus] = useState("all");
   const { data, isLoading, isError, refetch } = useProspects(status);
@@ -32,6 +74,8 @@ export default function ProspectsPanel({ onRegister }) {
   const results = data?.results || [];
   const month = new Date().toLocaleDateString("en-GB", { month: "long" });
   const signedUp = data?.signed_up_this_month ?? 0;
+  const live = data?.listings_live_this_month;
+  const liveLine = typeof live === "number" ? ` · ${live} ${live === 1 ? "listing" : "listings"} live in ${month}` : "";
   const close = () => setSheet(null);
   const empty = status === "all" ? "No prospects yet. Add the businesses you meet, then follow them up here." : "No prospects with this status.";
 
@@ -40,7 +84,7 @@ export default function ProspectsPanel({ onRegister }) {
       <div>
         <div style={eyebrow}>Pipeline</div>
         <h2 style={{ color: D.text, fontSize: "1.4rem", fontWeight: 800, margin: "2px 0 0" }}>Prospects</h2>
-        <div style={dim}>{`Not registered yet · ${signedUp} signed up in ${month}`}</div>
+        <div style={dim}>{`Not registered yet · ${signedUp} signed up in ${month}${liveLine}`}</div>
       </div>
 
       <button type="button" onClick={() => { setNotice(null); setSheet({ type: "add" }); }} style={{ ...button(D.gold, D.text), minHeight: 48, fontSize: "0.9rem", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
@@ -82,6 +126,7 @@ export default function ProspectsPanel({ onRegister }) {
               </span>
             </div>
             <div style={dim}>{[p.area || "No area set", p.last_visit_at ? `last visit ${shortDay(p.last_visit_at)}` : "no visit yet"].join(" · ")}</div>
+            <PipelineSteps pipeline={p.pipeline} />
             {p.note && <div style={{ fontSize: "0.82rem", color: D.text, lineHeight: 1.4 }}>{p.note}</div>}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: "0.8rem", fontWeight: 700, color: next.overdue ? D.warnInk : next.text.startsWith("Next") ? D.text : D.textDim, ...figures }}>{next.text}</span>

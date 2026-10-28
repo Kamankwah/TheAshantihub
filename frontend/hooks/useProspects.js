@@ -3,7 +3,8 @@ import { apiFetch } from '../apiClient.js'
 
 // GET /api/field/prospects/?status= — the scout's own, not yet registered:
 // {counts: {all, new, interested, follow_up, not_interested, registered},
-//  signed_up_this_month, results: [...]}. status "all" (default) leaves out
+//  signed_up_this_month, listings_live_this_month, results: [...]}; each result carries
+// pipeline: {stage, listings: {drafts, awaiting_owner, lapsed, pending_approval, live}}. status "all" (default) leaves out
 // the registered ones.
 export function useProspects(status = 'all', { enabled = true } = {}) {
   return useQuery({

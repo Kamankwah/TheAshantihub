@@ -14,11 +14,11 @@ const prospect = (over = {}) => ({
 })
 const COUNTS = { all: 4, new: 1, interested: 2, follow_up: 0, not_interested: 1, registered: 0 }
 
-function serve(results, { counts = COUNTS, signed = 3, onList } = {}) {
+function serve(results, { counts = COUNTS, signed = 3, onList, live } = {}) {
   server.use(http.get(`${API}/api/field/prospects/`, ({ request }) => {
     const status = new URL(request.url).searchParams.get('status')
     onList?.(status)
-    return HttpResponse.json({ counts, signed_up_this_month: signed, results: typeof results === 'function' ? results(status) : results })
+    return HttpResponse.json({ counts, signed_up_this_month: signed, ...(live === undefined ? {} : { listings_live_this_month: live }), results: typeof results === 'function' ? results(status) : results })
   }))
 }
 
@@ -36,6 +36,60 @@ describe('nextLine', () => {
     expect(nextLine({ status: 'follow_up', next_follow_up_at: '2026-10-06T15:00:00' }, now)).toEqual({ text: 'Follow up was due Tue 6 Oct', overdue: true })
     // due today but later is not overdue
     expect(nextLine({ status: 'follow_up', next_follow_up_at: '2026-10-08T17:00:00' }, now).overdue).toBe(false)
+  })
+})
+
+const pipeline = (stage, listings = {}) => ({ stage, listings: { drafts: 0, awaiting_owner: 0, lapsed: 0, pending_approval: 0, live: 0, ...listings } })
+const stepStates = (card) => within(within(card).getByRole('list', { name: 'Pipeline steps' })).getAllByRole('listitem').map((li) => li.getAttribute('aria-label'))
+
+describe('ProspectsPanel pipeline', () => {
+  it('marks the steps through Listings for stage "listing" and says Live is not reached', async () => {
+    serve([prospect({ pipeline: pipeline('listing', { drafts: 1, pending_approval: 2 }) })], { live: 3 })
+    renderPanel()
+    const card = await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
+    expect(stepStates(card)).toEqual(['Prospect: done', 'Registered: done', 'Owner confirmed: done', 'Listings: done', 'Live: not yet'])
+    expect(within(card).getByText('1 draft · 2 waiting for approval')).toBeInTheDocument()
+  })
+
+  it('shows the live-listings count for the month in the header', async () => {
+    serve([prospect({ pipeline: pipeline('prospect') })], { live: 3 })
+    renderPanel()
+    const month = new Date().toLocaleDateString('en-GB', { month: 'long' })
+    expect(await screen.findByText(new RegExp(`3 listings live in ${month}`))).toBeInTheDocument()
+    expect(screen.getByText(/Not registered yet · 3 signed up in /)).toBeInTheDocument()
+  })
+
+  it('shows a real 0 and omits the figure when the server did not send it', async () => {
+    serve([prospect({ pipeline: pipeline('prospect') })], { live: 0 })
+    renderPanel()
+    const month = new Date().toLocaleDateString('en-GB', { month: 'long' })
+    expect(await screen.findByText(new RegExp(`0 listings live in ${month}`))).toBeInTheDocument()
+  })
+
+  it('omits the live line when the figure is missing, rather than inventing one', async () => {
+    serve([prospect({ pipeline: pipeline('prospect') })])
+    renderPanel()
+    await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
+    expect(screen.queryByText(/listings? live in/)).not.toBeInTheDocument()
+  })
+
+  it('reads awaiting_owner as Registered done and Owner confirmed waiting, and live as everything done', async () => {
+    serve([
+      prospect({ id: 1, name: 'Waiting Kitchen', pipeline: pipeline('awaiting_owner') }),
+      prospect({ id: 2, name: 'Live Kitchen', pipeline: pipeline('live', { live: 4 }) }),
+      prospect({ id: 3, name: 'Plain Kitchen', pipeline: pipeline('prospect') }),
+    ])
+    renderPanel()
+    expect(stepStates(await screen.findByRole('article', { name: 'Waiting Kitchen' }))).toEqual(['Prospect: done', 'Registered: done', 'Owner confirmed: waiting', 'Listings: not yet', 'Live: not yet'])
+    expect(stepStates(screen.getByRole('article', { name: 'Live Kitchen' }))).toEqual(['Prospect: done', 'Registered: done', 'Owner confirmed: done', 'Listings: done', 'Live: done'])
+    expect(stepStates(screen.getByRole('article', { name: 'Plain Kitchen' }))).toEqual(['Prospect: done', 'Registered: not yet', 'Owner confirmed: not yet', 'Listings: not yet', 'Live: not yet'])
+  })
+
+  it('shows no step row for a prospect the server sent without a pipeline', async () => {
+    serve([prospect()])
+    renderPanel()
+    const card = await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
+    expect(within(card).queryByRole('list', { name: 'Pipeline steps' })).not.toBeInTheDocument()
   })
 })
 

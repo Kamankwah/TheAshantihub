@@ -7,13 +7,13 @@ import { API, page, param, renderPanel } from './saTestUtils.jsx'
 
 const ev = (over) => ({
   id: 1, name: 'Akwasidae palace visit', organiser: { kind: 'business', id: 1, name: 'Manhyia Tours', verified: true }, event_date: '2026-10-12T09:00:00Z', address: 'Manhyia', zone: 'Manhyia',
-  state: 'on_sale', state_label: 'On sale', tickets_sold: 45, capacity: 50, checked_in: 0, price_min: '80.00', price_max: '80.00', sales: '3600.00', held: '3600.00', released: '0.00', refunded: '0.00', refunded_count: 0,
+  state: 'on_sale', state_label: 'On sale', tickets_sold: 45, capacity: 50, checked_in: 0, price_min: '80.00', price_max: '80.00', sales: '3600.00', held: '3600.00', released: '0.00', refunded: '0.00', paid_count: 45, refunded_count: 0,
   ticket_types: [{ id: 1, name: 'Regular', price: '80.00', sold: 45, total: 50, active: true }], paid_at: '2026-10-01T00:00:00Z', ...over,
 })
 const ROWS = [
   ev(),
   ev({ id: 2, name: 'Rooftop comedy night', state: 'waiting', state_label: 'Waiting for review', tickets_sold: 0, capacity: null, sales: '0.00', held: '0.00', ticket_types: [], price_min: null, price_max: null, paid_at: null }),
-  ev({ id: 3, name: 'Kente Festival day trip', state: 'ended', state_label: 'Ended', tickets_sold: 60, capacity: 60, sales: '7200.00', held: '0.00', released: '7200.00', refunded: '240.00', refunded_count: 2, checked_in: 57 }),
+  ev({ id: 3, name: 'Kente Festival day trip', state: 'ended', state_label: 'Ended', tickets_sold: 60, capacity: 60, sales: '7200.00', held: '0.00', released: '7200.00', refunded: '240.00', paid_count: 60, refunded_count: 2, checked_in: 57 }),
 ]
 const COUNTS = { on_sale: 1, next_event_at: '2026-10-12T09:00:00Z', tickets_sold: 45, capacity: 50, held: '3600.00', released_this_month: '7200.00', refunded_this_quarter: '240.00', waiting_for_review: 1 }
 
@@ -25,6 +25,21 @@ function setup() {
   )
   return urls
 }
+
+describe('SaEventsPanel paid and refunded', () => {
+  it('has Paid and Refunded ticket columns with a real 0 shown as 0', async () => {
+    setup()
+    renderPanel(<SaEventsPanel />)
+    const table = await screen.findByRole('table', { name: 'Events' })
+    const heads = within(table).getAllByRole('columnheader').map((th) => th.textContent)
+    const paidAt = heads.findIndex((t) => t.startsWith('Paid'))
+    expect(heads[paidAt + 1].startsWith('Refunded')).toBe(true)
+    const cells = (name) => within(within(table).getByText(name).closest('tr')).getAllByRole('cell').map((td) => td.textContent)
+    expect(cells('Akwasidae palace visit').slice(paidAt, paidAt + 2)).toEqual(['45', '0'])
+    expect(cells('Kente Festival day trip').slice(paidAt, paidAt + 2)).toEqual(['60', '2'])
+    expect(cells('Rooftop comedy night').slice(paidAt, paidAt + 2)).toHaveLength(2)
+  })
+})
 
 describe('SaEventsPanel', () => {
   it('shows money split by the tickets own escrow state, and says nothing is paid out', async () => {
