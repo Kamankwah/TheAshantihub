@@ -5,7 +5,9 @@ import { walletStyles } from '../../wallet/walletStyles.js'
 import VendorPayouts from '../../wallet/VendorPayouts.jsx'
 import { D } from '../theme.js'
 import MoneyOverview from './MoneyOverview.jsx'
+import DailySummary from './DailySummary.jsx'
 import SalesList from './SalesList.jsx'
+import StatementDownload from './StatementDownload.jsx'
 
 // The business dashboard's one Money tab (Director: Money and Payouts in one
 // tab). Only the selected sub-tab is mounted, so no other request fires.
@@ -25,6 +27,8 @@ export default function VendorMoney({ businessKind }) {
     { id: 'overview', label: 'Overview', render: () => <MoneyOverview onOpenPayouts={() => setSub('payouts')} /> },
     { id: 'payouts', label: 'Payouts', render: () => <VendorPayouts /> },
     { id: 'sales', label: 'Sales', render: () => <SalesList businessKind={businessKind} /> },
+    { id: 'daily', label: 'Daily', render: () => <DailySummary /> },
+    { id: 'statement', label: 'Statement', render: () => <StatementDownload /> },
   ]
   const current = SUB_TABS.find((t) => t.id === sub) || SUB_TABS[0]
 
