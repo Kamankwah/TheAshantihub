@@ -18,7 +18,7 @@ class RefundBase(OrderPaymentBase):
         return order
 
     def release(self, order):
-        FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        FulfilmentCheck.objects.update_or_create(order=order, defaults=dict(outcome=FulfilmentCheck.MATCHES))
         journal = escrow.release_verified(order)
         self.assertIsNotNone(journal)
         return journal

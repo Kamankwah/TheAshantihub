@@ -1393,8 +1393,9 @@ class PayoutDetailUpdateView(generics.UpdateAPIView):
 
     def update(self, request, *args, **kwargs):
         # Where a business is paid is a sensitive change (spec §9): a step-up code first, spent only if it saves.
+        # While the ledger is on the code is always asked, whatever the OTP switches say (gate xxxii).
         with transaction.atomic():
-            step_up.require(request, step_up.PAYOUT_DESTINATION)
+            step_up.require(request, step_up.PAYOUT_DESTINATION, force=escrow.enabled())
             return super().update(request, *args, **kwargs)
 
 

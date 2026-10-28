@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { C, tint } from "../theme.js";
 import { useEvent } from "../hooks/useEvent.js";
 import { useEventReviews } from "../hooks/useEventReviews.js";
@@ -11,7 +11,13 @@ import TicketQr from "./TicketQr.jsx";
 import StaffGateNotice from "./StaffGateNotice.jsx";
 import BookingTermsNote from "./BookingTermsNote.jsx";
 import { useStaffGate } from "../hooks/useStaffGate.js";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCanBuy } from "../hooks/useCanBuy.js";
+import { useBookingPayment } from "../hooks/useBookingPayment.js";
+import { lineTotalGhs } from "../lib/bookingPay.js";
+import { apiErrorMessage } from "../lib/apiErrorMessage.js";
+import PaymentMethodPicker from "./wallet/PaymentMethodPicker.jsx";
+import { walletStyles } from "./wallet/walletStyles.js";
 
 // ─── EventDetailPage ────────────────────────────────────────────────────────
 // Event detail page for the Events tab (docs/BUSINESS_EVENTS_ROADMAP.md
@@ -366,7 +372,7 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
       {/* Tickets section (event ticketing + escrow work) — sits after the
           RSVP block and before Reviews/Organizer, same "full-width block
           below the gallery+details flex row" placement. */}
-      <EventTicketsSection eventId={id} hasTickets={detail.has_tickets} eventDate={detail.event_date} refundDays={detail.refund_until_days_before} user={user} PaymentComponent={PaymentComponent} />
+      <EventTicketsSection eventId={id} hasTickets={detail.has_tickets} eventDate={detail.event_date} refundDays={detail.refund_until_days_before} inLedger={detail.organizer?.kind === "business"} user={user} PaymentComponent={PaymentComponent} />
 
       {/* Reviews + Organizer sections (reviews/ratings/Q&A plan, Phase 6) —
           see the block comment above the component for the full rationale.
@@ -395,8 +401,16 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
 // MoMoPayment) opens immediately on "Buy" with a locally snapshotted
 // amount/quantity, and the actual
 // POST /api/events/{id}/tickets/purchase/ only fires from its onSuccess.
-function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user, PaymentComponent }) {
+//
+// Payment method (wallet frontend 1F): for a business-organised event, while
+// the wallet ledger is on, Buy opens a pay sheet (total, method picker with
+// the server's processing quote, one Pay button). Mobile money opens
+// PaymentComponent with `processing`; the wallet posts once, no modal. A
+// customer-organised event (inLedger false) and a ledger that is off keep the
+// flow above exactly, with the request body unchanged.
+function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, inLedger = true, user, PaymentComponent }) {
   const ticketTypesQuery = useEventTicketTypes(hasTickets ? eventId : null);
+  const queryClient = useQueryClient();
   const ticketTypes = ticketTypesQuery.data || [];
 
   const [quantities, setQuantities] = useState({});
@@ -412,6 +426,11 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user,
   const { canBuy, label: opensLabel } = useCanBuy();
 
   const isCustomer = user?.accountType === "customer";
+  const pay = useBookingPayment({ amount: payTarget?.total ?? "", inLedger, enabled: hasTickets && isCustomer && canBuy });
+  const [momoOpen, setMomoOpen] = useState(false); // the MoMo modal, once the sheet's Pay is chosen
+  const inFlight = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const s = walletStyles("light");
 
   if (!hasTickets) return null;
   if (!ticketTypesQuery.isLoading && !ticketTypesQuery.isError && ticketTypes.length === 0) return null;
@@ -426,16 +445,33 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user,
   const openPay = (tt) => {
     const qty = quantities[tt.id] || 1;
     setPayError(null);
-    setPayTarget({ ticketType: tt, quantity: qty, amount: Number(tt.price) * qty });
+    if (pay.state === "unknown") {
+      setPayError(pay.problem || "Checking payment options. Try again in a moment.");
+      return;
+    }
+    const total = lineTotalGhs(tt.price, qty);
+    if (pay.ledgerOn && total === null) {
+      setPayError("We could not work out the total for this ticket.");
+      return;
+    }
+    pay.setMethod("momo");
+    setMomoOpen(false);
+    setPayTarget({ ticketType: tt, quantity: qty, amount: Number(tt.price) * qty, total });
   };
 
-  const confirmPurchase = async () => {
-    if (!payTarget) return;
+  const closePay = () => { setPayTarget(null); setMomoOpen(false); };
+
+  const confirmPurchase = async (afterMoMo = true) => {
+    if (!payTarget || inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
     setPayError(null);
+    let redirecting = false;
     try {
       const response = await apiPost(`/api/events/${eventId}/tickets/purchase/`, {
         ticket_type: payTarget.ticketType.id,
         quantity: payTarget.quantity,
+        ...pay.body,
       });
       // Hubtel integration (docs/HUBTEL_INTEGRATION.md) — once
       // payments_provider is "hubtel", TicketPurchaseView returns
@@ -443,19 +479,39 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user,
       // (inventory is reserved optimistically, but no Ticket rows/codes
       // exist yet). Redirect rather than showing a purchase confirmation —
       // the actual ticket code(s) are only created once the webhook
-      // confirms payment (see "My Tickets" for them afterward).
+      // confirms payment (see "My Tickets" for them afterward). The in-flight
+      // guard stays set so a second click cannot post while the browser leaves.
       if (response?.mode === "redirect") {
+        redirecting = true;
+        closePay();
         window.location.href = response.checkout_url;
         return;
       }
       setPurchasedByType((p) => ({ ...p, [payTarget.ticketType.id]: response }));
-      setPayTarget(null);
+      queryClient.invalidateQueries({ queryKey: ["wallet"] });
       ticketTypesQuery.refetch();
     } catch (err) {
-      setPayError("Payment was confirmed but we couldn't complete your ticket purchase. Please contact support.");
+      const code = err?.body?.code;
+      if ((err?.status === 409 && ["insufficient_funds", "ledger_off", "wallet_not_accepted"].includes(code)) || (err?.status === 403 && code === "not_open")) {
+        setPayError(err.body.detail || apiErrorMessage(err, "We could not take the payment."));
+      } else if (afterMoMo) {
+        setPayError("Payment was confirmed but we couldn't complete your ticket purchase. Please contact support.");
+      } else {
+        setPayError(apiErrorMessage(err, "We could not take the payment. Try again."));
+      }
     } finally {
-      setPayTarget(null);
+      if (!redirecting) {
+        inFlight.current = false;
+        setBusy(false);
+        closePay();
+      }
     }
+  };
+
+  const startPay = () => {
+    if (busy || !pay.ready) return;
+    if (pay.method === "wallet") confirmPurchase(false);
+    else setMomoOpen(true);
   };
 
   return (
@@ -524,6 +580,20 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user,
               </div>
             )}
 
+            {payTarget?.ticketType.id === tt.id && pay.ledgerOn && (
+              <div role="group" aria-label="Pay for tickets" style={{ ...s.card, marginTop: 12 }}>
+                <div style={{ ...s.value, fontWeight: 700, marginBottom: 12 }}>
+                  {payTarget.quantity} × {tt.name} · <span style={s.amount}>GH₵ {payTarget.total}</span>
+                </div>
+                <PaymentMethodPicker value={pay.method} onChange={pay.setMethod} amount={payTarget.total} tone="light" />
+                {pay.problem && <div role="alert" style={{ ...s.error, marginTop: 8 }}>{pay.problem}</div>}
+                <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+                  <button type="button" onClick={startPay} disabled={busy || !pay.ready} aria-disabled={busy || !pay.ready} style={{ ...s.button, opacity: busy || !pay.ready ? 0.6 : 1, cursor: busy || !pay.ready ? "not-allowed" : "pointer" }}>Pay</button>
+                  <button type="button" onClick={closePay} disabled={busy} style={s.ghost}>Cancel</button>
+                </div>
+              </div>
+            )}
+
             {purchased && (
               <div style={{ marginTop: 12, background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 12px" }}>
                 <div style={{ color: C.trust, fontWeight: 800, fontSize: "0.8rem", marginBottom: 4 }}>✅ Purchased!</div>
@@ -547,13 +617,14 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user,
         );
       })}
 
-      {payTarget && PaymentComponent && (
+      {payTarget && PaymentComponent && (!pay.ledgerOn || momoOpen) && (
         <PaymentComponent
-          amount={payTarget.amount}
+          amount={pay.ledgerOn ? Number(payTarget.total) : payTarget.amount}
+          {...(pay.ledgerOn ? { processing: pay.processing } : {})}
           purpose={`${payTarget.quantity}x '${payTarget.ticketType.name}' ticket(s)`}
           businessName={user?.fullName || ""}
-          onSuccess={confirmPurchase}
-          onClose={() => setPayTarget(null)}
+          onSuccess={() => confirmPurchase(true)}
+          onClose={() => (pay.ledgerOn ? setMomoOpen(false) : setPayTarget(null))}
         />
       )}
     </div>

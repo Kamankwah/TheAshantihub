@@ -4,7 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
-import { useCanBuy } from "./hooks/useCanBuy.js";
 import CartTieredResults from "./components/CartTieredResults.jsx";
 import { addGhs } from "./components/wallet/walletMoney.js";
 import { useListing } from "./hooks/useListing.js";
@@ -24,6 +23,7 @@ import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
 import { useOrders } from "./hooks/useOrders.js";
 import ServiceAcceptBar from "./components/ServiceAcceptBar.jsx";
 import BookingTermsNote from "./components/BookingTermsNote.jsx";
+import ServiceRequestPay from "./components/ServiceRequestPay.jsx";
 import { useMyServiceRequests } from "./hooks/useMyServiceRequests.js";
 import { useMyBookings } from "./hooks/useMyBookings.js";
 import { useMyConversations, getGuestToken } from "./hooks/useMyConversations.js";
@@ -91,6 +91,7 @@ import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
 import RaiseDisputeForm from "./components/RaiseDisputeForm.jsx";
 import TicketQr from "./components/TicketQr.jsx";
 import StaffGateNotice from "./components/StaffGateNotice.jsx";
+import PickupCollectionNote from "./components/PickupCollectionNote.jsx";
 import StaffViewOnlyBar, { STAFF_VIEW_ONLY_BAR_HEIGHT } from "./components/StaffViewOnlyBar.jsx";
 import { isStaffSession } from "./lib/staffSession.js";
 import { useStaffGate } from "./hooks/useStaffGate.js";
@@ -2058,30 +2059,15 @@ const SR_STATUS_META = {
 
 export function ServiceRequestsTab({ PaymentComponent }) {
   const { data, isLoading, isError, refetch } = useMyServiceRequests();
-  const [payingFor, setPayingFor] = useState(null); // the request being paid
-  const [payError, setPayError] = useState(null);
-  // Before the marketplace opens, Pay is greyed with "Opens <D Mon>" unless
-  // this account may buy (ruling R35, same rule as every buy surface).
-  const { canBuy, label: opensLabel } = useCanBuy();
+  // The server's pay answer per request id: the card keeps its paid line after the refetch moves it past "accepted".
+  const [paidAnswers, setPaidAnswers] = useState({});
 
   const requests = data || [];
   if (isLoading) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>Loading…</div>;
   if (isError) return <div style={{color:D.red,fontSize:"0.8rem"}}>Could not load your requests.</div>;
   if (requests.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>You haven't requested any services yet.</div>;
 
-  const onPaid = async () => {
-    setPayError(null);
-    try { await apiPost(`/api/services/requests/${payingFor.id}/pay/`, {}); setPayingFor(null); refetch(); }
-    catch (err) {
-      // The server refuses a shopper's buy before opening (403 code not_open) —
-      // show its own message rather than claiming the payment went through.
-      if (err?.status===403 && err?.body?.code==="not_open") { setPayingFor(null); setPayError(err.body.detail || "The marketplace is not open yet."); }
-      else setPayError("Payment went through but we couldn't start the job — please contact support.");
-    }
-  };
-
   return <div style={{display:"flex",flexDirection:"column",gap:14}}>
-    {payError && <div style={{color:D.red,fontSize:"0.78rem"}}>{payError}</div>}
     {requests.map(sr=>{
       const meta = SR_STATUS_META[sr.status]||{label:sr.status,color:D.textDim};
       return (
@@ -2098,15 +2084,16 @@ export function ServiceRequestsTab({ PaymentComponent }) {
           </div>
           <ServiceAcceptBar request={sr} onChanged={refetch} />
           {sr.status==="accepted" && <BookingTermsNote kind="service" tone="light" />}
-          {sr.status==="accepted" && (
-            <button onClick={()=>{ if (canBuy) setPayingFor(sr); }} disabled={!canBuy} aria-disabled={!canBuy} style={{marginTop:10,background:canBuy?D.green:D.divider,color:canBuy?"#fff":D.textDim,border:"none",borderRadius:20,padding:"8px 16px",fontWeight:800,fontSize:"0.76rem",cursor:canBuy?"pointer":"not-allowed",fontFamily:"inherit"}}>{canBuy ? <>💳 Pay GHS {sr.agreed_price} to start</> : opensLabel}</button>
+          {sr.status==="accepted" && <ServiceRequestPay sr={sr} PaymentComponent={PaymentComponent} onPaid={(res)=>{ setPaidAnswers(m=>({...m,[sr.id]:res||{}})); refetch(); }} />}
+          {paidAnswers[sr.id] && (
+            <div role="status" style={{marginTop:10,color:D.textDim,fontSize:"0.78rem"}}>
+              <div>Paid. The job can start.</div>
+              {paidAnswers[sr.id].payment_processing && paidAnswers[sr.id].payment_processing!=="0.00" && <div>Payment processing GH₵ {paidAnswers[sr.id].payment_processing}</div>}
+            </div>
           )}
         </div>
       );
     })}
-    {payingFor && PaymentComponent && (
-      <PaymentComponent amount={parseFloat(payingFor.agreed_price)||0} onSuccess={onPaid} onClose={()=>setPayingFor(null)} />
-    )}
   </div>;
 }
 
@@ -2199,6 +2186,7 @@ function OrdersDeliveryTab({ searchQuery }) {
             {o.delivery_method==="door_to_door" ? `🚚 Door-to-door${o.delivery_address ? ` — ${o.delivery_address}` : ""}` : "🏬 Store pickup"}
           </div>
         )}
+        {o.delivery_method==="store_pickup" && o.collection_code && <div style={{marginTop:8}}><PickupCollectionNote code={o.collection_code ?? null} collectBy={o.collect_by ?? null} tone="dark"/></div>}
         {o.status==="paid" && o.delivery_method==="door_to_door" && o.ready_not_before && new Date(o.ready_not_before) > new Date() && !["delivered","confirmed"].includes(o.delivery_assignment_status) && o.delivery_status!=="delivered" && formatAccraDayTime(o.ready_not_before) && (
           <div data-testid="order-scheduled-start" style={{marginTop:6,color:D.textDim,fontSize:"0.72rem",fontWeight:700}}>Delivery scheduled to start {formatAccraDayTime(o.ready_not_before)}</div>
         )}
@@ -3346,6 +3334,7 @@ export default function AshantiHub() {
               onOpenListing={(otherId)=>setSelectedListingId(otherId)}
               onAddToCart={handleAddToCart}
               CardComponent={Card}
+              PaymentComponent={MoMoPayment}
             />
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>

@@ -305,6 +305,37 @@ describe('UserPanel', () => {
     })
   })
 
+  describe('Orders & Delivery tab — store pickup', () => {
+    it('a paid store-pickup order shows its collection code and the office line', async () => {
+      server.use(
+        http.get('http://localhost:8000/api/core/site-settings/', () => HttpResponse.json({ pickup_office_address: '12 Adum Road, Kumasi' })),
+        http.get('http://localhost:8000/api/orders/', () => HttpResponse.json([{
+          id: 9, status: 'paid', placed_at: '2026-10-20T10:00:00Z', total_amount: '90.00', delivery_method: 'store_pickup',
+          collection_code: '482913', collect_by: '2026-10-25T17:30:00Z',
+          items: [{ id: 1, listing_name: 'Shea butter', quantity: 1, line_total: '90.00' }],
+        }])),
+      )
+      renderPanel()
+      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      expect(await screen.findByLabelText('Collection code')).toHaveTextContent('482913')
+      expect(await screen.findByText('Collect it at the AshantiHub pickup office: 12 Adum Road, Kumasi.')).toBeInTheDocument()
+      expect(screen.getByText('Collect by Sun 25 Oct, 17:30.')).toBeInTheDocument()
+    })
+
+    it('a store-pickup order with no collection code shows no pickup note and no "once you have paid" line', async () => {
+      server.use(http.get('http://localhost:8000/api/orders/', () => HttpResponse.json([{
+        id: 10, status: 'cancelled', placed_at: '2026-10-20T10:00:00Z', total_amount: '90.00', delivery_method: 'store_pickup',
+        collection_code: null, collect_by: null,
+        items: [{ id: 1, listing_name: 'Shea butter', quantity: 1, line_total: '90.00' }],
+      }])))
+      renderPanel()
+      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      await screen.findByText('Shea butter × 1')
+      expect(screen.queryByTestId('pickup-collection-note')).not.toBeInTheDocument()
+      expect(screen.queryByText(/once you have paid/)).not.toBeInTheDocument()
+    })
+  })
+
   describe('Orders & Delivery tab — scheduled start', () => {
     const order = (extra) => ({
       id: 7, status: 'paid', placed_at: '2026-10-19T22:00:00Z', total_amount: '90.00', delivery_method: 'door_to_door', delivery_status: 'processing',
