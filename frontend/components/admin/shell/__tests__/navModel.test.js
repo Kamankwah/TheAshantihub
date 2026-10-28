@@ -101,7 +101,7 @@ const ACCT_SHARED = ['commissions', 'refunds', 'reconciliation']
 const SUPPORT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('support-') && !['support-team', 'support-issues'].includes(i.id)).map((i) => i.id)
 // The Marketing canvas screens are Marketing's alone.
 const MK_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('mk-')).map((i) => i.id)
-const OPS_ONLY = [...MK_ONLY, 'ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', ...SA_ONLY, ...SUPPORT_ONLY]
+const OPS_ONLY = [...MK_ONLY, 'ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', 'redelivery-fee', ...SA_ONLY, ...SUPPORT_ONLY]
 // The Delivery Manager canvas screens (2026-10-07) are the Delivery Manager's alone.
 const DM_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('dm-')).map((i) => i.id)
 // The Dispatch (rider) canvas screens are the rider's alone.
@@ -305,7 +305,8 @@ describe('Subscriptions due and Fraud cases (staff phase 2A)', () => {
     ]))
     expect(idsIn(groups, 'Businesses')).toEqual(['all-portfolios', 'at-risk', 'subscriptions-due'])
     // Messaging, Disputes and Delivery Management are not in the Operations menu; the two service screens need service_issues.view.
-    expect(idsIn(groups, 'Service')).toEqual(['fraud-cases'])
+    // Scheduled orders joined Service (Director ruling 7, 2026-10-20): it shows here because orders.manage_delivery is held.
+    expect(idsIn(groups, 'Service')).toEqual(['delivery-scheduled', 'fraud-cases'])
   })
 
   it("leaves Fraud cases and Delivery Management out of Support's Queues (the canvas has neither)", () => {
@@ -407,10 +408,13 @@ describe('Operations menu (canvas 2026-10-12)', () => {
     'kyc.approve', 'scouts.assign', 'listings.moderate', 'hero_media.approve', 'event.approve', 'reviews.moderate', 'users.view', 'users.manage',
     'orders.manage_delivery', 'site_settings.manage', 'zones.manage', 'contact_messages.manage', 'staff.invite_team', 'activity.view_team',
     'calls.log', 'businesses.register', 'listings.stage', 'portfolio.manage', 'targets.manage', 'leave.record', 'fraud.manage', 'fraud.flag', 'service_issues.view',
+    'redelivery_fee.manage',
   ]
   const auth = { user: { role: 'operations' }, hasPermission: (c) => OPS.includes(c) }
   const groups = buildNavGroups(auth)
 
+  // The canvas's groups and items, plus two Director rulings (2026-10-20) placed where the canvas would put them:
+  // Scheduled orders beside Deliveries & returns (ruling 7) and the Re-delivery fee under Settings (ruling 1).
   it('has exactly the canvas groups and items, in order', () => {
     expect(groups.map((g) => [g.label, g.items.map((i) => i.label)])).toEqual([
       ['Approvals', ['Approvals inbox']],
@@ -418,12 +422,23 @@ describe('Operations menu (canvas 2026-10-12)', () => {
       ['Businesses', ['All portfolios', 'At risk', 'Subscriptions due']],
       ['Listing for clients', ['Prospects', 'Register a business', 'Client listings']],
       ['Moderation', ['KYC queue', 'Listings', 'Hero & events', 'Reviews']],
-      ['Service', ['Support issues', 'Deliveries & returns', 'Fraud cases']],
+      ['Service', ['Support issues', 'Deliveries & returns', 'Scheduled orders', 'Fraud cases']],
       ['Activity', ['Staff activity', 'Visit map']],
       ['Reports', ['My reports', 'My team']],
       ['My work', ['Tasks', 'Call log', 'Sign-in & Security']],
-      ['Settings', ['Zones', 'Site settings', 'Contact messages']],
+      ['Settings', ['Zones', 'Site settings', 'Contact messages', 'Re-delivery fee']],
     ])
+  })
+
+  it('shows Scheduled orders with orders.manage_delivery and the Re-delivery fee with redelivery_fee.manage, to Operations only', () => {
+    const ids = (role, perms) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
+    expect(ids('operations', ['orders.manage_delivery'])).toContain('delivery-scheduled')
+    expect(ids('operations', ['kyc.approve'])).not.toContain('delivery-scheduled')
+    expect(ids('operations', ['redelivery_fee.manage'])).toContain('redelivery-fee')
+    expect(ids('operations', [])).not.toContain('redelivery-fee')
+    for (const role of ['super_admin', 'accountant', 'support', 'scout', 'marketing', 'delivery_manager', 'not-a-role']) {
+      expect(ids(role, ['redelivery_fee.manage'])).not.toContain('redelivery-fee')   // Super Admin edits it on Money rules
+    }
   })
 
   it('drops Users, Scout Assignments, Field Verification and Delivery Management, with no More tools', () => {
@@ -458,6 +473,17 @@ describe('Operations menu (canvas 2026-10-12)', () => {
   })
 })
 
+describe('Wallets item (wallet 3F)', () => {
+  it('test_accountant_reaches_wallets_under_more_tools', () => {
+    const accountant = buildNavGroups({ user: { role: 'accountant' }, hasPermission: (c) => ['wallets.view', 'wallets.manage'].includes(c) })
+    expect(accountant.find((g) => g.label === 'More tools').items.map((i) => i.label)).toContain('Wallets')
+  })
+  it('hides Wallets without wallets.view', () => {
+    const ids = buildNavGroups({ user: { role: 'accountant' }, hasPermission: () => false }).flatMap((g) => g.items.map((i) => i.id))
+    expect(ids).not.toContain('wallets')
+  })
+})
+
 describe('Marketplace opening item', () => {
   const ids = (role, perms) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
   it('opening_only_in_super_admin_menu', () => {
@@ -474,19 +500,29 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
   const auth = { user: { role: 'super_admin' }, hasPermission: () => true }
   const groups = buildNavGroups(auth)
 
+  // The canvas, plus Scheduled orders beside Orders & deliveries (Director ruling 7, 2026-10-20), and Re-deliveries and
+  // Free delivery after it (wallet 5F, Director ruling 8).
   it('has exactly the canvas groups and items, in order, with the Security settings item', () => {
     expect(groups.map((g) => [g.label, g.items.map((i) => i.label)])).toEqual([
       ['Home', ['My approvals']],
       ['People', ['Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays']],
       ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
-      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
+      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Scheduled orders', 'Re-deliveries', 'Free delivery', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
       ['Listing for clients', ['Prospects', 'Register a business', 'Client listings']],
-      ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation']],
+      ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets', 'Withdrawals']],
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
       ['Security & audit', ['Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings']],
       ['Communication', ['Notification center', 'Staff announcements']],
       ['Settings', ['Approval rules & timers', 'Money rules', 'Commission policy', 'Delivery pricing', 'Plans & prices', 'Target limits', 'Tax tables', 'Categories & zones', 'Integrations', 'System health', 'Marketplace opening']],
     ])
+  })
+
+  it('shows Scheduled orders under Marketplace with orders.manage_delivery or delivery.manage', () => {
+    const marketplace = (perms) => buildNavGroups({ user: { role: 'super_admin' }, hasPermission: (c) => perms.includes(c) }).find((g) => g.id === 'marketplace')?.items.map((i) => i.id) || []
+    // Free delivery is the Super Admin's whatever the permissions (wallet 5F, Director ruling 8), so it follows the delivery items.
+    expect(marketplace(['orders.manage_delivery'])).toEqual(['delivery', 'delivery-scheduled', 'mk-delivery-promos'])
+    expect(marketplace(['delivery.manage'])).toEqual(['delivery-scheduled', 'mk-delivery-promos'])
+    expect(marketplace(['users.view'])).not.toContain('delivery-scheduled')
   })
 
   it('is exhaustive: no More tools, and dropped screens keep their permission', () => {
@@ -566,9 +602,11 @@ describe('Marketing menu (canvas 2026-10-13)', () => {
   it('gates each screen on its permission and shows none to another role', () => {
     const ids = (a) => buildNavGroups(a).flatMap((g) => g.items.map((i) => i.id))
     expect(ids({ user: { role: 'marketing' }, hasPermission: (c) => c === 'promotions.manage' })).toEqual(['promotions', 'mk-quiet-hours', 'reports'])
-    for (const role of ['super_admin', 'operations', 'support']) {
+    for (const role of ['operations', 'support']) {
       expect(ids({ user: { role }, hasPermission: () => true }).filter((id) => id.startsWith('mk-'))).toEqual([])
     }
+    // The Super Admin gets the one Free delivery screen and no other Marketing screen (wallet 5F, Director ruling 8).
+    expect(ids({ user: { role: 'super_admin' }, hasPermission: () => true }).filter((id) => id.startsWith('mk-'))).toEqual(['mk-delivery-promos'])
   })
 
   it('reads the promotions badge from the new staff-badges key', () => {
@@ -633,6 +671,15 @@ describe('General Manager menu (marketplace M3, Task 0)', () => {
     }
   })
 
+  it('GM menu keeps origin money and delivery items off, even holding every permission', () => {
+    // Origin's wallet/withdrawal views, re-delivery fee editing and re-delivery requests are money or dispatch screens the
+    // General Manager (a checker) does not get; Scheduled orders (Send now) and Free delivery (a promo) stay off too.
+    for (const auth of [gmAuth(), { user: { role: 'general_manager' }, hasPermission: () => true }]) {
+      const ids = idsOf(auth)
+      for (const gone of ['wallets', 'withdrawals', 'redelivery-fee', 'redeliveries', 'delivery-scheduled', 'mk-delivery-promos']) expect(ids).not.toContain(gone)
+    }
+  })
+
   it('reads Command center as the overview label, and other roles keep theirs', () => {
     expect(overviewLabel('general_manager')).toBe('Command center')
     expect(overviewLabel('operations')).toBe('Overview')
@@ -682,6 +729,30 @@ describe('listing for clients (marketplace M3)', () => {
 
   it('leaves the scout menu as it was apart from the new item', () => {
     const pipeline = buildNavGroups(as('scout')).find((g) => g.id === 'pipeline')
-    expect(pipeline.items.map((i) => i.id)).toEqual(['prospects', 'register-business', 'client-listings'])
+    expect(pipeline.items.map((i) => i.id)).toEqual(['prospects', 'register-business', 'client-listings'])  })
+})
+
+describe('Re-deliveries and Free delivery (wallet 5F, Director ruling 8)', () => {
+  const ids = (role, perms) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
+  const groupLabel = (role, perms, id) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).find((g) => g.items.some((i) => i.id === id))?.label
+
+  it('the Pickup Desk finds Re-deliveries (no menu of its own until Plan 1F: the default grouping, System, offers it)', () => {
+    expect(groupLabel('pickup_desk', ['orders.redeliver'], 'redeliveries')).toBe('System')
+    expect(ids('pickup_desk', [])).not.toContain('redeliveries')
+  })
+
+  it('Support gets no Re-deliveries item (its block sits inside Order status)', () => {
+    expect(ids('support', ['orders.redeliver', 'orders.support_update'])).not.toContain('redeliveries')
+    expect(ids('support', ['orders.redeliver', 'orders.support_update'])).toContain('support-order-status')
+  })
+
+  it('the Super Admin finds Re-deliveries under Marketplace, after Scheduled orders', () => {
+    expect(groupLabel('super_admin', ['orders.redeliver'], 'redeliveries')).toBe('Marketplace')
+    expect(ids('super_admin', [])).not.toContain('redeliveries')
+  })
+
+  it('Marketing keeps Free delivery in On the site', () => {
+    expect(groupLabel('marketing', ['site_promo.manage'], 'mk-delivery-promos')).toBe('On the site')
+    expect(ids('operations', ['site_promo.manage'])).not.toContain('mk-delivery-promos')
   })
 })

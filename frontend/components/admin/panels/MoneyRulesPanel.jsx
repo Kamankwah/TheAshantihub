@@ -16,7 +16,9 @@ import { card, errorStyle, h2, h3 } from "./portfolioParts.jsx";
 const UNIT_WORDS = { ghs: "GH₵", percent: "%", hours: "hours", minutes: "minutes", seconds: "seconds", count: "" };
 const when = (value) => new Date(value).toLocaleString("en-GH", { dateStyle: "medium", timeStyle: "short" });
 
-function SettingRow({ setting, pending, onSaved }) {
+// One governed setting with its value in force, what is waiting or scheduled, and a Save that proposes a change
+// (also used by the Operations re-delivery fee screen, RedeliveryFeePanel).
+export function SettingRow({ setting, pending, onSaved }) {
   const stored = toInput(setting.key, setting.value);
   const [text, setText] = useState(stored);
   const [busy, setBusy] = useState(false);

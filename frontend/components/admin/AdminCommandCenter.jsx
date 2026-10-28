@@ -56,6 +56,10 @@ import RolesPermissionsPanel from "./panels/RolesPermissionsPanel.jsx";
 import SaSessionsPanel from "./panels/SaSessionsPanel.jsx";
 import { startViewAs } from "../../hooks/useViewAs.js";
 import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
+import WalletsPanel from "./panels/WalletsPanel.jsx";
+import RiderMoneyPanel from "./panels/RiderMoneyPanel.jsx";
+import WithdrawalsPanel from "./panels/WithdrawalsPanel.jsx";
+import WalletReconciliationPanel from "./panels/WalletReconciliationPanel.jsx";
 import DisputesPanel from "./panels/DisputesPanel.jsx";
 import TransactionsReportPanel from "./panels/TransactionsReportPanel.jsx";
 import CreditPanel from "./panels/CreditPanel.jsx";
@@ -66,7 +70,8 @@ import DispatchPanel from "./panels/DispatchPanel.jsx";
 import { useRiderLocation } from "../../lib/riderTracking.js";
 import RiderTracker from "./panels/rider/RiderTracker.jsx";
 import ShiftPanel from "./panels/rider/ShiftPanel.jsx";
-import { EarningsScreen, JobsScreen, ReportIssueScreen, RiderCashScreen, RiderDocumentsScreen, RiderMenuScreen } from "./panels/rider/RiderScreens.jsx";
+import RiderEarningsTab from "./panels/rider/RiderEarningsTab.jsx";
+import { JobsScreen, ReportIssueScreen, RiderCashScreen, RiderDocumentsScreen, RiderMenuScreen } from "./panels/rider/RiderScreens.jsx";
 import RiderBottomBar from "./shell/RiderBottomBar.jsx";
 import DeliveryZonesPanel from "./panels/delivery/DeliveryZonesPanel.jsx";
 import DocumentsPanel from "./panels/delivery/DocumentsPanel.jsx";
@@ -135,6 +140,8 @@ import OpsTargetsPanel from "./panels/OpsTargetsPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
 import ApprovalRulesPanel from "./panels/ApprovalRulesPanel.jsx";
 import MoneyRulesPanel from "./panels/MoneyRulesPanel.jsx";
+import RedeliveryFeePanel from "./panels/RedeliveryFeePanel.jsx";
+import RedeliveriesPanel from "./panels/RedeliveriesPanel.jsx";
 import PortfolioPanel from "./panels/PortfolioPanel.jsx";
 import SubscriptionsDuePanel from "./panels/SubscriptionsDuePanel.jsx";
 import FraudCasesPanel from "./panels/FraudCasesPanel.jsx";
@@ -494,7 +501,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "subscription-plans-approval" && (role === "super_admin" ? <PlansPricesPanel /> : <SubscriptionPlanApprovalPanel />)}
           {activeTab === "delivery" && (role === "super_admin" ? <SaOrdersPanel /> : <DeliveryManagementPanel />)}
           {activeTab === "contact-messages" && (role === "support" ? <SupportContactPanel auth={auth} onNavigate={selectTab} /> : <ContactMessagesPanel auth={auth} />)}
-          {activeTab === "users" && (role === "super_admin" ? <SaCustomersPanel auth={auth} /> : role === "support" ? <SupportPeoplePanel profile={supportProfile} onOpenProfile={openSupportProfile} onBack={() => setSupportProfile(null)} onLogCall={openSupportLog} onNavigate={supportNavigate} /> : <UsersPanel auth={auth} />)}
+          {activeTab === "users" && (role === "super_admin" ? <SaCustomersPanel auth={auth} /> : role === "support" ? <SupportPeoplePanel profile={supportProfile} auth={auth} onOpenProfile={openSupportProfile} onBack={() => setSupportProfile(null)} onLogCall={openSupportLog} onNavigate={supportNavigate} canRecover={auth.hasPermission("otp.recovery")} /> : <UsersPanel auth={auth} />)}
           {activeTab === "categories-zones" && <CategoriesZonesPanel auth={auth} />}
           {activeTab === "site-settings" && <SiteSettingsPanel showToast={showToast} />}
           {activeTab === "staff" && (role === "super_admin" ? <StaffDirectoryPanel auth={auth} detailId={detail} onOpenDetail={openDetail} onNavigate={selectTab} onViewAs={auth.hasPermission("staff.view_as") ? startViewAs : undefined} /> : <StaffManagementPanel />)}
@@ -508,7 +515,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "scout-assignments" && <ScoutAssignmentsPanel />}
           {activeTab === "field-verification" && <ScoutPanel />}
           {activeTab === "dr-jobs" && <JobsScreen />}
-          {activeTab === "dr-earnings" && <EarningsScreen />}
+          {activeTab === "dr-earnings" && <RiderEarningsTab onNavigate={selectTab} />}
           {activeTab === "dr-cash" && <RiderCashScreen />}
           {activeTab === "dr-issue" && <ReportIssueScreen />}
           {activeTab === "dr-documents" && <RiderDocumentsScreen />}
@@ -573,7 +580,9 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "leaderboard" && <LeaderboardPanel />}
           {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} showTaxRuling={role === "super_admin" || auth.hasPermission("commission.tax_ruling")} onOpenApproval={role === "super_admin" ? openApproval : undefined} />}
           {activeTab === "payouts-payroll" && <PayoutsPayrollPanel onNavigate={selectTab} />}
-          {activeTab === "reconciliation" && <ReconciliationPanel />}
+          {activeTab === "reconciliation" && <WalletReconciliationPanel fallback={<ReconciliationPanel />} onNavigate={auth.hasPermission("fraud.manage") || auth.hasPermission("fraud.flag") ? selectTab : undefined} />}
+          {activeTab === "wallets" && <WalletsPanel auth={auth} />}
+          {activeTab === "withdrawals" && <WithdrawalsPanel auth={auth} />}
           {activeTab === "delivery-pricing" && <DeliveryPricingPanel auth={auth} />}
           {activeTab === "tax-tables" && <TaxTablesPanel onNavigate={selectTab} />}
           {activeTab === "integrations" && <IntegrationsPanel />}
@@ -584,7 +593,8 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "team-reports" && (role === "super_admin" ? <ReportsHubPanel /> : <TeamReportsPanel auth={auth} />)}
           {activeTab === "commissions" && <CommissionsPanel onNavigate={selectTab} />}
           {activeTab === "refunds" && <RefundsPanel onNavigate={role === "accountant" ? selectTab : undefined} />}
-          {Object.hasOwn(ACCOUNTING_SHELLS, activeTab) && <AccountingShellPanel id={activeTab} />}
+          {activeTab === "acct-rider-payouts" && <RiderMoneyPanel auth={auth} fallback={<AccountingShellPanel id="acct-rider-payouts" />} />}
+          {activeTab !== "acct-rider-payouts" && Object.hasOwn(ACCOUNTING_SHELLS, activeTab) && <AccountingShellPanel id={activeTab} />}
           {activeTab === "acct-collections" && <CollectionsPanel />}
           {activeTab === "acct-audit-chain" && <AuditChainPanel />}
           {activeTab === "acct-alerts" && <MoneyAlertsPanel />}
@@ -602,6 +612,8 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "approval-rules" && <ApprovalRulesPanel onNavigate={selectTab} />}
           {activeTab === "money-rules" && <MoneyRulesPanel />}
+          {activeTab === "redelivery-fee" && <RedeliveryFeePanel />}
+          {activeTab === "redeliveries" && <RedeliveriesPanel />}
           {/* The external co-signer has one screen: the requests waiting for their second approval. */}
           {activeTab === "overview" && role === "cosigner" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}

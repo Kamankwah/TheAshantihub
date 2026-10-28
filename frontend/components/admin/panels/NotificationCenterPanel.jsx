@@ -18,7 +18,7 @@ const KIND_WORDS = {
   scheduled_export_ready: "Export ready", announcement: "Announcement", security_policy_changed: "Security change",
   report_submitted: "Report submitted", report_reminder: "Report reminder", kyc_needs_approval: "KYC waiting",
   listing_needs_moderation: "Listing waiting", event_needs_approval: "Event waiting", hero_needs_approval: "Hero waiting",
-  contact_message: "Contact message", new_message: "Support message", support_reply: "Support reply",
+  contact_message: "Contact message", new_message: "Support message", support_reply: "Support reply", otp_sms_spend: "Text spend",
 };
 export const kindWords = (kind) => KIND_WORDS[kind] || (kind || "").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 const stamp = (iso) => {

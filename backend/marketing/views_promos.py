@@ -416,39 +416,10 @@ class PublicPromosView(APIView):
 
 
 def _delivery_quote(request, items):
-    """What the cart shows for delivery, mirroring checkout: None unless fees are on and the customer chose
-    door-to-door. `fee` is the amount that will be charged ("0.00" when waived) and is null until a delivery
-    point lets the fee be measured; `waived_fee` is what the promo took off, when known. `mixed_note` is set when
-    a free-delivery promo exists for part of the cart but the cart spans businesses."""
-    from django.conf import settings
+    """The cart quote's delivery block (the rules live in delivery.rates.cart_delivery_quote)."""
+    from delivery.rates import cart_delivery_quote
 
-    from . import waivers
-    from delivery.rates import checkout_fee
-
-    if not settings.DELIVERY_FEE_ENABLED or request.data.get("delivery_method") != Order.DOOR_TO_DOOR or not items:
-        return None
-    from routing import region
-
-    lat, lng = request.data.get("delivery_lat"), request.data.get("delivery_lng")
-    if lat not in (None, "") and lng not in (None, "") and not region.in_service_area(lat, lng):
-        return {"fee": None, "fee_status": "out_of_area", "waived": False, "waiver_name": None, "waived_fee": None, "mixed_note": None, "message": region.OUT_OF_AREA_MESSAGE}
-    listings = [i.listing for i in items]
-    waiver = waivers.covering_waiver(listings, timezone.now())
-    quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
-    original = money(quoted[1]["total"]) if quoted else None
-    from delivery import config
-
-    # "ok": a fee was measured. "no_rate_card": none is in force, so checkout adds NO delivery fee.
-    # "needs_location": no usable delivery point, so checkout adds no fee until one is chosen.
-    fee_status = "ok" if quoted else ("no_rate_card" if config.live(config.RateCard) is None else "needs_location")
-    out = {"fee": original, "fee_status": fee_status, "waived": waiver is not None, "waiver_name": waiver.name if waiver else None, "waived_fee": None, "mixed_note": None}
-    out["lines"] = quoted[1]["lines"] if quoted else None
-    out["route"] = quoted[1].get("route") if quoted else None
-    if waiver is not None:
-        out["fee"], out["waived_fee"] = ("0.00", original) if original is not None else (None, None)
-    elif waivers.mixed_business(listings) and any(waivers.live_waivers(o, timezone.now()) for o in {l.business_owner_id for l in listings}):
-        out["mixed_note"] = "Free delivery only applies when everything in your order is from the same business."
-    return out
+    return cart_delivery_quote(items, request.data.get("delivery_method"), request.data.get("delivery_lat"), request.data.get("delivery_lng"))
 
 
 class CartQuoteView(APIView):

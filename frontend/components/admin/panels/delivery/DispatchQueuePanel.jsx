@@ -52,6 +52,7 @@ function Ranking({ orderId, row, onDone, canForce }) {
         {data && (
           <>
             {!data.pickup_located && <Note tone="warn">This business has no map pin, so the engine cannot rank riders. You can still pick a rider by hand below.</Note>}
+            {data.third_party_fallback && <Note tone="warn">No AshantiHub rider is available for this re-assigned delivery, so third-party riders are ranked too. Giving it to one is recorded in the activity log.</Note>}
             {row.offer && <Note>Offered to <b>{row.offer.rider}</b>, {span(row.offer.seconds_left)} left. If time runs out the offer passes to the next rider.</Note>}
             {short && <Note tone="warn"><b>Time is short.</b> Under {SHORT_MINUTES} minutes to spare. You can force-assign a rider now: they are told the job is assigned, not offered.</Note>}
             <QueueMap orderId={orderId} onSelectRider={setMarked} />
@@ -133,7 +134,7 @@ export default function DispatchQueuePanel({ auth, onNavigate }) {
                     <tbody>
                       {rows.map((o) => (
                         <tr key={o.order_id} style={{ background: o.order_id === selected ? D.panelBg2 : "transparent" }}>
-                          <td style={{ ...td, fontWeight: 800 }}>#{o.order_id}{o.returned && <div style={dim}>Returned after a failed attempt</div>}</td>
+                          <td style={{ ...td, fontWeight: 800 }}>#{o.order_id}{o.returned && <div style={dim}>Returned after a failed attempt</div>}{o.assign_limit && <div><span style={chip(D.amber)}>{o.assign_limit.label}</span></div>}</td>
                           <td style={td}>{o.route.from || "Pickup not set"} → {o.route.to || "No address"}<div style={dim}>{o.unzoned ? "Outside every zone" : o.zone} · {o.payment.label}</div>
                             {o.stops > 1 && <span style={chip(D.blue)}>{o.stops} shops</span>}
                             {o.detour_warning && <div role="note" style={{ ...dim, color: WARN, fontWeight: 700 }}>⚠ {o.detour_warning}</div>}

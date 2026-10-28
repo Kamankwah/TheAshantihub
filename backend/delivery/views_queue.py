@@ -30,6 +30,7 @@ def _queue_row(order, now, rules, limits, zones=None):
         "offer": {"id": live.pk, "rider": live.rider.staff.full_name, "expires_at": live.expires_at, "seconds_left": max(0, int((live.expires_at - now).total_seconds()))} if live else None,
         "held_until": hold.release_at if hold and hold.release_at > now else None,
         "refusals": order.offers.filter(status__in=(Offer.DECLINED, Offer.EXPIRED)).count(),
+        "assign_limit": dispatching.assign_limit(order),
     })
     return row
 
@@ -132,7 +133,12 @@ class ScheduleView(ManageView):
 
 
 class SendEarlyView(ManageView):
-    """POST orders/<order_id>/send-early/ {reason} — release a held order before its vendors open (delivery.manage)."""
+    """POST orders/<order_id>/send-early/ {reason} — release a held order before its vendors open. delivery.manage or
+    orders.manage_delivery (Director ruling 7, 2026-10-20: whoever reads the Scheduled list may Send now); the reason is
+    required and recorded (delivery.early_send)."""
+
+    def get_permissions(self):
+        return [HasAnyRolePermission("delivery.manage", "orders.manage_delivery")]
 
     def post(self, request, order_id):
         get_object_or_404(Order, pk=order_id)
@@ -149,7 +155,7 @@ class ScheduledPagination(PageNumberPagination):
 
 class ScheduledView(ManageView):
     """GET scheduled/ — readable by delivery.manage or orders.manage_delivery (the delivery-management
-    panel's permission); sending early (SendEarlyView) stays delivery.manage only.
+    panel's permission); sending early (SendEarlyView) takes the same two.
 
     Paginated ({count, next, previous, results}) paid orders held until their vendors open, soonest
     opening first. The same queryset as the queue's scheduled_count (board.scheduled_orders)."""

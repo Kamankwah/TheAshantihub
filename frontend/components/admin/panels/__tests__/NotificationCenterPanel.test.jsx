@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from '../../../../mocks/server.js'
 import NotificationCenterPanel from '../NotificationCenterPanel.jsx'
+import { buildNavGroups } from '../../shell/navModel.js'
 
 const API = 'http://localhost:8000'
 const n = (id, over = {}) => ({ id, kind: 'approval_waiting', title: `Approval ${id}`, body: 'Info change', link: 'approvals', icon: '✅', is_read: false, created_at: '2026-10-13T08:00:00Z', ...over })
@@ -57,5 +58,25 @@ describe('NotificationCenterPanel', () => {
     await screen.findByText('Approval 1')
     fireEvent.click(screen.getByRole('button', { name: 'Mark all as read' }))
     await waitFor(() => expect(all).toBe(1))
+  })
+
+  it('otp_sms_spend reads as "Text spend"', async () => {
+    server.use(http.get(`${API}/api/notifications/`, () => HttpResponse.json({ unread_count: 1, kinds: [{ kind: 'otp_sms_spend', total: 1 }], results: [n(1, { kind: 'otp_sms_spend', title: 'Texts are running high', link: 'security' })] })))
+    wrap(<NotificationCenterPanel onNavigate={() => {}} />)
+    await screen.findByText('Texts are running high')
+    expect(screen.getAllByText('Text spend').length).toBeGreaterThan(0)
+  })
+
+  it('a reconciliation notice opens the Reconciliation tab', async () => {
+    const go = vi.fn()
+    // The same screen ids the shell hands the panel for a Super Admin (AdminCommandCenter builds them from buildNavGroups).
+    const known = new Set(buildNavGroups({ user: { role: 'super_admin' }, hasPermission: () => true }).flatMap((g) => g.items.map((i) => i.id)))
+    server.use(
+      http.get(`${API}/api/notifications/`, () => HttpResponse.json({ unread_count: 1, kinds: [], results: [n(7, { kind: 'reconciliation_mismatch', title: 'Reconciliation for 20 Oct 2026 found 1 difference(s)', link: 'reconciliation' })] })),
+      http.post(`${API}/api/notifications/:id/read/`, () => HttpResponse.json({})),
+    )
+    wrap(<NotificationCenterPanel onNavigate={go} knownScreens={known} />)
+    fireEvent.click(await screen.findByRole('button', { name: /^Open: Reconciliation for/ }))
+    await waitFor(() => expect(go).toHaveBeenCalledWith('reconciliation'))
   })
 })

@@ -39,6 +39,14 @@ CATEGORY = {BookingSale.SERVICE: FeeRuleSet.SERVICE, BookingSale.STAY: FeeRuleSe
 SUBJECT = {BookingSale.SERVICE: "service_request", BookingSale.STAY: "booking", BookingSale.TICKETS: "event"}
 
 
+def _text(which, sale, *args):
+    """The business's text for this step (wallets.vendor_texts: never raises, nothing while the ledger is off). Imported
+    here because wallets.vendor imports this module."""
+    from wallets import vendor_texts
+
+    getattr(vendor_texts, which)(sale, *args)
+
+
 def pay_key(session):
     return f"booking-pay-{session.reference}"
 
@@ -116,6 +124,7 @@ def record_payment(session, kind, subject, business_owner, *, at=None):
             key=pay_key(session), kind="booking_payment", lines=[posting.debit(source, base), posting.credit(pending, base)],
             reference_type="ledger.bookingsale", reference_id=str(sale.pk), memo=f"Payment for {sale.label()}",
         )
+        _text("booking_paid", sale)
         return sale
 
 
@@ -158,26 +167,36 @@ def handed_over_at(sale, now=None):
 STAY_CHECK_IN_TIME = time(14, 0)  # Accra time; no listing carries its own check-in time yet
 
 
-def release_at(sale, now=None):
+def release_hours(now=None):
+    """The three settings `release_at` reads, at `now`, so a list of sales can read them once."""
+    now = now or timezone.now()
+    return {key: settings_store.current(key, now) for key in ("service_auto_accept_hours", "stay_issue_window_hours", "event_release_delay_hours")}
+
+
+def release_at(sale, now=None, *, hours=None):
     """When a booking's money releases by itself (Plan 7E), or None while its milestone has not happened. Accra time is
     UTC all year. Service: the customer's accept, else the business marking it done plus `service_auto_accept_hours`.
     Stay: the scheduled check-in time plus `stay_issue_window_hours` (a no-show is released the same way). Tickets: the
     end of the event's day plus `event_release_delay_hours` (an event carries no end time). The settings are read at
-    `now`, so a change applies to every sale not yet released."""
+    `now`, so a change applies to every sale not yet released. `hours` (release_hours(now)) saves the lookups for a list."""
     now = now or timezone.now()
+    key = {
+        BookingSale.SERVICE: "service_auto_accept_hours", BookingSale.STAY: "stay_issue_window_hours",
+    }.get(sale.kind, "event_release_delay_hours")
+    setting = hours[key] if hours is not None else settings_store.current(key, now)  # one lookup, only the one needed
     if sale.kind == BookingSale.SERVICE:
         done = sale.service_request.completed_at
         if done is None:
             return None
-        auto = done + timedelta(hours=settings_store.current("service_auto_accept_hours", now))
+        auto = done + timedelta(hours=setting)
         accepted = sale.customer_accepted_at
         return min(auto, accepted) if accepted is not None else auto
     if sale.kind == BookingSale.STAY:
         start = datetime.combine(sale.booking.check_in, STAY_CHECK_IN_TIME, tzinfo=dt_timezone.utc)
-        return start + timedelta(hours=settings_store.current("stay_issue_window_hours", now))
+        return start + timedelta(hours=setting)
     event_day = sale.event.event_date.astimezone(dt_timezone.utc).date()
     day_end = datetime.combine(event_day + timedelta(days=1), time(0, 0), tzinfo=dt_timezone.utc)
-    return day_end + timedelta(hours=settings_store.current("event_release_delay_hours", now))
+    return day_end + timedelta(hours=setting)
 
 
 def release_due(now=None):
@@ -196,8 +215,9 @@ def release_due(now=None):
         .select_related("service_request", "booking", "event")
     )
     released = 0
+    hours = release_hours(now)
     for candidate in candidates:
-        due = release_at(candidate, now)
+        due = release_at(candidate, now, hours=hours)
         if due is None or due > now:
             continue
         if candidate.kind == BookingSale.TICKETS and candidate.event.status in (Event.PENDING, Event.REJECTED):
@@ -207,7 +227,7 @@ def release_due(now=None):
         try:
             with transaction.atomic():
                 sale = lock(candidate)
-                due = release_at(sale, now)
+                due = release_at(sale, now, hours=hours)
                 if due is None or due > now:
                     continue
                 if _release_on_clock(sale, now, f"Released automatically at {timezone.localtime(now):%Y-%m-%d %H:%M}."):
@@ -305,6 +325,7 @@ def report_problem(sale, customer, reason, now=None):
             description=f"{sale.label().capitalize()}: {reason}", answer_due_at=answer_due,
         )
         sale.save(update_fields=["dispute"])
+        _text("booking_on_hold", sale)
     return sale
 
 
@@ -376,6 +397,7 @@ def release(sale, now=None):
     tickets_of(sale).filter(refunded_at__isnull=True, escrow_status=Ticket.HELD).update(
         escrow_status=Ticket.RELEASED, escrow_released_at=now,
     )
+    _text("booking_released", sale, journal)
     return journal
 
 
@@ -449,15 +471,18 @@ def record_verification(sale, staff, outcome, *, note="", customer_confirmed_by_
 
 # --- Support's list (Plan 1b; paginated from the start, unlike the products list, spec §13 (ii)) --------------------
 
-def description(sale):
-    """What was bought, in words, for Support's call and the business's sales list."""
+def description(sale, *, live_tickets=None):
+    """What was bought, in words, for Support's call and the business's sales list. `live_tickets`: the purchase's
+    unrefunded ticket count when the caller already has it (a list does it in one query)."""
     if sale.kind == BookingSale.SERVICE:
         return sale.service_request.listing.name
     if sale.kind == BookingSale.STAY:
         booking = sale.booking
         units = f", {booking.units} units" if booking.units != 1 else ""
         return f"{booking.listing.name}, {booking.check_in:%d %b} to {booking.check_out:%d %b}{units}"
-    quantity = tickets_of(sale).filter(refunded_at__isnull=True).count() or int(sale.session.metadata.get("quantity") or 0)
+    if live_tickets is None:
+        live_tickets = tickets_of(sale).filter(refunded_at__isnull=True).count()
+    quantity = live_tickets or int(sale.session.metadata.get("quantity") or 0)
     noun = "ticket" if quantity == 1 else "tickets"
     return f"{quantity} {noun} for {sale.event.name}, {timezone.localtime(sale.event.event_date):%d %b %Y}"
 

@@ -6,6 +6,7 @@ import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
 import { useCanBuy } from "./hooks/useCanBuy.js";
 import CartTieredResults from "./components/CartTieredResults.jsx";
+import { addGhs } from "./components/wallet/walletMoney.js";
 import { useListing } from "./hooks/useListing.js";
 import { useEvents } from "./hooks/useEvents.js";
 import { useAuth } from "./hooks/useAuth.js";
@@ -62,6 +63,7 @@ import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx"
 import BusinessClaimPage from "./components/BusinessClaimPage.jsx";
 import OwnerConfirmPage from "./components/OwnerConfirmPage.jsx";
 import MarketingConsentCard from "./components/MarketingConsentCard.jsx";
+import AccountSecurityCard from "./components/security/AccountSecurityCard.jsx";
 import UnsubscribePage from "./components/UnsubscribePage.jsx";
 import TrackedLinkPage from "./components/TrackedLinkPage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
@@ -75,6 +77,8 @@ import BusinessCommandCenter from "./components/dashboard/BusinessCommandCenter.
 import AdminCommandCenter from "./components/admin/AdminCommandCenter.jsx";
 import StaffInstallPage from "./components/admin/StaffInstallPage.jsx";
 import StaffTwoStepSignIn from "./components/admin/StaffTwoStepSignIn.jsx";
+import OtpSignIn from "./components/OtpSignIn.jsx";
+import { isOtpChallenge, otpCode } from "./lib/otp.js";
 import { D, glassCard, ghs, tint } from "./components/dashboard/theme.js";
 import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
@@ -113,7 +117,9 @@ const MOMO_NETWORKS = [
 // UI. Passed down as a `PaymentComponent` prop rather than imported directly,
 // same "avoid an App.jsx <-> components/ circular import" convention as
 // ListingDetailPage's `CardComponent` prop.
-export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose }) {
+// `processing` (optional): the server's payment-processing charge as a GH₵ string. When given, it replaces the
+// simulated 1.5% fee everywhere in the modal; left undefined, the modal behaves exactly as before the ledger.
+export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose, processing: serverProcessing }) {
   const [step, setStep] = useState(1);
   const [network, setNetwork] = useState(null);
   const [phone, setPhone] = useState("");
@@ -189,6 +195,8 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
   const selectedNetwork = MOMO_NETWORKS.find(n => n.id === network);
   const fee = amount * 0.015;
   const total = amount + fee;
+  const hasServerCharge = typeof serverProcessing === "string";
+  const totalText = hasServerCharge ? (addGhs(amount, serverProcessing) || amount.toFixed(2)) : total.toFixed(2);
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
@@ -227,7 +235,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                     <div style={{ width:40, height:40, borderRadius:"50%", background:n.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.2rem", flexShrink:0 }}>{n.logo}</div>
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:800, fontSize:"0.88rem", color:C.ink }}>{n.name}</div>
-                      <div style={{ fontSize:"0.68rem", color:C.inkDim }}>Dial {n.ussd} • {n.fee} transaction fee</div>
+                      <div style={{ fontSize:"0.68rem", color:C.inkDim }}>Dial {n.ussd}{!hasServerCharge && <> • {n.fee} transaction fee</>}</div>
                     </div>
                     <div style={{ color:"#ccc", fontSize:"1.2rem" }}>›</div>
                   </button>
@@ -239,10 +247,10 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                   <span>Amount</span><span style={{ fontWeight:700 }}>GHS {amount.toFixed(2)}</span>
                 </div>
                 <div style={{ display:"flex", justifyContent:"space-between", color:C.inkDim, marginBottom:6 }}>
-                  <span>Transaction fee (1.5%)</span><span>GHS {fee.toFixed(2)}</span>
+                  <span>{hasServerCharge ? "Payment processing" : "Transaction fee (1.5%)"}</span><span>GHS {hasServerCharge ? serverProcessing : fee.toFixed(2)}</span>
                 </div>
                 <div style={{ display:"flex", justifyContent:"space-between", fontWeight:900, color:C.ink, borderTop:`1px solid ${C.gold}33`, paddingTop:6 }}>
-                  <span>Total</span><span style={{ color:C.price }}>GHS {total.toFixed(2)}</span>
+                  <span>Total</span><span style={{ color:C.price }}>GHS {totalText}</span>
                 </div>
               </div>
             </div>
@@ -272,8 +280,8 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                 <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Purpose</span><span style={{ fontWeight:700 }}>{purpose}</span></div>
                 <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Network</span><span style={{ fontWeight:700 }}>{selectedNetwork.name}</span></div>
                 <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Amount</span><span style={{ fontWeight:700 }}>GHS {amount}</span></div>
-                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>Fee</span><span>GHS {fee.toFixed(2)}</span></div>
-                <div style={{ display:"flex", justifyContent:"space-between", borderTop:`1px solid ${C.line}`, paddingTop:4, marginTop:2 }}><span style={{ fontWeight:800 }}>Total</span><span style={{ fontWeight:900, color:C.price }}>GHS {total.toFixed(2)}</span></div>
+                <div style={{ display:"flex", justifyContent:"space-between" }}><span style={{ color:C.inkDim }}>{hasServerCharge ? "Payment processing" : "Fee"}</span><span>GHS {hasServerCharge ? serverProcessing : fee.toFixed(2)}</span></div>
+                <div style={{ display:"flex", justifyContent:"space-between", borderTop:`1px solid ${C.line}`, paddingTop:4, marginTop:2 }}><span style={{ fontWeight:800 }}>Total</span><span style={{ fontWeight:900, color:C.price }}>GHS {totalText}</span></div>
               </div>
 
               <div style={{ background:tint(C.info, "14"), border:`1px solid ${tint(C.info, "40")}`, borderRadius:10, padding:"10px 12px", fontSize:"0.7rem", color:C.info, marginBottom:16, lineHeight:1.6 }}>
@@ -284,7 +292,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                 <button onClick={() => setStep(1)} style={{ flex:1, background:C.surface2, color:C.inkDim, border:"none", borderRadius:20, padding:"11px", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>← Back</button>
                 <button onClick={() => { if(phone.length>=10) setStep(3); }}
                   style={{ flex:2, background:phone.length>=10?selectedNetwork.color:C.surface3, color:phone.length>=10?selectedNetwork.textColor:C.inkFaint, border:"none", borderRadius:20, padding:"11px", fontWeight:900, cursor:phone.length>=10?"pointer":"default", fontFamily:"inherit", fontSize:"0.85rem" }}>
-                  Pay GHS {total.toFixed(2)} →
+                  Pay GHS {totalText} →
                 </button>
               </div>
             </div>
@@ -333,7 +341,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                   <div style={{ fontSize:"3.5rem", marginBottom:12 }}>✅</div>
                   <div style={{ fontWeight:900, color:"#22c55e", fontSize:"1.1rem", marginBottom:6 }}>Payment Successful!</div>
                   <div style={{ color:C.inkDim, fontSize:"0.78rem", marginBottom:16, lineHeight:1.6 }}>
-                    Your payment of <strong>GHS {total.toFixed(2)}</strong> has been received.<br/>
+                    Your payment of <strong>GHS {totalText}</strong> has been received.<br/>
                     A receipt has been sent to your WhatsApp.
                   </div>
                   <div style={{ background:C.okBg, border:"1px solid #22c55e33", borderRadius:14, padding:"14px", marginBottom:16, textAlign:"left" }}>
@@ -341,7 +349,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
                     {[
                       ["Transaction Ref", txnRef],
                       ["Network", selectedNetwork?.name],
-                      ["Amount Paid", `GHS ${total.toFixed(2)}`],
+                      ["Amount Paid", `GHS ${totalText}`],
                       ["Purpose", purpose],
                       ["Date", new Date().toLocaleDateString("en-GH")],
                       ["Status", "✅ Confirmed"],
@@ -1184,6 +1192,8 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   const [error,setError]=useState(null);
   const [submitting,setSubmitting]=useState(false);
   const [twoStep,setTwoStep]=useState(null);
+  // A code challenge for a customer / business owner / staff (non-authenticator) sign-in or a sign-up: {challenge,purpose,accountType}.
+  const [otp,setOtp]=useState(null);
   // Set when the 2-step step timed out and sent the person back to the password.
   const [twoStepNotice,setTwoStepNotice]=useState(null);
   // Why the staff shell just signed this tab out (idle / session ended); read once.
@@ -1207,11 +1217,15 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
     setTwoStepNotice(null);
     setSubmitting(true);
     try {
-      const result=await auth.login(lockedAccountType||accountType,identifier,password);
+      const type=lockedAccountType||accountType;
+      const result=await auth.login(type,identifier,password);
+      if(result?.otp_required||(result?.two_factor_required&&type!=="staff")){setOtp({challenge:result,purpose:"sign_in",accountType:type});setPassword("");return;}
       if(result?.two_factor_required||result?.two_factor_setup_required){setTwoStep(result);return;}
       onSuccess(result);
     } catch (err) {
-      setError("Invalid credentials. Please check your details and try again.");
+      if(otpCode(err)==="no_channel")setError("We have no phone or email on file to send a code to. Contact AshantiHub Support.");
+      else if(err?.status===429&&err?.body?.detail)setError(err.body.detail);
+      else setError("Invalid credentials. Please check your details and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -1249,12 +1263,26 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
       const result=accountType==="business_owner"
         ? await auth.registerBusinessOwner({full_name:fullName,login_phone:phone||undefined,email:email||undefined,password,...consentField})
         : await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:email||undefined,password,...consentField});
+      if(isOtpChallenge(result)){setOtp({challenge:result,purpose:"sign_up",accountType});setPassword("");return;}
       onSuccess(result);
     } catch (err) {
       setError("Could not create your account. Please check your details.");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const cancelOtp=(message)=>{
+    const purpose=otp?.purpose;
+    setOtp(null);setPassword("");
+    if(purpose==="sign_up"){
+      // The account already exists; a second sign-up would fail. Signing in answers the same sign-up code challenge.
+      setError(null);setMode("login");
+      setTwoStepNotice(`${typeof message==="string"?`${message} `:""}Your account is created. Sign in to confirm it with a code.`);
+      return;
+    }
+    if(typeof message!=="string")return;
+    setTwoStepNotice(message);
   };
 
   return <div data-testid="auth-modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -1264,17 +1292,18 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
         <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>{mode==="forgot"?"Reset your password":lockedAccountType==="staff"?"Staff Sign In":mode==="login"?"Welcome back":"Create your account"}</div>
       </div>
       <div style={{padding:"20px 24px"}}>
-        {!lockedAccountType && mode!=="forgot" && <div style={{display:"flex",gap:8,marginBottom:16}}>
+        {!lockedAccountType && mode!=="forgot" && !otp && <div style={{display:"flex",gap:8,marginBottom:16}}>
           <button type="button" onClick={()=>setMode("login")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="login"?C.gold:C.surface2,color:mode==="login"?C.darkBrown:C.inkDim}}>Sign In</button>
           <button type="button" onClick={()=>setMode("signup")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="signup"?C.gold:C.surface2,color:mode==="signup"?C.darkBrown:C.inkDim}}>Sign Up</button>
         </div>}
 
         {signedOutNotice && <div role="status" style={{background:C.canvas,border:`1px solid ${C.gold}`,color:C.ink,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{signedOutNotice}</div>}
-        {error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+        {error && <div role="alert" style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
+        {otp && <OtpSignIn challenge={otp.challenge} accountType={otp.accountType} purpose={otp.purpose} auth={auth} onSuccess={onSuccess} onCancel={cancelOtp}/>}
         {mode==="login" && twoStep && <StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/>}
-        {mode==="login" && !twoStep && twoStepNotice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{twoStepNotice}</div>}
-        {mode==="login" && !twoStep && <form onSubmit={handleLogin}>
+        {mode==="login" && !twoStep && !otp && twoStepNotice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{twoStepNotice}</div>}
+        {mode==="login" && !twoStep && !otp && <form onSubmit={handleLogin}>
           {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:12}}>
             <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
             <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
@@ -1306,7 +1335,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
           )}
         </div>}
 
-        {mode==="signup" && <form onSubmit={handleSignup}>
+        {mode==="signup" && !otp && <form onSubmit={handleSignup}>
           <div style={{display:"flex",gap:8,marginBottom:12}}>
             <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
             <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
@@ -2337,6 +2366,8 @@ function SettingsTab({ user, auth, lang, setLang, onSignOut }) {
         <span style={{color:D.text,fontWeight:700}}>{user?.email||"Not set"}</span>
       </div>
     </div>
+
+    <AccountSecurityCard accountType="customer"/>
 
     <div style={{...glassCard,padding:18}}>
       <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:10}}>Language</div>

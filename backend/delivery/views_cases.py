@@ -105,6 +105,30 @@ def speed_between(events):
     return rows
 
 
+def order_money(d):
+    """The order's money figures for the case screen (read-only, from the ledger helpers): what can still be refunded, the
+    delivery fee a refund can never return, whether only a whole-order refund is left (nothing to give back), and the
+    free-delivery promo's funder. The ledger-backed three are None/False while the ledger is off or for an order paid before
+    it was on (refunds.refundable is None); free_delivery does not depend on the ledger."""
+    out = {"refundable": None, "delivery_fee_kept": None, "whole_refund_at_zero": False, "free_delivery": None}
+    if not d.order_id:
+        return out
+    from ledger import refunds, riders
+    from ledger.money import from_pesewas
+
+    order = d.order
+    scope = refunds.scope_for_dispute(d)
+    room = refunds.refundable(order, scope)
+    if room is not None:
+        out["refundable"] = str(from_pesewas(room))
+        out["delivery_fee_kept"] = str(from_pesewas(riders.delivery_kept(order)))
+        out["whole_refund_at_zero"] = d.status not in Dispute.FINAL_STATUSES and refunds.whole_at_zero_refusal(order, scope) is None
+    charge = getattr(order, "waived_fee_charge", None)
+    if charge is not None:
+        out["free_delivery"] = {"amount": str(charge.amount), "funded_by": charge.funded_by}
+    return out
+
+
 class CaseDetailView(APIView):
     def get_permissions(self):
         return [HasAnyRolePermission("delivery.manage", "delivery.disputes")]
@@ -134,15 +158,19 @@ class CaseDetailView(APIView):
         from approvals.models import ApprovalRequest
 
         for a in ApprovalRequest.objects.filter(kind=config.REFUND, payload__dispute_id=d.pk).select_related("maker", "decided_by").order_by("-created_at")[:1]:
-            refund = {"approval_id": a.pk, "status": a.status, "amount": a.payload.get("amount"), "asked_by": a.maker.full_name, "decided_by": a.decided_by.full_name if a.decided_by_id else None}
+            refund = {"approval_id": a.pk, "status": a.status, "amount": a.payload.get("amount"), "whole": bool(a.payload.get("whole")), "asked_by": a.maker.full_name, "decided_by": a.decided_by.full_name if a.decided_by_id else None}
+        money = order_money(d)
         return Response({
             "case": case_row(d, limits, now), "description": d.description, "reason": d.reason,
-            "order": {"id": d.order_id, "total": str(d.order.total_amount) if d.order_id else None, "placed_at": d.order.placed_at if d.order_id else None, "address": d.order.delivery_address if d.order_id else None},
+            "order": {"id": d.order_id, "total": str(d.order.total_amount) if d.order_id else None, "placed_at": d.order.placed_at if d.order_id else None, "address": d.order.delivery_address if d.order_id else None, **money},
             "evidence": evidence, "rider": {"id": rider.pk if rider else None, "staff_id": rider_staff.pk, "full_name": rider_staff.full_name, "other_cases": earlier} if rider_staff else None,
             "decision": {"outcome": d.outcome, "outcome_label": OUTCOMES.get(d.outcome, d.outcome), "fault": d.fault, "note": d.resolution_notes, "decided_at": d.decided_at,
                          "decided_by": payloads.person(d.resolved_by), "refund_amount": str(d.refund_amount) if d.refund_amount is not None else None} if d.decided_at else None,
             "refund": refund, "outcomes": OUTCOMES, "faults": FAULTS,
-            "payments": "Payments are simulated until a payment provider is connected: a refund is recorded and approved, no money moves.",
+            "payments": (
+                "A refund is paid into the customer's AshantiHub wallet once a Super Admin approves it." if money["refundable"] is not None
+                else "Payments are simulated until a payment provider is connected: a refund is recorded and approved, no money moves."
+            ),
         })
 
 

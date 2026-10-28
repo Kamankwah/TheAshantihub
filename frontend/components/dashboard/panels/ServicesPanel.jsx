@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
+import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
+import { formatAccra } from "../../../lib/bookingTerms.js";
 import { useIncomingServiceRequests } from "../../../hooks/useIncomingServiceRequests.js";
 import { useMyListings } from "../../../hooks/useMyListings.js";
 import { useCategories } from "../../../hooks/useCategories.js";
@@ -23,6 +25,16 @@ const STATUS_META = {
   cancelled: { label: "Cancelled", color: D.textFaint },
 };
 
+// Ledger 7E: one line about a completed service's payment. First match wins;
+// no sale (paid before the ledger, or ledger off) -> no line. No customer, no reason.
+function releaseLine(sr) {
+  if (sr.status !== "completed") return null;
+  if (sr.problem_reported) return "Payment on hold: a problem was reported. AshantiHub Support is checking it.";
+  if (sr.settled) return "Payment settled. The amount is on the Money tab.";
+  if (sr.auto_accept_at) return `The customer can accept now. If they do not, it is accepted automatically from ${formatAccra(new Date(sr.auto_accept_at))} and your money is released.`;
+  return null;
+}
+
 function RequestCard({ sr, onChanged }) {
   const [mode, setMode] = useState(null); // "accept" | "decline" | "progress" | null
   const [price, setPrice] = useState(sr.budget || "");
@@ -34,7 +46,7 @@ function RequestCard({ sr, onChanged }) {
   const call = async (path, body) => {
     setActionError(null);
     try { await apiPost(`/api/services/requests/${sr.id}/${path}/`, body || {}); setMode(null); onChanged(); }
-    catch { setActionError("Could not complete that action. Please try again."); }
+    catch (err) { setActionError(apiErrorMessage(err, "Could not complete that action. Please try again.")); }
   };
 
   return (
@@ -54,6 +66,8 @@ function RequestCard({ sr, onChanged }) {
       </div>
       {sr.progress_note && sr.status !== "requested" && <div style={{ color: D.textFaint, fontSize: "0.7rem", marginTop: 4 }}>Last update: {sr.progress_note}</div>}
       {sr.decline_reason && <div style={{ color: D.red, fontSize: "0.7rem", marginTop: 4 }}>Declined: {sr.decline_reason}</div>}
+
+      {releaseLine(sr) && <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 6 }}>{releaseLine(sr)}</div>}
 
       {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
 

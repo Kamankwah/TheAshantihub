@@ -237,8 +237,10 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   AshantiHub's own (`Rider.employment="ashantihub"`, the default: no wallet, every `/api/delivery/rider/wallet/*`
   endpoint answers `409 wallet_disabled`) or third-party, changed only through the `delivery.rider_employment` approval
   (Delivery Manager proposes, Super Admin approves; switching back is refused while money, a withdrawal or a
-  delivered-but-unreleased order is open). Behind `LEDGER_ENABLED`, a third-party rider is paid only at release
-  (Support's "matches"), never at the door: `riders.credit_delivery`, in `escrow.release_verified`'s transaction (after `charge_waiver`; Plan 4's business texts follow it),
+  delivered-but-unreleased order is open). Behind `LEDGER_ENABLED`, a third-party rider is paid a delivery fee only at
+  release (Support's "matches"), never at the door (the one exception: the fee of a paid re-delivery, outside the order's
+  escrow, is paid to a third-party second-trip rider when that trip is done, `ledger.redelivery.credit_rider`, with a
+  `RiderEarning.redelivery` row the end-of-day job posts like any other): `riders.credit_delivery`, in `escrow.release_verified`'s transaction (after `charge_waiver`; Plan 4's business texts follow it),
   moves what platform delivery income took for the order (fee plus promo charge) to the rider (`order-rider-<order>`: 90%
   Rider balance, 10% reserve at the `rider_commission_bp` in force when the order was paid). A whole refund after release
   reverses it first (`riders.reverse_earning`, passed the refund's own time; `riders.check_reversal` refuses a reversal
@@ -398,8 +400,8 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   Follow-ups before the alerts go on or the screens ship are in the spec's §13 (ci) onward.
 - **A business's money and texts (`wallets/vendor.py`, `vendor_texts.py`, Stage 4).** `/api/wallet/vendor/*` is
   business-owner only (a customer with the same id, or staff, gets 403: platform fees never reach a customer) and answers
-  `409 ledger_off` while the ledger is off. Read-only: sale rows come from the business's own `OrderFeeSnapshot`s (never
-  today's rules), the daily summary from journal lines on its own Pending and Available accounts (`vendor.FOLD`; any
+  `409 ledger_off` while the ledger is off. Read-only: order rows come from the business's own `OrderFeeSnapshot`s (never
+  today's rules), booking rows (services, stays, tickets; `vendor/bookings/`) from its `ledger.BookingSale`s, the daily summary from journal lines on its own Pending and Available accounts (`vendor.FOLD`; any
   other line lands in `other`, so the columns always add up to the balance change), and no row, export or text holds a
   customer's name, phone or address. Texts to a business go through `wallets.VendorText`: `vendor_texts.queue` runs
   inside the payment (`orders.alerts`) or the release (`escrow.release_verified`, after every posting), in a savepoint,
@@ -409,11 +411,15 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `func.__qualname__`, which a `functools.partial` lacks).
   A business text is **never an `OtpEvent`** (those count toward the code send limits) but is counted by the
   `otp.spend` alert. Bodies are GSM-7 plain text with "GHS" (never "GH₵"), at most 306 characters. `phone` is in
-  `ashantihub/sentry.py`'s denylist (the whole number is a local in `vendor_texts.deliver`). **Booking sales (Plan 1b)
-  are not on these screens yet.** Their money is in Pending and Available and their fees count toward the cap (the fee
-  page marks all three categories `charged`), but the sale rows, `awaiting_call`, the statement and the texts come from
-  `OrderFeeSnapshot` only, and `booking_*` journal lines land in the daily summary's `other` column. A follow-up (Plan
-  4F or 4b) must add `BookingSale` rows, `FOLD` kinds and texts before the ledger is turned on (spec §13 (lxxxiii)).
+  `ashantihub/sentry.py`'s denylist (the whole number is a local in `vendor_texts.deliver`). **Booking sales (Plan 1b, shown by 4F)
+  are on these screens.** Their rows come from `GET /api/wallet/vendor/bookings/` (with the server's `release_at`), they
+  are counted in the overview's `awaiting_call`, the three `booking_*` journal kinds are in `vendor.FOLD` (so they no
+  longer land in the daily summary's `other` column), and the statement has one row per booking sale. Booking sales are
+  texted too: `vendor_texts.booking_paid` / `booking_released` / `booking_on_hold` (kinds `booking_paid` /
+  `booking_released` / `booking_on_hold`, keys `booking-paid-<sale>` etc.) are called from `ledger.sales.record_payment`,
+  `release` and `report_problem` (a local import: `wallets.vendor` imports `sales`), never raise, and carry the booking
+  reference and amounts only, never the customer's name, phone or what they wrote. A suspended business keeps the
+  in-app copy and gets no text. (Spec §13 (lxxxiii) is closed.)
 
 ## Test-fixture gotcha
 

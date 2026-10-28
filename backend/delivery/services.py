@@ -227,19 +227,52 @@ def send_early(order_id, staff, reason, *, request=None):
 
 
 IN_HOUSE_ONLY_MESSAGE = "A re-assigned delivery is done by AshantiHub's own riders."
+FALLBACK_NOTE = "Third-party rider: no AshantiHub rider was available for this re-assigned delivery."
 
 
-def reassignment_refused(existing, rider):
-    """True when giving the order's assignment `existing` (or None) to `rider` (a Rider row, or None for a dispatch with no
-    rider profile, who counts as AshantiHub's own) is a re-assignment to a rider who is not AshantiHub's own (Plan 7F-E
-    Task 6, Ruling R3): the job was accepted or taken further, or failed, and goes to a different rider. The one test that
-    assign, the ranking and a manager's offer all use."""
+def is_reassignment(existing):
+    """True when the order's assignment `existing` (or None) has been accepted or taken further, or has failed: giving it
+    to a different rider is a re-assignment (Plan 7F-E Task 6). A job still waiting to be accepted is ordinary dispatch."""
     from orders.models import DeliveryAssignment
 
+    return existing is not None and existing.status != DeliveryAssignment.ASSIGNED
+
+
+def third_party_reassignment(existing, rider):
+    """True when giving `existing` to `rider` (a Rider row, or None for a dispatch with no rider profile, who counts as
+    AshantiHub's own) is a re-assignment to a rider who is not AshantiHub's own."""
     return (
-        existing is not None and rider is not None and existing.dispatch_id != rider.staff_id
-        and existing.status != DeliveryAssignment.ASSIGNED and rider.employment != Rider.ASHANTIHUB
+        is_reassignment(existing) and rider is not None and existing.dispatch_id != rider.staff_id
+        and rider.employment != Rider.ASHANTIHUB
     )
+
+
+def reassignment_refused(existing, rider, order, now=None):
+    """True when a re-assignment to a third-party rider must be refused: AshantiHub's own riders come first (Plan 7F-E
+    Task 6, Ruling R3), and a third-party rider may take a re-assigned delivery only while none of them is available for
+    the order (Director ruling 2, 2026-10-20: dispatching.in_house_available). The one test that assign, the ranking and a
+    manager's offer all use. A paid re-delivery at the customer's request stays in-house only (redelivery.check_assign)."""
+    if not third_party_reassignment(existing, rider):
+        return False
+    from .dispatching import in_house_available
+
+    return in_house_available(order, now=now)
+
+
+def _log_fallback(order, rider_staff, assigned_by, previous_rider_id, previous_status):
+    """The activity record of a third-party fallback, written after commit so the global activity lock is never held
+    while the assigning path takes further row locks (as delivery.redelivery does)."""
+    from activity.services import record
+
+    after = {
+        "order": order.pk, "rider": rider_staff.pk, "previous_rider": previous_rider_id, "previous_status": previous_status,
+        "reason": "no_in_house_rider_available",
+    }
+    transaction.on_commit(lambda: record(
+        assigned_by, "delivery.reassigned_third_party", target_type="orders.order", target_id=str(order.pk),
+        target_label=f"Order #{order.pk}", summary=f"Order #{order.pk} re-assigned to a third-party rider: no AshantiHub rider was available",
+        after=after,
+    ))
 
 
 def in_house_only_error():
@@ -253,12 +286,14 @@ def assign(order, rider_staff, assigned_by, *, mode):
     locked by the caller (orders.locks.lock_order: the order row before its assignment).
 
     A re-assignment (Plan 7F-E Task 6, owner Ruling R3) is a job the first rider had accepted or taken further, or one
-    that failed, given to a different rider: it goes to AshantiHub's own riders only (409 redelivery_in_house_only), and
-    it ends the first rider's leg. A failure where the customer was not available (delivery.redelivery) is re-assigned
-    only once the customer paid the re-delivery fee, to an AshantiHub rider. Any reset of the job (a swap, or a failed
-    job given again) clears the assignment's pickup stamp and the reopened stops' collection stamps, so the first leg's
-    pickup counts for no one (ledger.riders.pickup_made); it stays in the append-only DeliveryEvent rows. A swap of a job
-    still waiting to be accepted is ordinary dispatch, open to any rider."""
+    that failed, given to a different rider: it goes to AshantiHub's own riders while one is available (409
+    redelivery_in_house_only), and only when none is may a third-party rider take it (Director ruling 2: the fallback is
+    noted on the assigned event and in the activity log, delivery.reassigned_third_party). It ends the first rider's leg,
+    and the rider who completes the trip is the one paid. A failure where the customer was not available
+    (delivery.redelivery) is re-assigned only once the customer paid the re-delivery fee, to an AshantiHub rider. Any
+    reset of the job (a swap, or a failed job given again) clears the assignment's pickup stamp and the reopened stops'
+    collection stamps, so the first leg's pickup counts for no one (ledger.riders.pickup_made); it stays in the
+    append-only DeliveryEvent rows. A swap of a job still waiting to be accepted is ordinary dispatch, open to any rider."""
     from orders import locks
     from orders.models import DeliveryAssignment
 
@@ -274,14 +309,21 @@ def assign(order, rider_staff, assigned_by, *, mode):
         raise DeliveryError("This delivery is already on the road or finished, so it cannot be given to another rider.", 409, "not_reassignable")
     swapped = existing is not None and existing.dispatch_id != rider_staff.pk
     rider = Rider.objects.filter(staff=rider_staff).select_related("vehicle").first()
-    if reassignment_refused(existing, rider):
+    if reassignment_refused(existing, rider, order, now):
         raise in_house_only_error()
+    # Allowed: no AshantiHub rider is available (Director ruling 2). A swap of a paid re-delivery's second trip is one too.
+    fallback = third_party_reassignment(existing, rider)
+    previous_rider_id, previous_status = (existing.dispatch_id, existing.status) if existing is not None else (None, None)
     from . import redelivery
 
     # Re-delivery at the customer's request (Plan 7F-E Task 7): a customer-unavailable failure waits for the paid fee
-    # (409 redelivery_fee_unpaid) and the second trip is an AshantiHub rider's (409 redelivery_in_house_only). Checked,
-    # with the request's row locked (after the assignment row), before anything below writes.
+    # (409 redelivery_fee_unpaid) and the second trip is an AshantiHub rider's while one is available (409
+    # redelivery_in_house_only; Director ruling 2). Checked, with the request's row locked (after the assignment row),
+    # before anything below writes.
     serving = redelivery.check_assign(order, existing, rider)
+    fallback = fallback or (
+        serving is not None and serving.rider_id != rider_staff.pk and rider is not None and rider.employment != Rider.ASHANTIHUB
+    )
     assignment = existing or DeliveryAssignment(order=order)
     assignment.dispatch = rider_staff
     assignment.assigned_by = assigned_by
@@ -309,8 +351,12 @@ def assign(order, rider_staff, assigned_by, *, mode):
     stops.ensure_stops(assignment)
     if existing is not None and (swapped or failed):
         stops.reopen_for_new_rider(assignment, failed=failed, all_skipped=previous_reason == ALL_STOPS_SKIPPED)
-    DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.ASSIGNED, at=now, by=assigned_by)
+    DeliveryEvent.objects.create(
+        assignment=assignment, step=DeliveryEvent.ASSIGNED, at=now, by=assigned_by, note=FALLBACK_NOTE if fallback else "",
+    )
     redelivery.link_rider(serving, rider_staff, assigned_by)
+    if fallback:
+        _log_fallback(order, rider_staff, assigned_by, previous_rider_id, previous_status)
     return assignment
 
 

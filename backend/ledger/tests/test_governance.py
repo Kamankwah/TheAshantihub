@@ -248,3 +248,110 @@ class RiderSettingGovernanceTests(GovernanceBase):
         done = self.client.post(f"/api/approvals/{approval_id}/approve/", {}, format="json")
         self.assertEqual(done.status_code, 200, done.content)
         self.assertEqual(settings_store.current("rider_withdrawals_per_day"), 5)
+
+
+class RedeliveryFeeGovernanceTests(GovernanceBase):
+    """Director ruling 1 (2026-10-20): the re-delivery fee (`redelivery_fee_pesewas`, default GH₵ 15.00, 0 to GH₵ 200.00)
+    is changed by Operations as well as the Super Admin. Operations proposes it (permission redelivery_fee.manage) and any
+    other holder (Operations or a Super Admin) decides, never the maker; a Super Admin's own change applies at once.
+    Every step is in the activity log like the other governed settings. Operations touches no other money setting."""
+
+    KEY = "redelivery_fee_pesewas"
+
+    def setUp(self):
+        super().setUp()
+        self.ops = make_staff("operations", "ops1@example.com")
+        self.ops2 = make_staff("operations", "ops2@example.com")
+
+    def propose(self, staff, value=2000, key=None):
+        self.as_staff(staff)
+        return self.client.post("/api/ledger/settings/", {"key": key or self.KEY, "value": value}, format="json")
+
+    def test_permission_is_seeded_to_operations_and_super_admin(self):
+        from accounts.models import Role
+
+        holders = sorted(Role.objects.filter(permissions__codename="redelivery_fee.manage").values_list("name", flat=True))
+        self.assertEqual(holders, ["operations", "super_admin"])
+
+    def test_operations_proposes_and_another_operations_lead_approves(self):
+        from activity.models import ActivityEvent
+
+        response = self.propose(self.ops)
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(settings_store.current(self.KEY), 1500)                       # nothing changes until decided
+        approval = ApprovalRequest.objects.get(pk=response.json()["approval_id"])
+        self.assertEqual((approval.kind, approval.pool_permission, approval.status), ("ledger.redelivery_fee", "redelivery_fee.manage", "pending"))
+        with self.assertRaises(approvals.MakerCannotDecide):
+            approvals.approve(approval.pk, self.ops)
+        approvals.approve(approval.pk, self.ops2)
+        self.assertEqual(settings_store.current(self.KEY), 2000)
+        row = MoneySetting.objects.get(key=self.KEY)
+        self.assertEqual((row.created_by, row.approval_id), (self.ops2, approval.pk))
+        self.assertTrue(ActivityEvent.objects.filter(verb="approval.requested", actor_id=self.ops.pk).exists())
+        applied = ActivityEvent.objects.get(verb="ledger.setting_applied")
+        self.assertEqual((applied.actor_id, applied.after), (self.ops2.pk, {"key": self.KEY, "value": 2000}))
+
+    def test_a_super_admin_can_decide_an_operations_change(self):
+        response = self.propose(self.ops, 1000)
+        approvals.approve(response.json()["approval_id"], self.boss)
+        self.assertEqual(settings_store.current(self.KEY), 1000)
+
+    def test_operations_decides_a_change_accounting_proposed(self):
+        response = self.propose(self.accountant, 1800)
+        self.assertEqual(response.status_code, 201, response.content)
+        approvals.approve(response.json()["approval_id"], self.ops)
+        self.assertEqual(settings_store.current(self.KEY), 1800)
+
+    def test_a_super_admin_own_change_applies_at_once(self):
+        self.as_staff(self.boss, sudo=True)
+        response = self.client.post("/api/ledger/settings/", {"key": self.KEY, "value": 2500}, format="json")
+        self.assertEqual((response.status_code, response.json()["status"]), (201, "approved"))
+        self.assertEqual(settings_store.current(self.KEY), 2500)
+
+    def test_deciding_needs_the_password_again(self):
+        approval_id = self.propose(self.ops).json()["approval_id"]
+        self.as_staff(self.ops2)
+        refused = self.client.post(f"/api/approvals/{approval_id}/approve/", {}, format="json")
+        self.assertEqual((refused.status_code, refused.json().get("code")), (403, "sudo_required"))
+        self.as_staff(self.ops2, sudo=True)
+        self.assertEqual(self.client.post(f"/api/approvals/{approval_id}/approve/", {}, format="json").status_code, 200)
+        self.assertEqual(settings_store.current(self.KEY), 2000)
+
+    def test_bounds_are_zero_to_two_hundred_cedis(self):
+        self.assertEqual(self.propose(self.ops, 20001).status_code, 400)
+        self.assertEqual(self.propose(self.ops, -1).status_code, 400)
+        self.assertEqual(self.propose(self.ops, 0).status_code, 201)
+
+    def test_operations_cannot_change_any_other_money_setting(self):
+        self.assertEqual(self.propose(self.ops, 5, key="fee_cap_pesewas").status_code, 403)
+        self.assertEqual(self.propose(self.ops, 5, key="pickup_window_hours").status_code, 403)
+        self.assertEqual(self.client.post("/api/ledger/fees/", {"category": "service", "bands": TIERS}, format="json").status_code, 403)
+        self.assertFalse(ApprovalRequest.objects.exists())
+
+    def test_operations_reads_only_the_redelivery_fee(self):
+        self.propose(self.ops)
+        self.as_staff(self.ops2)
+        body = self.client.get("/api/ledger/settings/").json()
+        self.assertEqual([row["key"] for row in body["settings"]], [self.KEY])
+        self.assertEqual([(p["key"], p["value"]) for p in body["pending"]], [(self.KEY, 2000)])
+        self.as_staff(self.accountant)                                                   # Accounting still sees everything
+        body = self.client.get("/api/ledger/settings/").json()
+        self.assertGreater(len(body["settings"]), 1)
+        self.assertEqual([p["key"] for p in body["pending"]], [self.KEY])
+
+    def test_one_pending_change_at_a_time_whoever_proposed_it(self):
+        self.assertEqual(self.propose(self.ops).status_code, 201)
+        self.assertEqual(self.propose(self.accountant, 1700).status_code, 409)
+        self.assertEqual(self.propose(self.ops2, 1700).status_code, 409)
+
+    def test_support_cannot_read_or_change_it(self):
+        self.as_staff(self.support)
+        self.assertEqual(self.client.get("/api/ledger/settings/").status_code, 403)
+        self.assertEqual(self.propose(self.support).status_code, 403)
+
+    def test_the_kind_is_operations_or_super_admin_with_sudo(self):
+        from approvals.registry import get_kind
+
+        kind = get_kind("ledger.redelivery_fee")
+        self.assertEqual((kind.pool_permission, kind.chain_note, kind.requires_sudo), ("redelivery_fee.manage", "Operations or Super Admin", True))
+        self.assertEqual(get_kind("ledger.setting").chain_note, "Super Admin only")      # every other money setting is unchanged

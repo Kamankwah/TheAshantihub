@@ -2,7 +2,7 @@
 commission, the statement, payout destinations and withdrawals, always the caller's own. AshantiHub's own riders get 409
 wallet_disabled; every endpoint answers 409 ledger_off while the ledger is off. Review Focus 4 and 5."""
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
 
 from django.db import connection, transaction
@@ -20,7 +20,8 @@ from notifications.models import Notification
 from accounts.models import Customer
 from orders.models import DeliveryAssignment, Order
 from wallets import withdrawals
-from wallets.models import PayoutDestination
+from wallets import rider_wallet
+from wallets.models import PayoutDestination, Withdrawal
 
 from .helpers import Holder, destination
 
@@ -223,9 +224,10 @@ class RiderWalletEdgeTests(TestCase):
         rider_helpers.earning(self.swift, gross=1000, at=timezone.now())
         row = self.me.get(BASE + "earnings/").json()["results"][0]
         self.assertEqual(
-            set(row), {"id", "order", "delivered_at", "earned_at", "earned_on", "gross", "commission_bp", "commission", "you_got",
-                       "status", "status_label", "reversed_at"},
+            set(row), {"id", "order", "kind", "delivered_at", "earned_at", "earned_on", "gross", "commission_bp", "commission",
+                       "you_got", "status", "status_label", "reversed_at"},
         )
+        self.assertEqual(row["kind"], "delivery")           # "redelivery" for a re-delivery fee (Director ruling 2)
 
     def test_every_rider_write_view_is_activity_exempt(self):
         from wallets import views_rider_wallet as v
@@ -243,3 +245,62 @@ class RiderWalletEdgeTests(TestCase):
         with mock.patch.object(destinations, "check", spy):
             self.assertEqual(self.me.post(BASE + "destinations/", MOMO, action="payout_destination").status_code, 201)
         self.assertEqual(depth, [baseline])
+
+
+@override_settings(LEDGER_ENABLED=True)
+class RiderWithdrawalCountFieldsTests(TestCase):
+    """The summary carries today's counted withdrawals, the daily limit, the next 00:00 Accra reset and the below-zero note."""
+
+    def setUp(self):
+        self.swift = rider_helpers.rider()
+        self.payee = destination(self.swift.staff, name="Kojo Mensah")
+
+    def withdrawal(self, request_id, status=Withdrawal.PENDING, at=None):
+        row = Withdrawal.objects.create(
+            holder_type="staff", holder_id=self.swift.staff_id, source_kind=Account.RIDER_BALANCE, destination=self.payee,
+            request_id=request_id, amount_pesewas=100, charge_pesewas=0, net_pesewas=100, status=status, provider="simulated",
+        )
+        if at is not None:
+            Withdrawal.objects.filter(pk=row.pk).update(created_at=at)
+        return row
+
+    def test_summary_counts_todays_withdrawals_and_the_limit(self):
+        now = datetime(2026, 10, 21, 12, 0, tzinfo=dt_timezone.utc)
+        self.withdrawal("req-count-0001", at=now - timedelta(hours=1))
+        self.withdrawal("req-count-0002", Withdrawal.SUCCEEDED, at=now - timedelta(hours=2))
+        body = rider_wallet.summary(self.swift, now=now)
+        self.assertEqual((body["withdrawals_today"], body["withdrawals_per_day"]), (2, 3))
+        self.assertEqual(body["withdrawals_reset_at"], withdrawals.next_reset(now))
+        self.assertEqual(body["withdrawals_reset_at"], datetime(2026, 10, 22, 0, 0, tzinfo=dt_timezone.utc))
+
+    def test_cancelled_and_failed_withdrawals_are_not_counted(self):
+        now = datetime(2026, 10, 21, 12, 0, tzinfo=dt_timezone.utc)
+        self.withdrawal("req-count-0003", Withdrawal.CANCELLED, at=now)
+        self.withdrawal("req-count-0004", Withdrawal.FAILED, at=now)
+        self.withdrawal("req-count-0005", Withdrawal.PROCESSING, at=now)
+        self.assertEqual(rider_wallet.summary(self.swift, now=now)["withdrawals_today"], 1)
+
+    def test_count_starts_again_after_midnight_accra(self):
+        late = datetime(2026, 10, 21, 23, 59, tzinfo=dt_timezone.utc)
+        self.withdrawal("req-count-0006", at=late)
+        self.assertEqual(rider_wallet.summary(self.swift, now=late)["withdrawals_today"], 1)
+        after = datetime(2026, 10, 22, 0, 1, tzinfo=dt_timezone.utc)
+        body = rider_wallet.summary(self.swift, now=after)
+        self.assertEqual(body["withdrawals_today"], 0)
+        self.assertEqual(body["withdrawals_reset_at"], datetime(2026, 10, 23, 0, 0, tzinfo=dt_timezone.utc))
+
+    def test_balance_note_only_below_zero(self):
+        self.assertIsNone(rider_wallet.summary(self.swift)["balance_note"])
+        balance, _held = riders.accounts_of(self.swift)
+        posting.post(key="test-owe-note", kind="test_fund", lines=[
+            posting.debit(balance, 300), posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), 300),
+        ], allow_negative=(Account.RIDER_BALANCE,))
+        self.assertEqual(rider_wallet.summary(self.swift)["balance_note"], withdrawals.NEGATIVE[Account.RIDER_BALANCE])
+
+    def test_staff_rider_wallet_carries_the_count_fields(self):
+        self.withdrawal("req-count-0007", at=timezone.now())
+        accountant = Holder(make_staff("accountant", "acc-count@example.com"), "staff")
+        body = accountant.get(f"/api/delivery/riders/{self.swift.pk}/wallet/").json()
+        self.assertEqual((body["withdrawals_today"], body["withdrawals_per_day"]), (1, 3))
+        self.assertIn("withdrawals_reset_at", body)
+        self.assertIsNone(body["balance_note"])

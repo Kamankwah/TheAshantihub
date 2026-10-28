@@ -68,8 +68,8 @@ function StopsLine({ stops, full }) {
   );
 }
 
-// The rider reached the address and could not reach the customer; Support asked, at the customer's request,
-// for a second trip (Plan 7F-E Task 7). Until the customer pays the re-delivery fee nothing is given to a
+// The rider reached the address and the customer was not available (no answer, or the order refused at the door);
+// Support asked, at the customer's request, for a second trip (Plan 7F-E Task 7). Until the customer pays the re-delivery fee nothing is given to a
 // rider. Wallet pays at once; mobile money goes to the provider's checkout (the server adds its processing
 // charge on top). Only the server's own figure is shown.
 function RedeliveryNotice({ orderId, redelivery }) {
@@ -92,7 +92,7 @@ function RedeliveryNotice({ orderId, redelivery }) {
   return (
     <section aria-label="Delivery again" style={{ marginTop: 10, padding: 12, borderRadius: 12, border: `1px solid ${D.cardBorder}`, background: D.panelBg }}>
       <p style={{ margin: 0, color: D.text, fontSize: "0.8rem", fontWeight: 700 }}>
-        We could not reach you. Pay <span style={{ fontVariantNumeric: "tabular-nums" }}>{`GH₵ ${redelivery.fee}`}</span> to have it delivered again.
+        We could not hand your order over. Pay <span style={{ fontVariantNumeric: "tabular-nums" }}>{`GH₵ ${redelivery.fee}`}</span> to have it delivered again.
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
         <button type="button" disabled={busy} onClick={() => pay("wallet")} style={payButton(true)}>Pay from wallet</button>

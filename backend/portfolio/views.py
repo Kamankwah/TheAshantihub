@@ -441,17 +441,24 @@ def _first_error(errors):
     return str(errors)
 
 
+HOURS_SET = "businesses.set_hours"
+
+
 class BusinessHoursStaffView(APIView):
     """PUT /api/portfolio/businesses/<pk>/hours/ {days: [...]} — staff enter a business's weekly opening
-    hours, under the same rules as the owner's own endpoint. Only the account manager or a portfolio.manage
-    holder (anyone else gets 404). New orders use the new hours; orders already placed keep their times.
+    hours, under the same rules as the owner's own endpoint. The account manager, a portfolio.manage holder, or a
+    businesses.set_hours holder (Support, Director ruling 7: any business); a scout who is not the account manager
+    gets 404. New orders use the new hours; orders already placed keep their times.
     A broken rule answers 400 {detail, weekday} naming the failing day. Records business.hours_set (last)."""
 
     def get_permissions(self):
-        return [HasAnyRolePermission(PORTFOLIO_SCOUT, PORTFOLIO_MANAGE)]
+        return [HasAnyRolePermission(PORTFOLIO_SCOUT, PORTFOLIO_MANAGE, HOURS_SET)]
 
     def put(self, request, pk):
-        owner = get_managed_business(request, pk)
+        if HOURS_SET in request.user.effective_permission_codenames():
+            owner = get_object_or_404(BusinessOwner.objects.select_related("profile", "account_manager"), pk=pk)
+        else:
+            owner = get_managed_business(request, pk)
         serializer = BusinessHoursSerializer(data=request.data)
         if not serializer.is_valid():
             return Response({"detail": _first_error(serializer.errors)}, status=400)

@@ -54,15 +54,22 @@ WALLET_TOO_LOW = "Your AshantiHub wallet doesn't hold enough for this order."
 
 
 class DeliveryPreviewView(APIView):
-    """GET /api/orders/delivery-preview/?fulfilment=door_to_door — read from the caller's cart, independent of promotions:
-    when delivery would wait for a closed vendor to open ({delivery_from, delivered_from, deferred, source})."""
+    """GET /api/orders/delivery-preview/?fulfilment=door_to_door[&lat=&lng=] — read from the caller's cart, independent of
+    promotions: when delivery would wait for a closed vendor to open ({delivery_from, delivered_from, deferred, source}),
+    plus `delivery`, the fee block checkout will add for the pin given by `lat`/`lng` (null for store pickup or fees off)."""
 
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def get(self, request):
         cart = Cart.objects.filter(customer=request.user).first()
         items = list(cart.items.select_related("listing")) if cart is not None else []
-        return Response(hold.quote(items, request.query_params.get("fulfilment") or Order.DOOR_TO_DOOR))
+        fulfilment = request.query_params.get("fulfilment") or Order.DOOR_TO_DOOR
+        params = request.query_params
+        # The delivery fee checkout will add, whether or not promotions are on (null for store pickup or fees off).
+        from delivery.rates import cart_delivery_quote
+
+        delivery = cart_delivery_quote(items, fulfilment, params.get("lat"), params.get("lng"))
+        return Response({**hold.quote(items, fulfilment), "delivery": delivery})
 
 
 class OrderCheckoutView(APIView):
@@ -194,8 +201,9 @@ class OrderCheckoutView(APIView):
             if quoted is not None:
                 fee_card, fee_quote = quoted
                 # A live free-delivery promo covering every line waives the fee (marketing.waivers);
-                # the original amount stays in the breakdown.
-                waiver = waivers.covering_waiver([i.listing for i in items], timezone.now())
+                # the original amount stays in the breakdown. An AshantiHub-funded promo waives it only when the fee
+                # fits in its budget cap, decided under the promo's row lock (a hard cap: concurrent checkouts wait).
+                waiver = waivers.covering_waiver([i.listing for i in items], timezone.now(), fee=fee_quote["total"], lock=True)
                 charged, fee_quote = waivers.apply_to_fee(waiver, fee_quote)
                 total += charged
             order = Order.objects.create(
@@ -402,6 +410,10 @@ class OwnerOrderListView(generics.ListAPIView):
 
 
 # ── Owner sales report (business item 4 / Wave I) ──────────────────────────
+def _owner_report_shows_customers():
+    return not escrow.enabled()
+
+
 class _OwnerSalesReportBase(APIView):
     """Shared query for the owner's sales report: their own OrderItems in PAID
     orders, with date-range and product/service-kind filters. The owner sees
@@ -430,18 +442,23 @@ class _OwnerSalesReportBase(APIView):
         kind = request.query_params.get("kind")
         if kind in ("product", "service"):
             qs = qs.filter(listing__category__kind=kind)
-        return [
-            {
+        # G8 / V5: once the ledger is on the owner's sales report carries no
+        # customer name; with it off the rows are as they always were.
+        names = _owner_report_shows_customers()
+        rows = []
+        for item in qs:
+            row = {
                 "order_id": item.order_id,
                 "date": item.order.placed_at.isoformat(),
-                "customer": item.order.customer.full_name,
                 "item": item.listing.name,
                 "kind": item.listing.category.kind if item.listing.category else "",
                 "quantity": item.quantity,
                 "line_total": str(item.line_total),
             }
-            for item in qs
-        ]
+            if names:
+                row["customer"] = item.order.customer.full_name
+            rows.append(row)
+        return rows
 
 
 class OwnerSalesReportView(_OwnerSalesReportBase):
@@ -465,6 +482,7 @@ class OwnerSalesReportView(_OwnerSalesReportBase):
             "series": [{"month": m, "amount": str(a)} for m, a in sorted(series.items())],
             # The table shows a capped preview; the CSV export carries every row.
             "rows": rows[:200],
+            "customer_names": _owner_report_shows_customers(),
         })
 
 
@@ -481,9 +499,16 @@ class OwnerSalesReportExportView(_OwnerSalesReportBase):
         response = HttpResponse(content_type="text/csv")
         response["Content-Disposition"] = 'attachment; filename="ashantihub-sales.csv"'
         writer = csv.writer(response)
-        writer.writerow(["Order", "Date", "Customer", "Item", "Kind", "Quantity", "Line total (GHS)"])
+        names = _owner_report_shows_customers()
+        writer.writerow(
+            ["Order", "Date"] + (["Customer"] if names else [])
+            + ["Item", "Kind", "Quantity", "Line total (GHS)"]
+        )
         for r in self._rows(request):
-            writer.writerow([r["order_id"], r["date"][:10], r["customer"], r["item"], r["kind"], r["quantity"], r["line_total"]])
+            writer.writerow(
+                [r["order_id"], r["date"][:10]] + ([r["customer"]] if names else [])
+                + [r["item"], r["kind"], r["quantity"], r["line_total"]]
+            )
         return response
 
 
