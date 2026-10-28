@@ -199,6 +199,17 @@ class OrderCheckoutView(APIView):
                 for row in ListingVariant.objects.select_for_update()
                 .filter(pk__in={i.variant_id for i in items if i.variant_id}).order_by("pk")
             }
+            with_variants = set(
+                ListingVariant.objects.filter(listing_id__in=locked, is_active=True).values_list("listing_id", flat=True)
+            )
+            for item in items:
+                if item.variant_id is None and item.listing_id in with_variants:
+                    # A plain line from before the listing gained variants: its stock is the derived total, so refuse.
+                    return Response(
+                        {"detail": f"Choose an option for “{locked[item.listing_id].name}”: remove it from your cart and add it again.",
+                         "code": "choose_variant"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
             for item in items:
                 listing = locked[item.listing_id]
                 if item.variant_id is None:

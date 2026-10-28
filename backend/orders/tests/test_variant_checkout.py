@@ -3,7 +3,7 @@ import threading
 from decimal import Decimal
 
 from django.core.cache import cache
-from django.db import connection
+from django.db import connection, transaction
 from django.test import TestCase, TransactionTestCase, override_settings
 from rest_framework.test import APIClient
 
@@ -130,6 +130,58 @@ class VariantCheckoutTests(VariantCheckoutBase, TestCase):
         items = rows[0]["items"]
         self.assertEqual([(i["variant_label"], i["variant"]) for i in items], [("Vanilla / 500 g", self.vanilla.pk)])
         self.assertEqual(rows[0]["owner_subtotal"], "25.00")
+
+    def test_a_plain_line_for_a_listing_that_gained_variants_is_refused(self):
+        plain = self.make(self.owner, "Loaf", price="10.00", stock=5)
+        cart, _ = Cart.objects.get_or_create(customer=self.customer)
+        CartItem.objects.create(cart=cart, listing=plain, quantity=2, unit_price_snapshot="10.00")
+        self.variant(plain, "Large", "12.00", 3)  # now a variant listing; derived stock is 3
+        response = self.checkout()
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["code"], "choose_variant")
+        self.assertEqual(response.json()["detail"], "Choose an option for “Loaf”: remove it from your cart and add it again.")
+        plain.refresh_from_db()
+        self.assertEqual(plain.stock_quantity, 3)
+        self.assertFalse(Order.objects.exists())
+        self.assertEqual(ListingVariant.objects.get(listing=plain).stock_quantity, 3)
+
+    def test_returning_an_orders_stock_gives_the_units_back_to_the_variants(self):
+        from orders.support import return_stock
+
+        self.put(self.vanilla, 2)
+        self.put(self.choc, 1)
+        self.assertEqual(self.checkout().status_code, 201)
+        self.cake.refresh_from_db()
+        self.assertEqual(self.cake.stock_quantity, 6)
+        with transaction.atomic():
+            return_stock(Order.objects.get())
+        for row, stock in ((self.vanilla, 5), (self.choc, 4)):
+            row.refresh_from_db()
+            self.assertEqual(row.stock_quantity, stock)
+        self.cake.refresh_from_db()
+        self.assertEqual(self.cake.stock_quantity, 9)
+
+    @override_settings(MARKETING_PROMOS_ENABLED=True)
+    def test_a_live_flash_sale_row_is_never_applied_to_a_variant_line(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from marketing.models_promos import FlashSale, FlashSaleListing
+
+        now = timezone.now()
+        sale = FlashSale.objects.create(
+            name="Flash", status=FlashSale.LIVE, starts_at=now - timedelta(hours=1), ends_at=now + timedelta(hours=1),
+            discount_pct=20, stock_cap=10, per_customer_limit=5,
+        )
+        FlashSaleListing.objects.create(
+            sale=sale, listing=self.cake, normal_price=self.cake.price_amount, sale_price="10.00", agreed_at=now,
+        )
+        self.put(self.vanilla, 1)
+        self.assertEqual(self.checkout().status_code, 201)
+        item = OrderItem.objects.get()
+        self.assertIsNone(item.flash_sale)
+        self.assertEqual(str(item.unit_price), "25.00")
 
     @override_settings(MARKETING_PROMOS_ENABLED=True)
     def test_promo_pricing_keeps_the_variant_on_the_order_line(self):

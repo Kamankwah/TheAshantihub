@@ -25,7 +25,7 @@ from django.utils import timezone
 
 from accounts.phones import filter_by_phone, phone_key
 from fraud.models import FraudFlag
-from listings.models import Listing
+from listings.models import Listing, ListingVariant
 from listings.visibility import hidden_business_q
 from notifications.services import notify_staff_role
 from orders.models import Order, OrderItem
@@ -90,11 +90,14 @@ def usable_rows(rows, listings):
     owner_ids = {l.business_owner_id for l in listings}
     flagged = set(FraudFlag.objects.filter(status=FraudFlag.OPEN, business_owner_id__in=owner_ids).values_list("business_owner_id", flat=True))
     fresh = {l.pk: l for l in Listing.objects.filter(pk__in=ids)}
+    with_variants = set(
+        ListingVariant.objects.filter(listing_id__in=ids, is_active=True).values_list("listing_id", flat=True)
+    )  # a flash sale prices one single-price listing only (decision V4)
     out = []
     for row in rows:
         live = fresh.get(row.listing_id)
         if (
-            live is None or live.status != Listing.PUBLISHED or live.pk in hidden or live.stock_quantity is None
+            live is None or live.pk in with_variants or live.status != Listing.PUBLISHED or live.pk in hidden or live.stock_quantity is None
             or live.price_amount is None or cents(live.price_amount) != cents(row.normal_price)
             or live.business_owner_id in flagged
         ):
@@ -129,7 +132,7 @@ def _flash_lines(customer, items, now, lock):
     for sale in sales:
         room[sale.pk] = [max(0, sale.stock_cap - _sold(sale)), max(0, sale.per_customer_limit - _sold(sale, customer))]
     for item in items:
-        row = usable.get(item.listing_id)
+        row = None if item.variant_id else usable.get(item.listing_id)
         snapshot = cents(item.unit_price_snapshot)
         if row is None or cents(row.sale_price) >= snapshot:
             lines.append(Line(item.listing, item.quantity, item.unit_price_snapshot, None, item.id, item.variant))

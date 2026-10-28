@@ -73,12 +73,23 @@ def _fail_order_checkout(session):
     from listings import variants
     from listings.models import ListingVariant
 
-    for reservation in meta.get("stock_reservations", []):
-        listing = Listing.objects.select_for_update().get(id=reservation["listing_id"])
+    reservations = sorted(meta.get("stock_reservations", []), key=lambda r: (r["listing_id"], r.get("variant_id") or 0))
+    # Same lock order as checkout: every listing by pk, then the variants by pk.
+    locked = {
+        row.pk: row
+        for row in Listing.objects.select_for_update().filter(pk__in={r["listing_id"] for r in reservations}).order_by("pk")
+    }
+    locked_variants = {
+        row.pk: row
+        for row in ListingVariant.objects.select_for_update()
+        .filter(pk__in={r["variant_id"] for r in reservations if r.get("variant_id")}).order_by("pk")
+    }
+    for reservation in reservations:
+        listing = locked[reservation["listing_id"]]
         variant_id = reservation.get("variant_id")  # absent on reservations made before variants existed
         if variant_id is not None:
-            row = ListingVariant.objects.select_for_update().filter(pk=variant_id, listing=listing).first()
-            if row is not None and row.stock_quantity is not None:
+            row = locked_variants.get(variant_id)
+            if row is not None and row.listing_id == listing.pk and row.stock_quantity is not None:
                 row.stock_quantity += reservation["quantity"]
                 row.save(update_fields=["stock_quantity"])
             variants.sync_listing(listing)
