@@ -11,6 +11,7 @@ import { D, glassCard } from "../theme.js";
 import { button, chip, dim, field, pill } from "./panelStyles.js";
 import { scroll, table, td, th } from "./opsPeopleParts.jsx";
 import { Title, page, sectionTitle } from "./insightsParts.jsx";
+import WithdrawalsPanel from "./WithdrawalsPanel.jsx";
 import RiderWalletDetail from "./RiderWalletDetail.jsx";
 import { amount, employmentLabel, showGivenBack } from "./riderMoneyParts.jsx";
 
@@ -19,7 +20,7 @@ import { amount, employmentLabel, showGivenBack } from "./riderMoneyParts.jsx";
 // Nothing here moves money. No realtime key exists, so lists refetch on window
 // focus and on Refresh. `fallback` replaces the whole panel while the ledger is
 // off; `embedded` drops the title when a parent (Wallets) already has one.
-const TABS = [["wallets", "Wallets"], ["commission", "Daily commission"]];
+const TABS = [["wallets", "Wallets"], ["commission", "Daily commission"], ["withdrawals", "Withdrawals"]];
 const rowKey = (r) => r.holder_id;
 
 function WalletsTab({ onOpen }) {
@@ -117,7 +118,7 @@ function CommissionTab() {
   );
 }
 
-export default function RiderMoneyPanel({ fallback = null, embedded = false }) {
+export default function RiderMoneyPanel({ auth, fallback = null, embedded = false }) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("wallets");
   const [riderId, setRiderId] = useState(null);
@@ -144,9 +145,13 @@ export default function RiderMoneyPanel({ fallback = null, embedded = false }) {
           <button key={id} type="button" aria-pressed={tab === id} onClick={() => setTab(id)} style={pill(tab === id)}>{label}</button>
         ))}
       </div>
-      <section aria-label={tab === "wallets" ? "Rider wallets" : "Daily commission"} style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-        {tab === "wallets" ? <WalletsTab onOpen={setRiderId} /> : <CommissionTab />}
-      </section>
+      {tab === "withdrawals"
+        ? <WithdrawalsPanel auth={auth} holderType="staff" title="Rider withdrawals" />
+        : (
+          <section aria-label={tab === "wallets" ? "Rider wallets" : "Daily commission"} style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+            {tab === "wallets" ? <WalletsTab onOpen={setRiderId} /> : <CommissionTab />}
+          </section>
+        )}
     </div>
   );
 }

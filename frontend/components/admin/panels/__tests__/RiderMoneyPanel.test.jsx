@@ -220,3 +220,21 @@ describe('Rider money: daily commission', () => {
     expect(screen.queryByRole('button', { name: /edit|adjust|set|credit|debit|save/i })).toBeNull()
   })
 })
+
+describe('Rider money: withdrawals tab', () => {
+  it('shows rider withdrawals asked for with holder_type=staff', async () => {
+    const seen = []
+    server.use(
+      http.get(WALLETS, () => envelope([])),
+      http.get(`${API}/api/wallet/staff/withdrawals/`, ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get('holder_type'))
+        return envelope([{ id: 5, reference: 'WD-0005', amount: '40.00', charge: '1.00', status: 'processing', status_label: 'Sent to provider', destination: { account_number_masked: '******4321' }, holder_type: 'staff', holder_id: 9, holder_name: 'Kwesi Rider', submitted_at: null, stuck: false }])
+      }),
+    )
+    wrap(<RiderMoneyPanel auth={auth} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Withdrawals' }))
+    expect(await screen.findByText('WD-0005')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Rider withdrawals' })).toBeInTheDocument()
+    expect(seen).toEqual(['staff'])
+  })
+})
