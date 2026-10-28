@@ -150,15 +150,38 @@ class BusinessOwnerMiniSerializer(serializers.ModelSerializer):
         fields = ["id", "full_name", "kyc_status"]
 
 
+def live_sale_ends_at(obj):
+    """The discount's end date, only while the discount is live (a listing or a variant)."""
+    if obj.sale_ends_at is None or not pricing.is_discounted(obj):
+        return None
+    return serializers.DateTimeField().to_representation(obj.sale_ends_at)
+
+
 class PublicVariantSerializer(serializers.ModelSerializer):
     effective_price = serializers.SerializerMethodField()
+    sale_price = serializers.SerializerMethodField()
+    was_price = serializers.SerializerMethodField()
+    sale_ends_at = serializers.SerializerMethodField()
 
     class Meta:
         model = ListingVariant
-        fields = ["id", "label", "attributes", "price_amount", "effective_price", "stock_quantity", "position"]
+        fields = [
+            "id", "label", "attributes", "price_amount", "sale_price", "was_price", "sale_ends_at", "effective_price",
+            "stock_quantity", "position",
+        ]
 
     def get_effective_price(self, obj):
         return str(obj.effective_price)
+
+    def get_sale_price(self, obj):
+        return str(pricing.dec(obj.sale_price)) if pricing.is_discounted(obj) else None
+
+    def get_was_price(self, obj):
+        was = pricing.was_price(obj)
+        return None if was is None else str(was)
+
+    def get_sale_ends_at(self, obj):
+        return live_sale_ends_at(obj)
 
 
 class ListingVariantSerializer(PublicVariantSerializer):
@@ -224,6 +247,7 @@ class PublicListingSerializer(serializers.ModelSerializer):
     sale_price = serializers.SerializerMethodField()
     was_price = serializers.SerializerMethodField()
     effective_price = serializers.SerializerMethodField()
+    sale_ends_at = serializers.SerializerMethodField()
     variants = serializers.SerializerMethodField()
     has_variants = serializers.SerializerMethodField()
 
@@ -233,7 +257,7 @@ class PublicListingSerializer(serializers.ModelSerializer):
             "id", "name", "description", "category", "zone", "price_amount", "price_unit",
             "tag", "lat", "lng", "main_photo", "photos", "created_at",
             "is_promoted", "specs", "service_duration", "avg_rating", "review_count",
-            "sale_price", "was_price", "effective_price", "variants", "has_variants", "videos",
+            "sale_price", "sale_ends_at", "was_price", "effective_price", "variants", "has_variants", "videos",
             "business_owner", *LISTING_DECISION_FIELDS, "cancellation_policy",
         ]
         # This serializer only ever backs read-only views (list/detail/
@@ -264,6 +288,9 @@ class PublicListingSerializer(serializers.ModelSerializer):
     def get_was_price(self, obj):
         was = pricing.was_price(obj)
         return None if was is None else str(was)
+
+    def get_sale_ends_at(self, obj):
+        return live_sale_ends_at(obj)
 
     def get_effective_price(self, obj):
         value = obj.effective_price
@@ -565,6 +592,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     videos = serializers.SerializerMethodField()
     variants = ListingVariantSerializer(many=True, read_only=True)
     has_variants = serializers.SerializerMethodField()
+    sale_ends_at = serializers.SerializerMethodField()
     pending_revision = serializers.SerializerMethodField()
 
     # The product's barcode (catalogue plan 6): typed with spaces or hyphens, kept as its 14-digit GTIN.
@@ -573,7 +601,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Listing
         fields = [
-            "id", "variants", "has_variants", "pending_revision", "category", "zone", "name", "description", "price_amount", "sale_price", "price_unit",
+            "id", "variants", "has_variants", "pending_revision", "category", "zone", "name", "description", "price_amount", "sale_price", "sale_ends_at", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "videos", "specs",
             "service_duration", "units_total", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
             "status", "rejection_reason", "dropped_at", "discontinued_at", "created_at", "updated_at",
@@ -583,6 +611,9 @@ class OwnerListingSerializer(serializers.ModelSerializer):
 
     def get_has_variants(self, obj):
         return any(row.is_active for row in obj.variants.all())
+
+    def get_sale_ends_at(self, obj):
+        return live_sale_ends_at(obj)
 
     def get_photos(self, obj):
         return OwnerPhotoSerializer(list(obj.photos.all()), many=True, context=self.context).data

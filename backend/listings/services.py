@@ -2,7 +2,7 @@
 from . import variants
 from .models import Listing
 
-DERIVED_FIELDS = ("price_amount", "stock_quantity", "sale_price")
+DERIVED_FIELDS = ("price_amount", "stock_quantity", "sale_price", "sale_ends_at")
 
 
 def save_sent_fields(instance, validated_data):
@@ -12,6 +12,8 @@ def save_sent_fields(instance, validated_data):
     variants, so a request that sends them is quietly ignored for those fields."""
     if variants.has_variants(instance):
         validated_data = {k: v for k, v in validated_data.items() if k not in DERIVED_FIELDS}
+    if "sale_price" in validated_data:
+        validated_data = {**validated_data, "sale_ends_at": None}  # a sale price written here has no end date
     for attr, value in validated_data.items():
         setattr(instance, attr, value)
     instance.save(update_fields=[*validated_data, "updated_at"])

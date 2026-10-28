@@ -99,6 +99,8 @@ class Listing(models.Model):
     price_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     # A live discount (Plan M1 Deals): goes live at once, valid only below price_amount (see listings.pricing).
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # Optional end of the discount (listings.pricing.live_discount_q): read-time expiry, no job. Null = no end date.
+    sale_ends_at = models.DateTimeField(null=True, blank=True)
     # Flagged by marketing/operations/super admin (`deals.manage`): appears in Deals even without a discount.
     sponsored = models.BooleanField(default=False)
     sponsored_by = models.ForeignKey(
@@ -244,12 +246,17 @@ class ListingPriceHistory(models.Model):
     Recorded from the day Task 6 shipped; it backs the 7-day "was" price rule (listings.pricing)."""
 
     listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="price_history")
+    # Null for the listing's own price; set for one variant's regular price (listing queries filter variant__isnull).
+    variant = models.ForeignKey("ListingVariant", on_delete=models.CASCADE, null=True, blank=True, related_name="price_history")
     price = models.DecimalField(max_digits=10, decimal_places=2)
     started_at = models.DateTimeField(default=timezone.now)
     ended_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        indexes = [models.Index(fields=["listing", "ended_at"], name="listing_price_open_idx")]
+        indexes = [
+            models.Index(fields=["listing", "ended_at"], name="listing_price_open_idx"),
+            models.Index(fields=["variant", "ended_at"], name="listing_vprice_open_idx"),
+        ]
 
     def __str__(self):
         return f"{self.listing_id}: {self.price} from {self.started_at:%Y-%m-%d}"
@@ -264,6 +271,9 @@ class ListingVariant(models.Model):
     label = models.CharField(max_length=100)
     attributes = models.JSONField(default=dict, blank=True)
     price_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    # A discount on this variant alone (same rules as Listing.sale_price / sale_ends_at; listings.pricing).
+    sale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    sale_ends_at = models.DateTimeField(null=True, blank=True)
     # None = stock is not counted for this variant.
     stock_quantity = models.PositiveIntegerField(null=True, blank=True)
     position = models.PositiveSmallIntegerField(default=0)
@@ -283,10 +293,18 @@ class ListingVariant(models.Model):
 
     @property
     def effective_price(self):
-        """What one unit of this variant costs now. Equal to its price until variant discounts exist."""
+        """What one unit of this variant costs now: its live sale price, otherwise its regular price."""
         from . import pricing
 
-        return pricing.dec(self.price_amount)
+        return pricing.effective_price(self)
+
+    def save(self, *args, **kwargs):
+        from . import pricing
+
+        update_fields = kwargs.get("update_fields")
+        super().save(*args, **kwargs)
+        if update_fields is None or "price_amount" in update_fields:
+            pricing.record_variant_price(self)
 
 
 class ListingRevision(models.Model):

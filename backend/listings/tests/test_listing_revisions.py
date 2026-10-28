@@ -133,7 +133,7 @@ class ListingRevisionTests(TestCase):
         fields = set(OwnerListingSerializer().fields)
         read_only = {
             "id", "variants", "has_variants", "pending_revision", "photos", "videos", "main_photo", "status", "rejection_reason",
-            "dropped_at", "discontinued_at", "created_at", "updated_at",
+            "dropped_at", "discontinued_at", "created_at", "updated_at", "sale_ends_at",
         }
         self.assertEqual(revisions.REVISABLE_FIELDS, fields - read_only - revisions.LIVE_FIELDS)
 
@@ -474,11 +474,11 @@ class ListingRevisionTests(TestCase):
         self.assertEqual(put({"op": "add", "label": "x" * 101, "price_amount": "5"}), 400)
         self.assertEqual(put({"op": "update", "id": one.pk, "label": "y" * 101}), 400)
         self.assertEqual(put({"op": "update", "id": one.pk, "position": 32768}), 400)
-        self.assertEqual(put({"op": "add", "label": "Big", "price_amount": "5", "stock_quantity": 2147483648}), 400)
+        self.assertEqual(put({"op": "add", "label": "Big", "price_amount": "5", "stock_quantity": 1000001}), 400)
         self.assertEqual(put({"op": "update", "id": one.pk, "position": 32767}), 200)
-        self.assertEqual(put({"op": "add", "label": "Big", "price_amount": "5", "stock_quantity": 2147483647}), 200)
+        self.assertEqual(put({"op": "add", "label": "Big", "price_amount": "5", "stock_quantity": 1000000}), 200)
         live = self.client.patch(
-            f"/api/listings/mine/{self.listing.pk}/variants/{one.pk}/live/", {"stock_quantity": 2147483648}, format="json",
+            f"/api/listings/mine/{self.listing.pk}/variants/{one.pk}/live/", {"stock_quantity": 1000001}, format="json",
         )
         self.assertEqual(live.status_code, 400)
 

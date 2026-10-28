@@ -13,7 +13,7 @@ from .models import Listing, ListingVariant
 
 MAX_VARIANTS = 40
 MAX_ATTRIBUTES = 4
-MAX_STOCK = 2147483647  # PositiveIntegerField
+MAX_STOCK = 1_000_000  # per variant: 40 variants sum to 40 million, far inside a PositiveIntegerField
 MAX_POSITION = 32767  # PositiveSmallIntegerField
 MAX_LABEL = 100
 LIVE_FIELDS = ("price_amount", "stock_quantity", "add")
@@ -46,7 +46,8 @@ def sync_listing(listing):
     listing.price_amount = min(price for price, _ in rows)
     listing.stock_quantity = None if any(stock is None for stock in stocks) else sum(stocks)
     listing.sale_price = None  # a variant listing has no listing-level sale; discounts are per variant
-    listing.save(update_fields=["price_amount", "stock_quantity", "sale_price", "updated_at"])
+    listing.sale_ends_at = None
+    listing.save(update_fields=["price_amount", "stock_quantity", "sale_price", "sale_ends_at", "updated_at"])
     return listing
 
 
@@ -96,6 +97,8 @@ def set_live(variant, data):
         row = ListingVariant.objects.select_for_update().get(pk=variant.pk, listing=listing)
         if price is not None:
             row.price_amount = price
+            if row.sale_price is not None and price <= row.sale_price:
+                row.sale_price = row.sale_ends_at = None  # the sale would no longer be a discount; do not let it revive
         if stock is not None:
             row.stock_quantity = stock
         if add is not None:

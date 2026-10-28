@@ -772,4 +772,7 @@ export const handlers = [
   http.get('http://localhost:8000/api/listings/mine/:id/revision/', () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })),
   http.get('http://localhost:8000/api/direct/listings/:id/revision/', () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })),
   http.get('http://localhost:8000/api/direct/listings/', () => HttpResponse.json([])),
+  // Discounts: nothing running by default (DiscountsPanel); a test overrides these for a running or refused one.
+  http.get('http://localhost:8000/api/listings/mine/:id/discounts/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/direct/listings/:id/discounts/', () => HttpResponse.json([])),
 ]

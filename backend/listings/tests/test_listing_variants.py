@@ -260,11 +260,11 @@ class VariantTests(TestCase):
         Listing.objects.filter(pk=self.listing.pk).update(sale_price="8.00")
         self.add("Vanilla", "25.00", 5)
         self.assertIsNone(self.refresh().sale_price)
-        before = ListingPriceHistory.objects.filter(listing=self.listing).count()
+        before = ListingPriceHistory.objects.filter(listing=self.listing, variant__isnull=True).count()
         self.add("Lemon", "18.50", 3)
-        self.assertEqual(ListingPriceHistory.objects.filter(listing=self.listing).count(), before + 1)
+        self.assertEqual(ListingPriceHistory.objects.filter(listing=self.listing, variant__isnull=True).count(), before + 1)
         self.assertEqual(
-            ListingPriceHistory.objects.get(listing=self.listing, ended_at__isnull=True).price, Decimal("18.50"),
+            ListingPriceHistory.objects.get(listing=self.listing, variant__isnull=True, ended_at__isnull=True).price, Decimal("18.50"),
         )
 
     def test_new_variant_position_follows_the_highest_one(self):
