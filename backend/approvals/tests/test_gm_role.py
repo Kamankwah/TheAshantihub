@@ -15,7 +15,7 @@ from approvals.tests.kinds import RENAME_STAFF
 MONEY_KINDS = {
     "business.detail_change", "commission.policy", "delivery.auto_assign", "delivery.rate_card",
     "delivery.refund_request", "delivery.rider_employment", "delivery.time_limits", "ledger.fee_rules",
-    "ledger.setting", "marketing.coupon", "marketing.delivery_promo_funding", "otp.recovery",
+    "ledger.redelivery_fee", "ledger.setting", "marketing.coupon", "marketing.delivery_promo_funding", "otp.recovery",
     "wallets.holder_details_edit", "wallets.withdrawal_resolution",
 }
 NOT_MONEY_KINDS = {

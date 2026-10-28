@@ -206,6 +206,6 @@ def operations_or_super_admin(request):
 REDELIVERY_FEE_SETTING = ApprovalKind(
     key=REDELIVERY_FEE_KEY, label="Change the re-delivery fee", pool_permission=REDELIVERY_FEE_PERMISSION,
     current_state=setting_current_state, apply=setting_apply, response_hours=48, chain_note="Operations or Super Admin",
-    resolve_approver=operations_or_super_admin, render_diff=setting_diff, validate=setting_validate, requires_sudo=True,
+    resolve_approver=operations_or_super_admin, render_diff=setting_diff, validate=setting_validate, requires_sudo=True, money=True,
     consequences=setting_consequences,
 )

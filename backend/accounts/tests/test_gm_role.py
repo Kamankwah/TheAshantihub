@@ -22,8 +22,8 @@ class GmSeedTests(TestCase):
 
     def test_gm_holds_operations_desk_work_but_not_client_onboarding(self):
         gm = perms("general_manager")
-        # users.manage would rewrite an owner's phone and email; delivery_promo.approve is a money kind's pool (0063).
-        makers = {"businesses.register", "users.manage", "listings.stage", "delivery_promo.approve"}
+        # users.manage would rewrite an owner's phone and email; delivery_promo.approve (0063) and redelivery_fee.manage (0065) are money kinds' pools.
+        makers = {"businesses.register", "users.manage", "listings.stage", "delivery_promo.approve", "redelivery_fee.manage"}
         self.assertEqual((perms("operations") - makers) - gm, set())
         self.assertEqual(gm & makers, set())
         self.assertTrue({"kyc.approve", "listings.moderate", "event.approve", "hero_media.approve"} <= gm)
@@ -67,6 +67,16 @@ class GmHoldsNoMoneyKindPermissionTests(TestCase):
     def test_gm_lacks_delivery_promo_approve_and_operations_keeps_it(self):
         self.assertNotIn("delivery_promo.approve", perms("general_manager"))
         self.assertIn("delivery_promo.approve", perms("operations"))
+
+    def test_gm_lacks_redelivery_fee_manage_and_operations_and_super_admin_keep_it(self):
+        self.assertNotIn("redelivery_fee.manage", perms("general_manager"))
+        self.assertIn("redelivery_fee.manage", perms("operations"))
+        self.assertIn("redelivery_fee.manage", perms("super_admin"))
+
+    def test_the_redelivery_fee_kind_is_money_so_the_engine_bars_the_gm(self):
+        kind = registry.all_kinds()["ledger.redelivery_fee"]
+        self.assertTrue(kind.money and kind.requires_sudo)
+        self.assertTrue(rules.barred(kind.key, make_staff("general_manager", "gm-r@example.com")))
 
     def test_the_registry_has_money_and_sudo_kinds_to_check(self):
         kinds = registry.all_kinds().values()
@@ -222,3 +232,33 @@ class GmCannotTouchMoneyTests(TestCase):
             self.assertEqual(self.client.patch(f"/api/accounts/business-owners/{owner.pk}/", body, format="json").status_code, 403, body)
         owner.refresh_from_db()
         self.assertEqual((owner.login_phone, owner.email), ("+233201112233", "kwame@example.com"))
+
+
+class GmMoneyPoolMigrationTests(TestCase):
+    """0065 takes every money-kind pool permission off the General Manager, whatever order 0061 and origin's
+    redelivery-fee seed ran in, and keeps portfolio.manage."""
+
+    def migration(self):
+        import importlib
+        from django.apps import apps
+        return importlib.import_module("accounts.migrations.0065_general_manager_loses_money_pool_permissions"), apps
+
+    def test_it_removes_the_inherited_money_permissions_and_keeps_the_rest(self):
+        from accounts.models import Permission
+        module, apps = self.migration()
+        gm = Role.objects.get(name="general_manager")
+        before = perms("general_manager")
+        for code in module.MONEY_POOL_PERMISSIONS:
+            gm.permissions.add(Permission.objects.get_or_create(codename=code)[0])
+        module.revoke(apps, None)
+        after = perms("general_manager")
+        self.assertEqual(after & set(module.MONEY_POOL_PERMISSIONS), set())
+        self.assertEqual(after, before - set(module.MONEY_POOL_PERMISSIONS))
+        self.assertIn("portfolio.manage", after)
+        module.revoke(apps, None)   # idempotent
+        self.assertEqual(perms("general_manager"), after)
+
+    def test_it_covers_every_money_pool_permission_but_the_shared_one(self):
+        module, _ = self.migration()
+        pools = {k.pool_permission for k in registry.all_kinds().values() if (k.money or k.requires_sudo) and k.pool_permission}
+        self.assertEqual(pools - {"portfolio.manage"}, set(module.MONEY_POOL_PERMISSIONS))
