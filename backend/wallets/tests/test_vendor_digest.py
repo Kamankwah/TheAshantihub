@@ -111,7 +111,7 @@ class DigestTests(VendorBase):
             self.assertEqual(vendor_texts.run_digests(self.day)[0], 1)
             self.assertEqual(vendor_texts.run_digests(self.day)[0], 0)                            # a re-run adds nothing
         expected = (
-            f"AshantiHub {self.day:%d %b}: 2 orders paid, items GHS 720.00. Released GHS 115.00, fees GHS 5.00, "
+            f"AshantiHub {self.day:%d %b}: 2 sales paid, GHS 720.00. Released GHS 115.00, fees GHS 5.00, "
             "refunds GHS 0.00. Now Pending GHS 680.00, Available GHS 115.00."
         )
         self.assertEqual([(text.to, text.body) for text in senders.sms_outbox], [("+233201110001", expected)])
@@ -144,7 +144,7 @@ class DigestTests(VendorBase):
         with self.captureOnCommitCallbacks(execute=True):
             self.assertEqual(vendor_texts.run_digests(self.day)[0], 1)
         body = senders.sms_outbox[-1].body
-        self.assertIn("1 order paid, items GHS 120.00", body)
+        self.assertIn("1 sale paid, GHS 120.00", body)
         self.assertNotIn("600.00 ", body.split("Now Pending")[0])
 
     def test_a_second_run_after_the_first_with_its_notice_adds_nothing(self):

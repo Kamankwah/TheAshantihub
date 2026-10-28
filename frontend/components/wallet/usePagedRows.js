@@ -9,8 +9,11 @@ import { walletMessage } from './walletErrors.js'
 // Page 1 is always observed too, so an invalidation or a window-focus refetch
 // reaches it. When page 1 changes, the server's later pages have shifted, so the
 // kept pages are dropped and the list starts again from page 1 (the reader
-// presses Load more again). Rows are also de-duplicated by id as a backstop.
-export function usePagedRows(usePage) {
+// presses Load more again). The same restart happens when a refetched later page
+// differs from the one kept. Rows are also de-duplicated as a backstop, by
+// `rowKey` (default: the row's id; rows with no key are always kept). A list
+// ordered by something that moves (wallet balances) passes its own key.
+export function usePagedRows(usePage, { rowKey = (r) => r?.id } = {}) {
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState({})
   const first = usePage(1)
@@ -24,17 +27,24 @@ export function usePagedRows(usePage) {
       setPages({ 1: firstData })
       setPage(1)
     } else if (data && page > 1) {
-      setPages((p) => ({ ...p, [page]: data }))
+      if (pages[page] && pages[page] !== data) {
+        // A kept later page was refetched and differs: rows have shifted between pages.
+        setPages(firstData ? { 1: firstData } : {})
+        setPage(1)
+      } else if (!pages[page]) {
+        setPages((p) => ({ ...p, [page]: data }))
+      }
     }
-  }, [firstChanged, firstData, data, page])
+  }, [firstChanged, firstData, data, page, pages])
 
   const loaded = Object.keys(pages).sort((a, b) => a - b).map((k) => pages[k])
   const nextPage = loaded.length ? Math.max(...Object.keys(pages).map(Number)) + 1 : 1
   const seen = new Set()
   const rows = loaded.flatMap((p) => p.results || []).filter((r) => {
-    if (r?.id == null) return true
-    if (seen.has(r.id)) return false
-    seen.add(r.id)
+    const key = rowKey(r)
+    if (key == null) return true
+    if (seen.has(key)) return false
+    seen.add(key)
     return true
   })
   return {

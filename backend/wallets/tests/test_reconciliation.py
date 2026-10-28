@@ -103,6 +103,14 @@ class ReconciliationTests(TestCase):
         self.assertEqual(Notification.objects.filter(staff=self.accountant, kind="reconciliation_mismatch").count(), 1)
         self.assertEqual(ReconciliationRun.objects.count(), 1)
 
+    def test_mismatch_notice_links_to_the_reconciliation_tab(self):
+        order = Order.objects.create(customer=self.customer, status=Order.PAID, total_amount=Decimal("60.00"))
+        OrderItem.objects.create(order=order, listing=self.kente, quantity=1, unit_price=Decimal("60.00"), line_total=Decimal("60.00"))
+        escrow.record_order_payment(order)                                                            # a clearing entry with no provider record
+        reconciliation.reconcile(self.today)
+        notice = Notification.objects.get(staff=self.accountant, kind="reconciliation_mismatch")
+        self.assertEqual(notice.link, "reconciliation")
+
     def test_a_clearing_entry_with_no_provider_record_is_a_difference(self):
         order = Order.objects.create(customer=self.customer, status=Order.PAID, total_amount=Decimal("60.00"))
         OrderItem.objects.create(order=order, listing=self.kente, quantity=1, unit_price=Decimal("60.00"), line_total=Decimal("60.00"))

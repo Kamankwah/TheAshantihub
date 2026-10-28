@@ -1,7 +1,8 @@
 """Re-delivery at the customer's request (Plan 7F-E Task 7; rules in delivery.redelivery).
 
 Staff holding `orders.redeliver` (Support, the Pickup Desk, a Super Admin):
-    GET  /api/delivery/redeliveries/?order=<id>     the order's requests, newest first (an empty list while none exist)
+    GET  /api/delivery/redeliveries/?order=<id>     the order's requests, newest first (an empty list while none exist), with `redeliverable`,
+                                                     `redelivery_fee` and `not_redeliverable_reason`; 404 for an unknown order
     POST /api/delivery/redeliveries/ {order, reason}  ask for a second trip (201)
     POST /api/delivery/redeliveries/<id>/cancel/     cancel before the second trip is assigned (a paid fee goes back to the
                                                      wallet)
@@ -10,7 +11,7 @@ The customer who owns the order:
          through payments.booking_pay.pay: a wallet payment is immediate; mobile money adds the provider's processing charge
          on top and returns the redirect shape, finalised by the webhook; the simulated provider finalises at once)
 
-While LEDGER_ENABLED is off the POSTs answer 409 `ledger_off` and nothing is written; the list answers an empty list (no
+While LEDGER_ENABLED is off the POSTs answer 409 `ledger_off` and nothing is written; the list answers an empty list that is not redeliverable (no
 request can exist). Assigning the second trip stays on the Dispatch / Delivery Manager's screens (delivery.manage)."""
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -19,7 +20,7 @@ from rest_framework.views import APIView
 
 from accounts.permissions import HasRolePermission
 from accounts.views import IsCustomer
-from ledger import escrow
+from ledger import escrow, settings_store
 from ledger.money import from_pesewas
 from ledger.posting import InsufficientFunds
 from orders.models import Order
@@ -41,8 +42,18 @@ class RedeliveryListCreateView(APIView):
         order_id = request.query_params.get("order", "")
         if not str(order_id).isdecimal():
             return Response({"order": "Give the order number."}, status=400)
-        rows = Redelivery.objects.filter(order_id=int(order_id)).select_related("requested_by", "rider").order_by("-attempt")
-        return Response({"results": [redelivery.staff_row(r) for r in rows]})
+        order = Order.objects.filter(pk=int(order_id)).first()
+        if order is None:
+            return Response({"detail": "No order with that number."}, status=404)
+        rows = Redelivery.objects.filter(order_id=order.pk).select_related("requested_by", "rider").order_by("-attempt")
+        reason = redelivery.why_not(order)
+        fee = None
+        if reason is None:
+            fee = str(from_pesewas(settings_store.current(settings_store.REDELIVERY_FEE)))
+        return Response({
+            "results": [redelivery.staff_row(r) for r in rows], "redeliverable": reason is None,
+            "redelivery_fee": fee, "not_redeliverable_reason": reason,
+        })
 
     def post(self, request):
         if not escrow.enabled():

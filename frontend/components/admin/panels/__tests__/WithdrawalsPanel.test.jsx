@@ -39,7 +39,7 @@ describe('Staff withdrawals queue', () => {
     wrap(<WithdrawalsPanel auth={manage} />)
     const tr = (await screen.findByText('WD-0005')).closest('tr')
     expect(tr).toHaveTextContent('Ama Mensah')
-    expect(tr).toHaveTextContent('customer')
+    expect(tr).toHaveTextContent('Customer')
     expect(tr).toHaveTextContent('024****789')
     expect(tr).toHaveTextContent('GH₵ 40.00')
     expect(tr).toHaveTextContent('GH₵ 1.00')
@@ -228,5 +228,44 @@ describe('Staff withdrawals queue', () => {
     expect(box).toHaveAttribute('maxlength', '500')
     fireEvent.change(box, { target: { value: EVIDENCE } })
     expect(sheet).toHaveTextContent(`${EVIDENCE.length}/500`)
+  })
+
+  it('asks for holder_type=staff on the rider tab', async () => {
+    const seen = []
+    server.use(http.get(LIST, ({ request }) => { seen.push(new URL(request.url).searchParams.get('holder_type')); return envelope([]) }))
+    wrap(<WithdrawalsPanel auth={manage} holderType="staff" title="Rider withdrawals" />)
+    expect(await screen.findByRole('heading', { name: 'Rider withdrawals' })).toBeInTheDocument()
+    await waitFor(() => expect(seen).toEqual(['staff']))
+  })
+
+  it('sends no holder_type without one', async () => {
+    const seen = []
+    server.use(http.get(LIST, ({ request }) => { seen.push(new URL(request.url).searchParams.has('holder_type')); return envelope([]) }))
+    wrap(<WithdrawalsPanel auth={manage} />)
+    await waitFor(() => expect(seen).toEqual([false]))
+  })
+
+  it('rows say Rider for a staff holder', async () => {
+    server.use(http.get(LIST, () => envelope([row({ holder_type: 'staff', holder_name: 'Kwesi Rider' }), row({ id: 6, reference: 'WD-0006', holder_type: 'business_owner' })])))
+    wrap(<WithdrawalsPanel auth={manage} holderType="staff" title="Rider withdrawals" />)
+    const tr = (await screen.findByText('WD-0005')).closest('tr')
+    expect(tr).toHaveTextContent('Rider')
+    expect(tr).not.toHaveTextContent('staff')
+    expect(screen.getByText('WD-0006').closest('tr')).toHaveTextContent('Business')
+  })
+
+  it('the rider tab keeps the two-person resolve flow', async () => {
+    const posts = []
+    server.use(
+      http.get(LIST, () => envelope([row({ holder_type: 'staff', holder_name: 'Kwesi Rider', stuck: true })])),
+      http.post('http://localhost:8000/api/wallet/staff/withdrawals/:id/resolve/', async ({ request }) => { posts.push(await request.json()); return HttpResponse.json({ approval_id: 3, status: 'pending' }, { status: 201 }) }),
+    )
+    wrap(<WithdrawalsPanel auth={manage} holderType="staff" title="Rider withdrawals" />)
+    const sheet = await openSheet()
+    expect(screen.queryByRole('button', { name: /^Fail( withdrawal| now)?$/ })).toBeNull()
+    fireEvent.change(within(sheet).getByLabelText(/Evidence/), { target: { value: EVIDENCE } })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Send for approval' }))
+    await screen.findByText(/Sent for approval \(request A-3\)/)
+    expect(posts).toEqual([{ outcome: 'failed', evidence: EVIDENCE }])
   })
 })

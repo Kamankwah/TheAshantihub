@@ -25,10 +25,13 @@ const hidden = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', 
 // A holder's statement. Holder-agnostic: the customer pages and the vendor
 // Money tab both compose it. An order link renders only when the caller
 // passes `orderHref(orderId)`. Filtering is client-side on loaded pages.
-export default function TransactionsList({ tone = 'light', orderHref }) {
+// `path` reads another holder's journal; `filters={false}` hides the chips;
+// `accountLabels` is merged over the built-in account words.
+export default function TransactionsList({ tone = 'light', orderHref, path, filters = true, accountLabels }) {
   const s = walletStyles(tone)
   const [group, setGroup] = useState('all')
-  const { query, loaded, rows, hasMore, loadMore, loadError } = usePagedRows(useWalletTransactions)
+  const { query, loaded, rows, hasMore, loadMore, loadError } = usePagedRows((p) => useWalletTransactions(p, path ? { path } : undefined))
+  const accounts = accountLabels ? { ...ACCOUNTS, ...accountLabels } : ACCOUNTS
 
   if (query.error && !loaded.length) {
     const m = walletMessage(query.error)
@@ -37,7 +40,7 @@ export default function TransactionsList({ tone = 'light', orderHref }) {
   if (!loaded.length) return <div style={s.card}><div style={s.note}>Loading your transactions…</div></div>
   if (!rows.length) return <div style={s.card}><div style={s.note}>You don't have any transactions yet.</div></div>
 
-  const chips = GROUPS.filter((g) => rows.some((r) => g.kinds.includes(r.kind)))
+  const chips = !filters ? [] : GROUPS.filter((g) => rows.some((r) => g.kinds.includes(r.kind)))
   const active = chips.find((g) => g.id === group)
   const shown = active ? rows.filter((r) => active.kinds.includes(r.kind)) : rows
   const chipStyle = (on) => ({ ...s.ghost, padding: '6px 12px', minHeight: 36, fontSize: 13, fontWeight: on ? 700 : 500 })
@@ -61,7 +64,7 @@ export default function TransactionsList({ tone = 'light', orderHref }) {
           return (
             <li key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '12px 0', borderTop: s.card.border }}>
               <div style={{ minWidth: 0 }}>
-                <div style={s.value}>{r.label}{ACCOUNTS[r.account] && <span style={{ ...s.note, marginLeft: 8 }}>{ACCOUNTS[r.account]}</span>}</div>
+                <div style={s.value}>{r.label}{accounts[r.account] && <span style={{ ...s.note, marginLeft: 8 }}>{accounts[r.account]}</span>}</div>
                 {when && <div style={s.note}>{when}</div>}
                 {REFUND_KINDS.includes(r.kind) && incoming && <RefundNotice line={r} tone={tone} />}
                 {r.order && typeof orderHref === 'function' && (

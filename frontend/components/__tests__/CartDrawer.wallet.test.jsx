@@ -236,3 +236,83 @@ describe('MoMoPayment fee line', () => {
     expect(container.textContent).toContain('Dial *170# • 1.5% transaction fee')
   })
 })
+
+// Delivery fee with promotions off: the server's delivery-preview says what checkout will add (3F follow-up).
+describe('CartDrawer total with the server delivery fee', () => {
+  const FEE = { fee: '15.00', fee_status: 'ok', waived: false, waiver_name: null, waived_fee: null, mixed_note: null, lines: [], route: null }
+  const previewWith = (delivery, seen = null) => http.get(`${API}/api/orders/delivery-preview/`, ({ request }) => {
+    if (seen) seen.push(Object.fromEntries(new URL(request.url).searchParams))
+    return HttpResponse.json({ delivery_from: null, delivered_from: null, deferred: false, source: null, delivery })
+  })
+  const promos = (enabled) => http.get(`${API}/api/marketing/promos/public/`, () => HttpResponse.json({ enabled, flash_sales: [] }))
+  // `asked` (the processing amounts) is cleared just before the pin drops: the store-pickup stage asked for items only.
+  const toDoorWithPin = async (asked = []) => {
+    await toConfirm()
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+    fireEvent.change(screen.getByPlaceholderText('Delivery address'), { target: { value: '1 Road' } })
+    fireEvent.change(screen.getByPlaceholderText('Contact phone for delivery'), { target: { value: '0244000000' } })
+    asked.length = 0
+    fireEvent.click(screen.getByText('drop-pin'))
+  }
+
+  it('test_review_focus_with_promotions_off_the_total_includes_the_servers_delivery_fee', async () => {
+    const seen = []
+    server.use(cart(), walletOff(), promos(false), previewWith(FEE, seen))
+    renderDrawer()
+    await toDoorWithPin()
+    expect(await screen.findAllByText('GHS 315.00')).not.toHaveLength(0)
+    expect(seen.at(-1)).toMatchObject({ fulfilment: 'door_to_door', lat: '6.7', lng: '-1.62' })
+  })
+
+  it('the momo quote waits for the delivery fee', async () => {
+    let release
+    const gate = new Promise((r) => { release = r })
+    const asked = []
+    server.use(cart(), walletOn(), promos(false),
+      http.get(`${API}/api/orders/delivery-preview/`, async ({ request }) => {
+        if (new URL(request.url).searchParams.get('lat')) await gate
+        return HttpResponse.json({ delivery_from: null, delivered_from: null, deferred: false, source: null, delivery: FEE })
+      }),
+      http.get(`${API}/api/wallet/processing/`, ({ request }) => {
+        const amount = new URL(request.url).searchParams.get('amount')
+        asked.push(amount)
+        return HttpResponse.json({ amount, payment_processing: '4.73', you_pay: '319.73', provider: 'simulated' })
+      }))
+    renderDrawer()
+    await toDoorWithPin(asked)
+    expect(await screen.findByText('Checking the delivery fee…')).toBeInTheDocument()
+    expect(screen.getByText('Confirm & Pay')).toBeDisabled()
+    expect(asked).not.toContain('300.00')
+    await act(async () => { release() })
+    await waitFor(() => expect(screen.queryByText('Checking the delivery fee…')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Confirm & Pay')).toBeEnabled())
+  })
+
+  it('the processing quote is asked for items plus the delivery fee', async () => {
+    const asked = []
+    server.use(cart(), walletOn(), promos(false), previewWith(FEE),
+      http.get(`${API}/api/wallet/processing/`, ({ request }) => {
+        const amount = new URL(request.url).searchParams.get('amount')
+        asked.push(amount)
+        return HttpResponse.json({ amount, payment_processing: '4.73', you_pay: '319.73', provider: 'simulated' })
+      }))
+    renderDrawer()
+    await toDoorWithPin(asked)
+    await waitFor(() => expect(asked).toContain('315.00'))
+    expect(asked).not.toContain('300.00')
+    await waitFor(() => expect(screen.getByText('Confirm & Pay')).toBeEnabled())
+    fireEvent.click(screen.getByText('Confirm & Pay'))
+    expect(await screen.findByText('Pay 315')).toBeInTheDocument()
+    expect(screen.getByTestId('stub-processing')).toHaveTextContent('4.73')
+  })
+
+  it('promotions on keeps using the cart quote fee', async () => {
+    const seen = []
+    server.use(cart(), walletOff(), promos(true), previewWith({ ...FEE, fee: '99.00' }, seen),
+      http.post(`${API}/api/marketing/cart/quote/`, () => HttpResponse.json({ enabled: true, total: '300.00', lines: [], notes: [], delivery: { ...FEE, fee: '12.00' } })))
+    renderDrawer()
+    await toDoorWithPin()
+    expect(await screen.findAllByText('GHS 312.00')).not.toHaveLength(0)
+    expect(screen.queryByText('GHS 399.00')).not.toBeInTheDocument()
+  })
+})

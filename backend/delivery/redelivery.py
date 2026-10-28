@@ -103,12 +103,27 @@ def _refusal(order, assignment):
     return None
 
 
+LEDGER_OFF_REASON = "Re-delivery fees aren't switched on yet."
+OPEN_REASON = "A re-delivery is already open for this order."
+
+
+def why_not(order):
+    """For the screens (an unlocked read): why a request cannot be made for `order` now, in the words the staff screen
+    shows, or None when it can: the ledger is off, the order does not qualify (NOT_REDELIVERABLE) or a request is open."""
+    if not escrow.enabled():
+        return LEDGER_OFF_REASON
+    assignment = getattr(order, "delivery_assignment", None)
+    refusal = _refusal(order, assignment)
+    if refusal is not None:
+        return refusal
+    if open_row(order) is not None:
+        return OPEN_REASON
+    return None
+
+
 def redeliverable(order):
     """For the screens (an unlocked read): the ledger is on, the order qualifies and no request is open."""
-    if not escrow.enabled():
-        return False
-    assignment = getattr(order, "delivery_assignment", None)
-    return _refusal(order, assignment) is None and open_row(order) is None
+    return why_not(order) is None
 
 
 def row(redelivery):
@@ -148,6 +163,29 @@ def customer_row(redelivery):
     data = row(redelivery)
     data.pop("reason")
     return data
+
+
+def owed_trips(*, since, rider=None):
+    """The second trips AshantiHub owes an in-house rider through payroll since `since` (a datetime; `completed_at`), as ONE
+    queryset filter that states `Redelivery.owed_through_payroll`: done, a rider, the fee settled, and no `rider_earning` (a
+    third-party fallback rider was paid into the wallet instead). `rider` is a StaffUser id or None for everyone."""
+    from .models import Redelivery
+
+    trips = Redelivery.objects.filter(
+        status=Redelivery.COMPLETED, rider__isnull=False, settle_journal__isnull=False, rider_earning__isnull=True,
+        completed_at__gte=since,
+    )
+    if rider is not None:
+        trips = trips.filter(rider_id=rider)
+    return trips
+
+
+def owed_row(r):
+    """One owed trip as the payroll screens show it (the fee as the server's decimal string)."""
+    return {
+        "id": r.pk, "order": r.order_id, "attempt": r.attempt, "completed_at": r.completed_at,
+        "fee": str(from_pesewas(r.fee_pesewas)),
+    }
 
 
 def _log(actor, verb, redelivery, *, request=None):
