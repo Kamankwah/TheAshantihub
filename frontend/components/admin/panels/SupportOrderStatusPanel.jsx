@@ -73,7 +73,7 @@ function UpdateForm({ order, onDone }) {
 }
 
 // Re-delivery at the customer's request (Plan 7F-E Task 7). Only for staff holding orders.redeliver, and only
-// when the server says the order qualifies (the rider reached the address and could not reach the customer).
+// when the server says the order qualifies (the rider reached the address and the customer did not answer or refused it).
 // The fee is the governed setting the server copies onto the request; giving the second trip to a rider stays
 // with the Dispatch / Delivery Manager.
 const REDELIVERY_STATE = {
@@ -124,7 +124,7 @@ function RedeliverySection({ order }) {
       {!open && order.redeliverable && (
         <>
           <div style={dim}>
-            The rider reached the address and could not reach the customer, and the goods came back. If the customer asks
+            The rider reached the address and the customer did not answer or refused the order, and the goods came back. If the customer asks
             for it again, they pay a re-delivery fee of <strong style={{ color: D.text, fontVariantNumeric: "tabular-nums" }}>{`GH₵ ${order.redelivery_fee}`}</strong> first.
             The original delivery fee is settled for the first trip.
           </div>

@@ -194,8 +194,9 @@ class OrderCheckoutView(APIView):
             if quoted is not None:
                 fee_card, fee_quote = quoted
                 # A live free-delivery promo covering every line waives the fee (marketing.waivers);
-                # the original amount stays in the breakdown.
-                waiver = waivers.covering_waiver([i.listing for i in items], timezone.now())
+                # the original amount stays in the breakdown. An AshantiHub-funded promo waives it only when the fee
+                # fits in its budget cap, decided under the promo's row lock (a hard cap: concurrent checkouts wait).
+                waiver = waivers.covering_waiver([i.listing for i in items], timezone.now(), fee=fee_quote["total"], lock=True)
                 charged, fee_quote = waivers.apply_to_fee(waiver, fee_quote)
                 total += charged
             order = Order.objects.create(

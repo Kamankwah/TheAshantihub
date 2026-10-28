@@ -81,7 +81,8 @@ class StaffHoursTests(TestCase):
     def test_permission_required(self):
         self.client.credentials()
         self.assertEqual(self.client.put(self.url, {"days": week()}, format="json").status_code, 401)
-        self.as_(make_staff("support", "esi@example.com"))
+        # A role holding none of the three hours permissions (Support now may: Director ruling 7, SupportHoursTests).
+        self.as_(make_staff("accountant", "kofi@example.com"))
         self.assertEqual(self.client.put(self.url, {"days": week()}, format="json").status_code, 403)
         self.as_(make_staff("scout", "yaw@example.com", manager=self.lead))  # another scout's business
         self.assertEqual(self.client.put(self.url, {"days": week()}, format="json").status_code, 404)
@@ -129,3 +130,47 @@ class StaffHoursTests(TestCase):
         self.assertEqual(claimed.status_code, 200, claimed.content)
         self.owner.refresh_from_db()
         self.assertIsNotNone(self.owner.claimed_at)
+
+
+class SupportHoursTests(TestCase):
+    """Director ruling 7 (2026-10-20): Support may set any business's weekly opening hours, through the same staff endpoint
+    and rules, recorded in the activity log (permission businesses.set_hours)."""
+
+    def setUp(self):
+        cache.clear()
+        self.lead = make_staff("operations", "ama@example.com")
+        self.scout = make_staff("scout", "kwame@example.com", manager=self.lead)
+        self.owner = scout_owner(self.scout)
+        BusinessHours.objects.filter(business_owner=self.owner).delete()
+        self.support = make_staff("support", "esi@example.com")
+        self.url = f"/api/portfolio/businesses/{self.owner.pk}/hours/"
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.support)}")
+
+    def test_permission_is_seeded_to_support_and_super_admin(self):
+        from accounts.models import Role
+
+        holders = sorted(Role.objects.filter(permissions__codename="businesses.set_hours").values_list("name", flat=True))
+        self.assertEqual(holders, ["super_admin", "support"])
+        self.assertIn("businesses.set_hours", self.support.effective_permission_codenames())
+
+    def test_support_sets_any_business_hours_and_it_is_logged(self):
+        response = self.client.put(self.url, {"days": week()}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(hours.has_hours(self.owner))
+        event = ActivityEvent.objects.filter(verb="business.hours_set").get()
+        self.assertEqual((event.actor_id, event.target_id), (self.support.pk, str(self.owner.pk)))
+        self.assertEqual((event.before, len(event.after["days"])), ({"days": []}, 7))
+
+    def test_support_gets_the_same_rules(self):
+        bad = self.client.put(self.url, {"days": week(d2={"opens": "18:00", "closes": "08:00"})}, format="json")
+        self.assertEqual((bad.status_code, bad.json()["weekday"]), (400, 2))
+        self.assertFalse(hours.has_hours(self.owner))
+        self.assertEqual(self.client.put("/api/portfolio/businesses/999999/hours/", {"days": week()}, format="json").status_code, 404)
+
+    def test_support_profile_of_a_business_shows_its_hours(self):
+        url = f"/api/support/staff/businesses/{self.owner.pk}/360/"
+        self.assertEqual(self.client.get(url).json()["hours"], [])            # none entered: never invented
+        self.client.put(self.url, {"days": week()}, format="json")
+        shown = self.client.get(url).json()["hours"]
+        self.assertEqual((len(shown), shown[0]), (7, {"weekday": 0, "closed": False, "opens": "08:00", "closes": "18:00"}))

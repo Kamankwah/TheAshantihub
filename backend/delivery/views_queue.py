@@ -132,7 +132,12 @@ class ScheduleView(ManageView):
 
 
 class SendEarlyView(ManageView):
-    """POST orders/<order_id>/send-early/ {reason} — release a held order before its vendors open (delivery.manage)."""
+    """POST orders/<order_id>/send-early/ {reason} — release a held order before its vendors open. delivery.manage or
+    orders.manage_delivery (Director ruling 7, 2026-10-20: whoever reads the Scheduled list may Send now); the reason is
+    required and recorded (delivery.early_send)."""
+
+    def get_permissions(self):
+        return [HasAnyRolePermission("delivery.manage", "orders.manage_delivery")]
 
     def post(self, request, order_id):
         get_object_or_404(Order, pk=order_id)
@@ -149,7 +154,7 @@ class ScheduledPagination(PageNumberPagination):
 
 class ScheduledView(ManageView):
     """GET scheduled/ — readable by delivery.manage or orders.manage_delivery (the delivery-management
-    panel's permission); sending early (SendEarlyView) stays delivery.manage only.
+    panel's permission); sending early (SendEarlyView) takes the same two.
 
     Paginated ({count, next, previous, results}) paid orders held until their vendors open, soonest
     opening first. The same queryset as the queue's scheduled_count (board.scheduled_orders)."""

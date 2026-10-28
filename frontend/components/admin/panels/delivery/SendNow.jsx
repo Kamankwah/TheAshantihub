@@ -12,8 +12,12 @@ export const isHeld = (readyNotBefore, now = Date.now()) => Boolean(readyNotBefo
 
 export const MIN_REASON = 3;
 
-// `canSend` is whether the signed-in staffer holds delivery.manage (the server refuses anyone else with a 403);
-// without it nothing renders, so a read-only viewer never sees a button that cannot work.
+// Who may send a held order early: delivery.manage or orders.manage_delivery (Director ruling 7, 2026-10-20; the
+// server checks the same two and refuses anyone else with a 403).
+export const canSendEarly = (auth) => Boolean(auth?.hasPermission?.("delivery.manage") || auth?.hasPermission?.("orders.manage_delivery"));
+
+// `canSend` is canSendEarly(auth) for the signed-in staffer; without it nothing renders, so a viewer who may not send
+// never sees a button that cannot work.
 export default function SendNow({ orderId, readyNotBefore, onDone, canSend = false }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");

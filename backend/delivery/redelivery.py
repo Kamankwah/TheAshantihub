@@ -1,13 +1,17 @@
 """Re-delivery at the customer's request (Plan 7F-E Task 7, owner Rulings R4 and R5).
 
-The first rider completed the trip and the customer was not there (CUSTOMER_UNAVAILABLE: the assignment failed with
-`no_answer` after `arrived_drop_at`; services.cant_deliver already enforced the 10-minute wait and two calls). The goods
-came back. At the customer's request Support or the Pickup Desk (`orders.redeliver`) asks for a second trip
-(`request`): the governed fee `redelivery_fee_pesewas` (Ruling R5) is copied onto a Redelivery row and the customer is
-told to pay it. Nothing is reserved before payment. Once paid (`record_payment`, the payment finalizer) the Dispatch or
-Delivery Manager may assign the job again, to an AshantiHub (in-house) rider only (`check_assign` / `link_rider`, called
-by services.assign). When the second trip's rider has collected the goods the fee is theirs (`complete`: delivered, or
-failed after the pickup; a whole refund after that pickup settles it too). Before that pickup the fee goes back to the
+The first rider completed the trip and the customer was not available (CUSTOMER_UNAVAILABLE_REASONS: the assignment failed
+after `arrived_drop_at` with `no_answer`, for which services.cant_deliver enforced the 10-minute wait and two calls, or
+with `refused`, the customer turning the order away at the door). The goods came back. At the customer's request Support
+or the Pickup Desk (`orders.redeliver`) asks for a second trip (`request`): the governed fee `redelivery_fee_pesewas`
+(Ruling R5) is copied onto a Redelivery row and the customer is told to pay it. Nothing is reserved before payment. Once
+paid (`record_payment`, the payment finalizer) the Dispatch or Delivery Manager may assign the job again, to an
+AshantiHub (in-house) rider while one is available, else to a third-party rider (Director ruling 2, 2026-10-20;
+`check_assign` / `link_rider`, called by services.assign). When the second trip's rider has collected the goods the fee
+is theirs (`complete`: delivered, or failed after the pickup; a whole refund after that pickup settles it too): an
+in-house rider is owed it through payroll, a third-party rider is paid it into their wallet at that moment
+(`wallet_payee`, ledger.redelivery.credit_rider; the fee is not part of the order's escrow, so it does not wait for the
+order's release). Before that pickup the fee goes back to the
 wallet (`cancel` after payment, or inside a whole refund of the order: `close_for_whole_refund`). A goods-only partial
 refund never touches it. The first rider keeps the order's original delivery fee: ledger.riders.fee_rider reads
 `first_rider` and `first_leg_ended_at` from here.
@@ -16,8 +20,8 @@ While the ledger is off nothing here runs: the endpoints answer 409 `ledger_off`
 services.assign re-assigns a failed delivery exactly as before (an order that already has an open row keeps its gate).
 
 Lock order (orders/locks.py, extended): the Order row, its fee snapshots, its DeliveryAssignment row, then the order's
-Redelivery row, then PickupStop rows, the Rider row, the ledger accounts in one sorted pass, and last the activity-chain
-lock. Every function that changes a row takes the Order row first (locks.lock_order).
+Redelivery row, then PickupStop rows, the Rider row (a whole refund: the second-trip rider's, then the original fee
+rider's), the ledger accounts in one sorted pass, and last the activity-chain lock. Every function that changes a row takes the Order row first (locks.lock_order).
 
 The activity log records delivery.redelivery_requested / paid / assigned / completed / cancelled with the order id, the
 fee and the reason, never the customer's phone and never a payout number."""
@@ -32,14 +36,16 @@ from notifications.services import notify_customer
 from .models import Redelivery
 from .services import DeliveryError
 
-# What "the customer was not available" means (owner to confirm; the owner may add reasons): the first rider reached the
-# address (arrived_drop_at) and the job failed for one of these. Other reasons (wrong_address, refused, unsafe, other) are
-# a plain re-assignment (Plan 7F-E Task 6), with no extra fee.
-CUSTOMER_UNAVAILABLE_REASONS = ("no_answer",)
+# What "the customer was not available" means (Director ruling 3, 2026-10-20): the first rider reached the address
+# (arrived_drop_at, so the trip was completed) and the job failed there because nobody answered (services.cant_deliver
+# also enforced the 10-minute wait and two calls) or the customer refused the order at the door. A refusal reported
+# before the rider reached the address, and every other reason (wrong_address, unsafe, other), is a plain re-assignment
+# (Plan 7F-E Task 6), with no extra fee.
+CUSTOMER_UNAVAILABLE_REASONS = ("no_answer", "refused")
 
 NOT_REDELIVERABLE = (
     "This order cannot be delivered again at the customer's request: only a paid door-to-door order whose rider reached "
-    "the address and could not reach the customer qualifies."
+    "the address and found the customer unavailable (no answer, or the order refused at the door) qualifies."
 )
 
 
@@ -117,11 +123,22 @@ def row(redelivery):
     }
 
 
+def paid_through(redelivery):
+    """How the second trip's rider gets the fee: "wallet" (a third-party rider, paid when the trip was done), "payroll" (an
+    AshantiHub rider, owed outside the app), or None while nothing is owed yet."""
+    from .models import RiderEarning
+
+    if RiderEarning.objects.filter(redelivery_id=redelivery.pk).exists():
+        return "wallet"
+    return "payroll" if redelivery.owed_through_payroll else None
+
+
 def staff_row(redelivery):
     data = row(redelivery)
     data.update({
         "requested_by": redelivery.requested_by.full_name if redelivery.requested_by_id else None,
         "rider": redelivery.rider.full_name if redelivery.rider_id else None,
+        "paid_through": paid_through(redelivery),
     })
     return data
 
@@ -184,14 +201,14 @@ def request(order, staff, reason, now=None, *, http_request=None):
         if fee:
             notify_customer(
                 order.customer, "order_status", f"Pay {ghs(fee)} to have Order #{order.pk} delivered again",
-                body=(f"We could not reach you at the delivery address for Order #{order.pk}. Pay {ghs(fee)} to have it "
+                body=(f"We could not hand Order #{order.pk} over at the delivery address. Pay {ghs(fee)} to have it "
                       "delivered again: open your orders to pay from your wallet or by mobile money."),
                 link="/my-account", icon="🛵",
             )
         else:
             notify_customer(
                 order.customer, "order_status", f"Order #{order.pk} will be delivered again",
-                body=f"We could not reach you at the delivery address for Order #{order.pk}. It will be delivered again.",
+                body=f"We could not hand Order #{order.pk} over at the delivery address. It will be delivered again.",
                 link="/my-account", icon="🛵",
             )
         _log(staff, "delivery.redelivery_requested", redelivery, request=http_request)
@@ -299,7 +316,10 @@ def check_assign(order, existing, rider):
     """Inside services.assign, after the order and assignment row locks and before any write. Returns the open request
     the assignment will serve (its row locked), or None when no re-delivery is involved. Raises RedeliveryError: a
     customer-unavailable failure needs a paid request (409 redelivery_fee_unpaid), and the second trip (from the failure,
-    or a swap of a job already serving a request) goes to an AshantiHub rider only (409 redelivery_in_house_only)."""
+    or a swap of a job already serving a request) goes to an AshantiHub rider while one is available (409
+    redelivery_in_house_only); only when none is may a third-party rider take it (Director ruling 2, 2026-10-20), who is
+    then paid the re-delivery fee through their wallet (`_settle`)."""
+    from .dispatching import in_house_available
     from .models import Rider
 
     if existing is None or not gate_applies(order):
@@ -310,7 +330,7 @@ def check_assign(order, existing, rider):
             raise RedeliveryError(FEE_UNPAID, 409, "redelivery_fee_unpaid")
     elif current is None or current.status != Redelivery.ASSIGNED:
         return None
-    if rider is not None and rider.employment != Rider.ASHANTIHUB:
+    if rider is not None and rider.employment != Rider.ASHANTIHUB and in_house_available(order):
         from .services import IN_HOUSE_ONLY_MESSAGE
 
         raise RedeliveryError(IN_HOUSE_ONLY_MESSAGE, 409, "redelivery_in_house_only")
@@ -331,23 +351,45 @@ def link_rider(redelivery, rider_staff, by=None):
 
 def complete(assignment, now=None):
     """The second trip's rider delivered, or failed after collecting the goods: the fee is earned (settled to platform
-    delivery income) and what is owed to that rider is recorded (rider, completed_at). Call with the order and assignment
-    rows locked (the rider steps lock both). A no-op when the delivery serves no assigned request."""
+    delivery income) and is that rider's: a third-party rider is paid it into their wallet now (`_settle`), an in-house
+    rider is owed it through payroll (rider, completed_at). Call with the order and assignment rows locked (the rider
+    steps lock both). A no-op when the delivery serves no assigned request."""
     order = assignment.order
     redelivery = Redelivery.objects.filter(order_id=order.pk, status=Redelivery.ASSIGNED).select_for_update(of=("self",)).first()
     if redelivery is None:
         return None
-    return _settle(redelivery, assignment.dispatch_id, now or timezone.now())
+    now = now or timezone.now()
+    return _settle(redelivery, assignment.dispatch_id, now, payee=wallet_payee(order, assignment.dispatch_id, now))
 
 
-def _settle(redelivery, rider_id, now, *, locked=False):
+def wallet_payee(order, rider_id, now):
+    """The third-party Rider (their row locked) to pay the re-delivery fee through their wallet, or None: no rider, or an
+    AshantiHub rider (paid through payroll). Employment is read from the periods at the rider's own pickup on this leg
+    (ledger.riders.pickup_made), else now, so a later switch cannot re-label the trip. Call after the order, assignment and
+    request row locks and before any account lock (orders/locks.py: the Rider row comes before the accounts)."""
+    from ledger import riders
+
+    from . import employment
+    from .models import Rider
+
+    rider = Rider.objects.select_related("staff").filter(staff_id=rider_id).first() if rider_id else None
+    if rider is None or not employment.third_party_at(rider, riders.pickup_made(order) or now):
+        return None
+    return Rider.objects.select_related("staff").select_for_update(of=("self",)).get(pk=rider.pk)
+
+
+def _settle(redelivery, rider_id, now, *, locked=False, payee=None):
+    """Settle the earned fee and record who earned it; pay `payee` (a third-party Rider, row locked) through their wallet
+    in the same transaction (ledger.redelivery.credit_rider). `locked`: the accounts are already in the caller's lock."""
     if not locked:
-        posting.lock(*books.accounts(redelivery, "settle"))
+        posting.lock(*books.accounts(redelivery, "settle", payee))
     redelivery.settle_journal = books.settle(redelivery)
     redelivery.status, redelivery.completed_at = Redelivery.COMPLETED, now
     if rider_id:
         redelivery.rider_id = rider_id
     redelivery.save(update_fields=["settle_journal", "status", "completed_at", "rider"])
+    if payee is not None and redelivery.settle_journal_id is not None:
+        books.credit_rider(redelivery, payee, now)
     _log(None, "delivery.redelivery_completed", redelivery)
     return redelivery
 
@@ -356,8 +398,10 @@ def _settle(redelivery, rider_id, now, *, locked=False):
 def for_whole_refund(order):
     """(request, action) for a whole refund being made now, the request's row locked (call after the order, snapshot and
     assignment locks): "cancel" (not paid), "refund" (paid, the second rider has collected nothing) or "settle" (the
-    second rider collected the goods: the fee is theirs), or (None, None)."""
+    second rider collected the goods: the fee is theirs; a third-party second rider's row is locked now, before the
+    refund's own rider row and its accounts, and kept on the request as `wallet_payee`), or (None, None)."""
     from ledger import riders
+    from orders.models import DeliveryAssignment
 
     redelivery = open_row(order, lock=True)
     if redelivery is None:
@@ -365,12 +409,14 @@ def for_whole_refund(order):
     if redelivery.status == Redelivery.AWAITING_PAYMENT:
         return redelivery, "cancel"
     if redelivery.status == Redelivery.ASSIGNED and riders.pickup_made(order) is not None:
+        rider_id = DeliveryAssignment.objects.filter(order_id=order.pk).values_list("dispatch_id", flat=True).first()
+        redelivery.wallet_payee = wallet_payee(order, rider_id, timezone.now())
         return redelivery, "settle"                 # a GH₵ 0.00 fee posts nothing but the request still completes
     return redelivery, "refund" if redelivery.pay_journal_id is not None else "cancel"
 
 
 def refund_accounts(redelivery, action):
-    return books.accounts(redelivery, action) if redelivery is not None else ()
+    return books.accounts(redelivery, action, getattr(redelivery, "wallet_payee", None)) if redelivery is not None else ()
 
 
 def close_for_whole_refund(redelivery, action, now=None):
@@ -382,7 +428,7 @@ def close_for_whole_refund(redelivery, action, now=None):
         from orders.models import DeliveryAssignment
 
         rider_id = DeliveryAssignment.objects.filter(order_id=redelivery.order_id).values_list("dispatch_id", flat=True).first()
-        return _settle(redelivery, rider_id, now, locked=True)
+        return _settle(redelivery, rider_id, now, locked=True, payee=getattr(redelivery, "wallet_payee", None))
     if action == "refund":
         redelivery.refund_journal = books.refund(redelivery)
         redelivery.status = Redelivery.REFUNDED
