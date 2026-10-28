@@ -244,3 +244,32 @@ class VariantTests(TestCase):
         self.assertEqual(self.refresh().stock_quantity, 0)
         self.client.credentials()
         self.assertNotIn(self.listing.pk, ids())
+
+    def test_variants_are_refused_on_a_service_listing(self):
+        service = Category.objects.filter(kind=Category.SERVICE, is_accommodation=False).first()
+        listing = Listing.objects.create(
+            business_owner=self.owner, category=service, zone=self.zone, name="Plumbing", description="D.",
+            contact_phone="+233207772001", price_amount="10.00", status=Listing.DRAFT,
+        )
+        response = self.add("Small", listing=listing)
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json(), {"detail": "Only products and food can have variants."})
+        self.assertFalse(ListingVariant.objects.filter(listing=listing).exists())
+
+    def test_sync_clears_the_sale_price_and_records_the_derived_price(self):
+        Listing.objects.filter(pk=self.listing.pk).update(sale_price="8.00")
+        self.add("Vanilla", "25.00", 5)
+        self.assertIsNone(self.refresh().sale_price)
+        before = ListingPriceHistory.objects.filter(listing=self.listing).count()
+        self.add("Lemon", "18.50", 3)
+        self.assertEqual(ListingPriceHistory.objects.filter(listing=self.listing).count(), before + 1)
+        self.assertEqual(
+            ListingPriceHistory.objects.get(listing=self.listing, ended_at__isnull=True).price, Decimal("18.50"),
+        )
+
+    def test_new_variant_position_follows_the_highest_one(self):
+        a = self.add("A").json()
+        self.add("B")
+        self.client.delete(self.url(suffix=f"{a['id']}/"))
+        c = self.add("C").json()
+        self.assertEqual(c["position"], 2)

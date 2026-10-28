@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from django.core.files.base import ContentFile
 from django.db import transaction as db_transaction
-from django.db.models import Avg, Case, Count, Exists, F, FloatField, IntegerField, OuterRef, Q, Value, When
+from django.db.models import Avg, Case, Count, Max, Exists, F, FloatField, IntegerField, OuterRef, Q, Value, When
 from django.db.models import ProtectedError
 from django.utils import timezone
 from django.utils.crypto import get_random_string
@@ -53,6 +53,7 @@ from .serializers import (
     PublicListingSerializer,
     ZoneSerializer,
 )
+from . import pricing
 from .pricing import effective_price_expr
 from .visibility import hidden_business_q, sold_out_q
 from .visits import record_visit
@@ -599,12 +600,15 @@ class ListingVariantListCreateView(_OwnerVariantView):
                 return Response({"detail": "A discontinued listing cannot be changed."}, status=400)
             if listing.status == Listing.PENDING_REVIEW:
                 return Response({"detail": "A listing waiting for review cannot be changed."}, status=400)
+            if not pricing.sale_allowed(listing.category):
+                return Response({"detail": "Only products and food can have variants."}, status=400)
             serializer = ListingVariantSerializer(data=request.data, context={"listing": listing})
             serializer.is_valid(raise_exception=True)
             count = variants.active(listing).count()
+            last = listing.variants.aggregate(top=Max("position"))["top"]
             if count >= variants.MAX_VARIANTS:
                 return Response({"detail": f"A listing can have at most {variants.MAX_VARIANTS} variants."}, status=400)
-            row = serializer.save(listing=listing, position=count)
+            row = serializer.save(listing=listing, position=0 if last is None else last + 1)
             variants.sync_listing(listing)
         return Response(ListingVariantSerializer(row).data, status=201)
 
