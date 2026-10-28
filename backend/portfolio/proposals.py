@@ -744,14 +744,16 @@ def listing_create_state(approval):
     return {"business_owner_id": BusinessOwner.objects.get(pk=approval.payload["business_owner_id"]).pk}
 
 
+LEGACY_LISTING_CREATE = (
+    "This listing was proposed before owner confirmation existed. Draft it again so the owner can confirm it."
+)
+
+
 def validate_listing_create(approval):
-    payload = approval.payload
-    owner = BusinessOwner.objects.select_related("profile").get(pk=payload["business_owner_id"])
-    _, errors = check_listing(owner, payload.get("listing") or {})
-    if not errors:
-        errors = photo_errors(owner, _listing_photo_ids(payload))
-    if errors:
-        raise ApprovalError(first_message(errors))
+    """A scout's old `listing.create` proposal (made before staff listings needed the owner's confirmation) can no
+    longer publish: nothing goes live without the owner's confirmed text. The approver returns it; the scout drafts the
+    listing again. New listings go through `listing.staff_create`."""
+    raise ApprovalError(LEGACY_LISTING_CREATE)
 
 
 def publish_listing(owner, listing_data, photos, *, maker, decided_by):

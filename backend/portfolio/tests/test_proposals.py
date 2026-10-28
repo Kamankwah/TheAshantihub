@@ -346,15 +346,6 @@ class ProposeListingApiTests(ChangeTestBase):
         )
         self.assertEqual(ApprovalRequest.objects.count(), 1)
 
-    def test_a_staff_contact_phone_added_after_the_proposal_is_refused_at_approval(self):
-        self.as_staff(self.scout)
-        approval_id = self.post(product_body(contact_phone="0201112223")).json()["approval_id"]
-        make_staff("accountant", "pat@example.com", phone="0201112223")
-        self.as_staff(self.lead)
-        response = self.client.post(f"/api/approvals/{approval_id}/approve/", {}, format="json")
-        self.assertEqual((response.status_code, response.json()["detail"]), (400, proposals.STAFF_PHONE))
-        self.assertFalse(Listing.objects.filter(business_owner=self.owner).exists())
-
     def test_photos_must_be_this_businesss_unused_ones(self):
         other = make_business(self.other_scout, phone="+233244900900", name="Kofi Spare Parts", gps="AK-100-2000")
         theirs = self.staged(owner=other, by=self.other_scout)
