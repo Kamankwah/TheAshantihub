@@ -28,7 +28,7 @@ from django.utils import timezone
 from notifications.services import notify_business_owner, notify_staff_role
 
 from . import pricing, variants
-from .models import Listing, ListingPhoto, ListingRevision, ListingVariant
+from .models import Listing, ListingPhoto, ListingRevision, ListingVariant, ListingVideo
 
 # Live at once, outside any revision (price, the live discount, stock).
 LIVE_FIELDS = {"price_amount", "price_unit", "stock_quantity", "sale_price"}
@@ -282,6 +282,22 @@ def save_draft(listing, owner, data, *, new_main_photo=None, clear_main_photo=Fa
     return revision
 
 
+def ensure_draft(row, owner, staff=None):
+    """The listing's open draft revision, made when there is none and reopened when it was rejected. `row` is the
+    listing, locked by the caller. A revision waiting for review refuses (media is added to a draft only)."""
+    if row.status not in REVISABLE_STATUSES:
+        raise RevisionError(WRONG_STATUS_MESSAGE, "status")
+    revision = open_revision(row)
+    if revision is None:
+        return ListingRevision.objects.create(listing=row, created_by=owner if staff is None else None, created_by_staff=staff)
+    if revision.status == ListingRevision.PENDING:
+        raise RevisionError(OPEN_MESSAGE, "status")
+    if revision.status == ListingRevision.REJECTED:
+        revision.status = ListingRevision.DRAFT
+        revision.save(update_fields=["status", "updated_at"])
+    return revision
+
+
 def _drop_staged_main_photo(revision):
     if revision.new_main_photo:
         revision.new_main_photo.delete(save=False)
@@ -289,10 +305,10 @@ def _drop_staged_main_photo(revision):
 
 
 def is_empty(revision):
-    """Nothing proposed. (Later tasks add staged photos and videos to what counts.)"""
+    """Nothing proposed."""
     return not (
         revision.changes or revision.variants or revision.remove_photo_ids or revision.remove_video_ids
-        or revision.new_main_photo
+        or revision.new_main_photo or revision.staged_photos.exists() or revision.staged_videos.exists()
     )
 
 
@@ -341,8 +357,18 @@ def delete_open(listing):
 
 
 def _delete_staged(revision):
-    """The files a revision holds. Task 5 adds staged gallery photos and videos here."""
+    """The files a revision holds: the staged main photo, gallery photos and videos (the rows go with the revision)."""
     _drop_staged_main_photo(revision)
+    for photo in revision.staged_photos.all():
+        photo.image.delete(save=False)
+    for video in revision.staged_videos.all():
+        _delete_video_files(video)
+
+
+def _delete_video_files(video):
+    for field in (video.source, video.web_file, video.poster):
+        if field:
+            field.delete(save=False)
 
 
 # ── staff decisions ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -368,6 +394,7 @@ def apply_revision(revision, staff):
             raise RevisionError("Part of this edit no longer exists. Ask the owner to edit and send it again.") from None
         _apply_changes(listing, revision)
         _apply_photos(listing, revision)
+        _apply_videos(listing, revision)
         _apply_variants(listing, ops)
         revision.status = ListingRevision.APPROVED
         revision.reviewed_by = staff
@@ -409,7 +436,19 @@ def _apply_changes(listing, revision):
 
 def _apply_photos(listing, revision):
     if revision.remove_photo_ids:
-        ListingPhoto.objects.filter(listing=listing, pk__in=revision.remove_photo_ids).delete()
+        ListingPhoto.objects.filter(listing=listing, pk__in=revision.remove_photo_ids, revision__isnull=True).delete()
+    revision.staged_photos.update(revision=None)
+
+
+def _apply_videos(listing, revision):
+    """Queued removals are deleted with their files; staged videos go live (one that failed to convert is dropped)."""
+    for video in ListingVideo.objects.filter(listing=listing, pk__in=revision.remove_video_ids, revision__isnull=True):
+        _delete_video_files(video)
+        video.delete()
+    for video in revision.staged_videos.filter(status=ListingVideo.FAILED):
+        _delete_video_files(video)
+        video.delete()
+    revision.staged_videos.update(revision=None)
 
 
 def _apply_variants(listing, ops):
@@ -485,6 +524,13 @@ def _url(request, file):
     return request.build_absolute_uri(file.url) if request is not None else file.url
 
 
+def _video_line(request, video):
+    return {
+        "id": video.pk, "kind": video.kind, "status": video.status, "youtube_id": video.youtube_id or None,
+        "poster": _url(request, video.poster),
+    }
+
+
 def diff(revision, request=None):
     """{"fields": {name: {"old", "new"}} (changed scalar fields only), "media": {...}, "variants": [ops]}."""
     from .serializers import OwnerListingSerializer
@@ -498,6 +544,7 @@ def diff(revision, request=None):
         if old != new:
             changed[key] = {"old": old, "new": new}
     removed = ListingPhoto.objects.filter(listing=listing, pk__in=revision.remove_photo_ids)
+    removed_videos = ListingVideo.objects.filter(listing=listing, pk__in=revision.remove_video_ids)
     names = {row.pk: row.label for row in variants.active(listing)}
     ops = [{**op, "current_label": names.get(op.get("id"))} if "id" in op else op for op in revision.variants]
     return {
@@ -507,6 +554,9 @@ def diff(revision, request=None):
             "new_main_photo": _url(request, revision.new_main_photo),
             "remove_photos": [{"id": photo.pk, "image": _url(request, photo.image)} for photo in removed],
             "remove_video_ids": list(revision.remove_video_ids),
+            "staged_photos": [{"id": photo.pk, "image": _url(request, photo.image)} for photo in revision.staged_photos.all()],
+            "staged_videos": [_video_line(request, video) for video in revision.staged_videos.all()],
+            "remove_videos": [_video_line(request, video) for video in removed_videos],
         },
         "variants": ops,
     }

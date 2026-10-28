@@ -8,7 +8,7 @@ from accounts.models import BusinessOwner
 from billing.models import Subscription
 
 from . import pricing, services, variants
-from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, ListingVariant, Promotion, Zone
+from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, ListingVariant, ListingVideo, Promotion, Zone
 
 # The product/service decision fields added by the comprehensive listing-
 # creation work — shared between the owner-facing (writable) and public
@@ -27,6 +27,80 @@ class ListingPhotoSerializer(serializers.ModelSerializer):
     class Meta:
         model = ListingPhoto
         fields = ["id", "image", "order"]
+
+
+class OwnerPhotoSerializer(ListingPhotoSerializer):
+    """A gallery photo as its owner sees it: `staged` is true while it waits in an open edit of an approved listing."""
+
+    staged = serializers.SerializerMethodField()
+
+    class Meta(ListingPhotoSerializer.Meta):
+        fields = [*ListingPhotoSerializer.Meta.fields, "staged"]
+
+    def get_staged(self, obj):
+        return obj.revision_id is not None
+
+
+def _file_url(serializer, file):
+    if not file:
+        return None
+    request = serializer.context.get("request")
+    return request.build_absolute_uri(file.url) if request is not None else file.url
+
+
+class PublicVideoSerializer(serializers.ModelSerializer):
+    """Exactly {id, kind, url | youtube_id, poster, position}: the shopper's view of a ready video."""
+
+    class Meta:
+        model = ListingVideo
+        fields = ["id", "kind", "poster", "position"]
+
+    def to_representation(self, obj):
+        data = {"id": obj.pk, "kind": obj.kind}
+        if obj.kind == ListingVideo.YOUTUBE:
+            data["youtube_id"] = obj.youtube_id
+        else:
+            data["url"] = _file_url(self, obj.web_file)
+        data["poster"] = _file_url(self, obj.poster)
+        data["position"] = obj.position
+        return data
+
+
+class OwnerVideoSerializer(serializers.ModelSerializer):
+    """A video as its owner sees it: staged flag, conversion status, and fixed words when conversion failed."""
+
+    url = serializers.SerializerMethodField()
+    poster = serializers.SerializerMethodField()
+    staged = serializers.SerializerMethodField()
+    error = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ListingVideo
+        fields = ["id", "kind", "status", "youtube_id", "url", "poster", "duration_seconds", "position", "staged", "error"]
+
+    def get_url(self, obj):
+        return _file_url(self, obj.web_file) if obj.status == ListingVideo.READY else None
+
+    def get_poster(self, obj):
+        return _file_url(self, obj.poster)
+
+    def get_staged(self, obj):
+        return obj.revision_id is not None
+
+    def get_status(self, obj):
+        # `converting` is our own claim marker; to the owner it is still processing.
+        return ListingVideo.PROCESSING if obj.status == ListingVideo.CONVERTING else obj.status
+
+    def get_error(self, obj):
+        from .media import FAILED_TEXT
+
+        return FAILED_TEXT if obj.status == ListingVideo.FAILED else None
+
+
+def live_photos(obj, context):
+    """The photos the public may see: never one staged in an open edit."""
+    return ListingPhotoSerializer([p for p in obj.photos.all() if p.revision_id is None], many=True, context=context).data
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -132,7 +206,8 @@ class PublicListingSerializer(serializers.ModelSerializer):
     # let anyone recover a business number. Owner and staff serializers keep it.
     category = CategorySerializer(read_only=True)
     zone = ZoneSerializer(read_only=True)
-    photos = ListingPhotoSerializer(many=True, read_only=True)
+    photos = serializers.SerializerMethodField()
+    videos = serializers.SerializerMethodField()
     business_owner = BusinessOwnerMiniSerializer(read_only=True)
     # Only present (True) when the queryset annotated it — PublicListingListView
     # (docs/BUSINESS_EVENTS_ROADMAP.md Phase 5's search-ranking annotation) does
@@ -159,13 +234,21 @@ class PublicListingSerializer(serializers.ModelSerializer):
             "id", "name", "description", "category", "zone", "price_amount", "price_unit",
             "tag", "lat", "lng", "main_photo", "photos", "created_at",
             "is_promoted", "specs", "service_duration", "avg_rating", "review_count",
-            "sale_price", "was_price", "effective_price", "variants", "has_variants",
+            "sale_price", "was_price", "effective_price", "variants", "has_variants", "videos",
             "business_owner", *LISTING_DECISION_FIELDS, "cancellation_policy",
         ]
         # This serializer only ever backs read-only views (list/detail/
         # related), but mark the decision fields read-only explicitly anyway
         # so a future write usage can't accept them unvalidated.
         read_only_fields = LISTING_DECISION_FIELDS
+
+    def get_photos(self, obj):
+        return live_photos(obj, self.context)
+
+    def get_videos(self, obj):
+        """Ready uploads and YouTube links that are not staged in an open edit."""
+        rows = [v for v in obj.videos.all() if v.revision_id is None and v.status == ListingVideo.READY]
+        return PublicVideoSerializer(rows, many=True, context=self.context).data
 
     def get_variants(self, obj):
         return PublicVariantSerializer(variants.active_rows(obj), many=True).data
@@ -479,7 +562,8 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     # the "Submit for Hero" flow to pick a photo) can show the gallery without
     # a second round-trip — same shape as PublicListingSerializer/
     # ModerationListingSerializer's `photos` field.
-    photos = ListingPhotoSerializer(many=True, read_only=True)
+    photos = serializers.SerializerMethodField()
+    videos = serializers.SerializerMethodField()
     variants = ListingVariantSerializer(many=True, read_only=True)
     has_variants = serializers.SerializerMethodField()
     pending_revision = serializers.SerializerMethodField()
@@ -491,7 +575,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
         model = Listing
         fields = [
             "id", "variants", "has_variants", "pending_revision", "category", "zone", "name", "description", "price_amount", "sale_price", "price_unit",
-            "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "specs",
+            "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "videos", "specs",
             "service_duration", "units_total", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
             "status", "rejection_reason", "dropped_at", "discontinued_at", "created_at", "updated_at",
         ]
@@ -500,6 +584,12 @@ class OwnerListingSerializer(serializers.ModelSerializer):
 
     def get_has_variants(self, obj):
         return any(row.is_active for row in obj.variants.all())
+
+    def get_photos(self, obj):
+        return OwnerPhotoSerializer(list(obj.photos.all()), many=True, context=self.context).data
+
+    def get_videos(self, obj):
+        return OwnerVideoSerializer(list(obj.videos.all()), many=True, context=self.context).data
 
     def get_pending_revision(self, obj):
         """The open edit of this approved listing (draft, waiting, or rejected), small: enough for a banner."""
@@ -534,7 +624,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
 class ModerationListingSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     zone = ZoneSerializer(read_only=True)
-    photos = ListingPhotoSerializer(many=True, read_only=True)
+    photos = serializers.SerializerMethodField()
     # business_owner_name (staff moderation-queue restructuring, item 2) lets
     # the panel group/identify listings by their owning business without a
     # second lookup. reviewed_by_name/reviewed_at (approver attribution) back
@@ -557,6 +647,9 @@ class ModerationListingSerializer(serializers.ModelSerializer):
         ]
         # Read-only on this staff view; a reviewer sees every answer the owner gave.
         read_only_fields = LISTING_DECISION_FIELDS
+
+    def get_photos(self, obj):
+        return live_photos(obj, self.context)
 
     def get_open_fraud_cases(self, obj):
         from fraud.models import FraudFlag

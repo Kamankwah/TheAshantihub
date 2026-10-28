@@ -54,7 +54,7 @@ class ListingPhotoTests(TestCase):
             f"/api/listings/mine/{self.listing.id}/photos/",
             {"image": _image(), "order": 1}, format="multipart",
         )
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 404)  # another business's listing is not found (Plan 2 Task 5), so nobody learns it exists
 
     def test_owner_can_delete_own_photo(self):
         photo = ListingPhoto.objects.create(listing=self.listing, image=_image(), order=1)
@@ -68,7 +68,7 @@ class ListingPhotoTests(TestCase):
         other_token = issue_token(self.other_owner, "business_owner")
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {other_token}")
         response = self.client.delete(f"/api/listings/mine/{self.listing.id}/photos/{photo.id}/")
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 404)  # another business's listing is not found (Plan 2 Task 5), so nobody learns it exists
         self.assertTrue(ListingPhoto.objects.filter(id=photo.id).exists())
 
     def test_customer_cannot_add_a_photo(self):

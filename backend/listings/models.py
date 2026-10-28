@@ -342,12 +342,53 @@ class ListingPhoto(models.Model):
         upload_to="listing_photos/gallery/", validators=[validate_image_content_type]
     )
     order = models.PositiveSmallIntegerField(default=0)
+    # Set while the photo is staged in an open edit of an approved listing; the public never sees such a row.
+    revision = models.ForeignKey(
+        "ListingRevision", on_delete=models.CASCADE, null=True, blank=True, related_name="staged_photos",
+    )
 
     class Meta:
         ordering = ["order"]
 
     def __str__(self):
         return f"Photo {self.order} for {self.listing.name}"
+
+
+class ListingVideo(models.Model):
+    """A listing video: an uploaded file converted for the web, or a YouTube link (only its 11-character id is kept).
+    `status` is processing -> converting -> ready | failed for uploads (a YouTube row is ready at once). `converting`
+    is the claim a conversion task takes so a redelivered task cannot run twice. `revision` is set while the video is
+    staged in an open edit of an approved listing."""
+
+    UPLOAD = "upload"
+    YOUTUBE = "youtube"
+    KIND_CHOICES = [(UPLOAD, "Upload"), (YOUTUBE, "YouTube")]
+    PROCESSING = "processing"
+    CONVERTING = "converting"
+    READY = "ready"
+    FAILED = "failed"
+    STATUS_CHOICES = [(PROCESSING, "Processing"), (CONVERTING, "Converting"), (READY, "Ready"), (FAILED, "Failed")]
+
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="videos")
+    revision = models.ForeignKey(
+        "ListingRevision", on_delete=models.CASCADE, null=True, blank=True, related_name="staged_videos",
+    )
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    source = models.FileField(upload_to="listing_videos/source/", null=True, blank=True)
+    web_file = models.FileField(upload_to="listing_videos/web/", null=True, blank=True)
+    poster = models.ImageField(upload_to="listing_videos/poster/", null=True, blank=True)
+    youtube_id = models.CharField(max_length=11, blank=True)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=PROCESSING)
+    duration_seconds = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
+    position = models.PositiveSmallIntegerField(default=0)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self):
+        return f"Video {self.pk} ({self.kind}, {self.status}) for {self.listing.name}"
 
 
 class HeroMediaSubmission(models.Model):

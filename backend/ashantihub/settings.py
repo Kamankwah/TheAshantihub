@@ -535,6 +535,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "reports.tasks.reap_stuck_exports",
         "schedule": 900.0,  # every 15 minutes
     },
+    "listings-reap-stuck-videos": {
+        "task": "listings.tasks.reap_stuck_videos",
+        "schedule": 900.0,  # every 15 minutes
+    },
     "approvals-escalate": {
         "task": "approvals.tasks.escalate_due_approvals",
         "schedule": 300.0,  # every 5 minutes

@@ -74,31 +74,7 @@ def _with_rating_annotations(queryset):
     return queryset.annotate(
         avg_rating=Avg("reviews__rating", filter=Q(reviews__status="published")),
         review_count=Count("reviews", filter=Q(reviews__status="published"), distinct=True),
-    ).prefetch_related("variants")
-
-
-class ListingPhotoCreateView(generics.CreateAPIView):
-    serializer_class = ListingPhotoSerializer
-    permission_classes = [IsAuthenticated, IsListingOwner]
-
-    def get_listing(self):
-        listing = generics.get_object_or_404(Listing, pk=self.kwargs["pk"])
-        self.check_object_permissions(self.request, listing)
-        return listing
-
-    def perform_create(self, serializer):
-        serializer.save(listing=self.get_listing())
-
-
-class ListingPhotoDeleteView(APIView):
-    permission_classes = [IsAuthenticated, IsListingOwner]
-
-    def delete(self, request, pk, photo_id):
-        listing = generics.get_object_or_404(Listing, pk=pk)
-        self.check_object_permissions(request, listing)
-        photo = generics.get_object_or_404(ListingPhoto, pk=photo_id, listing=listing)
-        photo.delete()
-        return Response(status=204)
+    ).prefetch_related("variants", "videos")
 
 
 class CategoryListView(generics.ListCreateAPIView):

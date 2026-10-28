@@ -132,7 +132,7 @@ class ListingRevisionTests(TestCase):
     def test_revisable_fields_are_every_editable_field_except_the_live_ones(self):
         fields = set(OwnerListingSerializer().fields)
         read_only = {
-            "id", "variants", "has_variants", "pending_revision", "photos", "main_photo", "status", "rejection_reason",
+            "id", "variants", "has_variants", "pending_revision", "photos", "videos", "main_photo", "status", "rejection_reason",
             "dropped_at", "discontinued_at", "created_at", "updated_at",
         }
         self.assertEqual(revisions.REVISABLE_FIELDS, fields - read_only - revisions.LIVE_FIELDS)

@@ -50,8 +50,10 @@ class RevisionQueueSerializer(serializers.ModelSerializer):
             names.append("variants")
         if obj.new_main_photo:
             names.append("main_photo")
-        if obj.remove_photo_ids or obj.remove_video_ids:
+        if obj.remove_photo_ids or obj.staged_photos.exists():
             names.append("photos")
+        if obj.remove_video_ids or obj.staged_videos.exists():
+            names.append("videos")
         return names
 
 
