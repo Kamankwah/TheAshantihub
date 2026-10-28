@@ -351,6 +351,16 @@ export const handlers = [
   http.get('http://localhost:8000/api/listings/moderation/pending/', () => {
     return HttpResponse.json([])
   }),
+  // Owners' changes to live listings (staff review): empty queue by default; tests override.
+  http.get('http://localhost:8000/api/listings/revisions/pending/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/listings/revisions/:id/', ({ params }) => HttpResponse.json({
+    id: Number(params.id), listing: 1, listing_name: 'Listing', business_owner_name: 'Business', status: 'pending',
+    changed_fields: [], made_by_staff: false, created_by_staff: null,
+    diff: { fields: {}, media: { staged_photos: [], remove_photos: [], staged_videos: [], remove_videos: [], remove_video_ids: [] }, variants: [] },
+  })),
+  http.post('http://localhost:8000/api/listings/revisions/:id/approve/', ({ params }) => HttpResponse.json({ id: Number(params.id), listing: 1, status: 'approved' })),
+  http.post('http://localhost:8000/api/listings/revisions/:id/reject/', ({ params }) => HttpResponse.json({ id: Number(params.id), listing: 1, status: 'rejected' })),
+  http.post('http://localhost:8000/api/listings/revisions/:id/re-review/', ({ params }) => HttpResponse.json({ id: Number(params.id), listing: 1, status: 'pending' })),
   http.get('http://localhost:8000/api/listings/hero/pending/', () => {
     return HttpResponse.json([])
   }),

@@ -4,6 +4,7 @@ import { useModerationQueue } from "../../../hooks/useModerationQueue.js";
 import { useListingsStats } from "../../../hooks/useQueueStats.js";
 import { D } from "../theme.js";
 import { chip, dim } from "./panelStyles.js";
+import ListingRevisionsPanel from "./ListingRevisionsPanel.jsx";
 import SponsoredToggle, { isProductListing } from "./SponsoredToggle.jsx";
 import ModerationQueueTabs, {
   ApprovedByLine,
@@ -31,6 +32,7 @@ function ListingChips({ listing }) {
 }
 
 export default function ListingsModerationPanel({ auth }) {
+  const [view, setView] = useState("listings"); // "listings" | "changes"
   const canSponsor = Boolean(auth?.hasPermission?.("deals.manage"));
   const [tab, setTab] = useState("pending");
   const { data: stats } = useListingsStats();
@@ -136,7 +138,15 @@ export default function ListingsModerationPanel({ auth }) {
     );
   };
 
+  const views = [["listings", "New listings"], ["changes", "Changes to live listings"]];
   return (
+    <>
+      <div role="group" aria-label="Listings view" style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+        {views.map(([key, label]) => (
+          <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)} style={{ background: view === key ? D.text : "transparent", color: view === key ? D.panelBg : D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "6px 12px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{label}</button>
+        ))}
+      </div>
+      {view === "changes" ? <ListingRevisionsPanel auth={auth} /> : (
     <>
       <div style={{ ...dim, marginBottom: 10 }}>Listings owners submit themselves. Listings a scout adds for a business come through your Approvals inbox — that approval is their moderation.</div>
       {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
@@ -152,6 +162,8 @@ export default function ListingsModerationPanel({ auth }) {
         {stats ? `This week: ${stats.week_published} published · ${stats.week_rejected} rejected. ` : ""}
         Every decision records who made it, shown on the Published and Rejected tabs.
       </div>
+    </>
+      )}
     </>
   );
 }

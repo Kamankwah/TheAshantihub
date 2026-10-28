@@ -34,13 +34,14 @@ class RevisionQueueSerializer(serializers.ModelSerializer):
     reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
     changed_fields = serializers.SerializerMethodField()
     made_by_staff = serializers.BooleanField(source="created_by_staff_id", read_only=True)
+    created_by_staff = serializers.IntegerField(source="created_by_staff_id", read_only=True, allow_null=True)
 
     class Meta:
         model = ListingRevision
         fields = [
             "id", "listing", "listing_name", "listing_status", "business_owner", "business_owner_name", "status",
             "rejection_reason", "reviewed_by_name", "reviewed_at", "submitted_at", "created_at", "changed_fields",
-            "made_by_staff",
+            "made_by_staff", "created_by_staff",
         ]
         read_only_fields = fields
 

@@ -403,6 +403,17 @@ class ListingRevisionTests(TestCase):
         revision.refresh_from_db()
         self.assertEqual((revision.status, revision.rejection_reason, revision.reviewed_by_id, revision.reviewed_at), ("pending", None, None, None))
 
+    def test_queue_row_names_the_staff_member_who_made_the_revision(self):
+        revision = self.send()
+        self.auth_staff()
+        row = self.client.get("/api/listings/revisions/pending/").json()[0]
+        self.assertFalse(row["made_by_staff"])
+        self.assertIsNone(row["created_by_staff"])
+        ListingRevision.objects.filter(pk=revision.pk).update(created_by_staff=self.staff)
+        row = self.client.get("/api/listings/revisions/pending/").json()[0]
+        self.assertEqual((row["made_by_staff"], row["created_by_staff"]), (True, self.staff.pk))
+        self.assertEqual(self.client.get(f"/api/listings/revisions/{revision.pk}/").json()["created_by_staff"], self.staff.pk)
+
     def test_review_focus_the_creator_cannot_approve(self):
         revision = self.send()
         ListingRevision.objects.filter(pk=revision.pk).update(created_by_staff=self.staff)
