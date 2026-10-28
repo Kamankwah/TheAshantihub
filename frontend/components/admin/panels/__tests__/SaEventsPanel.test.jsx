@@ -12,8 +12,8 @@ const ev = (over) => ({
 })
 const ROWS = [
   ev(),
-  ev({ id: 2, name: 'Rooftop comedy night', state: 'waiting', state_label: 'Waiting for review', tickets_sold: 0, capacity: null, sales: '0.00', held: '0.00', ticket_types: [], price_min: null, price_max: null, paid_at: null }),
-  ev({ id: 3, name: 'Kente Festival day trip', state: 'ended', state_label: 'Ended', tickets_sold: 60, capacity: 60, sales: '7200.00', held: '0.00', released: '7200.00', refunded: '240.00', paid_count: 60, refunded_count: 2, checked_in: 57 }),
+  ev({ id: 2, name: 'Rooftop comedy night', state: 'waiting', state_label: 'Waiting for review', tickets_sold: 0, capacity: null, paid_count: 0, refunded_count: 0, sales: '0.00', held: '0.00', ticket_types: [], price_min: null, price_max: null, paid_at: null }),
+  ev({ id: 3, name: 'Kente Festival day trip', state: 'ended', state_label: 'Ended', tickets_sold: 58, capacity: 60, sales: '7200.00', held: '0.00', released: '7200.00', refunded: '240.00', paid_count: 60, refunded_count: 2, checked_in: 57 }),
 ]
 const COUNTS = { on_sale: 1, next_event_at: '2026-10-12T09:00:00Z', tickets_sold: 45, capacity: 50, held: '3600.00', released_this_month: '7200.00', refunded_this_quarter: '240.00', waiting_for_review: 1 }
 
@@ -37,7 +37,8 @@ describe('SaEventsPanel paid and refunded', () => {
     const cells = (name) => within(within(table).getByText(name).closest('tr')).getAllByRole('cell').map((td) => td.textContent)
     expect(cells('Akwasidae palace visit').slice(paidAt, paidAt + 2)).toEqual(['45', '0'])
     expect(cells('Kente Festival day trip').slice(paidAt, paidAt + 2)).toEqual(['60', '2'])
-    expect(cells('Rooftop comedy night').slice(paidAt, paidAt + 2)).toHaveLength(2)
+    expect(cells('Rooftop comedy night').slice(paidAt, paidAt + 2)).toEqual(['0', '0'])
+    expect(within(table).getByRole('columnheader', { name: /^Paid/ })).toHaveAttribute('title', expect.stringMatching(/refunded ones are included/i))
   })
 })
 

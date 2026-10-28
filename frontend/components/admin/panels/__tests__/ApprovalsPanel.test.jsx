@@ -350,6 +350,25 @@ describe('ApprovalsPanel staff-made listing', () => {
     expect(revealed).toBe(1)
   })
 
+  it('drops a revealed number when another approval is opened', async () => {
+    const other = { ...listingDetail({ business_owner_id: 77 }), id: 10, title: 'Fufu' }
+    server.use(
+      http.get('http://localhost:8000/api/approvals/9/', () => HttpResponse.json(listingDetail())),
+      http.get('http://localhost:8000/api/approvals/10/', () => HttpResponse.json(other)),
+      http.post('http://localhost:8000/api/portfolio/businesses/52/reveal-phone/', () => HttpResponse.json({ login_phone: '+233241231234' })),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const ui = (detailId) => <QueryClientProvider client={queryClient}><ApprovalsPanel detailId={detailId} onOpenDetail={() => {}} /></QueryClientProvider>
+    const { rerender } = render(ui(9))
+    const row = (await screen.findByText('Text sent to')).closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Show full phone number/ }))
+    expect(await within(row).findByText(/233241231234/)).toHaveTextContent(/Owner's sign-in number/)
+    rerender(ui(10))
+    await screen.findByRole('heading', { name: 'Fufu' })
+    expect(screen.queryByText(/233241231234/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Show full phone number/ })).toBeInTheDocument()
+  })
+
   it('shows the reveal error rather than a number when the reveal is refused', async () => {
     server.use(
       http.get('http://localhost:8000/api/approvals/9/', () => HttpResponse.json(listingDetail())),

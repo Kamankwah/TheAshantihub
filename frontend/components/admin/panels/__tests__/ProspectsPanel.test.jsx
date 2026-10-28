@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { D } from '../../theme.js'
@@ -39,7 +39,8 @@ describe('nextLine', () => {
   })
 })
 
-const pipeline = (stage, listings = {}) => ({ stage, listings: { drafts: 0, awaiting_owner: 0, lapsed: 0, pending_approval: 0, live: 0, ...listings } })
+const REG = { prospect: 'none', registered: 'not_confirmed', awaiting_owner: 'waiting', confirmed: 'confirmed', listing: 'confirmed', live: 'confirmed' }
+const pipeline = (stage, listings = {}, registration = REG[stage]) => ({ stage, registration, listings: { drafts: 0, awaiting_owner: 0, lapsed: 0, pending_approval: 0, live: 0, ...listings } })
 const stepStates = (card) => within(within(card).getByRole('list', { name: 'Pipeline steps' })).getAllByRole('listitem').map((li) => li.getAttribute('aria-label'))
 
 describe('ProspectsPanel pipeline', () => {
@@ -49,6 +50,18 @@ describe('ProspectsPanel pipeline', () => {
     const card = await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
     expect(stepStates(card)).toEqual(['Prospect: done', 'Registered: done', 'Owner confirmed: done', 'Listings: done', 'Live: not yet'])
     expect(within(card).getByText('1 draft · 2 waiting for approval')).toBeInTheDocument()
+  })
+
+  it('does not tick Owner confirmed when drafts exist but the registration link is still open', async () => {
+    serve([prospect({ pipeline: pipeline('listing', { awaiting_owner: 2 }, 'waiting') })])
+    renderPanel()
+    const card = await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
+    expect(stepStates(card)).toEqual(['Prospect: done', 'Registered: done', 'Owner confirmed: waiting', 'Listings: done', 'Live: not yet'])
+    // and when the owner declined or the link ran out, it is not ticked and not waiting
+    cleanup()
+    serve([prospect({ pipeline: pipeline('listing', { drafts: 1 }, 'not_confirmed') })])
+    renderPanel()
+    expect(stepStates(await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' }))).toEqual(['Prospect: done', 'Registered: done', 'Owner confirmed: not yet', 'Listings: done', 'Live: not yet'])
   })
 
   it('shows the live-listings count for the month in the header', async () => {

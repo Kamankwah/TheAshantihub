@@ -130,7 +130,7 @@ function MaskedPhoneReveal({ ownerId }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start", marginTop: 4 }}>
       {full
-        ? <span style={dim}>{`Full number: ${full} (recorded in the activity log)`}</span>
+        ? <span style={dim}>{`Owner's sign-in number: ${full} (recorded in the activity log). It is the number on the owner's account now, which may not be the one the text went to.`}</span>
         : <button type="button" onClick={reveal} style={button(D.panelBg, D.text)}>Show full phone number (recorded)</button>}
       {error && <div role="alert" style={{ color: D.red, fontSize: "0.75rem" }}>{error}</div>}
     </div>
@@ -458,7 +458,7 @@ function ApprovalRequest({ id, onBack }) {
                   <td style={{ padding: "6px 8px" }}><DiffValue value={row.before} label={String(row.field || "").replace(/_/g, " ")} /></td>
                   <td style={{ padding: "6px 8px" }}>
                     <DiffValue value={row.after} label={String(row.field || "").replace(/_/g, " ")} />
-                    {a.kind === "listing.staff_create" && row.field === "Text sent to" && a.payload?.business_owner_id != null && <MaskedPhoneReveal ownerId={a.payload.business_owner_id} />}
+                    {a.kind === "listing.staff_create" && row.field === "Text sent to" && a.payload?.business_owner_id != null && <MaskedPhoneReveal key={`${a.id}-${a.payload.business_owner_id}`} ownerId={a.payload.business_owner_id} />}
                   </td>
                 </tr>
               ))}

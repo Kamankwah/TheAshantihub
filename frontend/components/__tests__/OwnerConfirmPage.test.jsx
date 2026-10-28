@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getStoredAuth, setStoredAuth } from '../../apiClient.js'
+import { clearViewAs, setViewAs } from '../../lib/viewAs.js'
 import { server } from '../../mocks/server.js'
 import OwnerConfirmPage from '../OwnerConfirmPage.jsx'
 
@@ -20,7 +21,7 @@ function renderAt(url) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(<QueryClientProvider client={queryClient}><OwnerConfirmPage /></QueryClientProvider>)
 }
-afterEach(() => { setStoredAuth(null); window.history.replaceState(null, '', '/'); vi.restoreAllMocks() })
+afterEach(() => { setStoredAuth(null); clearViewAs(); window.history.replaceState(null, '', '/'); vi.restoreAllMocks() })
 
 describe('OwnerConfirmPage', () => {
   it('lists what the owner is asked to confirm and posts the token from the fragment on Confirm', async () => {
@@ -62,18 +63,43 @@ describe('OwnerConfirmPage', () => {
     expect(window.location.search).toBe('')
   })
 
-  it('works for a visitor with a stale stored sign-in and sends no Authorization the server would reject', async () => {
-    setStoredAuth({ token: 'stale', user: { id: 1 } })
-    let calls = 0
-    server.use(http.post(`${API}/preview/`, ({ request }) => {
-      calls += 1
-      if (request.headers.get('authorization')) return HttpResponse.json({ detail: 'Invalid token.' }, { status: 401 })
-      return HttpResponse.json(preview())
-    }))
+  it('sends no Authorization or view-as header on preview, confirm or decline, even with a stored sign-in', async () => {
+    setStoredAuth({ token: 'stored-session-token', account_type: 'staff', id: 1 })
+    const seen = []
+    const note = (name) => ({ request }) => { seen.push([name, request.headers.get('authorization'), request.headers.get('x-view-as')]) }
+    server.use(
+      http.post(`${API}/preview/`, (c) => { note('preview')(c); return HttpResponse.json(preview()) }),
+      http.post(`${API}/`, (c) => { note('confirm')(c); return HttpResponse.json({ confirmed: true }) }),
+      http.post(`${API}/decline/`, (c) => { note('decline')(c); return HttpResponse.json({ declined: true }) }),
+    )
+    const first = renderAt('/business/confirm#token=t')
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }))
+    await screen.findByRole('status')
+    first.unmount()
+    renderAt('/business/confirm#token=t')
+    fireEvent.click(await screen.findByRole('button', { name: 'This is not right' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    await screen.findByRole('status')
+    expect(seen.map(([name]) => name)).toEqual(['preview', 'confirm', 'preview', 'decline'])
+    for (const [, authorization, viewAs] of seen) { expect(authorization).toBeNull(); expect(viewAs).toBeNull() }
+    expect(getStoredAuth()?.token).toBe('stored-session-token') // the visitor's session is left alone
+  })
+
+  it('works while a staff view-as session is stored (not refused as view-only)', async () => {
+    setStoredAuth({ token: 'super-admin-token', account_type: 'staff', id: 1 })
+    setViewAs({ id: 7, full_name: 'Ama Boateng' }, 'super-admin-token')
+    let viewAs = 'unset'
+    let confirmed = false
+    server.use(
+      http.post(`${API}/preview/`, ({ request }) => { viewAs = request.headers.get('x-view-as'); return HttpResponse.json(preview()) }),
+      http.post(`${API}/`, () => { confirmed = true; return HttpResponse.json({ confirmed: true }) }),
+    )
     renderAt('/business/confirm#token=t')
     expect(await screen.findByText("Akosua's Kitchen")).toBeInTheDocument()
-    expect(calls).toBeGreaterThan(0)
-    expect(getStoredAuth()).toBeNull()
+    expect(viewAs).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/confirmed/i)
+    expect(confirmed).toBe(true)
   })
 
   it('says an expired link has expired, with the exact line, and shows no buttons', async () => {

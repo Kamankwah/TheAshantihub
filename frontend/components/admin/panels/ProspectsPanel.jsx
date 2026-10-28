@@ -23,20 +23,28 @@ export function nextLine(prospect, now = new Date()) {
   return { text: `Next: ${shortDay(prospect.next_follow_up_at)}`, overdue: false };
 }
 
-// The five steps a business passes on its way to selling, from `pipeline.stage` (the furthest reached). awaiting_owner
-// means the registration link is open: Registered is done and Owner confirmed is waiting. Nothing here is guessed: a
-// prospect the server sent without a pipeline shows no step row.
-const STEPS = ["Prospect", "Registered", "Owner confirmed", "Listings", "Live"];
-// How many steps are done at each stage, and which step (if any) is waiting on someone.
-const REACHED = { prospect: [1, null], registered: [2, null], awaiting_owner: [2, 2], confirmed: [3, null], listing: [4, null], live: [5, null] };
+// The five steps a business passes on its way to selling. "Owner confirmed" reads `pipeline.registration` (the owner's
+// answer to the registration text), never the stage: a draft moves the stage to `listing` while the one link is still
+// open, and that must not read as confirmed. Registered is done once a registration exists; Listings and Live come from
+// the stage (the furthest reached). A prospect the server sent without a pipeline shows no step row.
+const STAGE_RANK = { prospect: 0, registered: 1, awaiting_owner: 1, confirmed: 1, listing: 2, live: 3 };
 const COUNT_WORDS = [
   ["drafts", "draft", "drafts"], ["awaiting_owner", "waiting for the owner", "waiting for the owner"], ["lapsed", "lapsed", "lapsed"],
   ["pending_approval", "waiting for approval", "waiting for approval"], ["live", "live", "live"],
 ];
 
-export function stepStates(stage) {
-  const [done, waiting] = REACHED[stage] || [0, null];
-  return STEPS.map((label, i) => [label, i < done ? "done" : i === waiting ? "waiting" : "not yet"]);
+export function stepStates(pipeline) {
+  const rank = STAGE_RANK[pipeline?.stage] ?? 0;
+  const registration = pipeline?.registration;
+  const registered = registration ? registration !== "none" : rank >= 1;
+  const owner = registration === "confirmed" ? "done" : registration === "waiting" ? "waiting" : "not yet";
+  return [
+    ["Prospect", "done"],
+    ["Registered", registered ? "done" : "not yet"],
+    ["Owner confirmed", registered ? owner : "not yet"],
+    ["Listings", rank >= 2 ? "done" : "not yet"],
+    ["Live", rank >= 3 ? "done" : "not yet"],
+  ];
 }
 
 export function listingsLine(listings = {}) {
@@ -44,12 +52,12 @@ export function listingsLine(listings = {}) {
 }
 
 function PipelineSteps({ pipeline }) {
-  if (!pipeline || !REACHED[pipeline.stage]) return null;
+  if (!pipeline || !(pipeline.stage in STAGE_RANK)) return null;
   const line = listingsLine(pipeline.listings);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <ol aria-label="Pipeline steps" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", gap: 4, flexWrap: "wrap" }}>
-        {stepStates(pipeline.stage).map(([label, state]) => (
+        {stepStates(pipeline).map(([label, state]) => (
           <li key={label} aria-label={`${label}: ${state}`} style={{
             display: "inline-flex", alignItems: "center", gap: 4, borderRadius: 999, padding: "2px 8px", fontSize: "0.7rem", fontWeight: 700,
             background: state === "done" ? D.okBg : state === "waiting" ? D.warnBg : D.panelBg2,

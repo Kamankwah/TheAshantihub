@@ -95,7 +95,7 @@ export default function SaEventsPanel() {
         {rows.length > 0 && (
           <div style={{ overflowX: "auto" }}>
             <table aria-label="Events" style={{ ...tableStyle, minWidth: 1040 }}>
-              <thead><tr><th style={th}>Event</th><th style={th}>When · where</th><th style={th}>Tickets sold</th><th style={th}>Price</th><th style={th}>Sales</th><th style={th}>Money</th><CountHead tip="Tickets sold, each ticket counted once. A refunded ticket still counts as paid.">Paid</CountHead><CountHead tip="Of the tickets sold, how many were refunded.">Refunded</CountHead><th style={th}>Status</th><th style={th} /></tr></thead>
+              <thead><tr><th style={th}>Event</th><th style={th}>When · where</th><th style={th}>Tickets sold</th><th style={th}>Price</th><th style={th}>Sales</th><th style={th}>Money</th><CountHead tip="Tickets bought, each counted once. Refunded ones are included here, so this can be more than Tickets sold.">Paid</CountHead><CountHead tip="Of the tickets sold, how many were refunded.">Refunded</CountHead><th style={th}>Status</th><th style={th} /></tr></thead>
               <tbody>
                 {rows.map((e) => (
                   <tr key={e.id}>
