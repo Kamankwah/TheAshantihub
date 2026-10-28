@@ -103,12 +103,27 @@ def _refusal(order, assignment):
     return None
 
 
+LEDGER_OFF_REASON = "Re-delivery fees aren't switched on yet."
+OPEN_REASON = "A re-delivery is already open for this order."
+
+
+def why_not(order):
+    """For the screens (an unlocked read): why a request cannot be made for `order` now, in the words the staff screen
+    shows, or None when it can: the ledger is off, the order does not qualify (NOT_REDELIVERABLE) or a request is open."""
+    if not escrow.enabled():
+        return LEDGER_OFF_REASON
+    assignment = getattr(order, "delivery_assignment", None)
+    refusal = _refusal(order, assignment)
+    if refusal is not None:
+        return refusal
+    if open_row(order) is not None:
+        return OPEN_REASON
+    return None
+
+
 def redeliverable(order):
     """For the screens (an unlocked read): the ledger is on, the order qualifies and no request is open."""
-    if not escrow.enabled():
-        return False
-    assignment = getattr(order, "delivery_assignment", None)
-    return _refusal(order, assignment) is None and open_row(order) is None
+    return why_not(order) is None
 
 
 def row(redelivery):

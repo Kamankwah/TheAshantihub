@@ -128,6 +128,9 @@ export const NAV_ITEMS = [
   // The re-delivery fee (Director ruling 1, 2026-10-20): Operations proposes and decides it; a Super Admin edits it on
   // Money rules, so this screen is Operations' alone.
   { id: "redelivery-fee", icon: "🛵", label: "Re-delivery fee", show: (auth) => opsOnly(auth, "redelivery_fee.manage") },
+  // Re-deliveries (wallet 5F, Director ruling 8): the Super Admin and the Pickup Desk ask for an order to be delivered
+  // again. Support keeps the same block inside Order status and gets no second item.
+  { id: "redeliveries", icon: "🔁", label: "Re-deliveries", show: (auth) => auth.hasPermission("orders.redeliver") && auth.user?.role !== "support" },
   // Support canvas screens (see supportOnly).
   { id: "support-mine", icon: "📥", label: "Mine", show: (auth) => supportOnly(auth, "messaging.manage") },
   { id: "support-unassigned", icon: "🙋", label: "Unassigned", show: (auth) => supportOnly(auth, "messaging.manage") },
@@ -152,7 +155,7 @@ export const NAV_ITEMS = [
   { id: "mk-consent", icon: "✅", label: "Consent & opt-outs", show: (auth) => mkOnly(auth, "consent.view") },
   { id: "mk-flash-sales", icon: "⚡", label: "Flash sales", show: (auth) => mkOnly(auth, "site_promo.manage") },
   { id: "mk-coupons", icon: "🏷️", label: "Coupons", show: (auth) => mkOnly(auth, "coupons.manage") },
-  { id: "mk-delivery-promos", icon: "🚚", label: "Free delivery", show: (auth) => mkOnly(auth, "site_promo.manage") },
+  { id: "mk-delivery-promos", icon: "🚚", label: "Free delivery", show: (auth) => mkOnly(auth, "site_promo.manage") || saOnly(auth) },
   { id: "mk-banners", icon: "🖼️", label: "Banners", show: (auth) => mkOnly(auth, "site_promo.manage") },
   { id: "mk-featured", icon: "⭐", label: "Featured listings", show: (auth) => mkOnly(auth, "site_promo.manage") },
   { id: "mk-results", icon: "📈", label: "Campaign results", show: (auth) => mkOnly(auth, "campaigns.manage") },
@@ -213,7 +216,7 @@ const DEFAULT_GROUPS = [
   ["users-roles", "Users & Roles", ["users", "staff", "sessions"]],
   ["field-ops", "Field Operations", ["scout-assignments", "field-verification", "visits", "targets", "commission", "leaderboard", "prospects", "register-business", "delivery-coordination", "my-deliveries", "portfolio", "all-portfolios", "at-risk", "subscriptions-due"]],
   ["content", "Content", ["categories-zones", "promotions", "site-settings"]],
-  ["system", "System", ["delivery", "delivery-scheduled", "contact-messages", "messaging", "analytics"]],
+  ["system", "System", ["delivery", "delivery-scheduled", "redeliveries", "contact-messages", "messaging", "analytics"]],
   ["my-work", "My Work", ["approvals", "tasks", "calls", "reports", "team-reports", "activity", "my-team", "security"]],
 ];
 
@@ -231,8 +234,9 @@ const ROLE_MENUS = {
     ["people", "People", ["staff", "teams-reporting", "invites", "roles-permissions", "sessions", "leave"]],
     ["teams", "Teams (step in)", ["step-in-operations", "step-in-support", "step-in-delivery", "step-in-marketing", "step-in-accounting"]],
     // Scheduled orders (paid orders held until their shops open, with Send now) sits beside Orders & deliveries:
-    // Director ruling 7 (2026-10-20) added it to the canvas menu.
-    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "events-moderation", "hero", "disputes"]],
+    // Director ruling 7 (2026-10-20) added it to the canvas menu. Re-deliveries and Free delivery follow it (wallet 5F,
+    // Director ruling 8). Plan 1F's Pickup Desk menu is not on this base, so the Pickup Desk finds Re-deliveries under More tools.
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "redeliveries", "mk-delivery-promos", "events-moderation", "hero", "disputes"]],
     ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation", "wallets", "withdrawals"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],

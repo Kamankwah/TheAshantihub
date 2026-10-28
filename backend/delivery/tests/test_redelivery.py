@@ -405,6 +405,59 @@ class RedeliveryEndpointTests(RedeliveryBase):
         self.assertEqual((mine["redelivery"]["status"], mine["redelivery"]["fee"]), ("awaiting_payment", "15.00"))
         self.assertNotIn("reason", mine["redelivery"])
 
+    def test_list_says_whether_the_order_can_be_redelivered_and_the_fee(self):
+        order = self.unavailable()
+        body = self.staff_client(self.support).get(self.URL, {"order": order.pk}).json()
+        self.assertEqual(body, {"results": [], "redeliverable": True, "redelivery_fee": "15.00", "not_redeliverable_reason": None})
+        row = self.ask(order)
+        body = self.staff_client(self.support).get(self.URL, {"order": order.pk}).json()
+        self.assertEqual([r["id"] for r in body["results"]], [row.pk])
+        self.assertEqual((body["redeliverable"], body["redelivery_fee"]), (False, None))
+
+    def test_list_names_why_not_for_a_delivered_order_and_an_open_request(self):
+        delivered = self.door_order()
+        self.give(delivered, self.own)
+        self.collect_all(delivered, self.own)
+        self.deliver(delivered, self.own)
+        body = self.staff_client(self.support).get(self.URL, {"order": delivered.pk}).json()
+        self.assertEqual((body["results"], body["redeliverable"], body["redelivery_fee"]), ([], False, None))
+        self.assertEqual(body["not_redeliverable_reason"], redelivery.NOT_REDELIVERABLE)
+        open_order = self.unavailable()
+        self.ask(open_order)
+        body = self.staff_client(self.support).get(self.URL, {"order": open_order.pk}).json()
+        self.assertEqual(body["not_redeliverable_reason"], "A re-delivery is already open for this order.")
+
+    def test_list_for_an_unknown_order_is_404(self):
+        response = self.staff_client(self.support).get(self.URL, {"order": 999999})
+        self.assertEqual((response.status_code, response.json()), (404, {"detail": "No order with that number."}))
+
+    def test_pickup_desk_reads_the_list(self):
+        from accounts.testing import make_staff
+
+        desk = make_staff("pickup_desk", "desk2@example.com", phone="+233244000012")
+        order = self.unavailable()
+        response = self.staff_client(desk).get(self.URL, {"order": order.pk})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()["redeliverable"])
+        self.assertNotIn(self.customer.phone, response.content.decode())
+
+    def test_redeliverable_unchanged_for_the_support_detail(self):
+        order = self.unavailable()
+        self.assertTrue(redelivery.redeliverable(order))
+        self.assertIsNone(redelivery.why_not(order))
+        self.ask(order)
+        self.assertFalse(redelivery.redeliverable(order))
+        self.assertEqual(redelivery.why_not(order), redelivery.OPEN_REASON)
+        detail = self.staff_client(self.support).get(f"/api/orders/support/{order.pk}/").json()
+        self.assertEqual(detail["redeliverable"], False)
+        self.assertNotIn("redelivery_fee", detail)
+
+    def test_a_refusal_at_the_door_after_arrival_can_be_redelivered(self):
+        order = self.failed_at_the_door("refused")
+        self.assertIsNotNone(DA.objects.get(order=order).arrived_drop_at)
+        body = self.staff_client(self.support).get(self.URL, {"order": order.pk}).json()
+        self.assertEqual((body["redeliverable"], body["not_redeliverable_reason"]), (True, None))
+
 
 @override_settings(LEDGER_ENABLED=False)
 class RedeliveryEndpointsLedgerOffTests(RedeliveryBase):
@@ -420,7 +473,10 @@ class RedeliveryEndpointsLedgerOffTests(RedeliveryBase):
         staff.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.support)}")
         response = staff.post("/api/delivery/redeliveries/", {"order": order.pk, "reason": "x"}, format="json")
         self.assertEqual((response.status_code, response.json()["code"]), (409, "ledger_off"))
-        self.assertEqual(staff.get("/api/delivery/redeliveries/", {"order": order.pk}).json(), {"results": []})
+        self.assertEqual(staff.get("/api/delivery/redeliveries/", {"order": order.pk}).json(), {
+            "results": [], "redeliverable": False, "redelivery_fee": None,
+            "not_redeliverable_reason": "Re-delivery fees aren't switched on yet.",
+        })
         customer = APIClient()
         customer.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.customer, 'customer')}")
         self.assertEqual(customer.post(f"/api/orders/{order.pk}/redelivery/pay/", {"method": "momo"}, format="json").status_code, 409)

@@ -757,8 +757,10 @@ export const handlers = [
     stage: 'assigned', pickup: { lat: 5.6037, lng: -0.187, name: 'Akosua Ntoma' }, rider: { lat: 5.605, lng: -0.19, age_s: 45, stale: false },
     leg: { to: 'pickup', distance_km: 1.1, duration_s: 240, basis: 'road route' }, route: [[5.605, -0.19], [5.6037, -0.187]],
   })),
-  // Re-delivery at the customer's request (Plan 7F-E Task 7): no request by default; paying succeeds at once.
-  http.get('http://localhost:8000/api/delivery/redeliveries/', () => HttpResponse.json({ results: [] })),
+  // Re-delivery at the customer's request (Plan 7F-E Task 7): no request by default (the order qualifies at GH₵ 15.00); paying succeeds at once.
+  http.get('http://localhost:8000/api/delivery/redeliveries/', () => HttpResponse.json({
+    results: [], redeliverable: true, redelivery_fee: '15.00', not_redeliverable_reason: null,
+  })),
   http.post('http://localhost:8000/api/orders/:id/redelivery/pay/', () => HttpResponse.json({
     mode: 'immediate', payment_method: 'wallet', payment_processing: '0.00',
     redelivery: { id: 1, order: 7, attempt: 1, status: 'paid', status_label: 'Paid, waiting for a rider', fee: '15.00', fee_pesewas: 1500 },
