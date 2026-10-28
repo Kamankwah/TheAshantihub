@@ -18,6 +18,7 @@ from .approval_kinds import (
     bands_as_dicts, effective_time,
 )
 from .models import FeeRuleSet, Journal, MoneySetting
+from .views_bookings import Pagination, ledger_off
 
 VIEW, MANAGE = "fees.view", "fees.manage"
 
@@ -155,7 +156,13 @@ class AwaitingVerificationView(APIView):
         return [HasRolePermission("orders.verify")]
 
     def get(self, request):
-        return Response({"results": verification.awaiting()})
+        if not escrow.enabled():
+            return ledger_off()
+        now = timezone.now()
+        paginator = Pagination()
+        page = paginator.paginate_queryset(verification.awaiting_queryset(now), request, view=self)
+        limit = verification._overdue_limit(now)
+        return paginator.get_paginated_response([verification.awaiting_row(order, now, limit) for order in page])
 
 
 class OrderVerificationView(APIView):
@@ -184,13 +191,20 @@ class OrderVerificationView(APIView):
 
 
 class PickupQueueView(APIView):
-    """GET pickup/ — store-pickup orders waiting at the office, with the time each must be collected by."""
+    """GET pickup/?q= — store-pickup orders paid through the ledger and waiting at the office, with the time each must be
+    collected by, 20 a page. `q` is an order number or part of a customer's name."""
 
     def get_permissions(self):
         return [HasRolePermission("pickup.confirm")]
 
     def get(self, request):
-        return Response({"results": verification.pickup_queue()})
+        if not escrow.enabled():
+            return ledger_off()
+        now = timezone.now()
+        paginator = Pagination()
+        page = paginator.paginate_queryset(verification.pickup_queryset(now, request.query_params.get("q", "")), request, view=self)
+        window = verification._pickup_window(now)
+        return paginator.get_paginated_response([verification.pickup_row(order, now, window) for order in page])
 
 
 class PickupCollectedView(APIView):

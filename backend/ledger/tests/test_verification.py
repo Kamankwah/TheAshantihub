@@ -202,6 +202,67 @@ class AwaitingListTests(VerificationBase):
         self.as_staff(self.accountant)
         self.assertEqual(self.get().status_code, 403)
 
+    def test_the_list_is_a_page_of_twenty_with_a_count(self):
+        for _ in range(25):
+            self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        body = self.get().json()
+        self.assertEqual(body["count"], 25)
+        self.assertEqual(len(body["results"]), 20)
+        self.assertTrue(body["next"])
+
+    def test_answers_ledger_off_while_the_ledger_is_off(self):
+        self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        with override_settings(LEDGER_ENABLED=False):
+            response = self.get()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json(), {"detail": "The ledger isn't switched on yet.", "code": "ledger_off"})
+
+    def test_permission_is_checked_before_the_ledger_off_answer(self):
+        self.as_staff(self.accountant)
+        with override_settings(LEDGER_ENABLED=False):
+            self.assertEqual(self.get().status_code, 403)
+
+    def test_queryset_matches_the_hand_over_rule(self):
+        from ledger import verification
+
+        collected = self.paid_order(delivered=False)
+        uncollected = self.paid_order(delivered=False)
+        for order in (collected, uncollected):
+            Order.objects.filter(pk=order.pk).update(delivery_method=Order.STORE_PICKUP)
+        FulfilmentCheck.objects.create(order=collected, collected_at=timezone.now())
+        delivered = self.paid_order()
+        failed = self.paid_order()
+        DeliveryAssignment.objects.filter(order=failed).update(status=DeliveryAssignment.FAILED)
+        assigned = self.paid_order(delivered=False)
+        DeliveryAssignment.objects.create(order=assigned, status=DeliveryAssignment.ASSIGNED)
+        listed = set(verification.awaiting_queryset().values_list("pk", flat=True))
+        expected = {
+            order.pk for order in Order.objects.all()
+            if verification.handed_over(order, FulfilmentCheck.objects.filter(order=order).first() or FulfilmentCheck(order=order))
+        }
+        self.assertEqual(listed, expected)
+        self.assertEqual(listed, {collected.pk, delivered.pk})
+        self.assertNotIn(uncollected.pk, listed)
+        self.assertNotIn(failed.pk, listed)
+        self.assertNotIn(assigned.pk, listed)
+
+    def test_queries_do_not_grow_with_the_list(self):
+        self.as_staff(self.support)
+
+        def count_queries():
+            with CaptureQueriesContext(connection) as ctx:
+                self.assertEqual(self.get().status_code, 200)
+            return len(ctx)
+
+        for _ in range(3):
+            self.paid_order(customer_confirmed=True)
+        few = count_queries()
+        for _ in range(6):
+            self.paid_order(customer_confirmed=True)
+        self.assertEqual(count_queries(), few)
+
 
 @override_settings(LEDGER_ENABLED=True)
 class ReleaseEdgeCaseTests(VerificationBase):

@@ -100,14 +100,13 @@ def record(order, staff, outcome, *, note="", customer_confirmed_by_phone=False,
         return check
 
 
-def awaiting(now=None):
-    """Paid orders that have reached the customer and are not yet verified positive, oldest first, with what Support
-    needs on the call. `overdue` means more than `verification_overdue_hours` have passed since purchase."""
-    from orders.models import Order
+def awaiting_queryset(now=None):
+    """Paid orders that have reached the customer and still have something left to release, oldest first. The hand-over
+    rule is `handed_over()` in SQL: a collected store pickup, or any other order whose delivery was marked done and did
+    not fail."""
+    from orders.models import DeliveryAssignment, Order
 
-    now = now or timezone.now()
-    limit = timedelta(hours=settings_store.current("verification_overdue_hours", now))
-    orders = (
+    return (
         # A snapshot neither released nor refunded in full, or (every item refunded, the order not wholly) a delivery
         # fee still held in the order's Delivery payable: both wait for Support's call. A wholly refunded order holds nothing.
         Order.objects.annotate(delivery_held=Exists(Account.objects.filter(
@@ -115,26 +114,45 @@ def awaiting(now=None):
             owner_id=Cast(OuterRef("pk"), CharField()),
         ))).filter(status=Order.PAID).filter(
             Q(fee_snapshots__released_at__isnull=True, fee_snapshots__reversed_at__isnull=True) | Q(delivery_held=True)
+        ).filter(
+            Q(delivery_method=Order.STORE_PICKUP, fulfilment_check__collected_at__isnull=False)
+            | (
+                ~Q(delivery_method=Order.STORE_PICKUP) & Q(delivery_assignment__delivered_at__isnull=False)
+                & ~Q(delivery_assignment__status=DeliveryAssignment.FAILED)
+            )
         ).distinct()
-        .select_related("customer").prefetch_related("items__listing__business_owner").order_by("placed_at", "id")
+        .select_related("customer", "fulfilment_check", "delivery_assignment")
+        .prefetch_related("items__listing__business_owner__profile").order_by("placed_at", "id")
     )
-    rows = []
-    for order in orders:
-        check = FulfilmentCheck.objects.filter(order=order).first() or FulfilmentCheck(order=order)
-        if not handed_over(order, check):
-            continue
-        rows.append({
-            "order_id": order.pk, "placed_at": order.placed_at, "due_by": order.placed_at + limit,
-            "overdue": now > order.placed_at + limit, "delivery_method": order.delivery_method,
-            "customer_name": order.customer.full_name, "customer_phone": order.delivery_phone or order.customer.phone,
-            "items": [
-                {"name": item.listing.name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
-                for item in order.items.all()
-            ],
-            "customer_confirmed": customer_confirmed(order, check),
-            "outcome": check.outcome, "outcome_note": check.outcome_note, "released": False,
-        })
-    return rows
+
+
+def _overdue_limit(now):
+    return timedelta(hours=settings_store.current("verification_overdue_hours", now))
+
+
+def awaiting_row(order, now, limit=None):
+    """What Support needs on the call for one order. The order comes from `awaiting_queryset`, so its check and
+    delivery are already loaded; a caller building many rows passes `limit` (`_overdue_limit`) so it is read once."""
+    limit = limit if limit is not None else _overdue_limit(now)
+    check = getattr(order, "fulfilment_check", None) or FulfilmentCheck(order=order)
+    return {
+        "order_id": order.pk, "placed_at": order.placed_at, "due_by": order.placed_at + limit,
+        "overdue": now > order.placed_at + limit, "delivery_method": order.delivery_method,
+        "customer_name": order.customer.full_name, "customer_phone": order.delivery_phone or order.customer.phone,
+        "items": [
+            {"name": item.listing.name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
+            for item in order.items.all()
+        ],
+        "customer_confirmed": customer_confirmed(order, check),
+        "outcome": check.outcome, "outcome_note": check.outcome_note, "released": False,
+    }
+
+
+def awaiting(now=None):
+    """The awaiting rows, oldest first. `overdue` means more than `verification_overdue_hours` have passed since purchase."""
+    now = now or timezone.now()
+    limit = _overdue_limit(now)
+    return [awaiting_row(order, now, limit) for order in awaiting_queryset(now)]
 
 
 def mark_collected(order, staff, now=None):
@@ -165,29 +183,52 @@ def _clock_start(order):
     return max(order.placed_at, order.ready_not_before) if order.ready_not_before else order.placed_at
 
 
-def pickup_queue(now=None):
-    """Paid store-pickup orders not yet collected, oldest first. Deliberately carries no phone number: the desk
-    hands over goods, it does not call customers."""
+def pickup_queryset(now=None, q=""):
+    """Paid store-pickup orders not yet collected, oldest first, that the ledger recorded the payment of (an older
+    order stays for a person, as in `expire_uncollected`). `q`: a number (`#` allowed, at most 9 digits) finds an order
+    by its number, any other text a customer by name."""
     from orders.models import Order
 
-    now = now or timezone.now()
-    window = timedelta(hours=settings_store.current("pickup_window_hours", now))
-    orders = (
-        Order.objects.filter(status=Order.PAID, delivery_method=Order.STORE_PICKUP)
+    queryset = (
+        Order.objects.annotate(pay_key=Concat(Value("order-pay-"), Cast("pk", CharField())))
+        .filter(Exists(Journal.objects.filter(key=OuterRef("pay_key"))))
+        .filter(status=Order.PAID, delivery_method=Order.STORE_PICKUP)
         .exclude(fulfilment_check__collected_at__isnull=False).exclude(refunds__whole=True)
-        .select_related("customer").prefetch_related("items__listing__business_owner").order_by("placed_at", "id")
+        .select_related("customer").prefetch_related("items__listing__business_owner__profile").order_by("placed_at", "id")
     )
-    return [
-        {
-            "order_id": order.pk, "placed_at": order.placed_at, "collect_by": _clock_start(order) + window,
-            "overdue": now > _clock_start(order) + window, "customer_name": order.customer.full_name,
-            "items": [
-                {"name": item.listing.name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
-                for item in order.items.all()
-            ],
-        }
-        for order in orders
-    ]
+    q = (q or "").strip()
+    if q:
+        number = q.lstrip("#").strip()
+        if number.isascii() and number.isdigit():
+            queryset = queryset.filter(pk=int(number)) if len(number) <= 9 else queryset.none()
+        else:
+            queryset = queryset.filter(customer__full_name__icontains=q)
+    return queryset
+
+
+def _pickup_window(now):
+    return timedelta(hours=settings_store.current("pickup_window_hours", now))
+
+
+def pickup_row(order, now, window=None):
+    """One desk row (a caller building many passes `window`, `_pickup_window`, so it is read once). Deliberately
+    carries no phone number: the desk hands over goods, it does not call customers."""
+    window = window if window is not None else _pickup_window(now)
+    return {
+        "order_id": order.pk, "placed_at": order.placed_at, "collect_by": _clock_start(order) + window,
+        "overdue": now > _clock_start(order) + window, "customer_name": order.customer.full_name,
+        "items": [
+            {"name": item.listing.name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
+            for item in order.items.all()
+        ],
+    }
+
+
+def pickup_queue(now=None):
+    """The pickup rows, oldest first."""
+    now = now or timezone.now()
+    window = _pickup_window(now)
+    return [pickup_row(order, now, window) for order in pickup_queryset(now)]
 
 
 def expire_uncollected(now=None):

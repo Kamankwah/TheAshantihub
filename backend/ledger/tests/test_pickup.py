@@ -26,12 +26,13 @@ class PickupBase(OrderPaymentBase):
     def as_staff(self, staff, sudo=True):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff, sudo=sudo)}")
 
-    def pickup_order(self):
+    def pickup_order(self, *, in_ledger=True):
         self.kofi = self.owner("Kofi")
         order = self.order([(self.listing(self.kofi, "120.00"), 1)])
         order.delivery_method = Order.STORE_PICKUP
         order.save(update_fields=["delivery_method"])
-        escrow.record_order_payment(order)
+        if in_ledger:
+            escrow.record_order_payment(order)
         return order
 
 
@@ -148,3 +149,42 @@ class QueueTests(PickupBase):
         self.pickup_order()
         self.as_staff(self.desk)
         self.assertNotIn("customer_phone", self.client.get("/api/ledger/pickup/").json()["results"][0])
+
+    def test_only_orders_paid_through_the_ledger_are_listed(self):
+        recorded = self.pickup_order()
+        self.pickup_order(in_ledger=False)
+        self.as_staff(self.desk)
+        ids = [r["order_id"] for r in self.client.get("/api/ledger/pickup/").json()["results"]]
+        self.assertEqual(ids, [recorded.pk])
+
+    def test_the_queue_is_a_page_of_twenty(self):
+        for _ in range(21):
+            self.pickup_order()
+        self.as_staff(self.desk)
+        body = self.client.get("/api/ledger/pickup/").json()
+        self.assertEqual((body["count"], len(body["results"])), (21, 20))
+        self.assertTrue(body["next"])
+
+    def test_ledger_off_answers_ledger_off(self):
+        self.pickup_order()
+        self.as_staff(self.desk)
+        with override_settings(LEDGER_ENABLED=False):
+            response = self.client.get("/api/ledger/pickup/")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json(), {"detail": "The ledger isn't switched on yet.", "code": "ledger_off"})
+
+    def test_permission_is_checked_before_the_ledger_off_answer(self):
+        self.as_staff(self.support)
+        with override_settings(LEDGER_ENABLED=False):
+            self.assertEqual(self.client.get("/api/ledger/pickup/").status_code, 403)
+
+    def test_finds_an_order_by_number_or_customer_name(self):
+        first = self.pickup_order()
+        second = self.pickup_order()
+        self.as_staff(self.desk)
+        by_number = self.client.get("/api/ledger/pickup/", {"q": f"#{second.pk}"}).json()
+        self.assertEqual([r["order_id"] for r in by_number["results"]], [second.pk])
+        by_name = self.client.get("/api/ledger/pickup/", {"q": "ama"}).json()
+        self.assertEqual({r["order_id"] for r in by_name["results"]}, {first.pk, second.pk})
+        self.assertEqual(self.client.get("/api/ledger/pickup/", {"q": "zzz"}).json()["count"], 0)
+        self.assertEqual(self.client.get("/api/ledger/pickup/", {"q": "12345678901234"}).json()["count"], 0)
