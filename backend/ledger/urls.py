@@ -13,5 +13,6 @@ urlpatterns = [
     path("bookings/awaiting-verification/", views_bookings.AwaitingBookingsView.as_view(), name="ledger-bookings-awaiting"),
     path("bookings/<int:pk>/verification/", views_bookings.BookingVerificationView.as_view(), name="ledger-booking-verification"),
     path("bookings/<int:pk>/report-problem/", views_bookings.BookingReportProblemView.as_view(), name="ledger-booking-report-problem"),
+    path("bookings/<int:pk>/cancel-quote/", views_bookings.BookingCancelQuoteView.as_view(), name="ledger-booking-cancel-quote"),
     path("bookings/<int:pk>/cancel/", views_bookings.BookingCancelView.as_view(), name="ledger-booking-cancel"),
 ]

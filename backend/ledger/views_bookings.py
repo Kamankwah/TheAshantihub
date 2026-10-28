@@ -129,3 +129,22 @@ class BookingReportProblemView(APIView):
             body=f"{sale.label().capitalize()} — dispute #{sale.dispute_id}.", link="/staff", icon="⚠️",
         )
         return Response({"dispute_id": sale.dispute_id}, status=201)
+
+
+class BookingCancelQuoteView(APIView):
+    """GET bookings/<sale id>/cancel-quote/ — what the customer's own cancel of this stay or ticket purchase would give
+    back to their wallet right now, as {"refund": "150.00", "whole": false}. Computed by the cancel's own function
+    (sales.cancel_quote), so the screen never works out a refund; it writes nothing. A refusal is the cancel's own
+    {detail} (409); another customer's sale is a 404 (Plan 7G)."""
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def get(self, request, pk):
+        if not escrow.enabled():
+            return ledger_off()
+        sale = get_object_or_404(BookingSale, pk=pk, customer=request.user)
+        try:
+            quote = sales.cancel_quote(sale)
+        except sales.CancelError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return Response({"refund": str(from_pesewas(quote.amount_pesewas)), "whole": quote.whole})
