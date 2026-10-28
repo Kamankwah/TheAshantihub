@@ -159,6 +159,41 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   verifies them. A pending or historical `business.update` that still holds one cannot be approved,
   and its undo lists the field as not reverted. A proposed phone that belongs to staff is refused. Deactivating a
   scout counts only their non-rejected managed businesses.
+- **Staff-made listings are drafts, not listings (`portfolio.ListingDraft`, `OwnerConfirmation`, approval kind
+  `listing.staff_create`).** A scout, Operations or Super Admin drafts a product, service, event or stay for a client;
+  nothing is published until the owner confirmed it by texted link AND a second person approved it. The kind is
+  `two_people=True` (a Super Admin's own request never applies directly) and `money=False` (the General Manager, a role,
+  may approve it; the GM never decides a `money` kind). The approval renders from the snapshot in `approval.payload`
+  (masked number only; the full number is the audited sudo reveal, `portfolio-business-reveal-phone`). Only a draft's
+  creator may edit it (403 `not_your_draft`); `owner_confirmed` drafts can be edited (back to `draft`, re-confirm) or
+  withdrawn. An owner-confirmed draft is submitted at confirm when the owner's KYC is verified, otherwise it stays
+  `owner_confirmed` and is submitted after commit when KYC is approved (either door); staff retry with
+  `POST .../drafts/<id>/submit/` (409 with the reason). The owner's confirm never fails for a staff-side condition.
+  `POST /api/portfolio/businesses/<id>/listings/` answers 410, and legacy moderation approve/reject and event approve
+  answer 403 `own_listing` to the creator. Operations, Super Admin and the GM hold `listings.approve_staffed`.
+- **The confirmation link is a bearer token: staff never see it.** Stored as a SHA-256 hash, single use, 7 days, one live
+  link per owner (a new one revokes the old and takes over what waited on it). The text carries
+  `<FRONTEND_BASE_URL>/business/confirm#token=<raw>` (a fragment, so it stays out of request logs), is sent through
+  `otp.senders.send_sms` outside any transaction and is never texted to a number belonging to a staff account. The public
+  endpoints (`/api/portfolio/confirm/preview/`, `/confirm/`, `/confirm/decline/`) are POST-only with the token in the
+  body, unauthenticated, throttled, `activity_exempt`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`;
+  refusals are invalid 400 / used 409 / expired 410. No staff response carries the raw token, its hash or a `token=`
+  URL; staff see the masked number, `sent_at`, `expires_at` and the state. `portfolio/tests/test_no_link_leak.py` walks
+  the staff endpoints and guards this: extend its URL list when you add a staff endpoint near a draft or confirmation.
+- **`registration_confirmed` gates both KYC doors** (queue approval and the `business.kyc` approval): 409
+  `confirmation_missing` until a scout- or Operations-registered owner confirmed the registration. An owner with no
+  registration-confirmation row is grandfathered as confirmed, so existing businesses are never blocked.
+- **Targets: `listings` replaces `renewals` in `targets.models.METRICS`.** A listing counts once, when its approval is
+  approved, for the lister, on the day of approval. `renewals` stays in `METRIC_CHOICES`/`LEGACY_METRICS` so old rows
+  stay valid; never delete or rewrite them. No min/max is seeded for `listings` (default cap 1000 a day). The prospect
+  payload carries `pipeline {stage, registration, listings{...}}` and the list `listings_live_this_month`, one
+  definition shared with `targets.actual`; `registration` (`confirmed|waiting|not_confirmed|none`) is its own field,
+  never inferred from `stage`.
+- **Paid and refunded counts (`marketplace/sales_counts.py`) are bulk and defined per kind** (the module docstring is the
+  source and also the column tooltip): a refunded purchase still counts as paid and refunded is always a subset of paid.
+  Product - paid orders, or cancelled after a successful payment session; a partial refund counts only for the shops it
+  paid back. Service and stay - `paid_at` set; refunded by cancel marker or, with the ledger on, a booking refund. Event -
+  every ticket once; refunded by `refunded_at` or a ticket-named refund. Add a number there, not in a view.
 - **Business detail change request (`portfolio/detail_changes.py`).** A claimed business files a
   `BusinessDetailChangeRequest` for its `full_name`, `login_phone` or `email` (step-up forced while the ledger is on;
   the refusals for a contact someone else holds are one generic message). Operations assigns an independent scout

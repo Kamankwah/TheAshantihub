@@ -122,6 +122,11 @@ monolith holding most components, with extractions living in `components/`,
   hand-over) keeps the password in its own state only and clears it after submitting; never lift
   it into a parent, a query cache or storage. The hand-over overlay holds a same-URL history guard
   against Back and its password fields use `autocomplete="off"`.
+- **`/business/confirm` is a page too.** `App.jsx` excludes it from `/business/:id` like `claim`.
+  `OwnerConfirmPage` reads the token from the URL fragment (falls back to `?token=` for links already sent), strips it
+  with `history.replaceState` and keeps it in component state only - never in a query key, cache, storage or log. It
+  calls the public endpoints through `apiPostPublic` (no session, no view-as, never ends a stored session), all POST.
+  The General Manager menu has no Register, Prospects or Client listings (a checker, not a maker).
 - **`ProposeChangeForm` diffs against the business it opened with**, not the live query data.
 - **The public claim page retries once after a 401** (`lib/withoutStaleSignIn.js`): an expired
   sign-in stored in the browser must not block it. Never use that helper on the hand-over, whose
