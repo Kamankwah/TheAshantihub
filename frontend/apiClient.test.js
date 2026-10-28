@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
-import { SESSION_ENDED_EVENT, UNAUTHORIZED_EVENT, apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete, apiDownload, setSudoHandler } from './apiClient.js'
+import { SESSION_ENDED_EVENT, UNAUTHORIZED_EVENT, apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete, apiDownload, setSudoHandler, setStepUpHandler } from './apiClient.js'
 import { getNetworkStatus, resetNetworkStatusForTests } from './lib/networkStatus.js'
 
 describe('apiFetch', () => {
@@ -356,3 +356,246 @@ describe('second-person and password contracts of the staff APIs', () => {
   })
 })
 
+describe('setStepUpHandler', () => {
+  const URL = 'http://localhost:8000/api/step/'
+  const needStepUp = (action = 'withdrawal') => HttpResponse.json({ detail: 'Enter a code.', code: 'step_up_required', action }, { status: 403 })
+  const ok = (token, expiresIn = 300) => vi.fn(async () => ({ token, expiresIn }))
+
+  afterEach(() => {
+    vi.useRealTimers()
+    setStoredAuth(null)
+  })
+
+  // Records every request's header; answers step_up_required until the right token arrives.
+  function serve(method, { after = () => HttpResponse.json({ ok: 1 }) } = {}) {
+    const seen = []
+    server.use(http[method](URL, ({ request }) => {
+      const token = request.headers.get('x-step-up-token')
+      seen.push(token)
+      return token ? after(token) : needStepUp()
+    }))
+    return seen
+  }
+
+  it('step_up_required retries once with X-Step-Up-Token', async () => {
+    const seen = serve('post')
+    const off = setStepUpHandler(ok('tok1'))
+    await expect(apiPost('/api/step/', { a: 1 })).resolves.toEqual({ ok: 1 })
+    off()
+    expect(seen).toEqual([null, 'tok1'])
+  })
+
+  it('the handler is asked with the action named by the server', async () => {
+    server.use(http.post(URL, ({ request }) => (request.headers.get('x-step-up-token') ? HttpResponse.json({ ok: 1 }) : needStepUp('payout_destination'))))
+    const handler = ok('tok1')
+    const off = setStepUpHandler(handler)
+    await apiPost('/api/step/', {})
+    off()
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(handler).toHaveBeenCalledWith('payout_destination')
+  })
+
+  it('a cancelled prompt surfaces the original 403', async () => {
+    const seen = serve('post')
+    const off = setStepUpHandler(async () => null)
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 403, body: { code: 'step_up_required', action: 'withdrawal' } })
+    off()
+    expect(seen).toEqual([null])
+  })
+
+  it('a second step_up_required is not retried again', async () => {
+    let calls = 0
+    server.use(http.post(URL, () => { calls += 1; return needStepUp() }))
+    const handler = ok('tok1')
+    const off = setStepUpHandler(handler)
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 403, body: { code: 'step_up_required' } })
+    off()
+    expect(calls).toBe(2)
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  it('no handler leaves the 403 untouched', async () => {
+    const seen = serve('post')
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 403, body: { code: 'step_up_required' } })
+    expect(seen).toEqual([null])
+  })
+
+  it('does not call the handler for an ordinary 403', async () => {
+    const handler = ok('tok1')
+    server.use(http.post(URL, () => HttpResponse.json({ detail: 'No.' }, { status: 403 })))
+    const off = setStepUpHandler(handler)
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 403 })
+    off()
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('a token refused by validation is sent up front on the next identical request', async () => {
+    const seen = serve('post', { after: () => HttpResponse.json({ detail: 'Bad amount.' }, { status: 400 }) })
+    const off = setStepUpHandler(ok('tok1'))
+    await expect(apiPost('/api/step/', { amount: 0 })).rejects.toMatchObject({ status: 400 })
+    await expect(apiPost('/api/step/', { amount: 0 })).rejects.toMatchObject({ status: 400 })
+    off()
+    expect(seen).toEqual([null, 'tok1', 'tok1'])
+  })
+
+  it('...not on a different path', async () => {
+    const seen = serve('post', { after: () => HttpResponse.json({ detail: 'Bad.' }, { status: 400 }) })
+    const other = []
+    server.use(http.post('http://localhost:8000/api/other/', ({ request }) => { other.push(request.headers.get('x-step-up-token')); return HttpResponse.json({ ok: 1 }) }))
+    const off = setStepUpHandler(ok('tok1'))
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    await apiPost('/api/other/', {})
+    off()
+    expect(seen).toEqual([null, 'tok1'])
+    expect(other).toEqual([null])
+  })
+
+  it('...not on a different method', async () => {
+    const seen = []
+    server.use(
+      http.post(URL, ({ request }) => {
+        const token = request.headers.get('x-step-up-token')
+        return token ? HttpResponse.json({ detail: 'Bad.' }, { status: 400 }) : needStepUp()
+      }),
+      http.patch(URL, ({ request }) => { seen.push(request.headers.get('x-step-up-token')); return HttpResponse.json({ ok: 1 }) }),
+    )
+    const off = setStepUpHandler(ok('tok1'))
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    await apiPatch('/api/step/', {})
+    off()
+    expect(seen).toEqual([null])
+  })
+
+  it('...not after 5 minutes (fake timers)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const seen = serve('post', { after: () => HttpResponse.json({ detail: 'Bad.' }, { status: 400 }) })
+    const off = setStepUpHandler(ok('tok1', 300))
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    vi.advanceTimersByTime(299 * 1000)
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    vi.advanceTimersByTime(2 * 1000)
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    off()
+    // 1st: bare, then retry; 2nd: up front; 3rd: expired so bare again, then the prompt's new token.
+    expect(seen).toEqual([null, 'tok1', 'tok1', null, 'tok1'])
+  })
+
+  it('...cleared after a 2xx', async () => {
+    let n = 0
+    const seen = []
+    server.use(http.post(URL, ({ request }) => {
+      const token = request.headers.get('x-step-up-token')
+      seen.push(token)
+      if (!token) return needStepUp()
+      n += 1
+      return n === 1 ? HttpResponse.json({ detail: 'Bad.' }, { status: 400 }) : HttpResponse.json({ ok: 1 })
+    }))
+    const off = setStepUpHandler(ok('tok1'))
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    await expect(apiPost('/api/step/', {})).resolves.toEqual({ ok: 1 })
+    await expect(apiPost('/api/step/', {})).resolves.toEqual({ ok: 1 })
+    off()
+    // The third call starts bare: the success cleared the memory.
+    expect(seen).toEqual([null, 'tok1', 'tok1', null, 'tok1'])
+  })
+
+  it('...cleared when the remembered token is answered with step_up_required', async () => {
+    let phase = 0
+    const seen = []
+    server.use(http.post(URL, ({ request }) => {
+      const token = request.headers.get('x-step-up-token')
+      seen.push(token)
+      if (!token) return needStepUp()
+      phase += 1
+      return phase === 1 ? HttpResponse.json({ detail: 'Bad.' }, { status: 400 }) : needStepUp()
+    }))
+    const handler = ok('tok1')
+    const off2 = setStepUpHandler(handler)
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 403 })
+    // The up-front token was refused, so the handler is asked again for a fresh code.
+    expect(handler).toHaveBeenCalledTimes(2)
+    const afterClear = seen.length
+    await expect(apiPost('/api/step/', {})).rejects.toBeTruthy()
+    off2()
+    expect(seen[afterClear]).toBeNull()
+    expect(handler).toHaveBeenCalledTimes(3)
+  })
+
+  it('...an unrelated 2xx on another path leaves the token in place', async () => {
+    const seen = serve('post', { after: () => HttpResponse.json({ detail: 'Bad.' }, { status: 400 }) })
+    server.use(http.get('http://localhost:8000/api/poll/', () => HttpResponse.json({ ok: 1 })))
+    const off = setStepUpHandler(ok('tok1'))
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    await apiFetch('/api/poll/')
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    off()
+    expect(seen).toEqual([null, 'tok1', 'tok1'])
+  })
+
+  it('...an unrelated step_up_required on another path does not clear it', async () => {
+    const seen = serve('post', { after: () => HttpResponse.json({ detail: 'Bad.' }, { status: 400 }) })
+    server.use(http.post('http://localhost:8000/api/other/', () => needStepUp()))
+    const off = setStepUpHandler(ok('tok1'))
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    off()
+    await expect(apiPost('/api/other/', {})).rejects.toMatchObject({ status: 403 })
+    const off2 = setStepUpHandler(ok('tok1'))
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    off2()
+    expect(seen).toEqual([null, 'tok1', 'tok1'])
+  })
+
+  it('...cleared on sign-out', async () => {
+    const seen = serve('post', { after: () => HttpResponse.json({ detail: 'Bad.' }, { status: 400 }) })
+    const off = setStepUpHandler(ok('tok1'))
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    setStoredAuth(null)
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 400 })
+    off()
+    expect(seen).toEqual([null, 'tok1', null, 'tok1'])
+  })
+
+  it('sudo_required and step_up_required each get their own single retry', async () => {
+    const seen = []
+    server.use(http.post(URL, ({ request }) => {
+      const token = request.headers.get('x-step-up-token')
+      seen.push(token)
+      return token ? HttpResponse.json({ ok: 1 }) : seen.length === 1
+        ? HttpResponse.json({ detail: 'Password.', code: 'sudo_required' }, { status: 403 })
+        : needStepUp()
+    }))
+    const sudo = vi.fn(async () => true)
+    const offSudo = setSudoHandler(sudo)
+    const offStep = setStepUpHandler(ok('tok1'))
+    await expect(apiPost('/api/step/', {})).resolves.toEqual({ ok: 1 })
+    offSudo()
+    offStep()
+    expect(seen).toEqual([null, null, 'tok1'])
+    expect(sudo).toHaveBeenCalledTimes(1)
+  })
+
+  it('unregister only removes its own handler', async () => {
+    const off1 = setStepUpHandler(async () => null)
+    const handler2 = ok('tok2')
+    const off2 = setStepUpHandler(handler2)
+    off1()
+    serve('post')
+    await expect(apiPost('/api/step/', {})).resolves.toEqual({ ok: 1 })
+    expect(handler2).toHaveBeenCalledTimes(1)
+    off2()
+    await expect(apiPost('/api/step/', {})).rejects.toMatchObject({ status: 403 })
+  })
+
+  it('works for apiPatch with a JSON body and apiPost', async () => {
+    const bodies = []
+    server.use(http.patch(URL, async ({ request }) => {
+      bodies.push(await request.json())
+      return request.headers.get('x-step-up-token') === 'tok1' ? HttpResponse.json({ ok: 2 }) : needStepUp('payout_destination')
+    }))
+    const off = setStepUpHandler(ok('tok1'))
+    await expect(apiPatch('/api/step/', { number: '024' })).resolves.toEqual({ ok: 2 })
+    off()
+    expect(bodies).toEqual([{ number: '024' }, { number: '024' }])
+  })
+})

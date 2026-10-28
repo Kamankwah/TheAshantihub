@@ -225,3 +225,140 @@ class RedeliveryLedgerTests(RedeliveryBase):
         MoneySetting.objects.create(key="redelivery_fee_pesewas", value=3000, effective_from=timezone.now() - timedelta(seconds=1))
         row.refresh_from_db()
         self.assertEqual(row.fee_pesewas, 1500)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class RedeliveryRiderPayTests(RedeliveryBase):
+    """Who is paid the re-delivery fee (Director ruling 2, 2026-10-20): the rider who completes the second trip. An
+    AshantiHub rider is paid through payroll (the Redelivery row records rider and time); a third-party rider, who may take
+    the second trip only when no in-house rider is available, is paid through their wallet exactly as a delivery fee is:
+    gross split at the rider commission rate in force when the fee was paid into Rider balance (withdrawable) and Rider
+    reserve (AshantiHub's commission, posted at the end of the day), with a RiderEarning for the re-delivery."""
+
+    def lines(self, key):
+        return sorted((l.account.kind, l.side, l.amount) for l in JournalLine.objects.filter(journal__key=key).select_related("account"))
+
+    def balances(self, row):
+        return posting.balance_of(Account.RIDER_BALANCE, row.staff), posting.balance_of(Account.RIDER_RESERVE, row.staff)
+
+    def fallback_trip(self):
+        """Swift (third-party) made the first trip; the customer paid; no AshantiHub rider is available, so Kwesi (another
+        third-party rider) is given the second trip."""
+        order = self.unavailable()
+        row = self.ask(order)
+        self.pay(row)
+        kwesi = self.third()
+        self.second_trip(order, kwesi)
+        return order, row, kwesi
+
+    def test_a_third_party_second_rider_is_paid_the_fee_through_the_wallet(self):
+        order, row, kwesi = self.fallback_trip()
+        income = posting.balance_of(Account.PLATFORM_DELIVERY_INCOME)
+        self.collect_all(order, kwesi)
+        self.deliver(order, kwesi)
+        row.refresh_from_db()
+        self.assertEqual((row.status, row.rider_id), (Redelivery.COMPLETED, kwesi.staff_id))
+        self.assertEqual(self.lines(f"redelivery-rider-{row.pk}"), [
+            (Account.PLATFORM_DELIVERY_INCOME, JournalLine.DEBIT, 1500),
+            (Account.RIDER_BALANCE, JournalLine.CREDIT, 1350), (Account.RIDER_RESERVE, JournalLine.CREDIT, 150),
+        ])
+        earning = RiderEarning.objects.get(redelivery=row)
+        self.assertEqual((earning.rider_id, earning.order_id, earning.gross_pesewas, earning.commission_bp, earning.reserve_pesewas,
+                          earning.net_pesewas), (kwesi.pk, None, 1500, 1000, 150, 1350))
+        self.assertEqual(self.balances(kwesi), (1350, 150))
+        self.assertEqual(posting.balance_of(Account.PLATFORM_DELIVERY_INCOME), income)   # the fee went on to the rider
+        self.assertEqual(posting.balance_of(Account.REDELIVERY_PAYABLE, order), 0)
+        self.assertFalse(row.owed_through_payroll)
+        self.assertEqual(redelivery.staff_row(row)["paid_through"], "wallet")
+        self.assert_balanced()
+
+    def test_an_in_house_second_rider_is_owed_through_payroll(self):
+        order = self.unavailable()
+        row = self.ask(order)
+        self.pay(row)
+        self.second_trip(order, self.own)
+        self.collect_all(order, self.own)
+        self.deliver(order, self.own)
+        row.refresh_from_db()
+        self.assertFalse(RiderEarning.objects.filter(redelivery=row).exists())
+        self.assertFalse(Journal.objects.filter(key=f"redelivery-rider-{row.pk}").exists())
+        self.assertEqual(self.balances(self.own), (0, 0))
+        self.assertTrue(row.owed_through_payroll)
+        self.assertEqual(redelivery.staff_row(row)["paid_through"], "payroll")
+
+    def test_the_rate_is_the_one_in_force_when_the_fee_was_paid(self):
+        order, row, kwesi = self.fallback_trip()
+        # A new rate starts after the customer paid the fee and before the trip is done: the old rate still applies.
+        MoneySetting.objects.create(key="rider_commission_bp", value=2000, effective_from=row.paid_at + timedelta(microseconds=1))
+        self.collect_all(order, kwesi)
+        self.deliver(order, kwesi)
+        earning = RiderEarning.objects.get(redelivery=row)
+        self.assertEqual((earning.commission_bp, earning.reserve_pesewas, earning.net_pesewas), (1000, 150, 1350))
+
+    def test_a_third_party_second_rider_who_failed_after_collecting_is_still_paid(self):
+        from delivery import services
+
+        from .redelivery_helpers import HERE
+
+        order, row, kwesi = self.fallback_trip()
+        self.collect_all(order, kwesi)
+        services.cant_deliver(self.job(order), kwesi.staff, "wrong_address", "Gate locked", *HERE, 10)
+        self.assertEqual(self.balances(kwesi), (1350, 150))
+        self.assertEqual(RiderEarning.objects.filter(redelivery=row).count(), 1)
+
+    def test_a_whole_refund_after_the_third_party_second_pickup_pays_that_rider(self):
+        order, row, kwesi = self.fallback_trip()
+        self.collect_all(order, kwesi)
+        refunds.refund_order(order, source="cancel")
+        row.refresh_from_db()
+        self.assertEqual(row.status, Redelivery.COMPLETED)
+        self.assertEqual(self.balances(kwesi), (1350, 150))                       # the re-delivery fee
+        self.assertEqual(self.balances(self.swift), (1350, 150))                  # the original fee, first rider (Ruling R4)
+        self.assertEqual(self.wallet(), 10000)                                    # the goods only; both fees were earned
+        self.assert_balanced()
+
+    def test_no_double_pay(self):
+        """Each fee is paid once, to its own rider: the original fee to the first rider at release, the re-delivery fee to
+        the second rider when the second trip is done. Settling again, a release and a later whole refund pay nobody
+        twice, and the second rider is never also owed through payroll."""
+        order, row, kwesi = self.fallback_trip()
+        self.collect_all(order, kwesi)
+        self.deliver(order, kwesi)
+        row.refresh_from_db()
+        self.assertIsNone(books.credit_rider(row, RiderEarning.objects.get(redelivery=row).rider))   # already paid
+        Dispute.objects.filter(order=order).update(status=Dispute.RESOLVED)
+        self.release(order)
+        from ledger import escrow
+
+        self.assertIsNone(escrow.release_verified(order))                       # a second release does nothing
+        refunds.refund_order(order, source="dispute-9")
+        self.assertEqual(sorted(RiderEarning.objects.values_list("rider_id", "order_id", "redelivery_id")),
+                         sorted([(self.swift.pk, order.pk, None), (kwesi.pk, None, row.pk)]))
+        self.assertEqual(self.balances(self.swift), (1350, 150))
+        self.assertEqual(self.balances(kwesi), (1350, 150))
+        self.assertEqual(Journal.objects.filter(key__startswith="redelivery-rider-").count(), 1)
+        self.assertFalse(Redelivery.objects.get(pk=row.pk).owed_through_payroll)
+        self.assert_balanced()
+
+    def test_the_end_of_day_job_posts_the_redelivery_commission(self):
+        from ledger import riders
+
+        order, row, kwesi = self.fallback_trip()
+        self.collect_all(order, kwesi)
+        self.deliver(order, kwesi)
+        earning = RiderEarning.objects.get(redelivery=row)
+        posted = riders.post_day(kwesi.pk, earning.earned_on, now=timezone.now() + timedelta(days=1))
+        self.assertEqual((posted.deliveries, posted.gross_pesewas, posted.commission_pesewas), (1, 1500, 150))
+        self.assertEqual(self.balances(kwesi), (1350, 0))
+        self.assertIsNone(riders.post_day(kwesi.pk, earning.earned_on, now=timezone.now() + timedelta(days=1)))
+
+    def test_the_rider_wallet_lists_the_redelivery_earning(self):
+        from wallets import rider_wallet
+
+        order, row, kwesi = self.fallback_trip()
+        self.collect_all(order, kwesi)
+        self.deliver(order, kwesi)
+        listed = [rider_wallet.earning_row(e) for e in rider_wallet.earnings(kwesi)]
+        self.assertEqual([(e["order"], e["kind"], e["gross"], e["you_got"]) for e in listed], [(order.pk, "redelivery", "15.00", "13.50")])
+        self.assertIsNotNone(listed[0]["delivered_at"])
+        self.assertEqual(rider_wallet.LABELS["rider_redelivery_earning"], "Re-delivery paid to you")

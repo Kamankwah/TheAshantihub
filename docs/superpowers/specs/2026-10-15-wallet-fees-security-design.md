@@ -325,7 +325,7 @@ Found while writing the Stage 2 plan (`docs/superpowers/plans/2026-10-16-otp-sec
 - **O2 Sign-up.** The account row is created first; registration answers a code challenge instead of a token, and the token comes after the code. Customers and vendors who never confirmed a contact confirm once at their next sign-in. For staff the emailed invite link is the check.
 - **O3 Policy numbers** (customer gap 30 days, SMS alert 500/day) live on `staffsecurity.SecurityPolicy`, changed by a Super Admin with the password re-entered, not through the money-settings maker-checker.
 - **O4 Step-up.** Customers and vendors confirm with a texted or emailed code (an authenticator code is not accepted for step-up); staff keep password re-entry (`RequiresSudo`), except third-party riders, who confirm withdrawals and payout destinations with a texted or emailed code like customers (Plan 5). Applied now to payout details, adding a recovery email/phone, and authenticator changes. There is no change-password or change-primary-contact endpoint yet; `password_change` and `withdrawal` are defined for when they exist (Stage 3).
-- **O5 SMS.** The Hubtel SMS client in `marketing/providers/hubtel_sms.py` (unverified against a live account) is reused through `OTP_SMS_PROVIDER=hubtel`; the default `simulated` sends nothing.
+- **O5 SMS.** While `OTP_SMS_PROVIDER=simulated` an SMS code send answers `channel_unavailable` (no text is claimed sent). The Hubtel SMS client in `marketing/providers/hubtel_sms.py` (unverified against a live account) is reused through `OTP_SMS_PROVIDER=hubtel`; the default `simulated` sends nothing.
 - **O6 Not yet moved.** The customer secondary-contact codes (`accounts.serializers.CustomerSecondary*`) still keep their code in clear and return `demo_code` for SMS; moving them onto the OTP service changes their API and is a follow-up. Until then a secondary phone is never a code channel (`otp.identity.contacts()` ignores it, however `secondary_phone_verified` reads); a verified secondary email still is (its code is emailed).
 - **O7 Audit.** OTP events go to `otp.OtpEvent`, not the hash-chained activity log (high volume, customer-side, and the lock and the hourly limits are counted from it). Staff wrong codes also reach the sign-in history; policy changes and staff-assisted recovery also reach the activity log.
 
@@ -333,7 +333,7 @@ Found while writing the Stage 2 plan (`docs/superpowers/plans/2026-10-16-otp-sec
 
 `OTP_SIGNIN_ENFORCED`, `OTP_STEP_UP_ENFORCED` and `OTP_SIGNUP_VERIFICATION_ENFORCED` all default off and must stay off until every item below is done.
 
-- **Frontend screens (Plan 2F):** code entry (a customer or vendor login answers `two_factor_required` + `mfa_token`; the code goes to `/api/otp/sign-in/verify/`, not the staff two-factor URL); a trusted-device checkbox and keeping `device_token` (customers only); step-up prompts (on `step_up_required`, one retry carrying `X-Step-Up-Token`; the step-up endpoints answer `409 otp_off` while no switch asks for a code); 2FA settings for customers and vendors. The code-entry screen must also handle `two_factor_required` answered by `/api/otp/sign-in/verify/` itself (a correct SIGN_UP code does not skip an enabled authenticator) and resend `trust_device` with the authenticator step, handle `409 no_channel` (nothing on file: contact Support) and `400 channel_unavailable` (offer the other way).
+- **DONE 2026-10-20, Frontend screens (Plan 2F, built; switches still off):** the sign-in/sign-up code screen (`components/OtpSignIn.jsx`, shown by `AuthModal` and `BusinessRegistrationFlow`; a customer or vendor `two_factor_required` goes to `/api/otp/sign-in/verify/`, a staff one stays on the staff endpoint; handles an authenticator owed after a sign-up code, `no_channel` and `channel_unavailable`); the trusted-device checkbox and the customers-only `ashantihub.deviceToken` (`hooks/useAuth.js`, `lib/otp.js`); the step-up retry in `apiClient.js` with `StepUpPrompt` mounted once in `main.jsx` (one retry carrying `X-Step-Up-Token`); the security cards in `components/security/` (customer `SettingsTab`, business `ProfilePanel`); Super Admin's two OTP numbers, Support's recovery request form and the text-spend label in the staff panels. The backend always answers `available: true` for the authenticator (7F-C), so the UI's `available: false` branch is defensive only. **Texts while simulated (final review R12):** while `OTP_SMS_PROVIDER=simulated`, an SMS code send (sign-in or step-up) answers `400 channel_unavailable` ("Texts aren't being sent yet. Choose email instead.") and sends and logs no text, so no screen claims one was sent; the step-up / authenticator set-up for a phone-only account therefore waits for Hubtel SMS. **Still owed before any switch:** the staging walkthrough with all three switches on against a real backend (customer sign-in on a new device -> chooser -> code -> trusted device ticked -> second sign-in skips the code; owner every time; staff without an authenticator gets the code screen; sign-up confirm screen; authenticator set-up and sign-in with an app code and a recovery code; change payout details and see the prompt and the retry; add a recovery email/phone with the ledger on (step-up prompt appears, retry succeeds); Remove all devices; Support request -> Super Admin approval; 360px width with no horizontal scroll on the code screen and prompt; `TwoFactorSetup`'s palette on customer and business surfaces; Android/iOS real-device PWA checks as for the staff PWA). The walkthrough reads codes from emailed codes (the console mail backend) or from real Hubtel texts; texted codes are refused while `simulated`. Known limits, not 2F's to fix: the text-spend notice wording in `backend/otp/spend.py` points at a code log and text balance that have no screen; the trusted-device checkbox cannot show the day count before sign-in; the device list has no "this device" marker until the backend returns one; a staff-visible OTP code log and masked OtpEvent view is still a gate; a foreign-phone-only account gets `no_channel` with no operational path.
 - **A real SMS provider:** Hubtel SMS credentials and an Approved Sender ID, then `OTP_SMS_PROVIDER=hubtel` (the default `simulated` sends nothing).
 - **Hubtel SMS client unverified:** `marketing/providers/hubtel_sms.py` has never sent through a live account; prove one real OTP text first.
 - **Existing accounts with only a foreign phone (or no usable contact):** they get `409 no_channel` and cannot sign in; Support must add an email first (the operational path is not built).
@@ -490,7 +490,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
 
 - (xxiv) **Wallet and recovery-contact step-up is forced while the ledger is on,** so the Plan 2F frontend must handle
   `step_up_required` on the add-recovery-contact screens (they answer 403 with the ledger on until it does), and a
-  customer with no usable contact (`no_channel`) cannot add one. Every must-fix in "Before the OTP
+  customer with no usable contact (`no_channel`) cannot add one. The add-secondary-email/phone calls (`useAuth`) are plain `apiPost`s, so the Plan 2F `apiClient.js` step-up mechanism is expected to cover them; proven by the "add recovery contact (ledger on)" step of the Plan 2F walkthrough (list above). Every must-fix in "Before the OTP
   switches are turned on" (notice send limits, a real SMS provider, the secondary-email confirmation) must be done
   before the ledger is on.
 - (xxv) **Hubtel payouts, status and name lookups are not connected:** with `PAYMENTS_PROVIDER=hubtel`, adding a
@@ -603,6 +603,14 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
 - (lii) **Migrations 0003 and 0004 of `wallets` could be folded into one before any deploy** (nothing is deployed yet;
   the 0003 file is root-owned, so fold it with the right permissions).
 - (liii) **Parked:** the daily/per-withdrawal limit check can race with a concurrent proposal and ignores future-dated rows.
+
+### Before LEDGER_ENABLED is turned on — Plan 3F (wallet screens)
+
+- **DONE 2026-10-21, Frontend screens (Plan 3F, built; ledger still off):** `components/wallet/` (top-up with the server's processing line, balance, statement with filter chips, payout destinations with the cooling-hours line, withdraw form with the server's charge and you-receive, withdrawal history, payment-method picker), the picker and processing quote at checkout (`CartDrawer`, `MoMoPayment` without the made-up 1.5% when a quote is given), the vendor "Money" tab (`VendorPayouts`, one tab for money and payouts) and the staff Wallets, Withdrawals (two-person resolution through `resolve/`) and Reconciliation panels. The cross-screen rules (no tel/WhatsApp, no card fields, no bare long digit runs, tabular amounts, no gold on an amount, no "1.5%", no NaN/undefined) are held by `WalletNoInventionSweep.test.jsx`; the 7C T5 request kinds are shown to list in Approvals by `kind_label` (`ApprovalsWalletKinds.test.jsx`). Staff cannot edit payout details from any current screen, so no screen creates a `wallets.holder_details_edit` request.
+- **Gate checks recorded 2026-10-21:** (a) gate (xxiv): `requestSecondaryEmail`/`requestSecondaryPhone` and their confirm calls (`hooks/useAuth.js`) are plain `apiPost`s, so `apiClient.js`'s one step-up retry covers them, but no component calls them yet (no recovery-contact screen exists), so it was read, not run: the walkthrough step "add recovery contact (ledger on)" stays owed, and a screen that adds a contact is Plan 2F's follow-up. (b) gate (xxxii): registration's payout step (`submitPayoutInfo`) still uses the unforced `PATCH business-owners/me/payout/`; left as is, forcing it needs a step-up in registration first. (c) gate (xvi): dispute and delivery refunds send no customer notice; needs a backend notification, the statement row is the notice. (d) gates (xiii) and (xxxi): the "no money moves" copy in `RefundsPanel.jsx` (`SimulatedBanner`) and `LaterPhasePanels.jsx` is **not changed here** and still says so with the ledger on; branch both on the ledger.
+- **Owed before the switch (not performed in 3F, ruling R22):** each new screen at 360, 768 and 1280 px for horizontal overflow and `DESIGN.md` conformance; the staff panels against `scripts/staff-layout-audit.js` (needs a preview on 4173 and the API on 8110); one real-phone pass of the step-up prompt over the withdraw form; a staging run of top-up, pay from wallet, add a number, withdraw, and a stuck-withdrawal resolution by two staff accounts on the simulated provider (`SIMULATED_PAYOUT_OUTCOME=pending`). The backend suite (`wallets orders`) is the controller's.
+- **Switch-on checklist additions:** Plan 4 Tasks 14-15 shipped (the customer wallet tabs; until then the wallet components have no customer page, F5); the stale copy in (d) branched on the ledger; the owed manual checks above done.
+- **Open items found during the build:** Plan 4F must put its Money sub-tabs inside 3F's single `money` tab (R1, Director ruling "Money and Payouts in one tab"; 4F's G1 and its Step 0 grep for "payouts" need editing). Plan 4 must pass `orderHref` to `TransactionsList` (R6: no default, an order link renders only when the caller supplies one; no `/my-account/orders/{id}` route exists). Rider endpoints also answer `id_required` and `daily_count_limit` (Plan 5F's screens must word them). The backend sends no `topup_hold_minutes`, so the top-up screen carries no "withdrawable after N hours" line (R2); add it when the field exists. Gate (xvi) refund notices as in (c).
 
 ### 7F-C follow-ups (2026-10-19)
 
@@ -1136,8 +1144,8 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   seeded to `operations` and `super_admin`, chain pool then Super Admin, password again to approve); the maker never
   approves their own, a Super Admin's own applies at once, and there is no threshold shortcut. A required budget cap
   bounds the spend: `live_waivers` stops waiving once the owed charges reach the cap (derived, not a status change). The
-  cap is SOFT: the spend is an unlocked count of OWED charges, so concurrent checkouts can overshoot it by about one fee
-  each, and the last order waives a full fee even when less of the cap is left. A promo covers one named business's items.
+  cap was SOFT here (an unlocked count of OWED charges, so concurrent checkouts could overshoot it by about one fee each,
+  and the last order waived a full fee even when less of the cap was left); **it is HARD since gate (cxxxi)(5)**. A promo covers one named business's items.
   Coupons, campaigns, banners and the send policy stay Super Admin only; the owner-submitted promo review by
   `site_promo.manage` staff is business-funded only. Also: a blocked business (KYC not verified) answers 403 on the platform
   endpoint, as `create_for_staff` does (not 400); spend counts OWED charges only; a cap above the co-sign threshold
@@ -1224,4 +1232,41 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
 - (cxxx) **Ruling R5 (owner, round 3): the re-delivery fee is a governed setting (plan 7F-E Task 7).**
   `redelivery_fee_pesewas`, default 1500 (GH₵ 15.00, **a placeholder to be confirmed by the owner**), bounds 0 to 20000, changed
   by Super Admin with sudo, and copied onto the request when it is opened so a later change never reprices an open one. It is
-  not on the `RateCard` and works while `DELIVERY_FEE_ENABLED` is off. Listed in §3.3.
+  not on the `RateCard` and works while `DELIVERY_FEE_ENABLED` is off. Listed in §3.3. Who changes it: see gate (cxxxi)(1).
+- (cxxxi) **Director rulings (2026-10-20), branch `fix/director-rulings-1`.** The owner delegated these decisions.
+  (1) The re-delivery fee is changed by Operations as well as the Super Admin: permission `redelivery_fee.manage`
+  (Operations, Super Admin) and approval kind `ledger.redelivery_fee` (same payload, checks, apply and audit as
+  `ledger.setting`; pool `redelivery_fee.manage`, chain pool then Super Admin, sudo to approve, never the maker; a Super
+  Admin's own applies at once). Every change of that one key goes through this kind, whoever proposes it; an Operations
+  lead reads only that setting on `GET /api/ledger/settings/` and gets 403 for any other key. Operations has a "Re-delivery
+  fee" screen under Settings. Default GH₵ 15.00, bounds GH₵ 0 to 200, unchanged.
+  (2) A re-assigned delivery (gate (cxxviii)) goes to AshantiHub's own riders while one is available
+  (`delivery.dispatching.in_house_available`: on shift, not on a break, fresh fix, no job hold, not suspended, under the
+  active-job limit, papers valid, under the cash cap, not declined on the order, within the pickup radius, the radius
+  skipped when the pickup has no pin); when none is, a third-party rider may take it. The fallback is noted on the
+  "assigned" `DeliveryEvent` and recorded as activity `delivery.reassigned_third_party` (after commit); the ranking reports
+  `third_party_fallback` and the dispatch queue says so. The rider who completes the trip is paid (release pays the
+  current rider; the first leg counts for no one). This closes the stall noted in (cxxviii). The second trip of a paid
+  re-delivery at the customer's request (gate (cxxix)) follows the same rule (in-house first, a third-party fallback
+  only when none is available, logged the same way), and its fee goes to the rider who completes that trip: an in-house
+  rider through payroll (the Redelivery row; `owed_through_payroll`, `paid_through: "payroll"`), a third-party rider
+  through the wallet, posted in the settle's transaction as `redelivery-rider-<id>` (kind `rider_redelivery_earning`:
+  Dr platform delivery income / Cr Rider balance net + Cr Rider reserve at the `rider_commission_bp` in force when the
+  customer paid the fee) with a `RiderEarning` whose `redelivery` is set (`order` null; exactly one of the two, a check
+  constraint), which the end-of-day commission job posts like a delivery earning. Paid when the trip is done (delivered,
+  failed after the pickup, or a whole refund after that pickup), not at the order's release: the fee is outside the
+  order's escrow. Never twice (one earning per re-delivery, journal idempotent on its key), never both wallet and payroll,
+  and the first rider's original-fee earning (`RiderEarning.order`) is separate. A whole refund locks the second-trip
+  rider's row before the original fee rider's.
+  (3) "Customer not available" (gate (cxxix)) is `CUSTOMER_UNAVAILABLE_REASONS = ("no_answer", "refused")`, both with
+  `arrived_drop_at` set: a refusal reported before the rider reached the address is still a plain re-assignment.
+  (4) Support may set any business's opening hours (permission `businesses.set_hours`, Support and Super Admin; same staff
+  endpoint and rules, recorded as `business.hours_set`), from the Support business profile. Send now
+  (`delivery/orders/<id>/send-early/`) takes `orders.manage_delivery` as well as `delivery.manage`; the reason stays
+  required and recorded (`delivery.early_send`). The Scheduled list is in the Super Admin (Marketplace) and Operations
+  (Service) menus.
+  (5) The budget cap of an AshantiHub-funded free-delivery promo is HARD: checkout decides the waiver under the promo's row
+  lock (`waivers.covering_waiver(..., fee=, lock=True)`, waivers in id order after the listing locks), counting the owed
+  charges after the lock, and waives a fee only when it fits in what is left (else the customer pays the fee). The cart
+  quote applies the same fit without a lock. Covered by `marketing/tests/test_platform_waivers.PlatformCapRaceTests`
+  (threaded, run on its own).

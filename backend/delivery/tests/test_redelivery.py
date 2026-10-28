@@ -103,6 +103,45 @@ class RedeliveryRequestTests(RedeliveryBase):
         self.assert_balanced()
 
 
+@override_settings(LEDGER_ENABLED=True)
+class CustomerUnavailableReasonTests(RedeliveryBase):
+    """Director ruling 3 (2026-10-20): "the customer was not available" is a failure at the address (arrived_drop_at set)
+    for no answer OR a refusal at the door (CUSTOMER_UNAVAILABLE_REASONS). Any other reason is a plain re-assignment."""
+
+    def unavailable_now(self, order):
+        return redelivery.customer_unavailable(DA.objects.get(order=order))
+
+    def test_the_named_reasons_are_no_answer_and_refused(self):
+        self.assertEqual(redelivery.CUSTOMER_UNAVAILABLE_REASONS, ("no_answer", "refused"))
+
+    def test_no_answer_after_arrival_counts(self):
+        order = self.unavailable()
+        self.assertTrue(self.unavailable_now(order))
+        self.assertEqual(self.ask(order).status, Redelivery.AWAITING_PAYMENT)
+
+    def test_refused_at_the_door_counts(self):
+        order = self.failed_at_the_door("refused")
+        self.assertTrue(self.unavailable_now(order))
+        row = self.ask(order)
+        self.assertEqual((row.status, row.first_rider_id), (Redelivery.AWAITING_PAYMENT, self.swift.staff_id))
+
+    def test_refused_before_reaching_the_address_does_not_count(self):
+        order = self.failed_other("refused")                              # no arrived_drop_at: the trip was not completed
+        self.assertFalse(self.unavailable_now(order))
+        self.refused(order)
+
+    def test_another_reason_at_the_door_does_not_count(self):
+        order = self.failed_at_the_door("wrong_address")
+        self.assertFalse(self.unavailable_now(order))
+        self.refused(order)
+        self.assertEqual(self.give(order, self.own).dispatch_id, self.own.staff_id)   # a plain re-assignment, no fee
+
+    def refused(self, order, code="not_redeliverable"):
+        with self.assertRaises(RedeliveryError) as raised:
+            self.ask(order)
+        self.assertEqual((raised.exception.status_code, raised.exception.code), (409, code))
+
+
 class RedeliverPermissionSeedTests(RedeliveryBase):
     def test_orders_redeliver_is_seeded_to_support_pickup_desk_and_super_admin(self):
         from accounts.models import Role
@@ -210,6 +249,7 @@ class RedeliveryEndpointTests(RedeliveryBase):
     def test_assign_refused_for_third_party_rider(self):
         from ledger.tests import rider_helpers
 
+        self.on_shift(self.own)            # an AshantiHub rider is available, so no third-party fallback (Director ruling 2)
         order = self.unavailable()
         self.pay(self.ask(order))
         other = rider_helpers.rider("swift2@example.com", name="Kwesi Owusu", phone="+233244000005")
@@ -220,6 +260,45 @@ class RedeliveryEndpointTests(RedeliveryBase):
         self.assign_refused(order, other, "redelivery_in_house_only")
         self.give(order, self.own2)
         self.assertEqual(Redelivery.objects.get(order=order).rider_id, self.own2.staff_id)
+
+    def test_a_paid_redelivery_goes_to_a_third_party_rider_only_when_no_in_house_rider_is_available(self):
+        """Director ruling 2 (2026-10-20) covers the paid second trip too: in-house first; a third-party rider takes it only
+        while no AshantiHub rider is available, and the fallback is logged. The fee is then paid to that rider's wallet
+        (ledger.tests.test_redelivery_ledger)."""
+        from activity.models import ActivityEvent
+        from delivery import dispatching
+
+        order = self.unavailable()
+        row = self.ask(order)
+        self.pay(row)
+        other = self.third()
+        self.on_shift(other)
+        self.on_shift(self.own)
+        self.assertTrue(dispatching.in_house_available(order))
+        self.assign_refused(order, other, "redelivery_in_house_only")             # Ama is on shift
+        self.assertFalse(dispatching.rank(order)["third_party_fallback"])
+        from delivery.models import ShiftSession
+
+        ShiftSession.objects.filter(rider=self.own).update(ended_at=timezone.now())   # Ama goes off shift
+        self.assertFalse(dispatching.in_house_available(order))
+        self.assertTrue(dispatching.rank(order)["third_party_fallback"])
+        with self.captureOnCommitCallbacks(execute=True):
+            assignment = self.give(order, other)
+        row.refresh_from_db()
+        self.assertEqual((assignment.dispatch_id, row.status, row.rider_id), (other.staff_id, Redelivery.ASSIGNED, other.staff_id))
+        self.assertTrue(ActivityEvent.objects.filter(verb="delivery.reassigned_third_party", target_id=str(order.pk)).exists())
+
+    def test_a_swap_of_the_second_trip_to_a_third_party_rider_is_a_logged_fallback_too(self):
+        from activity.models import ActivityEvent
+
+        order = self.unavailable()
+        self.pay(self.ask(order))
+        self.give(order, self.own)                                                # the second trip, not yet accepted
+        other = self.third()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.give(order, other)                                               # nobody of AshantiHub's own is on shift
+        self.assertEqual(Redelivery.objects.get(order=order).rider_id, other.staff_id)
+        self.assertEqual(ActivityEvent.objects.filter(verb="delivery.reassigned_third_party").count(), 1)
 
     def test_dispatch_engine_and_offers_wait_for_the_fee(self):
         from delivery import dispatching

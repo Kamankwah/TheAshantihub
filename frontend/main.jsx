@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
+import StepUpPrompt from './components/StepUpPrompt.jsx'
 import './index.css'
 import { ensureStaffHead, isStaffPathname, startStaffPwa } from './lib/staffPwa.js'
 import { applyInitialTheme } from './hooks/useTheme.js'
@@ -31,6 +32,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <App />
+        <StepUpPrompt />
       </QueryClientProvider>
     </BrowserRouter>
   </React.StrictMode>,

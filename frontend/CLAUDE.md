@@ -133,3 +133,30 @@ monolith holding most components, with extractions living in `components/`,
 - **Never read a multipart request body that holds a jsdom `File` in a test**; spy on
   `FormData.prototype.append` instead.
 - **Duplicate-match copy lives in `registrationCheckCopy.js`** - don't re-word it per screen.
+- **Step-up codes are handled in `apiClient.js`, not per screen.** A `403 step_up_required` retries
+  once with `X-Step-Up-Token`; `StepUpPrompt` (mounted in `main.jsx`) supplies the code, so a screen
+  just does a plain `apiPost`/`apiPatch`. A customer/owner `two_factor_required` goes to
+  `/api/otp/sign-in/verify/`, a staff one to the staff two-factor endpoint. The trusted-device token
+  lives in `ashantihub.deviceToken` (customers only) and survives sign-out.
+
+## Wallet screens (Plan 3F)
+
+- **The wallet components are holder-agnostic.** `components/wallet/*` take `tone` (`light` = customer, `C`;
+  `dashboard` = business and staff, `D`) and, where they call the API, `basePath` (default `/api/wallet`;
+  a rider mounts the same parts on its own path). All inline styling comes from `walletStyles(tone)`. The
+  staff panels (`WalletsPanel`, `WithdrawalsPanel`, `WalletReconciliationPanel`) are read-and-resolve only.
+- **A withdrawal's `request_id` is minted when `WithdrawForm` mounts** and reused by every submit of the same
+  destination and amount (double click, retry, the step-up retry) so the server never pays twice. It changes
+  only when the destination or amount changes, or after success. **Never remount the form between attempts**
+  (no changing `key`, no conditional unmount around the step-up prompt) or the id is lost.
+- **Step-up is `apiClient`'s.** Destination add/remove and withdrawals are forced while the ledger is on; a
+  component does a plain `apiPost` and never reads or stores the token.
+- **Money is the server's string.** Show `formatGhs(str)`; sums and comparisons use the integer-pesewas
+  helpers in `walletMoney.js` (`ghsToPesewas`, `addGhs`), never float maths. Charge, you-receive, processing
+  and refusal text come from the server (`walletMessage`); never invent a fee, limit or reason. Amounts use
+  the price token (`C.price`/`D.price`), tabular figures, never brand gold.
+- **`409 ledger_off` is one honest line, not an error screen.** `retryUnlessLedgerOff` stops the retries. The
+  MSW wallet defaults in `mocks/handlers.js` are "ledger on, empty"; override with `server.use(...)`.
+  `WalletNoInventionSweep.test.jsx` is the conformance contract for every wallet screen: add a new wallet
+  screen to its list.
+- **The vendor tab is "Money"** (`id: "money"`, one tab for payouts and the wallet), not "Payouts".

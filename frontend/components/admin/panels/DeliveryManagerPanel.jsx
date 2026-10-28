@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { apiFetch, apiPost } from "../../../apiClient.js";
 import { useDeliveryManagerOrders } from "../../../hooks/useDeliveryManagerOrders.js";
 import { D, glassCard, tint } from "../theme.js";
-import SendNow, { isHeld } from "./delivery/SendNow.jsx";
+import SendNow, { canSendEarly, isHeld } from "./delivery/SendNow.jsx";
 import { dayTime } from "./delivery/deliveryParts.jsx";
 
 // Delivery Manager (punch-list item 11, delivery.manage): sees paid
@@ -70,7 +70,7 @@ function OrderCard({ order, dispatches, onDone, canSend }) {
 }
 
 export default function DeliveryManagerPanel({ auth }) {
-  const canSend = Boolean(auth?.hasPermission?.("delivery.manage"));
+  const canSend = canSendEarly(auth);
   const { data, isLoading, isError, refetch } = useDeliveryManagerOrders();
   const [dispatches, setDispatches] = useState([]);
 

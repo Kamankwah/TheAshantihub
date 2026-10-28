@@ -5,6 +5,7 @@ import BusinessHoursEditor from "../../BusinessHoursEditor.jsx";
 import { useBusinessProfile } from "../../../hooks/useBusinessProfile.js";
 import { D, glassCard, tint } from "../theme.js";
 import MarketingConsentCard from "../../MarketingConsentCard.jsx";
+import AccountSecurityCard from "../../security/AccountSecurityCard.jsx";
 import DetailChangeRequest from "../DetailChangeRequest.jsx";
 
 // "Profile & Settings" — reachable from the header's avatar dropdown. Read-only:
@@ -97,6 +98,8 @@ export default function ProfilePanel({ user }) {
       <DetailChangeRequest />
 
       <MarketingConsentCard />
+
+      <AccountSecurityCard accountType="business_owner" />
 
       <div style={{ ...glassCard, padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
         <div style={{ fontSize: "0.78rem", color: D.textDim, maxWidth: 420 }}>

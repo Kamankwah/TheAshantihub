@@ -63,7 +63,7 @@ describe('StaffDashboard', () => {
     // and permissions stay). Some labels (Support, Marketing) also appear elsewhere, hence getAllByText.
     ;['My approvals', 'Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays',
       'Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting', 'Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Events & tickets',
-      'Disputes & returns', 'Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Analytics', 'Growth funnel', 'Reports hub',
+      'Disputes & returns', 'Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets', 'Withdrawals', 'Analytics', 'Growth funnel', 'Reports hub',
       'Scheduled exports', 'Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings', 'Notification center',
       'Staff announcements', 'Approval rules & timers', 'Commission policy', 'Delivery pricing', 'Plans & prices', 'Target limits', 'Tax tables',
       'Categories & zones', 'Integrations', 'System health']
@@ -1548,7 +1548,8 @@ describe('StaffDashboard Disputes', () => {
     fireEvent.click(screen.getByText('✓ Resolve'))
     fireEvent.change(screen.getByPlaceholderText('Refund amount (optional)'), { target: { value: '50.00' } })
     fireEvent.click(screen.getByText('Confirm resolve'))
-    await waitFor(() => expect(resolveBody).toEqual({ outcome: 'resolved', refund_amount: '50.00', resolution_notes: '' }))
+    // A partial refund names its amount; whole_refund is only for "refund the whole order when nothing is left" (d4df5160).
+    await waitFor(() => expect(resolveBody).toEqual({ outcome: 'resolved', refund_amount: '50.00', whole_refund: false, resolution_notes: '' }))
   })
 
   it('shows no actions on a terminal (resolved) dispute', async () => {

@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../mocks/server.js'
 import { setStoredAuth } from '../../apiClient.js'
 import { getNetworkStatus, reportApiNetworkFailure, reportApiResponse } from '../../lib/networkStatus.js'
@@ -442,3 +442,256 @@ describe('useAuth — 2-step sign-in and activation', () => {
   })
 })
 
+
+describe('useAuth code challenges', () => {
+  const API = 'http://localhost:8000'
+  const challenge = { otp_required: true, mfa_token: 'mfa-1', channels: [{ channel: 'sms', hint: '+233 ** *** 4567' }] }
+  const customerBody = { token: 'tok', account_type: 'customer', id: 1, full_name: 'Ama' }
+  const meHandler = (me = { account_type: 'customer', id: 1, full_name: 'Ama' }) =>
+    http.get(`${API}/api/accounts/me/`, () => HttpResponse.json(me))
+
+  async function ready() {
+    const hook = renderHook(() => useAuth())
+    await waitFor(() => expect(hook.result.current.isLoading).toBe(false))
+    return hook
+  }
+
+  afterEach(() => localStorage.clear())
+
+  it('does not store a session for an otp_required answer', async () => {
+    server.use(http.post(`${API}/api/accounts/customers/login/`, () => HttpResponse.json(challenge)))
+    const { result } = await ready()
+    let answer
+    await act(async () => { answer = await result.current.login('customer', '+233241234567', 'secret') })
+    expect(answer).toEqual(challenge)
+    expect(result.current.user).toBeNull()
+    expect(localStorage.getItem('ashantihub.auth')).toBeNull()
+  })
+
+  it('returns two_factor_required from a customer login unstored', async () => {
+    const ticket = { two_factor_required: true, mfa_token: 'mfa-2' }
+    server.use(http.post(`${API}/api/accounts/customers/login/`, () => HttpResponse.json(ticket)))
+    const { result } = await ready()
+    let answer
+    await act(async () => { answer = await result.current.login('customer', 'a@b.co', 'secret') })
+    expect(answer).toEqual(ticket)
+    expect(localStorage.getItem('ashantihub.auth')).toBeNull()
+  })
+
+  it('sends the stored device_token for customers only', async () => {
+    localStorage.setItem('ashantihub.deviceToken', 'dev-1')
+    const bodies = {}
+    server.use(
+      http.post(`${API}/api/accounts/customers/login/`, async ({ request }) => {
+        bodies.customer = await request.json()
+        return HttpResponse.json(customerBody)
+      }),
+      http.post(`${API}/api/accounts/business-owners/login/`, async ({ request }) => {
+        bodies.owner = await request.json()
+        return HttpResponse.json(challenge)
+      }),
+      http.post(`${API}/api/accounts/staff/login/`, async ({ request }) => {
+        bodies.staff = await request.json()
+        return HttpResponse.json(challenge)
+      }),
+      meHandler(),
+    )
+    const { result } = await ready()
+    await act(async () => { await result.current.login('customer', 'a@b.co', 'pw') })
+    await act(async () => { await result.current.login('business_owner', 'a@b.co', 'pw') })
+    await act(async () => { await result.current.login('staff', 'a@b.co', 'pw') })
+    expect(bodies.customer).toEqual({ identifier: 'a@b.co', password: 'pw', device_token: 'dev-1' })
+    expect(bodies.owner).toEqual({ identifier: 'a@b.co', password: 'pw' })
+    expect(bodies.staff).toEqual({ identifier: 'a@b.co', password: 'pw' })
+  })
+
+  it('rethrows no_channel with its body', async () => {
+    server.use(http.post(`${API}/api/accounts/customers/login/`, () =>
+      HttpResponse.json({ detail: 'No contact', code: 'no_channel' }, { status: 409 })))
+    const { result } = await ready()
+    let caught
+    await act(async () => {
+      try { await result.current.login('customer', 'a@b.co', 'pw') } catch (e) { caught = e }
+    })
+    expect(caught.status).toBe(409)
+    expect(caught.body).toEqual({ detail: 'No contact', code: 'no_channel' })
+    expect(result.current.user).toBeNull()
+  })
+
+  it('sendOtpCode posts the ticket and channel without touching the session', async () => {
+    let body
+    server.use(http.post(`${API}/api/otp/sign-in/send/`, async ({ request }) => {
+      body = await request.json()
+      return HttpResponse.json({ channel: 'sms', hint: 'h', expires_in: 300, resend_in: 60 })
+    }))
+    const { result } = await ready()
+    let answer
+    await act(async () => { answer = await result.current.sendOtpCode('mfa-1', 'sms') })
+    expect(body).toEqual({ mfa_token: 'mfa-1', channel: 'sms' })
+    expect(answer.resend_in).toBe(60)
+    expect(result.current.user).toBeNull()
+  })
+
+  it('verifyOtp posts code and trust_device and stores the session', async () => {
+    let body
+    server.use(
+      http.post(`${API}/api/otp/sign-in/verify/`, async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json(customerBody)
+      }),
+      meHandler(),
+    )
+    const { result } = await ready()
+    await act(async () => {
+      await result.current.verifyOtp('mfa-1', { code: '123456', trustDevice: true })
+    })
+    expect(body).toEqual({ mfa_token: 'mfa-1', code: '123456', trust_device: true })
+    expect(result.current.user).toMatchObject({ token: 'tok', account_type: 'customer' })
+    expect(JSON.parse(localStorage.getItem('ashantihub.auth')).token).toBe('tok')
+  })
+
+  it('verifyOtp sends recovery_code instead of code', async () => {
+    let body
+    server.use(
+      http.post(`${API}/api/otp/sign-in/verify/`, async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json(customerBody)
+      }),
+      meHandler(),
+    )
+    const { result } = await ready()
+    await act(async () => {
+      await result.current.verifyOtp('mfa-1', { recoveryCode: 'abcd-efgh', code: 'ignored' })
+    })
+    expect(body).toEqual({ mfa_token: 'mfa-1', recovery_code: 'abcd-efgh' })
+  })
+
+  it('verifyOtp keeps device_token in its own key, not in ashantihub.auth', async () => {
+    server.use(
+      http.post(`${API}/api/otp/sign-in/verify/`, () => HttpResponse.json({ ...customerBody, device_token: 'dev-9' })),
+      meHandler(),
+    )
+    const { result } = await ready()
+    await act(async () => { await result.current.verifyOtp('mfa-1', { code: '123456', trustDevice: true }) })
+    expect(localStorage.getItem('ashantihub.deviceToken')).toBe('dev-9')
+    expect(localStorage.getItem('ashantihub.auth')).not.toContain('dev-9')
+    expect(result.current.user.device_token).toBeUndefined()
+  })
+
+  it('verifyOtp sends the stored device_token for a customer', async () => {
+    localStorage.setItem('ashantihub.deviceToken', 'dev-1')
+    let body
+    server.use(
+      http.post(`${API}/api/otp/sign-in/verify/`, async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json({ ...customerBody, device_token: 'dev-2' })
+      }),
+      meHandler(),
+    )
+    const { result } = await ready()
+    await act(async () => { await result.current.verifyOtp('mfa-1', { code: '123456', trustDevice: true }) })
+    expect(body.device_token).toBe('dev-1')
+    expect(localStorage.getItem('ashantihub.deviceToken')).toBe('dev-2')
+  })
+
+  it('a customer verify without trust drops a stale device token', async () => {
+    localStorage.setItem('ashantihub.deviceToken', 'stale')
+    server.use(
+      http.post(`${API}/api/otp/sign-in/verify/`, () => HttpResponse.json(customerBody)),
+      meHandler(),
+    )
+    const { result } = await ready()
+    await act(async () => { await result.current.verifyOtp('mfa-1', { code: '123456' }) })
+    expect(localStorage.getItem('ashantihub.deviceToken')).toBeNull()
+  })
+
+  it('an owner or staff verify leaves the device token alone', async () => {
+    localStorage.setItem('ashantihub.deviceToken', 'keep')
+    server.use(
+      http.post(`${API}/api/otp/sign-in/verify/`, () =>
+        HttpResponse.json({ token: 'o', account_type: 'business_owner', id: 2, full_name: 'Abena' })),
+      meHandler({ account_type: 'business_owner', id: 2, full_name: 'Abena' }),
+    )
+    const { result } = await ready()
+    await act(async () => { await result.current.verifyOtp('mfa-1', { code: '123456' }) })
+    expect(localStorage.getItem('ashantihub.deviceToken')).toBe('keep')
+    server.use(http.post(`${API}/api/otp/sign-in/verify/`, () =>
+      HttpResponse.json({ token: 's', account_type: 'staff', id: 3, full_name: 'Kojo' })))
+    await act(async () => { await result.current.verifyOtp('mfa-2', { code: '123456' }) })
+    expect(localStorage.getItem('ashantihub.deviceToken')).toBe('keep')
+  })
+
+  it('a sign-up code that answers two_factor_required stores nothing and returns the ticket', async () => {
+    const ticket = { two_factor_required: true, mfa_token: 'mfa-3' }
+    localStorage.setItem('ashantihub.deviceToken', 'keep')
+    server.use(http.post(`${API}/api/otp/sign-in/verify/`, () => HttpResponse.json(ticket)))
+    const { result } = await ready()
+    let answer
+    await act(async () => { answer = await result.current.verifyOtp('mfa-1', { code: '123456' }) })
+    expect(answer).toEqual(ticket)
+    expect(result.current.user).toBeNull()
+    expect(localStorage.getItem('ashantihub.auth')).toBeNull()
+    expect(localStorage.getItem('ashantihub.deviceToken')).toBe('keep')
+  })
+
+  it('verifyOtp for a registration keeps registration_step business_info', async () => {
+    server.use(
+      http.post(`${API}/api/otp/sign-in/verify/`, () =>
+        HttpResponse.json({ token: 'o', account_type: 'business_owner', id: 2, full_name: 'Abena' })),
+      http.get(`${API}/api/accounts/me/`, () => HttpResponse.json({ account_type: 'business_owner', id: 2 })),
+    )
+    const { result } = await ready()
+    await act(async () => {
+      await result.current.verifyOtp('mfa-1', { code: '123456', registration: 'business_owner' })
+    })
+    expect(result.current.user).toMatchObject({ token: 'o', registration_step: 'business_info' })
+    expect(JSON.parse(localStorage.getItem('ashantihub.auth')).registration_step).toBe('business_info')
+  })
+
+  it('registerCustomer returns the challenge and stores nothing when no token', async () => {
+    const answer = { ...challenge, id: 5, full_name: 'Kofi' }
+    server.use(http.post(`${API}/api/accounts/customers/register/`, () => HttpResponse.json(answer, { status: 201 })))
+    const { result } = await ready()
+    let got
+    await act(async () => { got = await result.current.registerCustomer({ full_name: 'Kofi' }) })
+    expect(got).toEqual(answer)
+    expect(result.current.user).toBeNull()
+    expect(localStorage.getItem('ashantihub.auth')).toBeNull()
+  })
+
+  it('registerBusinessOwner returns the challenge and stores nothing', async () => {
+    const answer = { ...challenge, id: 6, full_name: 'Abena' }
+    server.use(http.post(`${API}/api/accounts/business-owners/register/`, () => HttpResponse.json(answer, { status: 201 })))
+    const { result } = await ready()
+    let got
+    await act(async () => { got = await result.current.registerBusinessOwner({ full_name: 'Abena' }) })
+    expect(got).toEqual(answer)
+    expect(result.current.user).toBeNull()
+    expect(localStorage.getItem('ashantihub.auth')).toBeNull()
+  })
+
+  it('logout keeps the device token', async () => {
+    localStorage.setItem('ashantihub.deviceToken', 'dev-1')
+    server.use(http.post(`${API}/api/accounts/customers/login/`, () => HttpResponse.json(customerBody)), meHandler())
+    const { result } = await ready()
+    await act(async () => { await result.current.login('customer', 'a@b.co', 'pw') })
+    act(() => result.current.logout())
+    expect(localStorage.getItem('ashantihub.deviceToken')).toBe('dev-1')
+  })
+
+  it('storage that throws does not break sign-in', async () => {
+    server.use(http.post(`${API}/api/accounts/customers/login/`, () => HttpResponse.json(customerBody)), meHandler())
+    const { result } = await ready()
+    const realGet = Storage.prototype.getItem
+    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (key) {
+      if (key === 'ashantihub.deviceToken') throw new Error('blocked')
+      return realGet.call(this, key)
+    })
+    try {
+      await act(async () => { await result.current.login('customer', 'a@b.co', 'pw') })
+    } finally {
+      spy.mockRestore()
+    }
+    expect(result.current.user).toMatchObject({ token: 'tok' })
+  })
+})

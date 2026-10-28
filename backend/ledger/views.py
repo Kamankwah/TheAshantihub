@@ -13,7 +13,10 @@ from approvals.models import ApprovalRequest
 from orders.models import Order
 
 from . import cancellation, escrow, fees, sales, settings_store, verification
-from .approval_kinds import CATEGORY_LABELS, FEE_RULES_KEY, SETTING_KEY, STOCK_SETTING_KEYS, bands_as_dicts, effective_time
+from .approval_kinds import (
+    CATEGORY_LABELS, FEE_RULES_KEY, REDELIVERY_FEE_KEY, REDELIVERY_FEE_PERMISSION, SETTING_KEY, SETTING_KINDS, STOCK_SETTING_KEYS,
+    bands_as_dicts, effective_time,
+)
 from .models import FeeRuleSet, Journal, MoneySetting
 
 VIEW, MANAGE = "fees.view", "fees.manage"
@@ -79,18 +82,25 @@ class FeeRulesView(APIView):
 
 
 class MoneySettingsView(APIView):
-    """GET settings/ — every setting with its value in force. POST settings/ {key, value, effective_from?, note?}."""
+    """GET settings/ — every setting with its value in force. POST settings/ {key, value, effective_from?, note?}.
+
+    fees.view / fees.manage read and propose every setting (a ledger.setting approval, Super Admin decides). The
+    re-delivery fee alone is also open to redelivery_fee.manage (Operations; Director ruling 1, 2026-10-20): its changes,
+    whoever proposes them, are a ledger.redelivery_fee approval that Operations or a Super Admin decides, and a holder
+    without fees.view reads only that one setting."""
 
     def get_permissions(self):
         if self.request.method == "POST":
-            return [HasRolePermission(MANAGE)]
-        return [HasAnyRolePermission(VIEW, MANAGE)]
+            return [HasAnyRolePermission(MANAGE, REDELIVERY_FEE_PERMISSION)]
+        return [HasAnyRolePermission(VIEW, MANAGE, REDELIVERY_FEE_PERMISSION)]
 
     def get(self, request):
         now = timezone.now()
+        held = request.user.effective_permission_codenames()
+        keys = list(settings_store.DEFINITIONS) if held & {VIEW, MANAGE} else [settings_store.REDELIVERY_FEE]
         in_force = set(MoneySetting.objects.filter(effective_from__lte=now).values_list("key", flat=True))
         later = {}
-        for row in MoneySetting.objects.filter(effective_from__gt=now).order_by("effective_from", "id"):
+        for row in MoneySetting.objects.filter(key__in=keys, effective_from__gt=now).order_by("effective_from", "id"):
             later.setdefault(row.key, []).append({"value": row.value, "effective_from": row.effective_from})
         rows = [
             {
@@ -99,18 +109,25 @@ class MoneySettingsView(APIView):
                 "is_default": key not in in_force,  # nobody has set it: the built-in value is running
                 "scheduled": later.get(key, []),
             }
-            for key, d in settings_store.DEFINITIONS.items()
+            for key, d in ((key, settings_store.DEFINITIONS[key]) for key in keys)
         ]
         pending = [
             {"id": r.pk, "key": r.payload.get("key"), "value": r.payload.get("value"), "maker": r.maker.full_name, "created_at": r.created_at}
-            for r in ApprovalRequest.objects.filter(kind=SETTING_KEY, status=ApprovalRequest.PENDING).select_related("maker").order_by("-pk")
+            for r in ApprovalRequest.objects.filter(kind__in=SETTING_KINDS, status=ApprovalRequest.PENDING).select_related("maker").order_by("-pk")
+            if r.payload.get("key") in keys
         ]
-        history = [{"key": r.key, "value": r.value, "effective_from": r.effective_from} for r in MoneySetting.objects.order_by("-effective_from", "-id")[:20]]
+        history = [
+            {"key": r.key, "value": r.value, "effective_from": r.effective_from}
+            for r in MoneySetting.objects.filter(key__in=keys).order_by("-effective_from", "-id")[:20]
+        ]
         return Response({"settings": rows, "pending": pending, "history": history})
 
     def post(self, request):
         data = request.data if isinstance(request.data, dict) else {}
         key = data.get("key")
+        redelivery = key == settings_store.REDELIVERY_FEE
+        if not redelivery and MANAGE not in request.user.effective_permission_codenames():
+            return Response({"detail": "You do not have permission to perform this action."}, status=status.HTTP_403_FORBIDDEN)
         try:
             settings_store.clean(key, data.get("value"))
         except settings_store.SettingError as exc:
@@ -119,11 +136,12 @@ class MoneySettingsView(APIView):
             effective_time(data.get("effective_from"))
         except approvals.ApprovalError as exc:
             return Response({"detail": exc.message}, status=400)
-        if ApprovalRequest.objects.filter(kind=SETTING_KEY, status=ApprovalRequest.PENDING, payload__key=key).exists():
+        if ApprovalRequest.objects.filter(kind__in=SETTING_KINDS, status=ApprovalRequest.PENDING, payload__key=key).exists():
             return Response({"detail": "A change to this setting is already waiting for approval."}, status=status.HTTP_409_CONFLICT)
         label = settings_store.DEFINITIONS[key].label
         return _submit(
-            request, SETTING_KEY, title=f"{'Stock' if key in STOCK_SETTING_KEYS else 'Money'} setting: {label}",
+            request, REDELIVERY_FEE_KEY if redelivery else SETTING_KEY,
+            title=f"{'Stock' if key in STOCK_SETTING_KEYS else 'Money'} setting: {label}",
             target_type="ledger.moneysetting", target_id=key, target_label=label,
             payload={"key": key, "value": data.get("value"), "effective_from": data.get("effective_from")},
             maker_note=str(data.get("note") or ""),

@@ -13,6 +13,17 @@ const PROSPECT = {
 }
 const type = (label, value) => fireEvent.change(screen.getByLabelText(label), { target: { value } })
 
+// Step 1 needs the weekly opening hours before "Next: Location" (scout-onboarded businesses must have hours, plan 7B-2);
+// the same entry RegisterBusinessPanel.test.jsx makes: Mon-Fri 08:00-18:00, the weekend closed.
+function fillHours() {
+  type('Monday opens', '08:00')
+  type('Monday closes', '18:00')
+  fireEvent.click(screen.getByRole('button', { name: 'Copy Monday to weekdays' }))
+  fireEvent.click(screen.getByLabelText('Saturday closed'))
+  fireEvent.click(screen.getByLabelText('Sunday closed'))
+  fireEvent.click(screen.getByRole('button', { name: 'Use these hours' }))
+}
+
 function serveProspects() {
   server.use(http.get(`${API}/api/field/prospects/`, () => HttpResponse.json({
     counts: { all: 1 }, signed_up_this_month: 0, results: [PROSPECT],
@@ -98,6 +109,7 @@ describe('Register a business from a prospect', () => {
     type('Kind of business', 'service')
     await screen.findByRole('option', { name: 'Hotels' })
     type('Category', '1')
+    fillHours()
     fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Use my location' }))
     expect(await screen.findByText('Accuracy ±12 m')).toBeInTheDocument()
@@ -114,6 +126,7 @@ describe('Register a business from a prospect', () => {
     await screen.findByText('Sent to Ama Boateng for KYC')
     const sent = Object.fromEntries(append.mock.calls.map(([key, value]) => [key, value]))
     expect(sent).toMatchObject({ prospect_id: '3', business_name: 'Asafo Hair & Beauty', owner_phone: '+233201234761' })
+    expect(JSON.parse(sent.hours)).toHaveLength(7)
     await waitFor(() => expect(onOpenDetail).toHaveBeenCalledWith(null))
   })
 
@@ -129,6 +142,7 @@ describe('Register a business from a prospect', () => {
     type('Kind of business', 'service')
     await screen.findByRole('option', { name: 'Hotels' })
     type('Category', '1')
+    fillHours()
     fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Use my location' }))
     expect(await screen.findByText('Accuracy ±12 m')).toBeInTheDocument()

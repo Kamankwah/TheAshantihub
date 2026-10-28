@@ -5,6 +5,8 @@ import { apiFetch, apiPut } from "../apiClient.js";
 import BusinessHoursEditor from "./BusinessHoursEditor.jsx";
 import { useSubscriptionPlans } from "../hooks/useSubscriptionPlans.js";
 import { BUSINESS_TERMS_COPY } from "./businessTerms.js";
+import OtpSignIn from "./OtpSignIn.jsx";
+import { isOtpChallenge } from "../lib/otp.js";
 
 // ─── BusinessRegistrationFlow ─────────────────────────────────────────────
 // The 5-stage business-owner registration wizard: Personal Information (only
@@ -40,6 +42,8 @@ const submitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"none
 export default function BusinessRegistrationFlow({ user, auth, initialStep, prefill, setPage, setShowBizDash }) {
   const [step, setStep] = useState(initialStep || "personal_info");
   const [error, setError] = useState(null);
+  // The registration answered a code challenge: nothing is stored until it is confirmed.
+  const [otpChallenge, setOtpChallenge] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Step 1 — Personal Information
@@ -102,7 +106,12 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
     setError(null);
     setSubmitting(true);
     try {
-      await auth.registerBusinessOwner({ full_name: fullName, login_phone: phone, email: email || undefined, password });
+      const result = await auth.registerBusinessOwner({ full_name: fullName, login_phone: phone, email: email || undefined, password });
+      if (isOtpChallenge(result)) {
+        setOtpChallenge(result);
+        setPassword("");
+        return;
+      }
       setStep("business_info");
     } catch (err) {
       setError("Could not create your account. Please check your details.");
@@ -242,7 +251,18 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
 
         {error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
-        {step==="personal_info" && (
+        {step==="personal_info" && otpChallenge && (
+          <OtpSignIn
+            challenge={otpChallenge}
+            accountType="business_owner"
+            purpose="sign_up"
+            auth={auth}
+            onSuccess={() => { setOtpChallenge(null); setStep("business_info"); }}
+            onCancel={(message) => { setOtpChallenge(null); setPassword(""); if (typeof message === "string") setError(message); }}
+          />
+        )}
+
+        {step==="personal_info" && !otpChallenge && (
           <form onSubmit={handlePersonalInfoSubmit}>
             <h2 style={{color:C.ink,fontSize:"1.05rem",margin:"0 0 14px"}}>Create your business account</h2>
             <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={inputStyle}/>

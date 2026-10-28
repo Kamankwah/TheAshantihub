@@ -195,8 +195,10 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   AshantiHub's own (`Rider.employment="ashantihub"`, the default: no wallet, every `/api/delivery/rider/wallet/*`
   endpoint answers `409 wallet_disabled`) or third-party, changed only through the `delivery.rider_employment` approval
   (Delivery Manager proposes, Super Admin approves; switching back is refused while money, a withdrawal or a
-  delivered-but-unreleased order is open). Behind `LEDGER_ENABLED`, a third-party rider is paid only at release
-  (Support's "matches"), never at the door: `riders.credit_delivery`, in `escrow.release_verified`'s transaction (after `charge_waiver`; Plan 4's business texts follow it),
+  delivered-but-unreleased order is open). Behind `LEDGER_ENABLED`, a third-party rider is paid a delivery fee only at
+  release (Support's "matches"), never at the door (the one exception: the fee of a paid re-delivery, outside the order's
+  escrow, is paid to a third-party second-trip rider when that trip is done, `ledger.redelivery.credit_rider`, with a
+  `RiderEarning.redelivery` row the end-of-day job posts like any other): `riders.credit_delivery`, in `escrow.release_verified`'s transaction (after `charge_waiver`; Plan 4's business texts follow it),
   moves what platform delivery income took for the order (fee plus promo charge) to the rider (`order-rider-<order>`: 90%
   Rider balance, 10% reserve at the `rider_commission_bp` in force when the order was paid). A whole refund after release
   reverses it first (`riders.reverse_earning`, passed the refund's own time; `riders.check_reversal` refuses a reversal
