@@ -127,6 +127,22 @@ def confirmation_missing(owner):
     return not registration_confirmed(owner)
 
 
+SIMULATED_NOTE = " Texts are simulated on this server, so no link went out."
+
+
+def confirmation_missing_message(owner):
+    """The 409 text for an unconfirmed registration. When the owner's latest registration link was only simulated
+    (nothing was texted), it says so instead of letting staff wait for a message that never left."""
+    from portfolio.models import OwnerConfirmation  # lazy, as above
+
+    latest = OwnerConfirmation.objects.filter(
+        business_owner=owner, scope=OwnerConfirmation.REGISTRATION,
+    ).order_by("-pk").first()
+    if latest is not None and latest.confirmed_at is None and latest.send_state == OwnerConfirmation.SIMULATED:
+        return CONFIRMATION_MISSING + SIMULATED_NOTE
+    return CONFIRMATION_MISSING
+
+
 def _close_pending(owner_id, staff, *, approved, note):
     """close_pending_for_target for the queue door, with the KYC refusal: the
     maker of a pending business.kyc request is a KYC submitter."""
@@ -154,7 +170,7 @@ def approve_owner(owner_id, staff, *, http_request=None, from_approval=None):
         if self_dealing_open(owner):
             raise KycError(SELF_DEALING_HOLD)
         if confirmation_missing(owner):
-            raise KycError(CONFIRMATION_MISSING, status_code=409, code=CONFIRMATION_MISSING_CODE)
+            raise KycError(confirmation_missing_message(owner), status_code=409, code=CONFIRMATION_MISSING_CODE)
         owner.kyc_status = BusinessOwner.VERIFIED
         owner.kyc_rejection_reason = None
         owner.reviewed_by = staff

@@ -76,7 +76,7 @@ class IssueTests(Base):
         self.assertNotEqual(row.token_hash, raw)
         self.assertEqual(row.token_hash, hash_token(raw))
         state = confirmations.state_of(ListingDraft.objects.get(pk=draft.pk))
-        self.assertEqual(set(state), {"state", "sent_to_masked", "sent_at", "expires_at", "send_note"})
+        self.assertEqual(set(state), {"state", "sent_to_masked", "sent_at", "expires_at", "send_note", "can_resend"})
         self.assertNotIn(raw, repr(state))
         self.assertNotIn(row.token_hash, repr(state))
         self.assertNotIn("/business/confirm", repr(state))

@@ -7,13 +7,13 @@ from django.utils import timezone
 
 from accounts.kyc import (
     ADDRESS_FIRST,
-    CONFIRMATION_MISSING,
     CONFIRMATION_MISSING_CODE,
     KYC_KIND,
     SELF_DEALING_HOLD,
     KycError,
     approve_owner,
     confirmation_missing,
+    confirmation_missing_message,
     self_dealing_open,
 )
 from accounts.models import BusinessOwner, BusinessOwnerProfile
@@ -72,7 +72,7 @@ def _kyc_validate(request):
     if self_dealing_open(owner):
         raise ApprovalError(SELF_DEALING_HOLD)
     if confirmation_missing(owner):
-        raise ConfirmationMissing(CONFIRMATION_MISSING)
+        raise ConfirmationMissing(confirmation_missing_message(owner))
 
 
 def _kyc_apply(request):

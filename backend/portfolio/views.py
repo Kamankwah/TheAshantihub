@@ -33,7 +33,7 @@ from notifications.services import notify_staff
 from staff_tasks.models import Task
 from staff_tasks.services import create_task
 
-from . import checks, delivery, drafts, health, leaderboard, staff_listing_kind
+from . import checks, confirmations, delivery, drafts, health, leaderboard, staff_listing_kind
 from .models import BusinessHealthSnapshot
 from .registration import RegistrationError, register_business, resubmit_kyc
 from .serializers import (
@@ -1021,6 +1021,17 @@ class DraftResendView(_DraftView):
     def post(self, request, pk, draft_id):
         owner = self.owner(request, pk)
         return Response(drafts.resend_draft(request.user, owner, drafts.get_draft(owner, draft_id), request=request))
+
+
+class RegistrationConfirmationView(_DraftView):
+    """POST businesses/<pk>/confirmation/registration/ — ask the owner again to confirm the business registration (it
+    lapsed, the text failed or was never really sent, or the owner declined). Same scope as the draft endpoints; the
+    answer is the masked state, never a token or link. 409 when it is already confirmed."""
+
+    def post(self, request, pk):
+        owner = self.owner(request, pk)
+        row = confirmations.ask_registration_again(owner, request.user)
+        return Response(drafts.registration_state(row))
 
 
 class DraftSubmitView(_DraftView):

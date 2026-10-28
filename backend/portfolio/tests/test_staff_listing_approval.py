@@ -73,6 +73,37 @@ class SubmitAtConfirmTests(Base):
         )
         self.assertIsNotNone(listing.reviewed_at)
 
+    def test_an_approved_draft_reads_published_and_a_returned_one_reads_draft(self):
+        # M1: the panel must not say "submitted" for ever once the listing is live
+        draft = self.confirmed()
+        self.as_staff(self.scout)
+        listed = self.call("get", self.url()).json()
+        self.assertEqual(listed[0]["status"], "submitted")
+        approvals.approve(draft.approval_id, self.lead)
+        listed = self.call("get", self.url()).json()
+        self.assertEqual((listed[0]["status"], listed[0]["confirmation"]["state"]), ("published", "published"))
+        self.assertFalse(listed[0]["confirmation"]["can_resend"])
+        other = self.confirmed()
+        approvals.reject(other.approval_id, self.lead, "Fix the price")
+        states = {row["id"]: row["status"] for row in self.call("get", self.url()).json()}
+        self.assertEqual(states[other.pk], "draft")
+        self.assertEqual(states[draft.pk], "published")
+
+    def test_the_draft_list_stays_bulk_with_the_approval_state(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        for _ in range(2):
+            approvals.approve(self.confirmed().approval_id, self.lead)
+        self.as_staff(self.scout)
+        with CaptureQueriesContext(connection) as three:
+            self.call("get", self.url())
+        for _ in range(2):
+            approvals.approve(self.confirmed().approval_id, self.lead)
+        with CaptureQueriesContext(connection) as six:
+            self.call("get", self.url())
+        self.assertEqual(len(three), len(six))
+
     def test_the_general_manager_may_approve_it_too(self):
         draft = self.confirmed()
         approvals.approve(draft.approval_id, self.gm)

@@ -247,7 +247,10 @@ class KycGateTests(Base):
         self.assertNotIn(TOKEN.search(senders.sms_outbox[-1].body).group(1), text)
         sheet = self.client.get(f"/api/portfolio/businesses/{self.owner.id}/review/")
         self.assertEqual(sheet.status_code, 200, sheet.content)
-        self.assertEqual(sheet.json()["owner_confirmation"], {"confirmed": False, "line": line})
+        self.assertEqual(
+            sheet.json()["owner_confirmation"],
+            {"confirmed": False, "line": line, "state": "waiting", "can_ask_again": False},
+        )
         confirm_registration(self.owner)
         done = self.client.get(f"/api/approvals/{approval.id}/").json()
         self.assertTrue({i["field"]: i["after"] for i in done["diff"]}["Owner confirmation"].startswith("Confirmed "))

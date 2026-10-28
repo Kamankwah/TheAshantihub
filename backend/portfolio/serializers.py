@@ -20,7 +20,7 @@ from fraud.models import FraudFlag
 from listings.models import Category, Zone
 
 from . import checks
-from .confirmations import registration_confirmed, registration_line
+from .confirmations import registration_ask, registration_confirmed, registration_line
 from .health import calls_about, last_contact
 from .models import AppliedChange
 from .services import approver_name
@@ -419,6 +419,7 @@ def business_review_sheet(owner, request):
         "owner_confirmation": {
             "confirmed": registration_confirmed(owner),
             "line": registration_line(owner),
+            **registration_ask(owner),
         },
     }
 

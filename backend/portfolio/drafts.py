@@ -154,17 +154,17 @@ def registration_state(row):
 
 
 def list_drafts(owner):
-    rows = ListingDraft.objects.filter(business_owner=owner).select_related("confirmation", "created_by")
+    rows = ListingDraft.objects.filter(business_owner=owner).select_related("confirmation", "created_by", "approval")
     return [draft_item(draft) for draft in rows]
 
 
 def _fresh(pks):
-    rows = ListingDraft.objects.filter(pk__in=pks).select_related("confirmation", "created_by").order_by("pk")
+    rows = ListingDraft.objects.filter(pk__in=pks).select_related("confirmation", "created_by", "approval").order_by("pk")
     return [draft_item(draft) for draft in rows]
 
 
 def get_draft(owner, pk):
-    draft = ListingDraft.objects.select_related("confirmation", "created_by").filter(business_owner=owner, pk=pk).first()
+    draft = ListingDraft.objects.select_related("confirmation", "created_by", "approval").filter(business_owner=owner, pk=pk).first()
     if draft is None:
         raise Http404
     return draft

@@ -53,6 +53,9 @@ NOT_CONFIRMABLE = "One of these drafts can't be sent to the owner in its present
 NOT_SENT_YET = "This draft has not been sent to the owner yet."
 ALREADY_ANSWERED = "The owner has already answered, so there is nothing to resend."
 STILL_OPEN = "The link was sent and is still valid. Resend it only if it lapsed or the text did not go out."
+STILL_SENDING = "The text is still on its way. Try again in a few minutes if it does not arrive."
+DAILY_CAP = 5  # confirmation texts (new links and resends together) per owner per Accra day
+DAILY_CAPPED = "Five confirmation texts a day is the most one owner can be sent. Try again tomorrow."
 RESEND_LIMITED = "A link can be resent three times a day. Try again tomorrow."
 TOO_LONG = "The text for this business would be too long."
 MIXED_OWNERS = "Those drafts belong to different businesses."
@@ -179,20 +182,31 @@ def _send_after_commit(pk, phone, body):
 
 # --- issuing --------------------------------------------------------------------------------------------------------
 
-def _resendable(confirmation, now):
-    """A link may be resent when it lapsed, was revoked, or its text failed or had no number."""
+def resend_refusal(confirmation, now):
+    """None when a fresh link may replace this one, else (code, message) saying honestly why not. A link may be resent
+    when it lapsed, was revoked, or its text failed, was simulated (nothing left the building) or had no number. One
+    definition: `_issue` enforces it and `state_of` shows it as `can_resend`."""
     if confirmation.revoked_at is not None:
-        return True
+        return None
     if confirmation.confirmed_at is not None or confirmation.declined_at is not None:
-        return False
-    if confirmation.send_state == OwnerConfirmation.QUEUED:  # the after-commit send never ran (e.g. the worker died)
-        return confirmation.expires_at <= now or confirmation.created_at <= now - QUEUED_STALE
-    return confirmation.expires_at <= now or confirmation.send_state in (
-        OwnerConfirmation.FAILED, OwnerConfirmation.NO_PHONE, OwnerConfirmation.BLOCKED,
-    )
+        return "used", ALREADY_ANSWERED
+    if confirmation.expires_at <= now:
+        return None
+    state = confirmation.send_state
+    if state == OwnerConfirmation.QUEUED:  # the after-commit send never ran (e.g. the worker died)
+        if confirmation.created_at <= now - QUEUED_STALE:
+            return None
+        return "still_open", STILL_SENDING
+    if state == OwnerConfirmation.SENT:
+        return "still_open", STILL_OPEN
+    return None  # failed, simulated, no number, blocked: it never reached the owner
 
 
-def _issue(owner, staff, drafts, registration, *, resend=False, source=None):
+def _resendable(confirmation, now):
+    return resend_refusal(confirmation, now) is None
+
+
+def _issue(owner, staff, drafts, registration, *, resend=False, source=None, raw_sink=None):
     explicit = {draft.pk for draft in drafts}
     with transaction.atomic():
         locked = BusinessOwner.objects.select_for_update().get(pk=owner.pk)  # 1. the owner
@@ -220,8 +234,9 @@ def _issue(owner, staff, drafts, registration, *, resend=False, source=None):
                         raise ClaimError(NOT_SENT_YET, code="not_sent")
                     raise ClaimError(ALREADY_ANSWERED, code="used")
                 current = links.get(draft.confirmation_id)
-                if current is not None and not _resendable(current, now):
-                    raise ClaimError(STILL_OPEN, code="still_open")
+                refusal = resend_refusal(current, now) if current is not None else None
+                if refusal is not None:
+                    raise ClaimError(refusal[1], code=refusal[0])
             elif draft.status == ListingDraft.AWAITING_OWNER:
                 raise ClaimError(ALREADY_SENT, code="still_open")  # awaiting ones go through resend
             elif draft.status != ListingDraft.DRAFT:
@@ -235,8 +250,9 @@ def _issue(owner, staff, drafts, registration, *, resend=False, source=None):
             held = links.get(source.pk)
             if held is None:  # confirmed or declined meanwhile
                 raise ClaimError(ALREADY_ANSWERED, code="used")
-            if not _resendable(held, now):
-                raise ClaimError(STILL_OPEN, code="still_open")
+            refusal = resend_refusal(held, now)
+            if refusal is not None:
+                raise ClaimError(refusal[1], code=refusal[0])
         take_registration = (want_registration or any(
             link.scope == OwnerConfirmation.REGISTRATION for link in olds
         )) and not _registration_row_confirmed(locked)
@@ -262,8 +278,14 @@ def _issue(owner, staff, drafts, registration, *, resend=False, source=None):
                 if tried >= RESEND_LIMIT:
                     raise ClaimError(RESEND_LIMITED, code="rate_limited", status_code=429)
 
+        start_of_day = timezone.make_aware(datetime.combine(today, time.min))
+        if OwnerConfirmation.objects.filter(business_owner=locked, created_at__gte=start_of_day).count() >= DAILY_CAP:
+            raise ClaimError(DAILY_CAPPED, code="daily_cap", status_code=429)
+
         count = len(found) + (1 if take_registration else 0)
         raw = secrets.token_urlsafe(32)
+        if raw_sink is not None:  # only `link_for_simulated_environment` passes one; the raw token goes nowhere else
+            raw_sink.append(raw)
         confirm_url = confirm_link(raw)
         body = _body(staff, locked.display_name, count, confirm_url)
         if not vendor_texts.fits(body):
@@ -315,6 +337,77 @@ def request_confirmation(owner, staff, *, drafts=(), registration=False):
     Revokes the owner's older links; the new one takes over what was still waiting on them. Returns the row; the
     raw token is only in the text."""
     return _issue(owner, staff, list(drafts), bool(registration))
+
+
+NO_REGISTRATION = "This business has no registration to confirm: it registered itself, or before owner confirmation existed."
+REGISTRATION_DONE = "The owner has already confirmed the registration."
+
+
+def ask_registration_again(owner, staff):
+    """Ask the owner again to confirm the business registration, whatever became of the last ask (lapsed, text failed,
+    simulated or no number, revoked, or declined). A live, delivered link is refused, like any resend, and the
+    limits (three resends and five texts a day) apply. One live link per owner still takes over everything waiting."""
+    rows = list(OwnerConfirmation.objects.filter(business_owner=owner, scope=OwnerConfirmation.REGISTRATION).order_by("-pk"))
+    if not rows:
+        raise ClaimError(NO_REGISTRATION, code="not_staff_registered")
+    if any(row.confirmed_at is not None for row in rows):
+        raise ClaimError(REGISTRATION_DONE, code="already_confirmed")
+    latest = rows[0]
+    if _is_open(latest):
+        return resend(latest, staff)
+    return request_confirmation(owner, staff, registration=True)  # declined, or replaced by nothing: a fresh ask
+
+
+def registration_ask(owner, now=None):
+    """What the business page shows next to the owner's registration confirmation: {state, can_ask_again}. `state` is
+    confirmed | waiting | lapsed | declined | not_sent | none (no registration was ever asked)."""
+    now = now or timezone.now()
+    rows = list(OwnerConfirmation.objects.filter(business_owner=owner, scope=OwnerConfirmation.REGISTRATION).order_by("-pk"))
+    if not rows:
+        return {"state": "none", "can_ask_again": False}
+    if any(row.confirmed_at is not None for row in rows):
+        return {"state": "confirmed", "can_ask_again": False}
+    latest = rows[0]
+    if latest.declined_at is not None:
+        return {"state": "declined", "can_ask_again": True}
+    if latest.revoked_at is not None:
+        return {"state": "not_sent", "can_ask_again": True}
+    if latest.expires_at <= now:
+        return {"state": "lapsed", "can_ask_again": True}
+    if latest.send_state == OwnerConfirmation.SENT or (
+        latest.send_state == OwnerConfirmation.QUEUED and latest.created_at > now - QUEUED_STALE
+    ):
+        return {"state": "waiting", "can_ask_again": False}
+    return {"state": "not_sent", "can_ask_again": _resendable(latest, now)}
+
+
+NOT_SIMULATED = "Texts go out for real on this server, so a link is never shown to staff. Ask the owner to use their text."
+
+
+def link_for_simulated_environment(owner, staff):
+    """The staging test path (management command `owner_confirmation_link`). Issues a fresh link through the normal
+    service for the registration (when unconfirmed) and every draft still waiting on the owner, and returns the link
+    for the command to print. Refuses unless texts are simulated, so on a live provider no staff member can ever see a
+    link. The raw token is kept nowhere: the text went nowhere, the caller prints it and forgets it."""
+    if getattr(settings, "OTP_SMS_PROVIDER", "simulated") != "simulated":
+        raise ClaimError(NOT_SIMULATED, code="not_simulated", status_code=403)
+    sink = []
+    open_row = OwnerConfirmation.objects.filter(_OPEN, business_owner=owner).first()
+    awaiting = list(ListingDraft.objects.filter(business_owner=owner, status=ListingDraft.AWAITING_OWNER))
+    needs_registration = (
+        owner.registration_channel == BusinessOwner.SCOUT
+        and OwnerConfirmation.objects.filter(business_owner=owner, scope=OwnerConfirmation.REGISTRATION).exists()
+        and not _registration_row_confirmed(owner)
+    )
+    if open_row is not None:
+        _issue(owner, staff, awaiting, False, resend=True, source=open_row, raw_sink=sink)
+    elif awaiting:
+        _issue(owner, staff, awaiting, needs_registration, resend=True, raw_sink=sink)
+    elif needs_registration:
+        _issue(owner, staff, [], True, raw_sink=sink)
+    else:
+        raise ClaimError(NOTHING, code="nothing_to_confirm", status_code=409)
+    return confirm_link(sink[0])
 
 
 def resend(target, staff):
@@ -380,22 +473,30 @@ def is_lapsed(status, confirmed_at, expires_at, now):
 
 
 def state_of(draft):
-    """A draft's confirmation state for staff. No token, hash, link or whole phone number."""
+    """A draft's confirmation state for staff. No token, hash, link or whole phone number. `can_resend` is true only
+    when a resend would be accepted now (the same rule `_issue` applies). A submitted draft whose approval was approved
+    reads `published`; a returned or cancelled one is reopened as a draft by the approval kind."""
     confirmation = draft.confirmation
+    published = draft.status == ListingDraft.SUBMITTED and draft.approval_id is not None and draft.approval.status == "approved"
     if confirmation is None:
         return {
-            "state": draft.status, "sent_to_masked": "", "sent_at": None, "expires_at": None,
+            "state": "published" if published else draft.status, "sent_to_masked": "", "sent_at": None,
+            "expires_at": None, "can_resend": False,
             "send_note": "Not sent to the owner yet" if draft.status == ListingDraft.DRAFT else "",
         }
+    now = timezone.now()
     state = draft.status
-    if is_lapsed(state, confirmation.confirmed_at, confirmation.expires_at, timezone.now()):
+    if is_lapsed(state, confirmation.confirmed_at, confirmation.expires_at, now):
         state = LAPSED
+    if published:
+        state = "published"
     return {
         "state": state,
         "sent_to_masked": mask_phone(confirmation.sent_to) if confirmation.sent_to else "",
         "sent_at": confirmation.sent_at,
         "expires_at": confirmation.expires_at,
         "send_note": SEND_NOTES[confirmation.send_state],
+        "can_resend": draft.status == ListingDraft.AWAITING_OWNER and _resendable(confirmation, now),
     }
 
 

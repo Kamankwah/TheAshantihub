@@ -182,7 +182,14 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   the staff endpoints and guards this: extend its URL list when you add a staff endpoint near a draft or confirmation.
 - **`registration_confirmed` gates both KYC doors** (queue approval and the `business.kyc` approval): 409
   `confirmation_missing` until a scout- or Operations-registered owner confirmed the registration. An owner with no
-  registration-confirmation row is grandfathered as confirmed, so existing businesses are never blocked.
+  registration-confirmation row is grandfathered as confirmed, so existing businesses are never blocked. **Live Hubtel SMS
+  on an environment is a precondition for staff-registered businesses to reach KYC there** (the gate is always on; texts
+  that are only simulated confirm nothing, and the 409 says "Texts are simulated on this server, so no link went out").
+  Staff can ask the owner again (`POST /api/portfolio/businesses/<id>/confirmation/registration/`: lapsed, failed,
+  simulated or declined; 409 once confirmed). The staging test path is the management command
+  `owner_confirmation_link <business_owner_id> --staff <email>`: it refuses unless `OTP_SMS_PROVIDER` is `simulated`,
+  and prints the fresh link to stdout only (never logged, never stored raw). An owner is texted at most five times an
+  Accra day (new links and resends together, 429) on top of three resends per draft.
 - **Targets: `listings` replaces `renewals` in `targets.models.METRICS`.** A listing counts once, when its approval is
   approved, for the lister, on the day of approval. `renewals` stays in `METRIC_CHOICES`/`LEGACY_METRICS` so old rows
   stay valid; never delete or rewrite them. No min/max is seeded for `listings` (default cap 1000 a day). The prospect
