@@ -59,6 +59,7 @@ import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
 import WalletsPanel from "./panels/WalletsPanel.jsx";
 import WithdrawalsPanel from "./panels/WithdrawalsPanel.jsx";
 import PickupDeskPanel from "./panels/PickupDeskPanel.jsx";
+import VerificationCallsPanel from "./panels/VerificationCallsPanel.jsx";
 import WalletReconciliationPanel from "./panels/WalletReconciliationPanel.jsx";
 import DisputesPanel from "./panels/DisputesPanel.jsx";
 import TransactionsReportPanel from "./panels/TransactionsReportPanel.jsx";
@@ -613,6 +614,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "overview" && role === "cosigner" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "overview" && role === "pickup_desk" && <PickupDeskPanel auth={auth} />}
           {activeTab === "pickup-desk" && <PickupDeskPanel auth={auth} />}
+          {activeTab === "support-verification" && (role === "support" || role === "super_admin") && <VerificationCallsPanel auth={auth} onNavigate={role === "support" ? supportNavigate : undefined} />}
           {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "all-portfolios" && role === "super_admin" && <SaBusinessesPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "all-portfolios" && role !== "super_admin" && <PortfolioPanel key={scoutFilter ?? "any"} mode="all" initialScout={scoutFilter} auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}

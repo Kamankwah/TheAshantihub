@@ -74,6 +74,8 @@ export const NAV_ITEMS = [
   // The Scheduled list for whoever manages deliveries without the Delivery Manager menu (orders.manage_delivery reads it
   // and, since Director ruling 7, may Send now as well). The Delivery Manager has dm-scheduled instead.
   { id: "delivery-scheduled", icon: "🕒", label: "Scheduled orders", show: (auth) => (auth.hasPermission("orders.manage_delivery") || auth.hasPermission("delivery.manage")) && auth.user?.role !== "delivery_manager" },
+  // Support rings the customer before a product order's money is paid out; the Super Admin opens it from Marketplace (Director ruling 8).
+  { id: "support-verification", icon: "📞", label: "Verification calls", show: (auth) => supportOnly(auth, "orders.verify") || (saOnly(auth) && auth.hasPermission("orders.verify")) },
   // The Pickup Desk's own screen is its overview (no nav item); the Super Admin opens it here (Director ruling 8).
   { id: "pickup-desk", icon: "🏬", label: "Pickup desk", show: (auth) => saOnly(auth) && auth.hasPermission("pickup.confirm") },
   { id: "my-deliveries", icon: "📦", label: "My Deliveries", show: (auth) => auth.hasPermission("delivery.dispatch") },
@@ -234,7 +236,7 @@ const ROLE_MENUS = {
     ["teams", "Teams (step in)", ["step-in-operations", "step-in-support", "step-in-delivery", "step-in-marketing", "step-in-accounting"]],
     // Scheduled orders (paid orders held until their shops open, with Send now) sits beside Orders & deliveries:
     // Director ruling 7 (2026-10-20) added it to the canvas menu.
-    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "pickup-desk", "events-moderation", "hero", "disputes"]],
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "support-verification", "pickup-desk", "events-moderation", "hero", "disputes"]],
     ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation", "wallets", "withdrawals"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
@@ -293,7 +295,7 @@ const ROLE_MENUS = {
   // their panels and permissions are untouched (see EXHAUSTIVE_MENU_ROLES).
   support: [
     ["inbox", "Inbox", ["support-mine", "support-unassigned", "support-all-open", "support-past-limit", "support-snoozed", "support-resolved"]],
-    ["calls", "Calls", ["calls", "support-log-call"]],
+    ["calls", "Calls", ["calls", "support-log-call", "support-verification"]],
     ["queues", "Queues", ["contact-messages", "reviews", "disputes", "support-order-status"]],
     ["knowledge", "Knowledge", ["support-canned", "support-tags"]],
     ["people", "People", ["users"]],

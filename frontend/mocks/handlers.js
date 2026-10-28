@@ -591,6 +591,8 @@ export const handlers = [
     return HttpResponse.json({ amount, payment_processing: '0.00', you_pay: amount, provider: 'simulated' })
   }),
   http.get('http://localhost:8000/api/ledger/pickup/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/ledger/orders/awaiting-verification/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/ledger/bookings/awaiting-verification/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.patch('http://localhost:8000/api/core/site-settings/pickup-address/', async ({ request }) => HttpResponse.json(await request.json())),
   http.get('http://localhost:8000/api/wallet/staff/wallets/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/wallet/staff/withdrawals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),

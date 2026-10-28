@@ -90,7 +90,7 @@ describe('My Work group', () => {
 })
 
 // Super Admin screens that are built (no longer placeholders) but still no other role's.
-const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'money-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center', 'opening', 'pickup-desk']
+const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'money-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center', 'opening', 'pickup-desk', 'support-verification']
 const SA_ONLY = NAV_ITEMS.filter((i) => i.placeholder === 'super_admin').map((i) => i.id).concat('invites', SA_BUILT)
 // 'leave' is also Super Admin's (the canvas's Leave & holidays), but no other role's.
 // The Accounting canvas screens (2026-10-07): the Accountant's alone, except Commissions, Refunds and
@@ -118,6 +118,13 @@ describe('per-role menus', () => {
     expect(groupOf(groups, 'activity')).toBe('Activity')
     expect(groupOf(groups, 'calls')).toBe('My work')
     expect(groupOf(groups, 'site-settings')).toBe('Settings')
+  })
+
+  it("adds Verification calls to Support's Calls group only with orders.verify", () => {
+    const base = ['messaging.manage', 'calls.log']
+    const calls = (perms) => buildNavGroups(authAs('support', perms)).find((g) => g.label === 'Calls').items.map((i) => i.label)
+    expect(calls(base)).toEqual(['Call log', 'Log a call'])
+    expect(calls([...base, 'orders.verify'])).toEqual(['Call log', 'Log a call', 'Verification calls'])
   })
 
   it("gives Support the canvas's seven groups and eighteen items, in order", () => {
@@ -502,8 +509,8 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
       ['Home', ['My approvals']],
       ['People', ['Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays']],
       ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
-      // Pickup desk joined Marketplace after Scheduled orders (Director ruling 8, 2026-10-20).
-      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Scheduled orders', 'Pickup desk', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
+      // Verification calls and Pickup desk joined Marketplace after Scheduled orders (Director ruling 8, 2026-10-20).
+      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Scheduled orders', 'Verification calls', 'Pickup desk', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
       ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets', 'Withdrawals']],
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
       ['Security & audit', ['Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings']],
