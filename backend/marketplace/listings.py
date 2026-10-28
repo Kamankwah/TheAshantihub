@@ -90,7 +90,7 @@ def filtered(request):
     return listings.order_by("-created_at", "-id")
 
 
-def item(listing, counts=(0, 0)):
+def item(listing, counts):
     state, note = state_of(listing, listing.is_hidden)
     owner = listing.business_owner
     return {

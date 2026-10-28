@@ -16,7 +16,7 @@ from ledger.models import BookingRefund, BookingSale, FeeRuleSet, Journal, Order
 from listings.models import Category, Listing, Zone
 from orders.models import Order, OrderItem
 from payments.models import CheckoutSession
-from portfolio.tests.health_fixtures import add_listings
+from portfolio.tests.health_fixtures import add_listings, make_business
 from services.models import ServiceRequest
 
 from marketplace import sales_counts
@@ -103,9 +103,34 @@ class LedgerOnTests(SalesCountsBase):
 
     def test_product_refund_row_on_a_paid_order_is_refunded(self):
         order = make_order(self.buyer, self.listing, status=Order.PAID)
-        OrderRefund.objects.create(order=order, source="dispute-1", whole=False, amount_pesewas=300)
+        OrderRefund.objects.create(
+            order=order, source="dispute-1", whole=False, amount_pesewas=300,
+            allocation=[{"snapshot": 1, "business_owner": self.business.pk, "category": "product", "base": 300, "fee": 0, "released": False}],
+        )
         make_order(self.buyer, self.listing, status=Order.PAID)
         self.assertEqual(self.counts(self.listing), (2, 1))
+
+    def two_shop_order(self):
+        other = make_business("Kejetia Spices")
+        theirs = add_listings(other, 1)[0]
+        order = make_order(self.buyer, self.listing, status=Order.PAID)
+        OrderItem.objects.create(order=order, listing=theirs, quantity=1, unit_price="10.00", line_total="10.00")
+        return order, theirs, other
+
+    def test_partial_refund_counts_only_the_shop_it_paid_back(self):
+        order, theirs, _ = self.two_shop_order()
+        OrderRefund.objects.create(
+            order=order, source="dispute-9", whole=False, amount_pesewas=500,
+            allocation=[{"snapshot": 1, "business_owner": self.business.pk, "category": "product", "base": 500, "fee": 0, "released": False}],
+        )
+        self.assertEqual(self.counts(self.listing), (1, 1))
+        self.assertEqual(self.counts(theirs), (1, 0))
+
+    def test_whole_refund_counts_every_shop_on_the_order(self):
+        order, theirs, _ = self.two_shop_order()
+        OrderRefund.objects.create(order=order, source="cancel", whole=True, amount_pesewas=1000, allocation=[])
+        self.assertEqual(self.counts(self.listing), (1, 1))
+        self.assertEqual(self.counts(theirs), (1, 1))
 
     def test_service_request_paid_and_refunded(self):
         listing = self.make_listing(self.service_category)

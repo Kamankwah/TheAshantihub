@@ -69,7 +69,7 @@ def ticket_figures(event_ids):
     return {row["ticket_type__event_id"]: row for row in rows}
 
 
-def item(event, figures, now, counts=(0, 0)):
+def item(event, figures, now, counts):
     code, label = event_state(event, now)
     row = figures.get(event.pk) or {}
     types = [t for t in event.ticket_types.all()]

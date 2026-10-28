@@ -11,7 +11,7 @@ Definitions (shown in the column tooltip):
   `status=paid` and the order's `payments.CheckoutSession` (kind `order_checkout`, `metadata.order_id`) goes to
   `success`, so "cancelled after payment" is a cancelled order that has such a success session (an order cancelled
   before payment, or whose payment failed, has none and is not counted). Refunded: of those, the cancelled-after-paid
-  ones, plus, when the ledger is on, any with an `ledger.OrderRefund` row (a partial refund counts too).
+  ones, plus, when the ledger is on, any with an `ledger.OrderRefund` row (a partial refund counts only for the shops it paid back; see `_refunded_paid_orders`).
 * Service - paid: `services.ServiceRequest` with `paid_at` set. Refunded: of those, status `cancelled`, plus, when the
   ledger is on, any whose `ledger.BookingSale` has a `ledger.BookingRefund`.
 * Stay - paid: `bookings.Booking` with `paid_at` set. Refunded: of those, `cancelled_at` set, plus, when the ledger is
@@ -31,7 +31,7 @@ from django.db.models.functions import Cast
 from bookings.models import Booking
 from events.models import Ticket
 from ledger import escrow
-from ledger.models import BookingRefund
+from ledger.models import BookingRefund, OrderRefund
 from orders.models import Order, OrderItem
 from payments.models import CheckoutSession
 from services.models import ServiceRequest
@@ -40,6 +40,32 @@ from services.models import ServiceRequest
 def _add(totals, key, paid, refunded):
     old_paid, old_refunded = totals.get(key, (0, 0))
     totals[key] = (old_paid + paid, old_refunded + refunded)
+
+
+def _refunded_paid_orders(ids):
+    """{listing id: number of still-paid orders refunded for it}. An order can hold several shops' lines and a partial
+    refund (a skipped stop) touches only the shops in its `allocation` (entries {business_owner, base, fee, ...}), so a
+    partial refund counts for a line only when its shop was given money back; a whole refund counts for every line."""
+    refunds = {}
+    for order_id, whole, allocation in OrderRefund.objects.filter(
+        order__status=Order.PAID, order__items__listing_id__in=ids,
+    ).values_list("order_id", "whole", "allocation").distinct():
+        entry = refunds.setdefault(order_id, [False, set()])
+        entry[0] = entry[0] or whole
+        for part in allocation or []:
+            if (part.get("base") or 0) > 0 or (part.get("fee") or 0) > 0:
+                entry[1].add(part.get("business_owner"))
+    seen = set()
+    for order_id, listing_id, owner_id in OrderItem.objects.filter(order_id__in=list(refunds), listing_id__in=ids).values_list(
+        "order_id", "listing_id", "listing__business_owner_id",
+    ):
+        whole, owners = refunds[order_id]
+        if whole or owner_id in owners:
+            seen.add((order_id, listing_id))
+    counts = {}
+    for _, listing_id in seen:
+        counts[listing_id] = counts.get(listing_id, 0) + 1
+    return counts
 
 
 def for_listings(listing_ids):
@@ -58,12 +84,13 @@ def for_listings(listing_ids):
     cancelled_after_pay = Q(order__status=Order.CANCELLED, was_paid=True)
     paid = Q(order__status=Order.PAID) | cancelled_after_pay
     refunded = cancelled_after_pay
-    if ledger_on:
-        refunded = refunded | (Q(order__status=Order.PAID) & Q(order__refunds__isnull=False))
     for row in lines.values("listing_id").annotate(
         paid=Count("order_id", distinct=True, filter=paid), refunded=Count("order_id", distinct=True, filter=refunded),
     ):
         _add(totals, row["listing_id"], row["paid"], row["refunded"])
+    if ledger_on:
+        for listing_id, count in _refunded_paid_orders(ids).items():
+            _add(totals, listing_id, 0, count)
 
     # Services.
     refunded = Q(paid_at__isnull=False, status=ServiceRequest.CANCELLED)
