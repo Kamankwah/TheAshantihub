@@ -231,7 +231,7 @@ class AwaitingListTests(VerificationBase):
         uncollected = self.paid_order(delivered=False)
         for order in (collected, uncollected):
             Order.objects.filter(pk=order.pk).update(delivery_method=Order.STORE_PICKUP)
-        FulfilmentCheck.objects.create(order=collected, collected_at=timezone.now())
+        FulfilmentCheck.objects.update_or_create(order=collected, defaults=dict(collected_at=timezone.now()))
         delivered = self.paid_order()
         failed = self.paid_order()
         DeliveryAssignment.objects.filter(order=failed).update(status=DeliveryAssignment.FAILED)
@@ -415,7 +415,7 @@ class ReviewFixTests(VerificationBase):
     def test_release_does_not_lock_the_vendors_business_owner_row(self):
         order = self.paid_order(customer_confirmed=True)
         self.as_staff(self.support)
-        check = FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        check = FulfilmentCheck.objects.update_or_create(order=order, defaults=dict(outcome=FulfilmentCheck.MATCHES))[0]
         self.assertTrue(check.pk)
         with CaptureQueriesContext(connection) as queries:
             self.assertIsNotNone(escrow.release_verified(order))

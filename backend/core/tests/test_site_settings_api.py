@@ -65,6 +65,7 @@ class SiteSettingsAPITests(TestCase):
                 # integration, plan Workstream E) — "simulated" here since
                 # the test settings have no HUBTEL_CLIENT_ID configured.
                 "payments_provider": "simulated",
+                "pickup_office_address": "",
             },
         )
 

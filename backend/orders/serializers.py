@@ -1,5 +1,6 @@
 import re
 
+from django.utils import timezone
 from rest_framework import serializers
 
 from disputes.models import Dispute
@@ -49,12 +50,17 @@ class OrderSerializer(serializers.ModelSerializer):
     # For a delivery from several shops: how many there are and how many are done (counts only, never a shop's
     # name, place or code); null for one shop or no rider yet.
     delivery_stops = serializers.SerializerMethodField()
+    # A store-pickup order's one-time six-digit code the customer reads to the pickup desk, and the time to collect it by;
+    # null unless the code applies. This serializer is used only for the customer's own orders (list, detail, checkout):
+    # no owner, staff or queue serializer carries either field.
+    collection_code = serializers.SerializerMethodField()
+    collect_by = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             "id", "status", "delivery_status", "total_amount", "placed_at", "items",
-            "delivery_assignment_status", "delivery_code", "delivery_stops", "delivery_fee", "ready_not_before", *DELIVERY_FIELDS,
+            "delivery_assignment_status", "delivery_code", "delivery_stops", "collection_code", "collect_by", "delivery_fee", "ready_not_before", *DELIVERY_FIELDS,
         ]
 
     def get_delivery_assignment_status(self, obj):
@@ -66,6 +72,20 @@ class OrderSerializer(serializers.ModelSerializer):
         if assignment is None or assignment.status not in DeliveryAssignment.ACTIVE_STATUSES:
             return None
         return assignment.drop_code or None
+
+    def get_collection_code(self, obj):
+        from ledger import verification
+
+        return verification.collection_code(obj)
+
+    def get_collect_by(self, obj):
+        from ledger import verification
+
+        if verification.collection_code(obj) is None:
+            return None
+        if not hasattr(self, "_pickup_window"):  # one read for the whole list: the child serializer is shared by every order
+            self._pickup_window = verification._pickup_window(timezone.now())
+        return verification.collect_by(obj, timezone.now(), self._pickup_window)
 
     def get_delivery_stops(self, obj):
         """How many shops the rider collects from and how many are done, for a delivery from several shops (counts only)."""

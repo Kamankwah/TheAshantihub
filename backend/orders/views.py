@@ -306,7 +306,7 @@ _LEGACY_STOP_READS = ("items__listing__business_owner__profile", "items__listing
 
 def _customer_orders(customer):
     return (
-        Order.objects.filter(customer=customer).select_related("delivery_assignment", "coupon")
+        Order.objects.filter(customer=customer).select_related("delivery_assignment", "coupon", "fulfilment_check")
         .prefetch_related("delivery_assignment__stops", *_LEGACY_STOP_READS, _open_redeliveries())
     )
 

@@ -31,7 +31,10 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
             "warranty_returns_policy",
             "service_dispute_policy",
             "payments_provider",
+            "pickup_office_address",
         ]
+        # Changed only through the Super Admin's own door (PickupAddressView), never the general PATCH.
+        read_only_fields = ["pickup_office_address"]
 
     def get_payments_provider(self, obj):
         return settings.PAYMENTS_PROVIDER

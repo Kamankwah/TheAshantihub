@@ -216,9 +216,10 @@ class PickupCollectedView(APIView):
     def post(self, request, pk):
         order = get_object_or_404(Order, pk=pk)
         try:
-            check = verification.mark_collected(order, request.user)
+            check = verification.mark_collected(order, request.user, code=request.data.get("code"))
         except verification.VerificationError as exc:
-            return Response({"detail": exc.message}, status=exc.status_code)
+            body = {"detail": exc.message, **({"code": exc.code} if exc.code else {}), **exc.extra}
+            return Response(body, status=exc.status_code)
         return Response({"order": order.pk, "collected_at": check.collected_at})
 
 

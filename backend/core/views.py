@@ -2,12 +2,13 @@ from django.conf import settings
 from django.db.models import Count
 from rest_framework import generics
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import BusinessOwner, Customer
+from accounts.models import BusinessOwner, Customer, Role, StaffUser
 from accounts.permissions import HasRolePermission
+from accounts.sessions import require_sudo
 from events.models import Event
 from activity.models import ActivityEvent
 from activity.services import record as activity_record
@@ -61,6 +62,7 @@ SITE_SETTINGS_FIELDS = {
     "support_hours": "Support hours",
     "warranty_returns_policy": "Warranty & returns policy",
     "service_dispute_policy": "Service satisfaction & dispute policy",
+    "pickup_office_address": "Pickup office address",
 }
 
 
@@ -95,6 +97,41 @@ class SiteSettingsView(generics.RetrieveUpdateAPIView):
                 before={f: before[f] for f in changed}, after={f: after[f] for f in changed},
                 method=self.request.method, request=self.request,
             )
+
+
+class IsSuperAdmin(BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        return isinstance(user, StaffUser) and user.role.name == Role.SUPER_ADMIN
+
+
+class PickupAddressView(APIView):
+    """PATCH /api/core/site-settings/pickup-address/ {pickup_office_address} -- where a store-pickup customer collects
+    their order. A Super Admin only, who re-enters their password (require_sudo); the general site-settings PATCH
+    cannot change it. Blank is allowed (back to "address to be confirmed"); the change is recorded in the site-settings
+    history like any other."""
+
+    permission_classes = [IsSuperAdmin]
+
+    def patch(self, request):
+        require_sudo(request)
+        value = request.data.get("pickup_office_address")
+        if not isinstance(value, str):
+            return Response({"pickup_office_address": ["Enter the address as text, or leave it blank."]}, status=400)
+        value = value.strip()
+        if len(value) > 300:
+            return Response({"pickup_office_address": ["Use at most 300 characters."]}, status=400)
+        row = SiteSettings.load()
+        before = row.pickup_office_address
+        if before != value:
+            row.pickup_office_address = value
+            row.save(update_fields=["pickup_office_address"])
+            activity_record(
+                request.user, "site_settings.updated", target=row, summary=SITE_SETTINGS_FIELDS["pickup_office_address"],
+                before={"pickup_office_address": before}, after={"pickup_office_address": value},
+                method=request.method, request=request,
+            )
+        return Response({"pickup_office_address": value})
 
 
 class SiteSettingsHistoryView(APIView):

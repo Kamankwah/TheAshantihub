@@ -31,7 +31,7 @@ class EndOfDayTests(RefundBase):
         """An order `by` delivered an hour before `at`, released by Support's call at `at`."""
         order = self.paid([(self.listing(self.kofi, "60.00"), 1)], delivery=fee)
         rider_helpers.delivered_by(order, by, at=at - timedelta(hours=1))
-        FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        FulfilmentCheck.objects.update_or_create(order=order, defaults=dict(outcome=FulfilmentCheck.MATCHES))
         escrow.release_verified(order, now=at)
         return RiderEarning.objects.get(order=order)
 

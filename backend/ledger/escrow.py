@@ -16,6 +16,8 @@ free-delivery promo (the business: its Available; or AshantiHub: the promo subsi
 order_waiver_charge); a whole refund gives it back (return_waiver). A third-party rider who delivered the order is then
 paid what platform delivery income took for it, in the same transaction (ledger.riders.credit_delivery). A whole refund after
 the rider picked up settles the delivery the same way before release (settle_delivery): the fee belongs to the rider."""
+import secrets
+
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -27,6 +29,11 @@ from .money import to_pesewas
 
 def enabled():
     return bool(settings.LEDGER_ENABLED)
+
+
+def new_collection_code():
+    """A fresh six-digit store-pickup hand-over code, zero-padded."""
+    return f"{secrets.randbelow(10**6):06d}"
 
 
 def pay_key(order):
@@ -102,10 +109,18 @@ def record_order_payment(order, *, at=None, wallet=False):
             debits.append(posting.debit(source, paid))
         if subsidy:
             debits.append(posting.debit(promo, subsidy))
-        return posting.post(
+        journal = posting.post(
             key=pay_key(order), kind="order_payment", lines=debits + credits,
             reference_type="orders.order", reference_id=str(order.pk), memo=f"Payment for order #{order.pk}",
         )
+        if order.delivery_method == order.STORE_PICKUP:
+            # The customer reads this code to the pickup desk; made here, in the payment's transaction. A check with no
+            # collected_at is "not collected" to every reader, so having it from payment changes no queue.
+            check, _ = FulfilmentCheck.objects.get_or_create(order=order)
+            if not check.collection_code:
+                check.collection_code = new_collection_code()
+                check.save(update_fields=["collection_code", "updated_at"])
+        return journal
 
 
 # --- release ---------------------------------------------------------------------------------------------

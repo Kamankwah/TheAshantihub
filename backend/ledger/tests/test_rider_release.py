@@ -146,7 +146,7 @@ class RiderReleaseTests(RefundBase):
         swift = rider_helpers.rider()
         order = self.order([(self.listing(self.kofi, "60.00"), 1)], delivery="10.00")           # no order-pay journal
         rider_helpers.delivered_by(order, swift)
-        FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        FulfilmentCheck.objects.update_or_create(order=order, defaults=dict(outcome=FulfilmentCheck.MATCHES))
         self.assertIsNone(escrow.release_verified(order))
         self.assertFalse(RiderEarning.objects.exists())
         self.assertFalse(Account.objects.filter(kind__in=[Account.RIDER_BALANCE, Account.RIDER_RESERVE]).exists())
@@ -342,7 +342,7 @@ class RiderReleaseLedgerOffTests(RefundBase):
         swift = rider_helpers.rider()
         order = self.order([(self.listing(self.owner("Kofi"), "60.00"), 1)], delivery="10.00")
         rider_helpers.delivered_by(order, swift)
-        FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        FulfilmentCheck.objects.update_or_create(order=order, defaults=dict(outcome=FulfilmentCheck.MATCHES))
         self.assertIsNone(escrow.release_verified(order))
         self.assertFalse(RiderEarning.objects.exists())
         self.assertFalse(Account.objects.filter(kind=Account.RIDER_BALANCE).exists())

@@ -1,6 +1,7 @@
 """Support's verification of a product order that has reached the customer, and the release it triggers. A positive
 result releases the money immediately; a negative one raises a dispute due within `verification_overdue_hours` of
 purchase and releases nothing; "could not reach" is only recorded (the order stays on Support's list)."""
+import hmac
 import logging
 from datetime import timedelta
 
@@ -17,11 +18,12 @@ logger = logging.getLogger(__name__)
 
 
 class VerificationError(Exception):
-    def __init__(self, message, status_code=409, code=None):
+    def __init__(self, message, status_code=409, code=None, **extra):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
         self.code = code
+        self.extra = extra
 
 
 def check_for(order):
@@ -155,27 +157,88 @@ def awaiting(now=None):
     return [awaiting_row(order, now, limit) for order in awaiting_queryset(now)]
 
 
-def mark_collected(order, staff, now=None):
-    """The pickup desk hands a paid store-pickup order to the customer. Idempotent: a second call keeps the first stamp."""
+CODE_ATTEMPT_LIMIT = 5   # wrong collection codes on one order before the desk is locked out and Support is told
+
+
+def collection_code(order):
+    """The order's one-time pickup code, for a ledger-recorded, not-yet-collected store-pickup order; otherwise None. An
+    order paid before codes existed gets one on first call (created under the order row lock). Only the customer's own
+    order serializer shows it."""
+    from orders.models import Order
+
+    if order.status != Order.PAID or order.delivery_method != Order.STORE_PICKUP:
+        return None
+    check = getattr(order, "fulfilment_check", None)
+    if check is not None and check.collected_at is not None:
+        return None
+    if check is not None and check.collection_code:
+        return check.collection_code  # only ever created by the ledger's payment, or below
+    if not Journal.objects.filter(key=escrow.pay_key(order)).exists():
+        return None
+    with transaction.atomic():
+        locked = Order.objects.select_for_update(of=("self",)).get(pk=order.pk)
+        check = check_for(locked)
+        if check.collected_at is not None:
+            return None
+        if not check.collection_code:
+            check.collection_code = escrow.new_collection_code()
+            check.save(update_fields=["collection_code", "updated_at"])
+    order.fulfilment_check = check
+    return check.collection_code
+
+
+def _tell_support_of_lock(order):
+    from notifications.services import notify_staff_role
+
+    notify_staff_role(
+        "orders.verify", "pickup_code_locked", "A collection code was entered wrongly 5 times",
+        body=f"Order #{order.pk} is locked at the pickup desk. Please call the customer.", link="support-verification", icon="🔒",
+    )
+
+
+def mark_collected(order, staff, code=None, now=None):
+    """The pickup desk hands a paid store-pickup order to the customer who reads out the order's collection code. A
+    ledger-recorded order needs the right code (an order the ledger never recorded has none, so it stays with a person);
+    five wrong codes lock it, and a collected order's code works no more."""
     from orders.models import Order
 
     now = now or timezone.now()
+    refusal = None
     with transaction.atomic():
         order = Order.objects.select_for_update().get(pk=order.pk)
         if order.status != Order.PAID or order.delivery_method != Order.STORE_PICKUP:
             raise VerificationError("Only a paid store-pickup order can be marked collected.")
-        from . import refunds
-
-        if refunds.is_wholly_refunded(order):
-            raise VerificationError("This order was refunded in full, so it cannot be handed over.")
         check = check_for(order)
-        if check.collected_at is None:
+        order.fulfilment_check = check
+        if check.collected_at is not None:
+            raise VerificationError("This order has already been collected.")
+        expected = collection_code(order)
+        if expected:
+            if check.code_attempts >= CODE_ATTEMPT_LIMIT:
+                raise VerificationError("Too many wrong codes for this order. Support has been told.", 423, "code_locked")
+            given = code.strip() if isinstance(code, str) else ""
+            if not given:
+                raise VerificationError("Ask the customer for their collection code.", 400, "code_required")
+            if not hmac.compare_digest(expected.encode(), given.encode()):
+                check.code_attempts += 1
+                check.save(update_fields=["code_attempts", "updated_at"])
+                if check.code_attempts >= CODE_ATTEMPT_LIMIT:
+                    _tell_support_of_lock(order)
+                refusal = VerificationError(
+                    "That code is not right.", 400, "wrong_code", attempts_left=max(0, CODE_ATTEMPT_LIMIT - check.code_attempts),
+                )
+        if refusal is None:
+            from . import refunds
+
+            if refunds.is_wholly_refunded(order):
+                raise VerificationError("This order was refunded in full, so it cannot be handed over.")
             check.collected_at, check.collected_by = now, staff
             check.save(update_fields=["collected_at", "collected_by", "updated_at"])
             # A pickup order has no delivery to finish, so collection is its delivery: Support can no longer cancel it.
             order.delivery_status = Order.DELIVERED
             order.save(update_fields=["delivery_status"])
-        return check
+            return check
+    raise refusal  # raised outside the transaction, so the counter saved above is kept
 
 
 def _clock_start(order):
@@ -210,13 +273,18 @@ def _pickup_window(now):
     return timedelta(hours=settings_store.current("pickup_window_hours", now))
 
 
+def collect_by(order, now, window=None):
+    """The time a store-pickup order must be collected by (a caller building many passes `window`, `_pickup_window`)."""
+    return _clock_start(order) + (window if window is not None else _pickup_window(now))
+
+
 def pickup_row(order, now, window=None):
     """One desk row (a caller building many passes `window`, `_pickup_window`, so it is read once). Deliberately
     carries no phone number: the desk hands over goods, it does not call customers."""
     window = window if window is not None else _pickup_window(now)
     return {
-        "order_id": order.pk, "placed_at": order.placed_at, "collect_by": _clock_start(order) + window,
-        "overdue": now > _clock_start(order) + window, "customer_name": order.customer.full_name,
+        "order_id": order.pk, "placed_at": order.placed_at, "collect_by": collect_by(order, now, window),
+        "overdue": now > collect_by(order, now, window), "customer_name": order.customer.full_name,
         "items": [
             {"name": item.listing.name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
             for item in order.items.all()

@@ -26,6 +26,9 @@ class PickupBase(OrderPaymentBase):
     def as_staff(self, staff, sudo=True):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff, sudo=sudo)}")
 
+    def code(self, order):
+        return FulfilmentCheck.objects.get(order=order).collection_code
+
     def pickup_order(self, *, in_ledger=True):
         self.kofi = self.owner("Kofi")
         order = self.order([(self.listing(self.kofi, "120.00"), 1)])
@@ -46,10 +49,10 @@ class RoleTests(PickupBase):
 
 @override_settings(LEDGER_ENABLED=True)
 class CollectionTests(PickupBase):
-    def collect(self, order):
-        return self.client.post(f"/api/ledger/pickup/{order.pk}/collected/")
+    def collect(self, order, code=None):
+        return self.client.post(f"/api/ledger/pickup/{order.pk}/collected/", {"code": code or self.code(order)}, format="json")
 
-    def test_the_desk_marks_a_store_pickup_order_collected_and_it_is_idempotent(self):
+    def test_the_desk_marks_a_store_pickup_order_collected_and_a_second_try_is_refused(self):
         order = self.pickup_order()
         self.as_staff(self.desk)
         first = self.collect(order)
@@ -57,7 +60,7 @@ class CollectionTests(PickupBase):
         check = FulfilmentCheck.objects.get(order=order)
         self.assertEqual(check.collected_by_id, self.desk.pk)
         stamped = check.collected_at
-        self.assertEqual(self.collect(order).status_code, 200)
+        self.assertEqual(self.collect(order).status_code, 409)       # a collected order's code works no more
         self.assertEqual(FulfilmentCheck.objects.get(order=order).collected_at, stamped)
 
     def test_collecting_marks_the_order_delivered_so_support_can_no_longer_cancel_it(self):
@@ -81,9 +84,10 @@ class CollectionTests(PickupBase):
         from ledger import verification
 
         order = self.pickup_order()
-        verification.mark_collected(order, self.desk)
+        verification.mark_collected(order, self.desk, code=self.code(order))
         Order.objects.filter(pk=order.pk).update(delivery_status=Order.PROCESSING)  # would be restored only by a re-save
-        verification.mark_collected(order, self.desk)
+        with self.assertRaises(verification.VerificationError):
+            verification.mark_collected(order, self.desk, code=self.code(order))
         self.assertEqual(Order.objects.get(pk=order.pk).delivery_status, Order.PROCESSING)
 
     def test_a_door_to_door_order_is_left_untouched_by_a_refused_collect(self):
@@ -138,7 +142,7 @@ class QueueTests(PickupBase):
     def test_collected_and_door_to_door_orders_are_not_listed(self):
         collected = self.pickup_order()
         self.as_staff(self.desk)
-        self.client.post(f"/api/ledger/pickup/{collected.pk}/collected/")
+        self.client.post(f"/api/ledger/pickup/{collected.pk}/collected/", {"code": self.code(collected)}, format="json")
         delivery = self.pickup_order()
         Order.objects.filter(pk=delivery.pk).update(delivery_method=Order.DOOR_TO_DOOR)
         ids = [r["order_id"] for r in self.client.get("/api/ledger/pickup/").json()["results"]]
@@ -188,3 +192,141 @@ class QueueTests(PickupBase):
         self.assertEqual({r["order_id"] for r in by_name["results"]}, {first.pk, second.pk})
         self.assertEqual(self.client.get("/api/ledger/pickup/", {"q": "zzz"}).json()["count"], 0)
         self.assertEqual(self.client.get("/api/ledger/pickup/", {"q": "12345678901234"}).json()["count"], 0)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class CollectionCodeTests(PickupBase):
+    def collect(self, order, code=None):
+        body = {} if code is None else {"code": code}
+        return self.client.post(f"/api/ledger/pickup/{order.pk}/collected/", body, format="json")
+
+    def wrong_code(self, order):
+        real = self.code(order)
+        return "000000" if real != "000000" else "111111"
+
+    def test_a_ledger_paid_store_pickup_order_gets_one_six_digit_code(self):
+        from ledger import verification
+
+        order = self.pickup_order()
+        code = self.code(order)
+        self.assertRegex(code, r"^\d{6}$")
+        self.assertEqual(verification.collection_code(Order.objects.get(pk=order.pk)), code)
+        self.assertEqual(verification.collection_code(Order.objects.get(pk=order.pk)), code)
+        self.assertEqual(self.code(order), code)
+
+    def test_no_code_for_door_to_door_or_an_order_paid_before_the_ledger(self):
+        from ledger import verification
+
+        door = self.pickup_order()
+        Order.objects.filter(pk=door.pk).update(delivery_method=Order.DOOR_TO_DOOR)
+        self.assertIsNone(verification.collection_code(Order.objects.get(pk=door.pk)))
+        old = self.pickup_order(in_ledger=False)
+        self.assertIsNone(verification.collection_code(Order.objects.get(pk=old.pk)))
+        self.assertFalse(FulfilmentCheck.objects.filter(order=old).exists())
+
+    def test_an_order_paid_before_codes_existed_gets_one_on_first_read(self):
+        from ledger import verification
+
+        order = self.pickup_order()
+        FulfilmentCheck.objects.filter(order=order).delete()
+        code = verification.collection_code(Order.objects.get(pk=order.pk))
+        self.assertRegex(code, r"^\d{6}$")
+        self.assertEqual(verification.collection_code(Order.objects.get(pk=order.pk)), code)
+
+    def test_hand_over_needs_the_right_code(self):
+        order = self.pickup_order()
+        self.as_staff(self.desk)
+        missing = self.collect(order)
+        self.assertEqual((missing.status_code, missing.json()), (400, {
+            "detail": "Ask the customer for their collection code.", "code": "code_required"}))
+        wrong = self.collect(order, self.wrong_code(order))
+        self.assertEqual((wrong.status_code, wrong.json()), (400, {
+            "detail": "That code is not right.", "code": "wrong_code", "attempts_left": 4}))
+        self.assertEqual(FulfilmentCheck.objects.get(order=order).code_attempts, 1)
+        self.assertIsNone(FulfilmentCheck.objects.get(order=order).collected_at)
+        right = self.collect(order, self.code(order))
+        self.assertEqual(right.status_code, 200, right.content)
+        self.assertIsNotNone(right.json()["collected_at"])
+
+    def test_five_wrong_codes_lock_the_order_and_tell_support(self):
+        from notifications.models import Notification
+
+        order = self.pickup_order()
+        self.as_staff(self.desk)
+        bad = self.wrong_code(order)
+        for left in (4, 3, 2, 1):
+            self.assertEqual(self.collect(order, bad).json()["attempts_left"], left)
+        self.assertEqual(Notification.objects.filter(kind="pickup_code_locked").count(), 0)
+        fifth = self.collect(order, bad)
+        self.assertEqual((fifth.status_code, fifth.json()["code"]), (400, "wrong_code"))
+        locked = self.collect(order, self.code(order))
+        self.assertEqual((locked.status_code, locked.json()), (423, {
+            "detail": "Too many wrong codes for this order. Support has been told.", "code": "code_locked"}))
+        self.assertIsNone(FulfilmentCheck.objects.get(order=order).collected_at)
+        notices = Notification.objects.filter(kind="pickup_code_locked", staff=self.support)
+        self.assertEqual(notices.count(), 1)
+        self.assertEqual(self.collect(order, bad).status_code, 423)
+        
+        notice = notices.get()
+        self.assertEqual(notice.link, "support-verification")
+        self.assertIn(f"#{order.pk}", notice.body)
+        self.assertNotIn(self.code(order), notice.title + notice.body)
+
+    def test_a_used_code_works_no_more(self):
+        order = self.pickup_order()
+        self.as_staff(self.desk)
+        code = self.code(order)
+        self.assertEqual(self.collect(order, code).status_code, 200)
+        again = self.collect(order, code)
+        self.assertEqual(again.status_code, 409)
+        self.assertEqual(again.json()["detail"], "This order has already been collected.")
+
+    def test_only_the_customer_sees_their_code(self):
+        from accounts.authentication import issue_token
+
+        order = self.pickup_order()
+        code = self.code(order)
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.customer, 'customer')}")
+        listed = client.get("/api/orders/").json()
+        rows = listed["results"] if isinstance(listed, dict) else listed
+        mine = next(r for r in rows if r["id"] == order.pk)
+        self.assertEqual(mine["collection_code"], code)
+        self.assertIsNotNone(mine["collect_by"])
+        detail = client.get(f"/api/orders/{order.pk}/").json()
+        self.assertEqual(detail["collection_code"], code)
+        door = self.pickup_order()
+        Order.objects.filter(pk=door.pk).update(delivery_method=Order.DOOR_TO_DOOR)
+        other = client.get(f"/api/orders/{door.pk}/").json()
+        self.assertEqual((other["collection_code"], other["collect_by"]), (None, None))
+
+        owner = APIClient()
+        owner.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.kofi, 'business_owner')}")
+        self.as_staff(self.desk)
+        pickup = self.client.get("/api/ledger/pickup/")
+        self.as_staff(self.support)
+        awaiting = self.client.get("/api/ledger/orders/awaiting-verification/")
+        self.as_staff(make_staff("super_admin", "sa@example.com"))
+        staff_orders = self.client.get("/api/orders/staff/")
+        self.assertEqual(staff_orders.status_code, 200)
+        self.as_staff(self.desk)
+        self.client.post(f"/api/ledger/pickup/{order.pk}/collected/", {"code": code}, format="json")
+        owner_orders = owner.get("/api/orders/owner/")
+        self.assertEqual(owner_orders.status_code, 200)
+        for response in (pickup, awaiting, staff_orders, owner_orders):
+            self.assertNotIn(code, response.content.decode())
+            self.assertNotIn("collection_code", response.content.decode())
+
+    def test_creating_the_check_at_payment_changes_no_queue(self):
+        from ledger import verification
+
+        order = self.pickup_order()
+        self.assertEqual(FulfilmentCheck.objects.get(order=order).collected_at, None)
+        self.assertEqual([r["order_id"] for r in verification.pickup_queue()], [order.pk])
+        self.assertEqual(list(verification.awaiting_queryset()), [])
+        self.as_staff(self.desk)
+        self.assertEqual([r["order_id"] for r in self.client.get("/api/ledger/pickup/").json()["results"]], [order.pk])
+        self.as_staff(self.support)
+        self.assertEqual(self.client.get("/api/ledger/orders/awaiting-verification/").json()["results"], [])
+        row = verification.pickup_queue()[0]
+        self.assertNotIn("collection_code", row)
