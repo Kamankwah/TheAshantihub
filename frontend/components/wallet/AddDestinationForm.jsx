@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { apiPost } from '../../apiClient.js'
-import { walletMessage } from './walletErrors.js'
+import { refusalCode, walletMessage } from './walletErrors.js'
 import { formatWhen } from './walletMoney.js'
 import { walletStyles } from './walletStyles.js'
 
@@ -13,7 +13,7 @@ const NETWORKS = ['MTN', 'Telecel', 'AirtelTigo']
 // token, so this form posts the same body once from its point of view and
 // never reads or stores a token. The server's refusal text is the only
 // validation. `canCopyFromProfile` (vendors) offers the registered details.
-export default function AddDestinationForm({ tone = 'light', basePath = '/api/wallet', canCopyFromProfile = false, onDone }) {
+export default function AddDestinationForm({ tone = 'light', basePath = '/api/wallet', canCopyFromProfile = false, onDone, refusalAction }) {
   const s = walletStyles(tone)
   const queryClient = useQueryClient()
   const [rail, setRail] = useState('momo')
@@ -21,6 +21,7 @@ export default function AddDestinationForm({ tone = 'light', basePath = '/api/wa
   const [number, setNumber] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [errorCode, setErrorCode] = useState(null)
   const [added, setAdded] = useState(null)
 
   function chooseRail(next) {
@@ -32,6 +33,7 @@ export default function AddDestinationForm({ tone = 'light', basePath = '/api/wa
     if (busy) return
     setBusy(true)
     setError(null)
+    setErrorCode(null)
     setAdded(null)
     try {
       const res = await apiPost(`${basePath}/destinations/`, body)
@@ -41,6 +43,7 @@ export default function AddDestinationForm({ tone = 'light', basePath = '/api/wa
       await queryClient.invalidateQueries({ queryKey: ['wallet', 'destinations', basePath] })
       if (onDone) onDone(res)
     } catch (err) {
+      setErrorCode(refusalCode(err))
       setError(walletMessage(err).text)
     } finally {
       setBusy(false)
@@ -76,6 +79,7 @@ export default function AddDestinationForm({ tone = 'light', basePath = '/api/wa
       />
 
       {error && <div role="alert" style={{ ...s.error, marginTop: 12 }}>{error}</div>}
+      {error && refusalAction && errorCode ? refusalAction(errorCode) : null}
       {added && <div role="status" style={{ ...s.note, marginTop: 12 }}>{added}</div>}
 
       <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
