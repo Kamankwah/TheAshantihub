@@ -103,7 +103,8 @@ def _snapshot(draft):
     if payload.get("contact_phone"):
         payload["contact_phone"] = mask_phone(payload["contact_phone"])
     return {
-        "draft_id": draft.pk, "kind": draft.kind, "business": draft.business_owner.display_name, "fields": payload,
+        "draft_id": draft.pk, "kind": draft.kind, "business": draft.business_owner.display_name,
+        "business_owner_id": draft.business_owner_id, "fields": payload,
         "listed_by": _who(draft.created_by),
         "text_needed": link is not None,
         "confirmed_at": link.confirmed_at if link is not None else None,

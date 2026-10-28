@@ -104,6 +104,18 @@ class IssueTests(Base):
         self.assertIsNotNone(OwnerConfirmation.objects.get().sent_at)
         self.assertEqual(state["send_note"], "Text sent")
 
+    @override_settings(FRONTEND_BASE_URL="https://app.example.com")
+    def test_link_carries_the_token_in_the_fragment_not_the_query(self):
+        """R-T11a: a fragment never reaches the frontend host's request logs."""
+        link = confirmations.confirm_link("abc-123_XYZ")
+        self.assertEqual(link, "https://app.example.com/business/confirm#token=abc-123_XYZ")
+        self.assertNotIn("?", link)
+        self.ask()
+        body = senders.sms_outbox[-1].body
+        self.assertIn("/business/confirm#token=", body)
+        self.assertNotIn("/business/confirm?", body)
+        self.assertTrue(vendor_texts.fits(body))
+
     def test_body_fits_gsm7_and_306(self):
         self.ask(drafts=[self.draft(), self.draft(name="Banku")])
         body = senders.sms_outbox[-1].body

@@ -80,7 +80,9 @@ def needs_owner_text(owner):
 
 
 def confirm_link(raw):
-    return f"{settings.FRONTEND_BASE_URL}/business/confirm?token={raw}"
+    """The token rides in the URL fragment: a browser never sends it to the frontend host, so it stays out of that host's
+    request logs (R-T11a). The page reads it, strips it from the address bar and POSTs it."""
+    return f"{settings.FRONTEND_BASE_URL}/business/confirm#token={raw}"
 
 
 def _is_open(confirmation):

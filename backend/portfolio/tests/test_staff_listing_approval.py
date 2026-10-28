@@ -187,6 +187,8 @@ class SubmitAtConfirmTests(Base):
         self.assertRegex(rows["Text sent to"], r"^\d{3} \*\*\* \d{4}")
         self.assertEqual(rows["Owner confirmed"], f"{timezone.localtime(timezone.now()):%-d %b %Y}")
         self.assertEqual(rows["Listed by"], "Kwame (Scout)")
+        # the approver's "Show full phone number" reveals through this owner's id (the audited reveal endpoint)
+        self.assertEqual(approval.payload["business_owner_id"], self.owner.pk)
         self.assertEqual(staff_listing_kind.consequences(approval)[-1], "It counts toward Kwame's listings today.")
         blob = json.dumps([rows, approval.payload, staff_listing_kind.consequences(approval)], default=str)
         for needle in ("token", "http", "0244100200", "233244100200"):
