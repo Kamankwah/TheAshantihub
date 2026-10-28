@@ -7,6 +7,7 @@ import { describeWait, timeAgo } from "../../../lib/timeAgo.js";
 import { D } from "../theme.js";
 import { button, callout, chip, dim } from "./panelStyles.js";
 import AddPhotosForm from "./AddPhotosForm.jsx";
+import AskOwnerAgain from "./AskOwnerAgain.jsx";
 import ClientListingsPanel from "./ClientListingsPanel.jsx";
 import KycResendForm from "./KycResendForm.jsx";
 import LogCallSheet from "./LogCallSheet.jsx";
@@ -195,6 +196,7 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
           {isOps && actionButton("Reassign to another scout", () => toggle("reassign"))}
           {isOps && actionButton("Create follow-up task", () => toggle("follow-up"))}
         </div>
+        <AskOwnerAgain businessId={b.id} confirmation={b.owner_confirmation} onDone={refreshAll} />
         {kycSent && b.kyc_status === "pending" && <div role="status" style={callout(D.green)}>{kycSent}</div>}
         {canResendKyc && <div style={dim}>{`No KYC request is waiting for ${b.business_name}. If Operations returned it, retake what they asked for and send it again.`}</div>}
         {b.needs_claim && canHandOver && <div style={dim}>The claim link goes to the owner's email and works for 7 days; sending a new one replaces it. Text messages (SMS): not connected yet.</div>}

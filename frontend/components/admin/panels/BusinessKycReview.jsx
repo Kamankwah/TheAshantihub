@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../../apiClient.js";
+import AskOwnerAgain from "./AskOwnerAgain.jsx";
 import { useBusinessReview } from "../../../hooks/useBusinessReview.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
@@ -190,6 +191,7 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
           ["Ghana Card number", owner.ghana_card_number || "Not given"],
           ...(sheet.owner_confirmation?.line ? [["Owner confirmation", sheet.owner_confirmation.line]] : []),
         ]} />
+        <AskOwnerAgain businessId={businessId} confirmation={sheet.owner_confirmation} onDone={refetch} />
         {owner.login_phone && !fullPhone && (
           <button type="button" onClick={revealPhone} style={{ ...button(D.panelBg, D.text), alignSelf: "flex-start" }}>Show full phone number (recorded)</button>
         )}

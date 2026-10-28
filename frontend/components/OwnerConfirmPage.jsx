@@ -16,7 +16,7 @@ export function readLinkToken(location = window.location) {
 
 const MESSAGES = {
   expired: "This link has expired. Ask your AshantiHub contact to send a new one.",
-  used: "This link has already been used. If you already answered, there is nothing more to do.",
+  used: "This link has already been used or replaced. If you already answered, there is nothing more to do. If not, AshantiHub may have sent you a newer text since: open the newest message and use that link.",
   invalid: "This link isn't valid. Open the whole link from the text message, or ask your AshantiHub contact to send a new one.",
   missing: "This link is missing its code. Open the whole link from the text message, or ask your AshantiHub contact to send a new one.",
   throttled: "Too many tries from this device. Wait a few minutes and try again.",

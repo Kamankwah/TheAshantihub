@@ -10,10 +10,12 @@ const BASE = '/api/portfolio/confirm'
 
 // POST /confirm/preview/ {token} -> {business_name, owner_name_first, registration, items: [{kind, name, price}],
 // expires_at}. It does not use the link up, so it is safe to ask again. Never
-// retried or refetched on focus, and the preview leaves the cache as soon as nothing shows it.
+// retried or refetched on focus, and the preview leaves the cache as soon as nothing shows it. The token is a bearer
+// secret, so it is never part of the query key (keys are visible to devtools and any cache listener): the key is
+// constant, the token travels only in the closure, and one page holds one link.
 export function useOwnerConfirmationPreview(token) {
   return useQuery({
-    queryKey: ['owner-confirmation-preview', token],
+    queryKey: ['owner-confirmation-preview'],
     queryFn: () => apiPostPublic(`${BASE}/preview/`, { token }),
     enabled: Boolean(token),
     retry: false,

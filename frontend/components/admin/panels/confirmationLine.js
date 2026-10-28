@@ -16,6 +16,7 @@ export function confirmationLine(confirmation) {
   if (state === "owner_declined") return "The owner declined this";
   if (state === "withdrawn") return "Withdrawn";
   if (state === "submitted") return "With approval";
+  if (state === "published") return "Live";
   if (state === "draft") return note || "Not sent to the owner yet";
   const expires = expiresAt ? `, expires ${day(expiresAt)}` : "";
   // A draft carries sent_at (set only when the provider took the text); the registration result carries the note alone.

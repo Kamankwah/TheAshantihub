@@ -17,13 +17,14 @@ const draft = (id, name, over = {}, c = {}) => ({
   id, kind: 'product', name, payload: { name }, status: c.state || 'draft', created_by_id: 7, created_by_name: 'Kwame Asante',
   created_at: '2026-10-19T10:00:00Z', updated_at: '2026-10-19T10:00:00Z', confirmation: conf(c), ...over,
 })
-const SENT = { state: 'awaiting_owner', sent_to_masked: '024 *** 1234', sent_at: '2026-10-19T10:05:00Z', expires_at: '2026-10-26T10:05:00Z', send_note: 'Text sent' }
+const SENT = { state: 'awaiting_owner', sent_to_masked: '024 *** 1234', sent_at: '2026-10-19T10:05:00Z', expires_at: '2026-10-26T10:05:00Z', send_note: 'Text sent', can_resend: false }
 const DRAFTS = [
   draft(1, 'Unsent skirt'),
   draft(2, 'Awaiting hat', {}, SENT),
-  draft(3, 'Lapsed shoes', {}, { ...SENT, state: 'lapsed' }),
+  draft(3, 'Lapsed shoes', {}, { ...SENT, state: 'lapsed', can_resend: true }),
   draft(4, 'Confirmed bag', {}, { state: 'owner_confirmed', sent_to_masked: '024 *** 1234', sent_at: SENT.sent_at, expires_at: SENT.expires_at, send_note: 'Text sent' }),
-  draft(5, 'Simulated belt', {}, { state: 'awaiting_owner', sent_to_masked: '024 *** 1234', send_note: 'Not sent: texts are simulated', expires_at: SENT.expires_at }),
+  draft(5, 'Simulated belt', {}, { state: 'awaiting_owner', sent_to_masked: '024 *** 1234', send_note: 'Not sent: texts are simulated', expires_at: SENT.expires_at, can_resend: true }),
+  draft(6, 'Live scarf', { status: 'published' }, { state: 'published', sent_to_masked: '024 *** 1234', sent_at: SENT.sent_at, expires_at: SENT.expires_at, send_note: 'Text sent' }),
 ]
 
 function renderPanel(auth = SCOUT, list = DRAFTS) {
@@ -100,12 +101,40 @@ describe('ClientListingsPanel', () => {
     await waitFor(() => expect(body).toEqual({ draft_ids: [1] }))
   })
 
-  it('withdraws a draft with DELETE', async () => {
+  it('withdraws a draft with DELETE once the person confirms', async () => {
     let hit = false
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     server.use(http.delete(`${API}/api/portfolio/businesses/12/drafts/1/`, () => { hit = true; return HttpResponse.json({ id: 1 }) }))
     renderPanel()
     fireEvent.click(within(await rowOf('Unsent skirt')).getByRole('button', { name: 'Withdraw' }))
     await waitFor(() => expect(hit).toBe(true))
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("can't be undone"))
+  })
+
+  it('does not withdraw when the person says no', async () => {
+    let hit = false
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    server.use(http.delete(`${API}/api/portfolio/businesses/12/drafts/1/`, () => { hit = true; return HttpResponse.json({ id: 1 }) }))
+    renderPanel()
+    fireEvent.click(within(await rowOf('Unsent skirt')).getByRole('button', { name: 'Withdraw' }))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(hit).toBe(false)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('offers Resend only where the server says a resend would be accepted (a simulated text yes, a delivered live one no)', async () => {
+    renderPanel()
+    expect(within(await rowOf('Simulated belt')).getByRole('button', { name: 'Resend' })).toBeInTheDocument()
+    expect(within(await rowOf('Awaiting hat')).queryByRole('button', { name: 'Resend' })).toBeNull()
+    expect(within(await rowOf('Lapsed shoes')).getByRole('button', { name: 'Resend' })).toBeInTheDocument()
+  })
+
+  it('reads Live, not submitted or With approval, once the listing is published', async () => {
+    renderPanel()
+    const row = await rowOf('Live scarf')
+    expect(row).toHaveTextContent('Live')
+    expect(row).not.toHaveTextContent(/With approval|submitted/i)
+    expect(within(row).queryByRole('button', { name: 'Withdraw' })).toBeNull()
   })
 
   it('says when there are no drafts', async () => {

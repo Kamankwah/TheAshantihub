@@ -12,7 +12,7 @@ import { card, errorStyle, errorText, h2, h3 } from "./portfolioParts.jsx";
 const KIND_LABEL = { product: "Product", service: "Service", event: "Event", stay: "Stay" };
 // Edit, withdraw and a new owner text are allowed until the draft is with approval; the owner's answer closes it.
 const OPEN = ["draft", "awaiting_owner", "lapsed", "owner_confirmed"];
-const STATE_COLOR = { draft: D.textFaint, awaiting_owner: D.blue, lapsed: D.amber, owner_confirmed: D.green, submitted: D.green, owner_declined: D.red, withdrawn: D.textFaint };
+const STATE_COLOR = { draft: D.textFaint, awaiting_owner: D.blue, lapsed: D.amber, owner_confirmed: D.green, submitted: D.green, published: D.green, owner_declined: D.red, withdrawn: D.textFaint };
 const touch = { minHeight: 44 };
 
 // Drafts of products, services, events and stays for one client business: what each says, whether the owner's
@@ -74,7 +74,11 @@ function Drafts({ businessId, auth, onBack }) {
   const send = () => run("send", () => apiPost(`${base}send/`, { draft_ids: unsent.map((d) => d.id) }), "Could not send the drafts. Try again.");
   const resend = (d) => run(`resend-${d.id}`, () => apiPost(`${base}${d.id}/resend/`, {}), "Could not send the text again. Try again.");
   const submit = (d) => run(`submit-${d.id}`, () => apiPost(`${base}${d.id}/submit/`, {}), "Could not send it for approval yet.");
-  const withdraw = (d) => run(`withdraw-${d.id}`, () => apiDelete(`${base}${d.id}/`), "Could not withdraw the draft. Try again.");
+  // Withdrawing cannot be undone (the owner would have to confirm a new draft), so it asks first.
+  const withdraw = (d) => {
+    if (!window.confirm(`Withdraw “${d.name || "this draft"}”? This can't be undone. To list it again you would draft it again and the owner would confirm it again.`)) return;
+    return run(`withdraw-${d.id}`, () => apiDelete(`${base}${d.id}/`), "Could not withdraw the draft. Try again.");
+  };
 
   if (view) {
     return (
@@ -106,7 +110,9 @@ function Drafts({ businessId, auth, onBack }) {
         {drafts.map((d) => {
           const open = OPEN.includes(d.status);
           const own = me != null && d.created_by_id === me;
-          const canResend = d.status === "lapsed" || (d.status === "awaiting_owner" && !d.confirmation?.sent_at);
+          // The server decides: a resend is offered only when it would be accepted (lapsed, failed, simulated or no number),
+          // never for a text that went out and is still valid.
+          const canResend = d.confirmation?.can_resend === true;
           return (
             <li key={d.id} style={{ border: `1px solid ${D.cardBorder}`, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 6, background: D.panelBg }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -116,7 +122,7 @@ function Drafts({ businessId, auth, onBack }) {
               <div style={dim}>{`Drafted by ${d.created_by_name}`}</div>
               <div style={{ ...callout(STATE_COLOR[d.status] || D.textFaint), fontWeight: 600 }}>
                 {confirmationLine(d.confirmation)}
-                {d.status === "lapsed" && <> — {canResend && <button type="button" disabled={busy === `resend-${d.id}`} onClick={() => resend(d)} style={{ ...button(D.panelBg, D.text, busy === `resend-${d.id}`), ...touch, marginLeft: 4 }}>Resend</button>}</>}
+                {d.status === "lapsed" && canResend && <> — <button type="button" disabled={busy === `resend-${d.id}`} onClick={() => resend(d)} style={{ ...button(D.panelBg, D.text, busy === `resend-${d.id}`), ...touch, marginLeft: 4 }}>Resend</button></>}
               </div>
               {d.status === "owner_confirmed" && <div style={dim}>The owner confirmed. It goes to approval once the business has passed KYC.</div>}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", flexDirection: phone ? "column" : "row" }}>

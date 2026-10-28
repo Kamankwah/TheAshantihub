@@ -112,7 +112,10 @@ describe('OwnerConfirmPage', () => {
   it('says a used link was already used', async () => {
     server.use(http.post(`${API}/preview/`, refuse(409, 'used')))
     renderAt('/business/confirm#token=t')
-    expect(await screen.findByRole('alert')).toHaveTextContent(/already been used/i)
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/already been used or replaced/i)
+    expect(alert).toHaveTextContent(/newest message/i)
+    expect(alert.textContent).not.toMatch(/whatsapp|@|\+233|\b0\d{9}\b/i)
   })
 
   it('says an invalid link is not valid, and a missing token is missing', async () => {
@@ -175,5 +178,16 @@ describe('OwnerConfirmPage', () => {
     renderAt('/business/confirm#token=t')
     expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't load/i)
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+  })
+
+  it('keeps the token out of the query cache key', async () => {
+    server.use(http.post(`${API}/preview/`, () => HttpResponse.json(preview())))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    window.history.replaceState(null, '', '/business/confirm#token=secret-key-check')
+    render(<QueryClientProvider client={queryClient}><OwnerConfirmPage /></QueryClientProvider>)
+    await screen.findByText("Akosua's Kitchen")
+    const keys = queryClient.getQueryCache().getAll().map((query) => JSON.stringify(query.queryKey))
+    expect(keys.length).toBeGreaterThan(0)
+    expect(keys.join(' ')).not.toContain('secret-key-check')
   })
 })

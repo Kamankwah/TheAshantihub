@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiPatch, apiPost } from "../../../apiClient.js";
+import { useReassignableScouts } from "../../../hooks/usePortfolio.js";
 import { useZones } from "../../../hooks/useZones.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { dateInputValue, followUpIso, longDay } from "../../../lib/followUp.js";
@@ -19,13 +20,17 @@ const input = { ...field, width: "100%", boxSizing: "border-box", minHeight: 44,
 const rows = (data) => (Array.isArray(data) ? data : data?.results ?? []);
 const localDate = (iso) => (iso ? dateInputValue(new Date(iso)) : "");
 
-export default function ProspectSheet({ prospect = null, onClose, onSaved }) {
+export default function ProspectSheet({ prospect = null, auth = null, defaultScout = "", onClose, onSaved }) {
   const editing = Boolean(prospect);
   const queryClient = useQueryClient();
   const zones = rows(useZones().data);
+  // Operations and Super Admin add a prospect on behalf of a named scout; a scout's own list needs no choice.
+  const needsScout = !editing && Boolean(auth?.user?.role) && auth.user.role !== "scout";
+  const { scouts } = useReassignableScouts(auth, { enabled: needsScout });
   const [form, setForm] = useState(() => ({
     name: prospect?.name || "", phone: prospect?.phone || "", zone: prospect?.zone ? String(prospect.zone.id) : "",
     status: prospect?.status || "new", note: prospect?.note || "", follow_up: localDate(prospect?.next_follow_up_at),
+    scout: defaultScout ? String(defaultScout) : "",
   }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -40,6 +45,7 @@ export default function ProspectSheet({ prospect = null, onClose, onSaved }) {
     setError(null);
     if (!form.name.trim()) { setError("Add the business name."); return; }
     if (!form.phone.trim()) { setError("Add a phone number."); return; }
+    if (needsScout && !form.scout) { setError("Choose the scout this prospect is for."); return; }
     const initialFollowUp = localDate(prospect?.next_follow_up_at);
     // An overdue date left as it was is not a new choice; only a changed date must be from today on.
     if (!closed && form.follow_up && form.follow_up !== initialFollowUp && form.follow_up < today) { setError("Pick a follow-up day from today on."); return; }
@@ -51,8 +57,9 @@ export default function ProspectSheet({ prospect = null, onClose, onSaved }) {
       if (closed) { if (initialFollowUp) body.next_follow_up_at = null; }
       else if (form.follow_up !== initialFollowUp) body.next_follow_up_at = form.follow_up ? followUpIso(form.follow_up) : null;
       if (pin) { body.lat = pin.lat; body.lng = pin.lng; }
-    } else if (form.follow_up) {
-      body.next_follow_up_at = followUpIso(form.follow_up);
+    } else {
+      if (form.follow_up) body.next_follow_up_at = followUpIso(form.follow_up);
+      if (needsScout) body.scout = Number(form.scout);
     }
     setBusy(true);
     try {
@@ -70,6 +77,14 @@ export default function ProspectSheet({ prospect = null, onClose, onSaved }) {
   return (
     <BottomSheet title={editing ? "Edit prospect" : "Add prospect"} titleId={TITLE_ID} onClose={onClose}>
       <form onSubmit={save} noValidate style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {needsScout && (
+          <label style={labelStyle}>Scout (required)
+            <select value={form.scout} onChange={onField("scout")} aria-required="true" style={input}>
+              <option value="">Choose a scout</option>
+              {scouts.map((s) => <option key={s.id} value={String(s.id)}>{s.full_name}</option>)}
+            </select>
+          </label>
+        )}
         <label style={labelStyle}>Business name
           <input value={form.name} onChange={onField("name")} maxLength={150} autoComplete="off" style={input} />
         </label>

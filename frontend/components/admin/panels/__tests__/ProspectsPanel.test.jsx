@@ -319,3 +319,83 @@ describe('ProspectsPanel', () => {
     expect(onRegister).toHaveBeenCalledWith(expect.objectContaining({ id: 1, name: 'Ohemaa Waakye Joint' }))
   })
 })
+
+// Final-fix F4: Operations and Super Admin work every scout's prospects.
+describe('ProspectsPanel for Operations and Super Admin', () => {
+  const OPS = { user: { id: 2, full_name: 'Ama Boateng', role: 'operations' }, hasPermission: () => true }
+  const SCOUTS = [
+    { id: 7, full_name: 'Kwame Asante', role: 'scout', status: 'active' },
+    { id: 8, full_name: 'Efua Mensah', role: 'scout', status: 'active' },
+  ]
+  const asOps = (extra = []) => server.use(
+    http.get(`${API}/api/accounts/staff/team/`, () => HttpResponse.json([...SCOUTS, ...extra])),
+    http.get(`${API}/api/listings/zones/`, () => HttpResponse.json([{ id: 1, name: 'Asafo' }])),
+  )
+
+  it('names each prospect scout, filters by scout and sends ?scout=', async () => {
+    const urls = []
+    asOps()
+    server.use(http.get(`${API}/api/field/prospects/`, ({ request }) => {
+      urls.push(new URL(request.url).searchParams.get('scout'))
+      return HttpResponse.json({ counts: COUNTS, signed_up_this_month: 1, results: [prospect({ scout_id: 7, scout_name: 'Kwame Asante' })] })
+    }))
+    renderPanel({ auth: OPS })
+    const card = await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
+    expect(within(card).getByText(/^Scout Kwame Asante · Asafo/)).toBeInTheDocument()
+    fireEvent.change(await screen.findByLabelText('Scout'), { target: { value: '8' } })
+    await waitFor(() => expect(urls).toContain('8'))
+    expect(urls[0]).toBeNull() // all scouts first
+  })
+
+  it('shows no listings-live figure when the server sends none (a list over several scouts)', async () => {
+    asOps()
+    serve([prospect({ scout_id: 7, scout_name: 'Kwame Asante' })])
+    renderPanel({ auth: OPS })
+    expect(await screen.findByText(/Not registered yet · 3 signed up in [A-Za-z]+$/)).toBeInTheDocument()
+  })
+
+  it('a scout gets no scout filter', async () => {
+    serve([prospect()])
+    renderPanel({ auth: { user: { id: 7, role: 'scout' }, hasPermission: () => true } })
+    await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
+    expect(screen.queryByLabelText('Scout')).toBeNull()
+  })
+
+  it('the add sheet needs a scout for Operations and sends it', async () => {
+    let body = null
+    asOps()
+    serve([])
+    server.use(http.post(`${API}/api/field/prospects/`, async ({ request }) => { body = await request.json(); return HttpResponse.json(prospect({ scout_id: 8, scout_name: 'Efua Mensah' }), { status: 201 }) }))
+    renderPanel({ auth: OPS })
+    fireEvent.click(await screen.findByRole('button', { name: 'Add prospect' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add prospect' })
+    fireEvent.change(within(dialog).getByLabelText('Business name'), { target: { value: 'Golden Needle Tailoring' } })
+    fireEvent.change(within(dialog).getByLabelText('Phone'), { target: { value: '024 123 4567' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add prospect' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Choose the scout this prospect is for.')
+    expect(body).toBeNull()
+    await within(dialog).findByRole('option', { name: 'Efua Mensah' })
+    fireEvent.change(within(dialog).getByLabelText(/Scout \(required\)/), { target: { value: '8' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add prospect' }))
+    await waitFor(() => expect(body).not.toBeNull())
+    expect(body).toMatchObject({ name: 'Golden Needle Tailoring', scout: 8 })
+  })
+
+  it('a scout adding a prospect sees no scout picker and sends no scout', async () => {
+    let body = null
+    serve([])
+    server.use(
+      http.get(`${API}/api/listings/zones/`, () => HttpResponse.json([{ id: 1, name: 'Asafo' }])),
+      http.post(`${API}/api/field/prospects/`, async ({ request }) => { body = await request.json(); return HttpResponse.json(prospect(), { status: 201 }) }),
+    )
+    renderPanel({ auth: { user: { id: 7, role: 'scout' }, hasPermission: () => true } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Add prospect' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add prospect' })
+    expect(within(dialog).queryByLabelText(/Scout \(required\)/)).toBeNull()
+    fireEvent.change(within(dialog).getByLabelText('Business name'), { target: { value: 'Own find' } })
+    fireEvent.change(within(dialog).getByLabelText('Phone'), { target: { value: '024 123 4567' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add prospect' }))
+    await waitFor(() => expect(body).not.toBeNull())
+    expect(body).not.toHaveProperty('scout')
+  })
+})

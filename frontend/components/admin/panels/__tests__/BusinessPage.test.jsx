@@ -588,4 +588,19 @@ describe('BusinessPage — orders and delivery problems (staff WP3)', () => {
       expect(screen.getByText('Item 6')).toBeInTheDocument()
     })
   })
+
+  it('offers "Ask the owner to confirm again" on the page when the owner confirmation lapsed (F1)', async () => {
+    serve(business({ owner_confirmation: { confirmed: false, line: 'Waiting — the link expired 5 Oct', state: 'lapsed', can_ask_again: true } }))
+    server.use(http.post(`${API}/api/portfolio/businesses/12/confirmation/registration/`, () => HttpResponse.json({ state: 'awaiting_owner', sent_to_masked: '024 *** 118', expires_at: '2026-11-04T10:00:00Z', send_note: 'Text sent' })))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask the owner to confirm again' }))
+    expect(await screen.findByText(/Text sent to 024 \*\*\* 118/)).toBeInTheDocument()
+  })
+
+  it('does not offer it when the server says it cannot be asked again', async () => {
+    serve(business({ owner_confirmation: { confirmed: false, line: 'Waiting — text sent', state: 'waiting', can_ask_again: false } }))
+    renderPage()
+    await screen.findByRole('heading', { name: 'Adwoa Fabrics' })
+    expect(screen.queryByRole('button', { name: 'Ask the owner to confirm again' })).toBeNull()
+  })
 })

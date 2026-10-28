@@ -46,7 +46,7 @@ def state_of(listing, hidden):
 
 def base_queryset():
     return Listing.objects.select_related(
-        "category", "zone", "business_owner__profile", "business_owner__subscription", "reviewed_by", "created_by_staff",
+        "category", "zone", "business_owner__profile", "business_owner__subscription", "reviewed_by", "created_by_staff__role",
     ).annotate(
         is_hidden=ExpressionWrapper(hidden_business_q(), output_field=BooleanField()),
     )
@@ -106,6 +106,7 @@ def item(listing, counts):
         "state": state,
         "state_note": note,
         "added_by": listing.created_by_staff.full_name if listing.created_by_staff else None,
+        "added_by_role": listing.created_by_staff.role.get_name_display() if listing.created_by_staff else None,
         "created_at": listing.created_at,
         "reviewed_by": listing.reviewed_by.full_name if listing.reviewed_by else None,
         "reviewed_at": listing.reviewed_at,

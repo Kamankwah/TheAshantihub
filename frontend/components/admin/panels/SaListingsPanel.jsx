@@ -27,7 +27,7 @@ const REFUNDED_TIP = "Of the paid purchases, how many were refunded or cancelled
 const RULES = [
   "An owner's new listing waits for Operations or a Super Admin before it goes on the site.",
   "A listing a scout adds for a business is checked through the scout's approval request; that approval is its moderation.",
-  "The owner is told about every change a scout makes and can undo it within 7 days.",
+  "The owner is told about every change a scout makes to their business and can undo it within 7 days. A listing made for an owner works differently: the owner confirms it by text first, a second person approves it, and a Super Admin can take it down.",
   "A hidden listing is never deleted; it comes back when the business is reinstated.",
   "Taking a listing down here is a rejection with a reason. The owner is told why.",
 ];
@@ -218,7 +218,7 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
                       <td style={td}>{TYPE[l.type] || l.type}</td>
                       <td style={td}>{l.price_amount != null ? `${money(l.price_amount)}${l.price_unit ? ` / ${l.price_unit}` : ""}` : "—"}</td>
                       <td style={td}><Chip color={color}>{label}</Chip>{l.state_note && <div style={dim}>{l.state_note}</div>}</td>
-                      <td style={td}>{l.added_by ? `${l.added_by} (scout, for the owner)` : "Owner"}</td>
+                      <td style={td}>{l.added_by ? `${l.added_by} (${l.added_by_role || "staff"}, for the owner)` : "Owner"}</td>
                       <td style={td}>{l.reviewed_by ? `${l.reviewed_by} · ${dateOnly(l.reviewed_at)}` : "—"}</td>
                       <CountCell value={l.paid_count} />
                       <CountCell value={l.refunded_count} />

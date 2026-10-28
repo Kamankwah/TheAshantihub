@@ -1,10 +1,11 @@
 import { useState } from "react";
+import { useReassignableScouts } from "../../../hooks/usePortfolio.js";
 import { useProspects } from "../../../hooks/useProspects.js";
 import { isBeforeToday, shortDay } from "../../../lib/followUp.js";
 import { D, glassCard, tint } from "../theme.js";
 import LogCallSheet from "./LogCallSheet.jsx";
 import ProspectSheet from "./ProspectSheet.jsx";
-import { button, dim, pill } from "./panelStyles.js";
+import { button, dim, field, pill } from "./panelStyles.js";
 import { errorStyle, eyebrow } from "./portfolioParts.jsx";
 
 // ─── 14 Prospects ────────────────────────────────────────────────────────────
@@ -73,9 +74,13 @@ function PipelineSteps({ pipeline }) {
   );
 }
 
-export default function ProspectsPanel({ onRegister }) {
+export default function ProspectsPanel({ onRegister, auth }) {
   const [status, setStatus] = useState("all");
-  const { data, isLoading, isError, refetch } = useProspects(status);
+  // A scout works their own list. Operations and Super Admin work every scout's and may narrow to one.
+  const isScout = !auth?.user?.role || auth.user.role === "scout";
+  const [scoutFilter, setScoutFilter] = useState("");
+  const { scouts } = useReassignableScouts(auth, { enabled: !isScout });
+  const { data, isLoading, isError, refetch } = useProspects(status, { scout: isScout ? "" : scoutFilter });
   const [sheet, setSheet] = useState(null); // null | {type: "add"} | {type: "edit", prospect} | {type: "call", prospect}
   const [notice, setNotice] = useState(null);
   const counts = data?.counts || {};
@@ -85,7 +90,9 @@ export default function ProspectsPanel({ onRegister }) {
   const live = data?.listings_live_this_month;
   const liveLine = typeof live === "number" ? ` · ${live} ${live === 1 ? "listing" : "listings"} live in ${month}` : "";
   const close = () => setSheet(null);
-  const empty = status === "all" ? "No prospects yet. Add the businesses you meet, then follow them up here." : "No prospects with this status.";
+  const empty = !isScout
+    ? "No prospects here yet. Add one for a scout, or choose another scout."
+    : status === "all" ? "No prospects yet. Add the businesses you meet, then follow them up here." : "No prospects with this status.";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 720 }}>
@@ -99,6 +106,15 @@ export default function ProspectsPanel({ onRegister }) {
         <span aria-hidden="true" style={{ fontSize: "1.1rem", lineHeight: 1 }}>+</span>Add prospect
       </button>
       {notice && <div role="status" style={{ ...dim, color: D.text, fontWeight: 700 }}>{notice}</div>}
+
+      {!isScout && (
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.78rem", fontWeight: 800, color: D.text, maxWidth: 320 }}>Scout
+          <select value={scoutFilter} onChange={(e) => setScoutFilter(e.target.value)} style={{ ...field, minHeight: 44, fontSize: "1rem" }}>
+            <option value="">All scouts</option>
+            {scouts.map((s) => <option key={s.id} value={String(s.id)}>{s.full_name}</option>)}
+          </select>
+        </label>
+      )}
 
       <div role="group" aria-label="Filter by status" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {FILTERS.map(([id, label]) => (
@@ -133,7 +149,7 @@ export default function ProspectsPanel({ onRegister }) {
                 <span style={{ background: bg, color: fg, borderRadius: 999, padding: "2px 10px", fontSize: "0.7rem", fontWeight: 800, whiteSpace: "nowrap" }}>{p.status_label}</span>
               </span>
             </div>
-            <div style={dim}>{[p.area || "No area set", p.last_visit_at ? `last visit ${shortDay(p.last_visit_at)}` : "no visit yet"].join(" · ")}</div>
+            <div style={dim}>{[!isScout && p.scout_name ? `Scout ${p.scout_name}` : null, p.area || "No area set", p.last_visit_at ? `last visit ${shortDay(p.last_visit_at)}` : "no visit yet"].filter(Boolean).join(" · ")}</div>
             <PipelineSteps pipeline={p.pipeline} />
             {p.note && <div style={{ fontSize: "0.82rem", color: D.text, lineHeight: 1.4 }}>{p.note}</div>}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -154,7 +170,7 @@ export default function ProspectsPanel({ onRegister }) {
 
       <div style={{ ...dim, textAlign: "center", lineHeight: 1.45 }}>Registering a prospect links it, so your earlier visits stay on the business's record.</div>
 
-      {sheet?.type === "add" && <ProspectSheet onClose={close} onSaved={() => { close(); setNotice("Prospect added."); }} />}
+      {sheet?.type === "add" && <ProspectSheet auth={auth} defaultScout={scoutFilter} onClose={close} onSaved={() => { close(); setNotice("Prospect added."); }} />}
       {sheet?.type === "edit" && <ProspectSheet prospect={sheet.prospect} onClose={close} onSaved={() => { close(); setNotice("Prospect saved."); }} />}
       {sheet?.type === "call" && <LogCallSheet preset={{ type: "prospect", id: sheet.prospect.id }} onClose={close} onSaved={() => { close(); setNotice("Call saved."); }} />}
     </div>

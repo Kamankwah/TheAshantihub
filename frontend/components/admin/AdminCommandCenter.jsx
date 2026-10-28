@@ -541,7 +541,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "visit-map" && <TeamVisitMapPanel onOpenBusiness={openBusiness} />}
           {activeTab === "calls" && <CallLogPanel auth={auth} onLogCall={() => selectTab("support-log-call")} />}
           {activeTab === "support-log-call" && <SupportLogCallPage presetLink={callLink} onDone={() => selectTab("calls")} onSeeLog={() => selectTab("calls")} />}
-          {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
+          {activeTab === "prospects" && <ProspectsPanel auth={auth} onRegister={openRegisterFromProspect} />}
           {activeTab === "targets" && (role === "super_admin" ? <TargetLimitsPanel onOpenApproval={openApproval} /> : role !== "super_admin" && auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
           {activeTab === "ops-scouts" && <OpsScoutsPanel auth={auth} onNavigate={selectTab} onOpenScout={openScoutPortfolio} />}
           {activeTab === "leave" && <LeavePanel auth={auth} />}
