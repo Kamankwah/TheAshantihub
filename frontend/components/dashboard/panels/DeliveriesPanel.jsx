@@ -109,6 +109,12 @@ function OrderRow({ order }) {
         {(order.items || []).map(i => `${i.quantity}× ${i.listing_name || i.name || "item"}`).join(", ")}
       </div>
 
+      {!doorToDoor && (
+        <div role="note" style={{ color: D.textDim, fontSize: "0.7rem", marginTop: 6 }}>
+          The customer collects this order at the AshantiHub pickup office, not at your shop.
+        </div>
+      )}
+
       {doorToDoor && order.delivery_address && (
         <div style={{ color: D.textDim, fontSize: "0.7rem", marginTop: 6 }}>
           📍 {order.delivery_address}
