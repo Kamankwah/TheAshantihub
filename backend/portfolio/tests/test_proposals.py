@@ -8,6 +8,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from accounts.models import BusinessOwner, BusinessOwnerProfile
 from accounts.testing import make_staff
@@ -17,6 +18,7 @@ from billing.models import Subscription
 from listings.models import Category, Listing, Zone
 from portfolio import proposals
 from portfolio.models import AppliedChange, StagedPhoto
+from portfolio.views import _proposal_sent
 from portfolio.tests.change_fixtures import ChangeTestBase, jpeg, make_business, make_listing, product_body
 
 
@@ -219,14 +221,41 @@ class ProposeChangeApiTests(ChangeTestBase):
         self.assertTrue(AppliedChange.objects.filter(approval=approval).exists())
 
 
+class _Reply:
+    """The shape of an API reply, for the checks below that still run through `proposals.propose_listing`."""
+
+    def __init__(self, status_code, data):
+        self.status_code, self.data = status_code, data
+        self.content = str(data).encode()
+
+    def json(self):
+        return self.data
+
+
 class ProposeListingApiTests(ChangeTestBase):
+    """The scout listing-proposal rules. The endpoint is retired (410: listings for a client are drafted, confirmed by
+    the owner and approved by a second person), but already-pending listing.create requests are still decided and the
+    service keeps these rules, so they are exercised on `proposals.propose_listing` directly through `post`."""
+
     def post(self, listing=None, *, main=None, photos=(), reason="Owner showed me the stock"):
-        return self.client.post(
+        try:
+            approval = proposals.propose_listing(
+                self.scout, self.owner, listing if listing is not None else product_body(),
+                main_photo_id=main, photo_ids=list(photos), reason=reason,
+            )
+        except DRFValidationError as exc:
+            return _Reply(400, exc.detail)
+        return _Reply(201, _proposal_sent(approval).data)
+
+    def test_the_endpoint_is_retired_and_points_to_drafts(self):
+        self.as_staff(self.scout)
+        response = self.client.post(
             f"/api/portfolio/businesses/{self.owner.pk}/listings/",
-            {"listing": listing if listing is not None else product_body(), "main_photo_id": main,
-             "photo_ids": list(photos), "reason": reason},
-            format="json",
+            {"listing": product_body(), "main_photo_id": None, "photo_ids": [], "reason": "x"}, format="json",
         )
+        self.assertEqual(response.status_code, 410, response.content)
+        self.assertEqual(response.json(), {"detail": "Listings for a client are drafted and sent to the owner to confirm."})
+        self.assertFalse(ApprovalRequest.objects.exists())
 
     def test_a_new_product_goes_for_approval(self):
         main, extra = self.staged(), self.staged()

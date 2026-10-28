@@ -754,11 +754,11 @@ def validate_listing_create(approval):
         raise ApprovalError(first_message(errors))
 
 
-def apply_listing_create(approval):
-    """Publish the listing: this approval is its moderation (spec S4)."""
-    payload = approval.payload
-    owner = BusinessOwner.objects.select_for_update().get(pk=payload["business_owner_id"])
-    serializer = ProposedListingSerializer(data=payload.get("listing") or {})
+def publish_listing(owner, listing_data, photos, *, maker, decided_by):
+    """Create the published listing both listing kinds end in: the listing, its staged photos copied across and marked
+    used. The caller holds the owner's row lock and has checked the data; this is the one place a made-for-a-client
+    listing becomes live, with the maker and the decider on it. `photos` is (main_photo_id, [gallery ids])."""
+    serializer = ProposedListingSerializer(data=listing_data)
     if not serializer.is_valid():
         raise ApprovalError(first_message(serializer.errors))
     data = dict(serializer.validated_data)
@@ -768,12 +768,11 @@ def apply_listing_create(approval):
     if data.get("lat") is None and data.get("lng") is None and profile.lat is not None:
         data["lat"], data["lng"] = profile.lat, profile.lng
     now = timezone.now()
-    main_id = payload.get("main_photo_id")
-    gallery = payload.get("photo_ids") or []
-    staged = _locked_staged(owner, _listing_photo_ids(payload))
+    main_id, gallery = photos
+    staged = _locked_staged(owner, _listing_photo_ids({"main_photo_id": main_id, "photo_ids": gallery}))
     listing = Listing(
-        business_owner=owner, status=Listing.PUBLISHED, created_by_staff=approval.maker,
-        reviewed_by=approval.decided_by, reviewed_at=now, **data,
+        business_owner=owner, status=Listing.PUBLISHED, created_by_staff=maker,
+        reviewed_by=decided_by, reviewed_at=now, **data,
     )
     if main_id:
         _copy_image(staged[main_id].image, listing.main_photo)
@@ -783,7 +782,21 @@ def apply_listing_create(approval):
         _copy_image(staged[pk].image, photo.image)
         photo.save()
     StagedPhoto.objects.filter(pk__in=list(staged)).update(used_at=now)
-    _applied(approval, owner, summary=f"Added “{listing.name}”", result={"listing_id": listing.pk}, applied_at=now)
+    return listing
+
+
+def apply_listing_create(approval):
+    """Publish the listing: this approval is its moderation (spec S4)."""
+    payload = approval.payload
+    owner = BusinessOwner.objects.select_for_update().get(pk=payload["business_owner_id"])
+    listing = publish_listing(
+        owner, payload.get("listing") or {}, (payload.get("main_photo_id"), payload.get("photo_ids") or []),
+        maker=approval.maker, decided_by=approval.decided_by,
+    )
+    _applied(
+        approval, owner, summary=f"Added “{listing.name}”", result={"listing_id": listing.pk},
+        applied_at=listing.reviewed_at,
+    )
     _tell_owner(owner, approval, f"added “{listing.name}”", f"It's live on AshantiHub now. {UNDO_HINT}")
 
 
@@ -797,19 +810,23 @@ def _listing_shown(key, value):
     return value
 
 
-def listing_create_diff(approval):
-    payload = approval.payload
-    listing = payload.get("listing") or {}
+def listing_rows(listing, main_photo_id, photo_ids):
+    """The diff rows for a listing's details and photos (listing.create and listing.staff_create)."""
     rows = [
         {"field": label, "before": None, "after": _listing_shown(key, listing[key])}
         for key, label in LISTING_LABELS
         if key in listing
     ]
-    if payload.get("main_photo_id"):
-        rows.append({"field": "Main photo", "before": None, "after": {"images": _image_urls([payload["main_photo_id"]])}})
-    if payload.get("photo_ids"):
-        rows.append({"field": "Photos", "before": None, "after": {"images": _image_urls(payload["photo_ids"])}})
+    if main_photo_id:
+        rows.append({"field": "Main photo", "before": None, "after": {"images": _image_urls([main_photo_id])}})
+    if photo_ids:
+        rows.append({"field": "Photos", "before": None, "after": {"images": _image_urls(photo_ids)}})
     return rows
+
+
+def listing_create_diff(approval):
+    payload = approval.payload
+    return listing_rows(payload.get("listing") or {}, payload.get("main_photo_id"), payload.get("photo_ids"))
 
 
 # ── listing.photos ──────────────────────────────────────────────────────────

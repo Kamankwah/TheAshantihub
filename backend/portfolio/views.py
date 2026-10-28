@@ -33,7 +33,7 @@ from notifications.services import notify_staff
 from staff_tasks.models import Task
 from staff_tasks.services import create_task
 
-from . import checks, delivery, drafts, health, leaderboard
+from . import checks, delivery, drafts, health, leaderboard, staff_listing_kind
 from .models import BusinessHealthSnapshot
 from .registration import RegistrationError, register_business, resubmit_kyc
 from .serializers import (
@@ -49,7 +49,7 @@ from .serializers import (
 )
 from .services import approver_name, assign_account_manager
 from .undo import UndoError, owner_changes, undo_change
-from .proposals import listing_form_meta, propose_listing, propose_photos, propose_update, stage_photo
+from .proposals import listing_form_meta, propose_photos, propose_update, stage_photo
 
 
 def get_managed_business(request, pk, *, allow_portfolio_manage=True):
@@ -765,25 +765,18 @@ class ProposeChangeView(APIView):
         return _proposal_sent(approval)
 
 
+LISTING_PROPOSAL_RETIRED = "Listings for a client are drafted and sent to the owner to confirm."
+
+
 class ProposeListingView(APIView):
-    """POST businesses/<pk>/listings/ {listing, main_photo_id, photo_ids, reason} — a listing.create request."""
+    """POST businesses/<pk>/listings/ — retired. A listing for a client is drafted (businesses/<pk>/drafts/), sent to the
+    owner to confirm, and approved by a second person. Already-pending listing.create requests can still be decided."""
 
     def get_permissions(self):
         return [HasRolePermission("businesses.manage_portfolio")]
 
     def post(self, request, pk):
-        owner = get_managed_business(request, pk, allow_portfolio_manage=False)
-        body = _proposal_body(request)
-        if body is None:
-            return Response({"detail": "Send a JSON object."}, status=400)
-        try:
-            approval = propose_listing(
-                request.user, owner, body.get("listing"), main_photo_id=body.get("main_photo_id"),
-                photo_ids=body.get("photo_ids"), reason=body.get("reason"), http_request=request,
-            )
-        except ApprovalError as exc:
-            return Response({"detail": exc.message}, status=exc.status_code)
-        return _proposal_sent(approval)
+        return Response({"detail": LISTING_PROPOSAL_RETIRED}, status=status.HTTP_410_GONE)
 
 
 class ProposeListingPhotosView(APIView):
@@ -1028,3 +1021,17 @@ class DraftResendView(_DraftView):
     def post(self, request, pk, draft_id):
         owner = self.owner(request, pk)
         return Response(drafts.resend_draft(request.user, owner, drafts.get_draft(owner, draft_id), request=request))
+
+
+class DraftSubmitView(_DraftView):
+    """POST businesses/<pk>/drafts/<id>/submit/ — send a confirmed draft for approval when it could not go at the time
+    (the owner's KYC was pending). 409 with the reason while it still cannot."""
+
+    def post(self, request, pk, draft_id):
+        owner = self.owner(request, pk)
+        drafts.get_draft(owner, draft_id)  # 404 for a draft of another business
+        try:
+            staff_listing_kind.retry_submit(owner, draft_id)
+        except ApprovalError as exc:
+            return Response({"detail": exc.message, "code": "cannot_submit"}, status=status.HTTP_409_CONFLICT)
+        return Response(drafts.draft_item(drafts.get_draft(owner, draft_id)))

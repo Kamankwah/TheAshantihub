@@ -36,6 +36,10 @@ urlpatterns = [
         "businesses/<int:pk>/drafts/<int:draft_id>/resend/", views.DraftResendView.as_view(),
         name="portfolio-draft-resend",
     ),
+    path(
+        "businesses/<int:pk>/drafts/<int:draft_id>/submit/", views.DraftSubmitView.as_view(),
+        name="portfolio-draft-submit",
+    ),
     path("businesses/<int:pk>/photos/", views.PhotoStageView.as_view(), name="portfolio-photo-stage"),
     path("businesses/<int:pk>/changes/", views.ProposeChangeView.as_view(), name="portfolio-propose-change"),
     path("businesses/<int:pk>/listings/", views.ProposeListingView.as_view(), name="portfolio-propose-listing"),

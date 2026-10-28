@@ -250,7 +250,8 @@ class SendAndEditTests(DraftBase):
         self.assertIsNone(second.confirmation.revoked_at)
         confirmations.confirm(raw)
         first.refresh_from_db(), second.refresh_from_db()
-        self.assertEqual((first.status, second.status), (ListingDraft.DRAFT, ListingDraft.OWNER_CONFIRMED))
+        # the owner's business is verified, so the confirmed draft goes straight to the approvals queue (Task 7)
+        self.assertEqual((first.status, second.status), (ListingDraft.DRAFT, ListingDraft.SUBMITTED))
 
     def test_editing_a_lapsed_draft_returns_it_to_draft(self):
         draft = self.make_draft()

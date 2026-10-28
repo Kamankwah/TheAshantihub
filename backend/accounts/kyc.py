@@ -168,6 +168,11 @@ def approve_owner(owner_id, staff, *, http_request=None, from_approval=None):
         from commission import services as commission  # commission imports accounts
 
         commission.accrue_registration(owner, now=owner.reviewed_at)  # idempotent; nothing without an approved policy
+        # Listings staff made for this business that the owner already confirmed were waiting for this KYC. Both doors
+        # (the queue and the business.kyc approval) end here, so this is the one place they are sent on.
+        from portfolio.staff_listing_kind import submit_waiting
+
+        transaction.on_commit(lambda: submit_waiting(owner.pk))
         if from_approval is None:
             after = {"via": "kyc-queue", "approval_ids": [approval.pk for approval in closed]}
         else:

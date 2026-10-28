@@ -19,7 +19,7 @@ MONEY_KINDS = {
     "wallets.holder_details_edit", "wallets.withdrawal_resolution",
 }
 NOT_MONEY_KINDS = {
-    "business.kyc", "business.update", "listing.create", "listing.photos", "marketing.banner",
+    "business.kyc", "business.update", "listing.create", "listing.photos", "listing.staff_create", "marketing.banner",
     "marketing.campaign", "marketing.send_policy", "targets.cut",
 }
 MONEY_RENAME = replace(RENAME_STAFF, key="test.money_rename", money=True)

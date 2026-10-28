@@ -23,7 +23,7 @@ from approvals.services import ApprovalError
 from staff_tasks.models import Task
 from staff_tasks.services import create_task
 
-from . import confirmations, detail_changes
+from . import confirmations, detail_changes, staff_listing_kind
 from .proposals import (
     BUSINESS_UPDATE_KEY,
     LISTING_CREATE_KEY,
@@ -41,6 +41,7 @@ from .proposals import (
     validate_listing_photos,
     validate_update,
 )
+from .models import ListingDraft
 
 NOT_WAITING = "This business isn't waiting for KYC any more."
 
@@ -119,6 +120,9 @@ RETURNED_DUE_IN = timedelta(hours=24)
 def _business_of(request):
     """The business a request is about: its target for KYC and detail changes,
     the listing's business for product and photo requests."""
+    if request.target_type == staff_listing_kind.TARGET_TYPE:
+        draft = ListingDraft.objects.select_related("business_owner").filter(pk=request.target_id).first()
+        return draft.business_owner if draft is not None else None
     if request.target_type == "listings.listing":
         from listings.models import Listing
 
@@ -211,6 +215,29 @@ LISTING_CREATE = ApprovalKind(
     on_rejected=returned_task,
 )
 
+def _staff_listing_returned(request):
+    """Returned by the approver: the draft goes back to the maker, who is given the follow-up task."""
+    staff_listing_kind.reopen(request)
+    returned_task(request)
+
+
+# A listing staff made for a client: live only after the owner confirmed it and a second person approved it. Two people,
+# so not even a Super Admin's own draft applies directly; the maker never decides. Not money: the General Manager checks.
+LISTING_STAFF_CREATE = ApprovalKind(
+    key=staff_listing_kind.KEY,
+    label="Listing made for a client",
+    pool_permission="listings.approve_staffed",
+    current_state=staff_listing_kind.current_state,
+    apply=staff_listing_kind.apply,
+    response_hours=24,
+    render_diff=staff_listing_kind.render_diff,
+    validate=staff_listing_kind.validate,  # owner confirmed, KYC verified, subscription live and within its limit, photos unused
+    on_rejected=_staff_listing_returned,
+    on_cancelled=staff_listing_kind.reopen,
+    consequences=staff_listing_kind.consequences,
+    two_people=True,
+)
+
 LISTING_PHOTOS = ApprovalKind(
     key=LISTING_PHOTOS_KEY,
     label="Listing photos",
@@ -246,4 +273,4 @@ BUSINESS_DETAIL_CHANGE = ApprovalKind(
     chain_note="One approval from another holder of portfolio.manage (not a General Manager), or a Super Admin; never the scout who verified",
 )
 
-KINDS = (BUSINESS_KYC, BUSINESS_UPDATE, LISTING_CREATE, LISTING_PHOTOS, BUSINESS_DETAIL_CHANGE)
+KINDS = (BUSINESS_KYC, BUSINESS_UPDATE, LISTING_CREATE, LISTING_STAFF_CREATE, LISTING_PHOTOS, BUSINESS_DETAIL_CHANGE)

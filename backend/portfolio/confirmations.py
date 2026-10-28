@@ -446,7 +446,13 @@ def owner_view(raw):
 
 
 def _after_owner_confirmed(drafts):
-    """Seam: Task 7 calls submit_draft for each draft here, inside the confirming transaction."""
+    """Send each confirmed draft to the approvals queue, inside the confirming transaction. A draft that cannot go yet
+    (the owner's KYC is pending, say) stays owner_confirmed with no approval left behind: the owner's answer never
+    fails for a staff-side condition, and it is submitted when the KYC is approved or staff retry."""
+    from .staff_listing_kind import try_submit_draft
+
+    for draft in drafts:
+        try_submit_draft(draft)
 
 
 def confirm(raw, request=None):
