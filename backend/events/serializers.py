@@ -371,13 +371,19 @@ class TicketSerializer(serializers.ModelSerializer):
 
     ticket_type = serializers.SerializerMethodField()
     event = serializers.SerializerMethodField()
+    money = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
         fields = [
             "id", "code", "price", "delivery_method", "escrow_status", "delivered_at",
-            "refunded_at", "ticket_type", "event",
+            "refunded_at", "ticket_type", "event", "money",
         ]
+
+    def get_money(self, obj):
+        """The purchase's `money` block (every ticket of one purchase shares it), from the view's prebuilt map; None
+        where the view builds none (the purchase response) or the ticket has no sale."""
+        return self.context.get("money_by_transaction", {}).get(obj.transaction_id)
 
     def get_ticket_type(self, obj):
         return {"id": obj.ticket_type_id, "name": obj.ticket_type.name}

@@ -174,6 +174,9 @@ monolith holding most components, with extractions living in `components/`,
   screens (service, tickets, stay) go through `useBookingPayment` and never compute a charge. Amount elements in
   1F's staff panels (pickup desk, verification calls, booking cancel, call outcome form) carry `data-amount` (tabular figures, never gold); `LedgerScreensSweep.test.jsx` is their contract and checks that every GH₵ amount sits inside one.
   The Pickup Desk's exhaustive menu also has a Desk group holding 5F's Re-deliveries (gated by `orders.redeliver`).
+- **Booking money states come from the server's `money` block;** a refund amount is shown only from `cancel-quote`,
+  `wallet_refund` or `money.refunded`; `components/bookings/` holds the bars. `BookingNoInventionSweep.test.jsx`
+  is the conformance contract for them.
 - **The vendor tab is "Money"** (`id: "money"`, one tab for payouts and the wallet), not "Payouts".
 - **Vendor money screens (`components/dashboard/money/`) are owner-only.** They show platform fees, so nothing
   outside `components/dashboard/` may import the folder (`MoneyNoInventionSweep.test.jsx` scans for it). `VendorMoney`
