@@ -76,11 +76,16 @@ class Listing(models.Model):
     PENDING_REVIEW = "pending_review"
     PUBLISHED = "published"
     REJECTED = "rejected"
+    # Dropped: hidden by its owner, returns on restore with no re-approval. Discontinued: permanent.
+    DROPPED = "dropped"
+    DISCONTINUED = "discontinued"
     STATUS_CHOICES = [
         (DRAFT, "Draft"),
         (PENDING_REVIEW, "Pending Review"),
         (PUBLISHED, "Published"),
         (REJECTED, "Rejected"),
+        (DROPPED, "Dropped"),
+        (DISCONTINUED, "Discontinued"),
     ]
 
     business_owner = models.ForeignKey(BusinessOwner, on_delete=models.CASCADE, related_name="listings")
@@ -109,6 +114,8 @@ class Listing(models.Model):
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+    dropped_at = models.DateTimeField(null=True, blank=True)
+    discontinued_at = models.DateTimeField(null=True, blank=True)
 
     # Approver attribution (staff moderation-queue restructuring) — which staff
     # member approved (published) OR rejected this listing, and when. Set by

@@ -17,7 +17,7 @@ from listings.visibility import hidden_business_q
 
 from .common import OversightPagination, choice_param, csv_export
 
-STATUSES = ("live", "waiting", "hidden", "rejected", "draft")
+STATUSES = ("live", "waiting", "hidden", "rejected", "draft", "dropped", "discontinued")
 TYPES = ("product", "service", "booking")
 ADDED_BY = ("owner", "scout")
 
@@ -40,6 +40,10 @@ def state_of(listing, hidden):
         return "waiting", "Waiting for a decision"
     if listing.status == Listing.REJECTED:
         return "rejected", listing.rejection_reason or ""
+    if listing.status == Listing.DROPPED:
+        return "dropped", "Hidden by the business"
+    if listing.status == Listing.DISCONTINUED:
+        return "discontinued", "No longer sold"
     return "draft", "Not sent for review"
 
 
@@ -65,6 +69,8 @@ def filtered(request):
         listings = listings.filter(status=Listing.REJECTED)
     elif status == "draft":
         listings = listings.filter(status=Listing.DRAFT)
+    elif status in ("dropped", "discontinued"):
+        listings = listings.filter(status=status)
     kind = choice_param(params, "type", TYPES)
     if kind == "booking":
         listings = listings.filter(category__kind="service", category__is_accommodation=True)

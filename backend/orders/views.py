@@ -10,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import StaffUser
+from accounts.models import BusinessOwner, StaffUser
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner, IsCustomer
 from cart import guard as cart_guard
@@ -18,6 +18,7 @@ from cart.models import Cart
 from delivery.models import DeliveryEvent
 from disputes.models import Dispute
 from listings.models import Listing
+from listings.visibility import hidden_business_q
 from disputes.serializers import DisputeSerializer
 from notifications.services import notify_customer
 from payments.models import CheckoutSession
@@ -92,6 +93,20 @@ class OrderCheckoutView(APIView):
         items = list(cart.items.select_related("listing__business_owner__profile", "listing__category")) if cart is not None else []
         if not items:
             return Response({"detail": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
+        # A line whose listing was dropped, discontinued or unpublished, or whose business is hidden, is refused
+        # before any stock is touched; the cart is left as it is for the shopper to fix.
+        hidden_ids = set(
+            BusinessOwner.objects.filter(
+                pk__in={item.listing.business_owner_id for item in items}
+            ).filter(hidden_business_q("")).values_list("pk", flat=True)
+        )
+        for item in items:
+            if item.listing.status != Listing.PUBLISHED or item.listing.business_owner_id in hidden_ids:
+                return Response(
+                    {"detail": f"“{item.listing.name}” is no longer available. Remove it from your cart.",
+                     "code": "listing_unavailable"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         payment_method = request.data.get("payment_method") or MOMO
         if payment_method not in PAYMENT_METHODS:

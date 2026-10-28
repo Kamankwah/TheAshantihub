@@ -269,6 +269,8 @@ class OwnerListingManageSerializer(serializers.ModelSerializer):
         return clean_listing_barcode(value, self.instance)
 
     def validate(self, data):
+        if self.instance is not None and self.instance.status == Listing.DISCONTINUED:
+            raise serializers.ValidationError({"status": "A discontinued listing cannot be changed."})
         return validate_sale_price(data, self.instance)
 
     def update(self, instance, validated_data):
@@ -310,6 +312,9 @@ def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None)
     serializers.ValidationError; returns `data` unchanged."""
     if initial_data is None:
         initial_data = data
+
+    if instance is not None and instance.status in (Listing.DROPPED, Listing.DISCONTINUED):
+        raise serializers.ValidationError({"status": "A dropped or discontinued listing cannot be edited."})
 
     if instance is not None and instance.status == Listing.PUBLISHED:
         raise serializers.ValidationError(
@@ -411,9 +416,9 @@ class OwnerListingSerializer(serializers.ModelSerializer):
             "id", "category", "zone", "name", "description", "price_amount", "sale_price", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "specs",
             "service_duration", "units_total", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
-            "status", "rejection_reason", "created_at", "updated_at",
+            "status", "rejection_reason", "dropped_at", "discontinued_at", "created_at", "updated_at",
         ]
-        read_only_fields = ["status", "rejection_reason", "created_at", "updated_at"]
+        read_only_fields = ["status", "rejection_reason", "dropped_at", "discontinued_at", "created_at", "updated_at"]
         extra_kwargs = {"contact_phone": {"required": False}, "units_total": {"required": False}}
 
     def validate_barcode(self, value):

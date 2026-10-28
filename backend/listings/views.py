@@ -21,6 +21,7 @@ from accounts.views import IsBusinessOwner
 from billing.models import Transaction
 from notifications.services import notify_business_owner, notify_staff_role
 
+from . import lifecycle
 from .moderation_checks import (
     CONTACT_DETAILS_MESSAGE,
     blocking_failures,
@@ -519,6 +520,34 @@ class OwnerListingUpdateView(generics.UpdateAPIView):
     http_method_names = ["patch"]
 
 
+class _ListingLifecycleView(APIView):
+    """POST /api/listings/mine/{id}/<verb>/ — empty body, owner only; answers {"id", "status"} or 400 {"status": why}."""
+
+    permission_classes = [IsAuthenticated, IsListingOwner]
+    action = None
+
+    def post(self, request, pk):
+        listing = generics.get_object_or_404(Listing, pk=pk)
+        self.check_object_permissions(request, listing)
+        try:
+            listing = getattr(lifecycle, self.action)(listing)
+        except lifecycle.LifecycleError as exc:
+            return Response({"status": str(exc)}, status=400)
+        return Response({"id": listing.pk, "status": listing.status})
+
+
+class ListingDropView(_ListingLifecycleView):
+    action = "drop"
+
+
+class ListingRestoreView(_ListingLifecycleView):
+    action = "restore"
+
+
+class ListingDiscontinueView(_ListingLifecycleView):
+    action = "discontinue"
+
+
 class ListingManageView(generics.UpdateAPIView):
     """PATCH /api/listings/mine/{id}/manage/ — light edit of a listing's
     operational fields (business item 2), allowed on a published listing
@@ -587,6 +616,8 @@ class ListingRestockView(APIView):
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
         self.check_object_permissions(request, listing)
+        if listing.status == Listing.DISCONTINUED:
+            return Response({"status": "A discontinued listing cannot be changed."}, status=400)
 
         if "stock_quantity" in request.data:
             try:
@@ -620,6 +651,8 @@ class ListingSubmitView(APIView):
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
         self.check_object_permissions(request, listing)
+        if listing.status in (Listing.DROPPED, Listing.DISCONTINUED):
+            return Response({"status": "A dropped or discontinued listing cannot be submitted."}, status=400)
         if listing.status not in (Listing.DRAFT, Listing.REJECTED):
             return Response(
                 {"status": "Only draft or rejected listings can be submitted for review."}, status=400
