@@ -14,6 +14,8 @@ import { Empty, ErrorLine, Filters, Note, WARN, clock, dayTime, linkStyle, money
 // calls; the decision is recorded, never executed as money: a refund becomes an approval
 // request and payments are simulated, and the screen says so before it is recorded.
 const TYPES = [["", "All"], ["not_received", "Not received"], ["damaged", "Damaged"], ["wrong_item", "Wrong or missing item"], ["unreachable", "Customer unreachable"], ["return", "Return"]];
+// Amounts inside a sentence keep tabular figures like every other amount (DESIGN.md); the ink is the surrounding text's.
+const NUM = { fontVariantNumeric: "tabular-nums" };
 const TYPE_COLOR = { not_received: D.red, damaged: D.gold, wrong_item: D.textDim, unreachable: D.blue, return: D.amber };
 
 export function CasesList({ onOpenCase }) {
@@ -110,21 +112,21 @@ function DecisionForm({ detail, onDone }) {
       {radios("outcome", "What happens to the order", detail.outcomes, outcome, setOutcome)}
       {outcome === "refund" && (
         <>
-          {order.refundable != null && <Note>{`Can still be refunded: ${formatGhs(order.refundable)}`}</Note>}
+          {order.refundable != null && <Note><span style={NUM}>{`Can still be refunded: ${formatGhs(order.refundable)}`}</span></Note>}
           {order.delivery_fee_kept != null && order.delivery_fee_kept !== "0.00" && (
-            <Note>{`The ${formatGhs(order.delivery_fee_kept)} delivery fee is not refunded: the goods were picked up or delivered, so the fee is earned.`}</Note>
+            <Note><span style={NUM}>{`The ${formatGhs(order.delivery_fee_kept)} delivery fee is not refunded: the goods were picked up or delivered, so the fee is earned.`}</span></Note>
           )}
           {order.free_delivery && (
-            <Note>{`Delivery was free for the customer: a promo paid by ${order.free_delivery.funded_by === "platform" ? "AshantiHub" : "the business"} covers the ${formatGhs(order.free_delivery.amount)} fee.`}</Note>
+            <Note><span style={NUM}>{`Delivery was free for the customer: a promo paid by ${order.free_delivery.funded_by === "platform" ? "AshantiHub" : "the business"} covers the ${formatGhs(order.free_delivery.amount)} fee.`}</span></Note>
           )}
-          <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700, color: D.text, maxWidth: 220 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700, color: D.text, maxWidth: 220, ...NUM }}>
             Refund amount (GH₵, at most {formatGhs(order.refundable ?? order.total)})
             <input inputMode="decimal" value={wholeRefund ? "" : amount} onChange={(e) => setAmount(e.target.value)} disabled={wholeRefund} style={{ ...field, opacity: wholeRefund ? 0.5 : 1 }} />
           </label>
           {order.whole_refund_at_zero && (
             <label style={{ display: "flex", gap: 6, alignItems: "flex-start", fontSize: "0.82rem", color: D.text }}>
               <input type="checkbox" checked={whole} onChange={(e) => setWhole(e.target.checked)} />
-              <span>Refund the whole order. The customer gets GH₵ 0.00 back: after the coupon, what they paid only covered the delivery fee, which the rider keeps. The order is cancelled and the rider is paid.</span>
+              <span style={NUM}>Refund the whole order. The customer gets GH₵ 0.00 back: after the coupon, what they paid only covered the delivery fee, which the rider keeps. The order is cancelled and the rider is paid.</span>
             </label>
           )}
         </>
@@ -136,7 +138,7 @@ function DecisionForm({ detail, onDone }) {
         Note (required, kept with the case)
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={2000} style={field} />
       </label>
-      <Note>{detail.payments} A refund goes to Accounting as a request and Super Admin approves it. You will be asked for your password.</Note>
+      <Note><span style={NUM}>{detail.payments} A refund goes to Accounting as a request and Super Admin approves it. You will be asked for your password.</span></Note>
       <div><button type="button" disabled={!ready || busy} onClick={submit} style={button(D.gold, D.text, !ready || busy)}>Record decision</button></div>
     </section>
   );
@@ -197,7 +199,7 @@ export function CaseDetail({ id, onBack, onOpenDelivery }) {
               <div style={{ fontSize: "0.82rem", color: D.text, whiteSpace: "pre-wrap" }}>{data.description || "No description was written."}</div>
               <span style={dim}>Customers raise cases through AshantiHub Support. The rider&apos;s own account is in their note above, when they wrote one.</span>
             </section>
-            {data.refund && <Note>Refund request #{data.refund.approval_id}: {data.refund.whole ? "whole-order refund (nothing to give back)" : formatGhs(data.refund.amount)} · {data.refund.status} · asked by {data.refund.asked_by}{data.refund.decided_by ? `, decided by ${data.refund.decided_by}` : ""}. {data.payments}</Note>}
+            {data.refund && <Note><span style={NUM}>Refund request #{data.refund.approval_id}: {data.refund.whole ? "whole-order refund (nothing to give back)" : formatGhs(data.refund.amount)} · {data.refund.status} · asked by {data.refund.asked_by}{data.refund.decided_by ? `, decided by ${data.refund.decided_by}` : ""}. {data.payments}</span></Note>}
             {data.decision ? (
               <section aria-labelledby="done" style={section}>
                 <h3 id="done" style={sectionTitle}>Decision recorded</h3>

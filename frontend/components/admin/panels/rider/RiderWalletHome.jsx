@@ -35,13 +35,13 @@ export default function RiderWalletHome({ summary, onNavigate, onChanged }) {
       <section style={s.card} aria-label="Your balance">
         <div style={s.label}>Your balance</div>
         <div style={{ ...s.amount, fontSize: 32 }}>{signedGhs(summary.balance)}</div>
-        {summary.balance_note && <div style={{ ...s.note, marginTop: 8 }}>{summary.balance_note}</div>}
+        {summary.balance_note && <div style={{ ...s.note, marginTop: 8, fontVariantNumeric: 'tabular-nums' }}>{summary.balance_note}</div>}
       </section>
 
       <section style={{ ...s.card, marginTop: 16 }} aria-label="Commission held">
         <div style={s.label}>Commission held</div>
         <div style={{ ...s.amount, fontSize: 22 }}>{formatGhs(summary.reserve)}</div>
-        {summary.reserve_note && <div style={{ ...s.note, marginTop: 8 }}>{summary.reserve_note}</div>}
+        {summary.reserve_note && <div style={{ ...s.note, marginTop: 8, fontVariantNumeric: 'tabular-nums' }}>{summary.reserve_note}</div>}
         <div style={{ ...s.note, marginTop: 8 }}>
           AshantiHub&apos;s commission on orders paid now: {percentFromBp(summary.commission_bp)} of each delivery fee.
         </div>

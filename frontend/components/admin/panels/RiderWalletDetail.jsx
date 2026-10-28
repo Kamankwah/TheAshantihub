@@ -18,7 +18,7 @@ function Figure({ label, children, note }) {
     <div style={{ ...glassCard, padding: 14, flex: "1 1 200px" }}>
       <div style={{ ...dim, fontSize: "0.7rem" }}>{label}</div>
       <div style={{ ...amount, fontSize: "1.2rem" }}>{children}</div>
-      {note && <div style={{ ...dim, marginTop: 4 }}>{note}</div>}
+      {note && <div style={{ ...dim, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>{note}</div>}
     </div>
   );
 }

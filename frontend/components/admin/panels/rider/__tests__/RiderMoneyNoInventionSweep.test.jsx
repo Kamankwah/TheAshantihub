@@ -45,10 +45,10 @@ function riderWalletApi() {
   )
 }
 
-const hasMoney = (el) => (el.textContent || '').includes('GH₵') && ![...el.children].some((c) => (c.textContent || '').includes('GH₵'))
-// A figure is an element that is mostly the amount (a label of up to three words may sit with it). A sentence that
-// merely quotes an amount (a server note, a rule line) is prose: it is still checked for gold and the other rules.
-const isFigure = (el) => (el.textContent || '').replace(/[−-]?GH₵\s?[\d,]+(\.\d+)?/g, ' ').trim().split(/\s+/).filter((w) => /[A-Za-z]{2,}/.test(w)).length <= 3
+// An element that shows an amount: GH₵ followed by a figure. A bare "(GH₵)" unit in a field label (3F's
+// WithdrawForm) carries no figure.
+const SHOWS = /GH₵\s?[\d,]*\d/
+const hasMoney = (el) => SHOWS.test(el.textContent || '') && ![...el.children].some((c) => SHOWS.test(c.textContent || ''))
 const tabular = (el) => {
   for (let n = el; n && n !== document.body; n = n.parentElement) {
     if (n.style && /tabular-nums/.test(n.style.fontVariantNumeric || n.style.cssText)) return true
@@ -66,7 +66,7 @@ function sweep(container = document.body) {
   const money = [...container.querySelectorAll('*')].filter(hasMoney)
   expect(money.length).toBeGreaterThan(0)
   for (const el of money) {
-    expect(!isFigure(el) || tabular(el), `not tabular: "${el.textContent.slice(0, 60)}"`).toBe(true)
+    expect(tabular(el), `not tabular: "${el.textContent.slice(0, 60)}"`).toBe(true)
     for (let n = el; n && n !== document.body; n = n.parentElement) {
       const colour = ((n.getAttribute('style') || '').match(/(?:^|;)\s*color:\s*([^;]+)/i) || [])[1] || ''
       expect(colour.toUpperCase(), `gold text on money: "${el.textContent.slice(0, 60)}"`).not.toMatch(/#D4A017|212,\s*160,\s*23/)
