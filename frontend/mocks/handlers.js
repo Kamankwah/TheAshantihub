@@ -97,7 +97,7 @@ export const handlers = [
       facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
       tiktok_url: 'https://tiktok.com/@ashantihub', youtube_url: 'https://youtube.com/@ashantihub',
       whatsapp_number: '233244000000', support_hours: 'Mon–Sat, 8:00am – 8:00pm GMT',
-      warranty_returns_policy: '', service_dispute_policy: '',
+      warranty_returns_policy: '', service_dispute_policy: '', pickup_office_address: '',
     })
   }),
   http.patch('http://localhost:8000/api/core/site-settings/', async ({ request }) => {
@@ -590,6 +590,8 @@ export const handlers = [
     if (!amount) return HttpResponse.json({ amount: ['Enter an amount.'] }, { status: 400 })
     return HttpResponse.json({ amount, payment_processing: '0.00', you_pay: amount, provider: 'simulated' })
   }),
+  http.get('http://localhost:8000/api/ledger/pickup/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.patch('http://localhost:8000/api/core/site-settings/pickup-address/', async ({ request }) => HttpResponse.json(await request.json())),
   http.get('http://localhost:8000/api/wallet/staff/wallets/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/wallet/staff/withdrawals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/wallet/staff/reconciliation/', () => HttpResponse.json({ results: [] })),

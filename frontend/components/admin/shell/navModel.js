@@ -74,6 +74,8 @@ export const NAV_ITEMS = [
   // The Scheduled list for whoever manages deliveries without the Delivery Manager menu (orders.manage_delivery reads it
   // and, since Director ruling 7, may Send now as well). The Delivery Manager has dm-scheduled instead.
   { id: "delivery-scheduled", icon: "🕒", label: "Scheduled orders", show: (auth) => (auth.hasPermission("orders.manage_delivery") || auth.hasPermission("delivery.manage")) && auth.user?.role !== "delivery_manager" },
+  // The Pickup Desk's own screen is its overview (no nav item); the Super Admin opens it here (Director ruling 8).
+  { id: "pickup-desk", icon: "🏬", label: "Pickup desk", show: (auth) => saOnly(auth) && auth.hasPermission("pickup.confirm") },
   { id: "my-deliveries", icon: "📦", label: "My Deliveries", show: (auth) => auth.hasPermission("delivery.dispatch") },
   { id: "categories-zones", icon: "🗂️", label: "Categories & Zones", show: (auth) => auth.hasPermission("categories.manage") || auth.hasPermission("zones.manage") },
   { id: "promotions", icon: "🎯", label: "Promotions", show: (auth) => auth.hasPermission("promotions.manage") },
@@ -232,7 +234,7 @@ const ROLE_MENUS = {
     ["teams", "Teams (step in)", ["step-in-operations", "step-in-support", "step-in-delivery", "step-in-marketing", "step-in-accounting"]],
     // Scheduled orders (paid orders held until their shops open, with Send now) sits beside Orders & deliveries:
     // Director ruling 7 (2026-10-20) added it to the canvas menu.
-    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "events-moderation", "hero", "disputes"]],
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "pickup-desk", "events-moderation", "hero", "disputes"]],
     ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation", "wallets", "withdrawals"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
@@ -327,11 +329,13 @@ const ROLE_MENUS = {
     ["decisions", "Decisions", ["approvals"]],
     ["account", "Account", ["security"]],
   ],
+  // The pickup desk: its one screen is the Overview; only the account tools sit in the menu.
+  pickup_desk: [["account", "Account", ["security", "activity"]]],
 };
 
 // Roles whose menu is the whole menu: a screen the canvas leaves out is not
 // offered under "More tools" either (its permission and panel stay).
-const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner", "support", "delivery_manager", "dispatch", "marketing"]);
+const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner", "support", "delivery_manager", "dispatch", "marketing", "pickup_desk"]);
 
 // Nav ids whose screen is not built yet, per role; AdminCommandCenter renders the
 // "being built" panel for them. A package that builds one swaps its panel in and
@@ -374,7 +378,7 @@ const ROLE_LABELS = {
   },
 };
 // The pinned Overview: "Today" for a scout, the canvas's "Command center" for Super Admin, "Live operations" for the Delivery Manager.
-export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" ? "Command center" : role === "delivery_manager" ? "Live operations" : role === "dispatch" ? "Shift" : "Overview");
+export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" ? "Command center" : role === "delivery_manager" ? "Live operations" : role === "dispatch" ? "Shift" : role === "pickup_desk" ? "Pickup desk" : "Overview");
 const toNavItem = ({ id, icon, label }, role) => ({ id, icon, label: ROLE_LABELS[role]?.[id] || label });
 
 export function buildNavGroups(auth) {

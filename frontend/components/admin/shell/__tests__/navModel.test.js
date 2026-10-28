@@ -90,7 +90,7 @@ describe('My Work group', () => {
 })
 
 // Super Admin screens that are built (no longer placeholders) but still no other role's.
-const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'money-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center', 'opening']
+const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'money-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center', 'opening', 'pickup-desk']
 const SA_ONLY = NAV_ITEMS.filter((i) => i.placeholder === 'super_admin').map((i) => i.id).concat('invites', SA_BUILT)
 // 'leave' is also Super Admin's (the canvas's Leave & holidays), but no other role's.
 // The Accounting canvas screens (2026-10-07): the Accountant's alone, except Commissions, Refunds and
@@ -502,7 +502,8 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
       ['Home', ['My approvals']],
       ['People', ['Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays']],
       ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
-      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Scheduled orders', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
+      // Pickup desk joined Marketplace after Scheduled orders (Director ruling 8, 2026-10-20).
+      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Scheduled orders', 'Pickup desk', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
       ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets', 'Withdrawals']],
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
       ['Security & audit', ['Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings']],
@@ -602,5 +603,26 @@ describe('Marketing menu (canvas 2026-10-13)', () => {
 
   it('reads the promotions badge from the new staff-badges key', () => {
     expect(makeBadgeFor({ promotions_pending: 3, hero: 2, events: 1 }, 'marketing')('promotions')).toBe(3)
+  })
+})
+
+describe('Pickup Desk role menu', () => {
+  const auth = { user: { role: 'pickup_desk' }, hasPermission: () => true }
+
+  it('gives the Pickup Desk only its Account tools, exhaustively', () => {
+    // Every permission granted, yet nothing leaks into "More tools": the menu is exhaustive.
+    expect(buildNavGroups(auth).map((g) => [g.label, g.items.map((i) => i.id)])).toEqual([['Account', ['security', 'activity']]])
+  })
+
+  it('names the Pickup Desk overview "Pickup desk"', () => {
+    expect(overviewLabel('pickup_desk')).toBe('Pickup desk')
+  })
+
+  it('gives the Super Admin Pickup desk in Marketplace after Scheduled orders', () => {
+    const marketplace = (perms) => buildNavGroups({ user: { role: 'super_admin' }, hasPermission: (c) => perms.includes(c) }).find((g) => g.id === 'marketplace')?.items.map((i) => i.id) || []
+    expect(marketplace(['orders.manage_delivery', 'pickup.confirm'])).toEqual(['delivery', 'delivery-scheduled', 'pickup-desk'])
+    expect(marketplace(['users.view'])).not.toContain('pickup-desk')
+    const other = buildNavGroups({ user: { role: 'operations' }, hasPermission: () => true }).flatMap((g) => g.items.map((i) => i.id))
+    expect(other).not.toContain('pickup-desk')
   })
 })
