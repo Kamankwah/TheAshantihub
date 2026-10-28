@@ -148,6 +148,7 @@ def register_business(scout, data, files, *, http_request=None):
             after={"business_name": name, "flags": [flag.pk for flag in flags],
                    **({"prospect_id": prospect.pk} if prospect is not None else {})},
             request=http_request,
+            on_behalf_of=prospect.scout if prospect is not None and prospect.scout_id != scout.pk else None,
         )
     return {"business_owner": owner, "approval": approval, "flags": flags, "confirmation": confirmation}
 

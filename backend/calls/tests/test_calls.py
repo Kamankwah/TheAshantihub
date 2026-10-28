@@ -219,3 +219,46 @@ class ScoutCallSheetTests(TestCase):
         self.assertEqual([p["name"] for p in data["prospects"]], ["Ohemaa Waakye"])
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.other, 'staff')}")
         self.assertEqual(self.client.get("/api/calls/counterparts/").json(), {"businesses": [], "prospects": []})
+
+
+class ManagerLogsProspectCallTests(TestCase):
+    """Post-review fix A2: Operations and Super Admin log a call on any scout's prospect; a scout only on their own;
+    the General Manager (a checker with no prospect rights) not at all."""
+
+    def setUp(self):
+        from field.models import Prospect
+
+        self.ops = make_staff("operations", "ama@example.com")
+        self.admin = make_staff("super_admin", "root@example.com")
+        self.gm = make_staff("general_manager", "gm@example.com")
+        self.scout = make_staff("scout", "kwame@example.com", manager=self.ops)
+        self.other = make_staff("scout", "efua@example.com", manager=self.ops)
+        self.prospect = Prospect.objects.create(scout=self.scout, name="Ohemaa Waakye", phone="+233241234567")
+        self.client = APIClient()
+
+    def log(self, who, **overrides):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(who, 'staff')}")
+        data = {"direction": "out", "channel": "phone", "counterpart_type": "prospect", "counterpart_id": self.prospect.pk,
+                "purpose": "prospecting", "outcome": "connected", "sentiment": "neutral", "notes": "", "duration_seconds": 60}
+        data.update(overrides)
+        return self.client.post("/api/calls/", data, format="json")
+
+    def test_operations_and_super_admin_log_a_call_filed_under_the_prospect_with_the_manager_as_caller(self):
+        for who in (self.ops, self.admin):
+            response = self.log(who)
+            self.assertEqual(response.status_code, 201, response.content)
+        calls = list(CallLog.objects.order_by("pk"))
+        self.assertEqual([c.staff for c in calls], [self.ops, self.admin])
+        self.assertEqual({(c.related_type, c.related_id, c.counterpart_name) for c in calls},
+                         {("prospect", str(self.prospect.pk), "Ohemaa Waakye")})
+
+    def test_a_scout_cannot_log_on_another_scouts_prospect_and_the_gm_cannot_at_all(self):
+        self.assertEqual(self.log(self.other).status_code, 400)
+        self.assertEqual(self.log(self.gm, purpose="other").status_code, 400)
+        self.assertFalse(CallLog.objects.exists())
+
+    def test_a_registered_prospect_still_refuses_a_manager(self):
+        from field.models import Prospect
+
+        Prospect.objects.filter(pk=self.prospect.pk).update(status=Prospect.REGISTERED)
+        self.assertEqual(self.log(self.ops).status_code, 400)

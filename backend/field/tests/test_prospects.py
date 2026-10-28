@@ -374,3 +374,99 @@ class StaffSeesEveryScoutsProspectsTests(ProspectBase):
     def test_the_general_manager_is_refused(self):
         self.as_staff(self.gm)
         self.assertEqual(self.client.get(PROSPECTS).status_code, 403)
+
+
+class ManagerEditsAreAttributedTests(ProspectBase):
+    """Post-review fix A1: a manager's edit of a scout's prospect is the manager's act in the activity log, done on the
+    scout's behalf; the scout's own edit is unchanged. No phone number reaches an activity body."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = make_staff("super_admin", "root@example.com")
+        self.prospect_id = self.add(self.kwame).data["id"]
+        from activity.models import ActivityEvent
+
+        # The log is append-only: remember where it stood, and look only at what the edits below add.
+        self.mark = ActivityEvent.objects.order_by("-id").values_list("id", flat=True).first() or 0
+
+    def patch(self, who, **body):
+        self.as_staff(who)
+        return self.client.patch(f"{PROSPECTS}{self.prospect_id}/", body, format="json")
+
+    def events(self, verb="prospect.update"):
+        from activity.models import ActivityEvent
+
+        return list(ActivityEvent.objects.filter(verb=verb, id__gt=self.mark))
+
+    def test_operations_edit_is_recorded_as_operations_for_the_scout(self):
+        response = self.patch(self.lead, note="Spoke to the owner", status="interested")
+        self.assertEqual(response.status_code, 200, response.content)
+        (event,) = self.events()
+        self.assertEqual(event.actor_id, self.lead.pk)
+        self.assertEqual(event.on_behalf_of_id, self.kwame.pk)
+
+    def test_super_admin_edit_is_recorded_as_super_admin_for_the_scout(self):
+        self.patch(self.admin, status="not_interested")
+        (event,) = self.events()
+        self.assertEqual((event.actor_id, event.actor_role, event.on_behalf_of_id), (self.admin.pk, "super_admin", self.kwame.pk))
+
+    def test_the_scouts_own_edit_is_unchanged(self):
+        self.patch(self.kwame, note="Called back")
+        (event,) = self.events()
+        self.assertEqual(event.actor_id, self.kwame.pk)
+        self.assertIsNone(event.on_behalf_of_id)
+
+    def test_a_manager_changing_the_phone_never_puts_a_number_in_the_log(self):
+        self.patch(self.lead, phone="0249998877", name="New name")
+        (event,) = self.events()
+        self.assertNotIn("9998877", repr((event.before, event.after, event.summary, event.target_label)))
+        self.assertNotIn("1234567", repr((event.before, event.after, event.summary, event.target_label)))
+
+
+class ManagerRegistersFromProspectTests(RegisterFromProspectTests):
+    """Post-review fix A2: Operations / Super Admin register a business from another scout's prospect; the prospect closes
+    for the scout, the business links to it, and the registrar is the manager."""
+
+    def test_operations_register_closes_the_scouts_prospect_and_links_the_business(self):
+        response = self.register(staff=self.lead, prospect_id=str(self.prospect.pk))
+        self.assertEqual(response.status_code, 201, response.content)
+        owner = BusinessOwner.objects.get(pk=response.data["id"])
+        self.prospect.refresh_from_db()
+        self.assertEqual((self.prospect.status, self.prospect.registered_business), ("registered", owner))
+        self.assertEqual(self.prospect.scout, self.scout)  # the scout still owns the credit
+        self.assertEqual(owner.registered_by, self.lead)
+        self.visit.refresh_from_db()
+        self.assertEqual(self.visit.business_owner, owner)
+        self.call.refresh_from_db()  # the scout's earlier call moves onto the business too
+        self.assertEqual((self.call.related_type, self.call.related_id), ("business_owner", str(owner.pk)))
+        self.as_(self.scout)
+        self.assertEqual(self.client.get(PROSPECTS).data["signed_up_this_month"], 1)
+
+    def test_a_manager_call_on_the_prospect_moves_to_the_business_too(self):
+        manager_call = CallLog.objects.create(
+            staff=self.lead, direction="out", counterpart_type="prospect", counterpart_id=self.prospect.pk,
+            counterpart_name="Asafo Hair & Beauty", related_type="prospect", related_id=str(self.prospect.pk),
+            purpose="prospecting", outcome="connected", started_at=timezone.now(),
+        )
+        response = self.register(staff=self.lead, prospect_id=str(self.prospect.pk))
+        manager_call.refresh_from_db()
+        self.assertEqual((manager_call.related_type, manager_call.related_id), ("business_owner", str(response.data["id"])))
+
+    def test_the_registration_event_names_the_manager_for_the_scout(self):
+        from activity.models import ActivityEvent
+
+        self.register(staff=self.lead, prospect_id=str(self.prospect.pk))
+        event = ActivityEvent.objects.get(verb="business.registered")
+        self.assertEqual((event.actor_id, event.on_behalf_of_id), (self.lead.pk, self.scout.pk))
+
+    def test_super_admin_can_too(self):
+        admin = make_staff("super_admin", "root@example.com")
+        self.assertEqual(self.register(staff=admin, prospect_id=str(self.prospect.pk)).status_code, 201)
+        self.prospect.refresh_from_db()
+        self.assertEqual(self.prospect.status, "registered")
+
+    def test_the_gm_is_refused_and_the_prospect_stays_open(self):
+        gm = make_staff("general_manager", "gm@example.com")
+        self.assertEqual(self.register(staff=gm, prospect_id=str(self.prospect.pk)).status_code, 403)
+        self.prospect.refresh_from_db()
+        self.assertEqual(self.prospect.status, "interested")

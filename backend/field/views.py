@@ -401,7 +401,7 @@ def _named_scout(body):
 
 def _manages_prospects(user):
     """Operations and Super Admin (portfolio.manage) work every scout's prospects; a scout works only their own."""
-    return "portfolio.manage" in user.effective_permission_codenames()
+    return prospects_module.manages_prospects(user)
 
 
 class ProspectListCreateView(APIView):
@@ -498,7 +498,7 @@ class ProspectDetailView(APIView):
         if not serializer.is_valid():
             return _invalid(serializer)
         try:
-            prospects_module.update_prospect(prospect, serializer.validated_data, request=request)
+            prospects_module.update_prospect(prospect, serializer.validated_data, request=request, actor=request.user)
         except VisitError as error:
             return _refused(error)
         return Response(prospect_item(self._attached(request, pk)))

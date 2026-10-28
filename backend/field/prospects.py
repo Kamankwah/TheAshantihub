@@ -24,6 +24,13 @@ REGISTERED = "This prospect is registered, so it can't be changed here."
 OPEN_STATUSES = (Prospect.NEW, Prospect.INTERESTED, Prospect.FOLLOW_UP)
 
 
+def manages_prospects(user):
+    """Operations and Super Admin (portfolio.manage with the prospect right, businesses.register) work every scout's
+    prospects; a scout only their own. The General Manager holds portfolio.manage but no prospect right: a checker."""
+    perms = user.effective_permission_codenames()
+    return "portfolio.manage" in perms and "businesses.register" in perms
+
+
 def masked_phone(raw):
     """"024 *** 118": the first digits and the last three, never the whole number."""
     key = phone_key(raw)
@@ -96,8 +103,11 @@ def create_prospect(scout, data, *, request=None, actor=None):
     return prospect
 
 
-def update_prospect(prospect, data, *, request=None):
+def update_prospect(prospect, data, *, request=None, actor=None):
+    """`actor` is the staff member making the edit (default: the prospect's scout). When it is Operations or Super Admin
+    editing a scout's prospect, the activity log credits them and names the scout through on_behalf_of."""
     scout = prospect.scout
+    actor = actor or scout
     changed = []
     with transaction.atomic():
         locked = Prospect.objects.select_for_update().get(pk=prospect.pk)
@@ -124,16 +134,19 @@ def update_prospect(prospect, data, *, request=None):
             changed.append("pin")
         locked.save()
         sync_follow_up(locked)
-        record(scout, "prospect.update", target=locked, before=before,
-               after={"status": locked.status, "changed": changed}, request=request)
+        record(actor, "prospect.update", target=locked, before=before,
+               after={"status": locked.status, "changed": changed}, request=request,
+               on_behalf_of=scout if actor != scout else None)
     return locked
 
 
-def registrable(scout, prospect_id):
-    """The scout's own, not yet registered prospect (locked), else None."""
-    return Prospect.objects.select_for_update().filter(pk=prospect_id, scout=scout).exclude(
-        status=Prospect.REGISTERED,
-    ).first()
+def registrable(registrar, prospect_id):
+    """The not yet registered prospect (locked) the registrar may register from, else None: a scout's own, or any
+    scout's for a manager (manages_prospects)."""
+    rows = Prospect.objects.select_for_update().filter(pk=prospect_id).exclude(status=Prospect.REGISTERED)
+    if not manages_prospects(registrar):
+        rows = rows.filter(scout=registrar)
+    return rows.first()
 
 
 def link_registration(prospect, owner, business_name):
@@ -147,7 +160,8 @@ def link_registration(prospect, owner, business_name):
     prospect.save(update_fields=["status", "registered_business", "registered_at", "next_follow_up_at"])
     sync_follow_up(prospect)
     VisitCheckIn.objects.filter(prospect=prospect, business_owner__isnull=True).update(business_owner=owner)
-    CallLog.objects.filter(related_type="prospect", related_id=str(prospect.pk), staff=prospect.scout).update(
+    # Every call filed under the prospect moves, whoever logged it (the scout, or Operations on their behalf).
+    CallLog.objects.filter(related_type="prospect", related_id=str(prospect.pk)).update(
         related_type="business_owner", related_id=str(owner.pk), related_label=business_name[:200],
     )
 

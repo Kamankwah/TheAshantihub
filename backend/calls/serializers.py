@@ -111,7 +111,12 @@ class CallLogSerializer(serializers.ModelSerializer):
         elif record_id and kind == "prospect":
             from field.models import Prospect
 
-            prospect = Prospect.objects.filter(pk=record_id, scout=self._viewer()).first()
+            from field.prospects import manages_prospects
+
+            prospects = Prospect.objects.filter(pk=record_id)
+            if not manages_prospects(self._viewer()):
+                prospects = prospects.filter(scout=self._viewer())
+            prospect = prospects.first()
             if prospect is None:
                 raise serializers.ValidationError({"counterpart_id": NOT_YOUR_PROSPECT})
             if prospect.status == Prospect.REGISTERED:
