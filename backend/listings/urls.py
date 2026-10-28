@@ -11,6 +11,9 @@ urlpatterns = [
     path("mine/<int:pk>/discontinue/", views.ListingDiscontinueView.as_view(), name="listing-discontinue"),
     path("mine/<int:pk>/restock/", views.ListingRestockView.as_view(), name="listing-restock"),
     path("mine/<int:pk>/manage/", views.ListingManageView.as_view(), name="listing-manage"),
+    path("mine/<int:pk>/variants/", views.ListingVariantListCreateView.as_view(), name="listing-variants"),
+    path("mine/<int:pk>/variants/<int:vid>/", views.ListingVariantDetailView.as_view(), name="listing-variant-detail"),
+    path("mine/<int:pk>/variants/<int:vid>/live/", views.ListingVariantLiveView.as_view(), name="listing-variant-live"),
     path("mine/<int:pk>/photos/", views.ListingPhotoCreateView.as_view(), name="listing-photo-create"),
     path(
         "mine/<int:pk>/photos/<int:photo_id>/",

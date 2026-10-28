@@ -253,6 +253,40 @@ class ListingPriceHistory(models.Model):
         return f"{self.listing_id}: {self.price} from {self.started_at:%Y-%m-%d}"
 
 
+class ListingVariant(models.Model):
+    """One buyable version of a listing (a flavour, a size) with its own price and stock. The listing keeps a derived
+    "from" price and summed stock (listings.variants.sync_listing), so every reader of the listing stays correct.
+    A variant is never deleted once an order may point at it: it is switched off (`is_active=False`)."""
+
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="variants")
+    label = models.CharField(max_length=100)
+    attributes = models.JSONField(default=dict, blank=True)
+    price_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    # None = stock is not counted for this variant.
+    stock_quantity = models.PositiveIntegerField(null=True, blank=True)
+    position = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["listing", "label"], condition=models.Q(is_active=True), name="listing_variant_label_active_uniq",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.label} ({self.listing_id})"
+
+    @property
+    def effective_price(self):
+        """What one unit of this variant costs now. Equal to its price until variant discounts exist."""
+        from . import pricing
+
+        return pricing.dec(self.price_amount)
+
+
 class ListingPhoto(models.Model):
     listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="photos")
     image = models.ImageField(

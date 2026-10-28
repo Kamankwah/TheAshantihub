@@ -21,7 +21,7 @@ from accounts.views import IsBusinessOwner
 from billing.models import Transaction
 from notifications.services import notify_business_owner, notify_staff_role
 
-from . import lifecycle
+from . import lifecycle, variants
 from .moderation_checks import (
     CONTACT_DETAILS_MESSAGE,
     blocking_failures,
@@ -31,7 +31,7 @@ from .moderation_checks import (
     open_fraud_flags,
 )
 from .category_tree import build_tree
-from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
+from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, ListingVariant, Promotion, Zone
 from .permissions import IsHeroMediaOwner, IsListingOwner, IsListingPhotoOwner
 from .serializers import (
     CartTieredListingSerializer,
@@ -43,6 +43,7 @@ from .serializers import (
     HeroSlideInputSerializer,
     HeroSubmitSerializer,
     ListingPhotoSerializer,
+    ListingVariantSerializer,
     ModerationListingSerializer,
     OwnerListingManageSerializer,
     OwnerListingSerializer,
@@ -72,7 +73,7 @@ def _with_rating_annotations(queryset):
     return queryset.annotate(
         avg_rating=Avg("reviews__rating", filter=Q(reviews__status="published")),
         review_count=Count("reviews", filter=Q(reviews__status="published"), distinct=True),
-    )
+    ).prefetch_related("variants")
 
 
 class ListingPhotoCreateView(generics.CreateAPIView):
@@ -510,7 +511,7 @@ class OwnerListingCreateListView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated, IsBusinessOwner]
 
     def get_queryset(self):
-        return Listing.objects.filter(business_owner=self.request.user)
+        return Listing.objects.filter(business_owner=self.request.user).prefetch_related("variants")
 
 
 class OwnerListingUpdateView(generics.UpdateAPIView):
@@ -559,6 +560,78 @@ class ListingManageView(generics.UpdateAPIView):
     serializer_class = OwnerListingManageSerializer
     permission_classes = [IsAuthenticated, IsListingOwner]
     http_method_names = ["patch"]
+
+    def update(self, request, *args, **kwargs):
+        if variants.has_variants(self.get_object()):
+            return Response({"detail": variants.VARIANT_LISTING_MESSAGE}, status=400)
+        return super().update(request, *args, **kwargs)
+
+
+class _OwnerVariantView(APIView):
+    """Shared by the variant endpoints: only the signed-in business's own listing (and its own variant) resolves; any
+    other id is a 404, so one business cannot learn that another's listing exists."""
+
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+
+    def owner_listing(self, request, pk):
+        return generics.get_object_or_404(Listing, pk=pk, business_owner=request.user)
+
+    def owner_variant(self, request, pk, vid):
+        listing = self.owner_listing(request, pk)
+        return listing, generics.get_object_or_404(ListingVariant, pk=vid, listing=listing)
+
+
+class ListingVariantListCreateView(_OwnerVariantView):
+    """GET/POST /api/listings/mine/{id}/variants/ - list a listing's variants, or add one. Adding works only on a draft
+    or rejected listing; a live listing's structure changes are sent for approval (never here)."""
+
+    def get(self, request, pk):
+        listing = self.owner_listing(request, pk)
+        return Response(ListingVariantSerializer(listing.variants.all(), many=True).data)
+
+    def post(self, request, pk):
+        self.owner_listing(request, pk)
+        with db_transaction.atomic():
+            listing = Listing.objects.select_for_update().get(pk=pk)
+            if listing.status in (Listing.PUBLISHED, Listing.DROPPED):
+                return Response({"detail": variants.STRUCTURE_LOCKED}, status=400)
+            if listing.status == Listing.DISCONTINUED:
+                return Response({"detail": "A discontinued listing cannot be changed."}, status=400)
+            if listing.status == Listing.PENDING_REVIEW:
+                return Response({"detail": "A listing waiting for review cannot be changed."}, status=400)
+            serializer = ListingVariantSerializer(data=request.data, context={"listing": listing})
+            serializer.is_valid(raise_exception=True)
+            count = variants.active(listing).count()
+            if count >= variants.MAX_VARIANTS:
+                return Response({"detail": f"A listing can have at most {variants.MAX_VARIANTS} variants."}, status=400)
+            row = serializer.save(listing=listing, position=count)
+            variants.sync_listing(listing)
+        return Response(ListingVariantSerializer(row).data, status=201)
+
+
+class ListingVariantDetailView(_OwnerVariantView):
+    """DELETE /api/listings/mine/{id}/variants/{vid}/ - switch a variant off on a draft or rejected listing."""
+
+    def delete(self, request, pk, vid):
+        listing, row = self.owner_variant(request, pk, vid)
+        if listing.status not in (Listing.DRAFT, Listing.REJECTED):
+            return Response({"detail": variants.STRUCTURE_LOCKED}, status=400)
+        variants.deactivate(row)
+        return Response(status=204)
+
+
+class ListingVariantLiveView(_OwnerVariantView):
+    """PATCH /api/listings/mine/{id}/variants/{vid}/live/ - the one live variant edit: price_amount and/or stock_quantity
+    (or add). Nothing else about a variant changes here."""
+
+    def patch(self, request, pk, vid):
+        _, row = self.owner_variant(request, pk, vid)
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            row = variants.set_live(row, data)
+        except variants.VariantError as exc:
+            return Response(exc.payload, status=400)
+        return Response(ListingVariantSerializer(row).data)
 
 
 class ListingSponsoredView(APIView):
@@ -618,6 +691,8 @@ class ListingRestockView(APIView):
         self.check_object_permissions(request, listing)
         if listing.status == Listing.DISCONTINUED:
             return Response({"status": "A discontinued listing cannot be changed."}, status=400)
+        if variants.has_variants(listing):
+            return Response({"detail": variants.VARIANT_LISTING_MESSAGE}, status=400)
 
         if "stock_quantity" in request.data:
             try:

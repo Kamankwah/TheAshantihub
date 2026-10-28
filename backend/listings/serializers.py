@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
@@ -5,8 +7,8 @@ from rest_framework import serializers
 from accounts.models import BusinessOwner
 from billing.models import Subscription
 
-from . import pricing
-from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
+from . import pricing, services, variants
+from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, ListingVariant, Promotion, Zone
 
 # The product/service decision fields added by the comprehensive listing-
 # creation work — shared between the owner-facing (writable) and public
@@ -75,6 +77,56 @@ class BusinessOwnerMiniSerializer(serializers.ModelSerializer):
         fields = ["id", "full_name", "kyc_status"]
 
 
+class PublicVariantSerializer(serializers.ModelSerializer):
+    effective_price = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ListingVariant
+        fields = ["id", "label", "attributes", "price_amount", "effective_price", "stock_quantity", "position"]
+
+    def get_effective_price(self, obj):
+        return str(obj.effective_price)
+
+
+class ListingVariantSerializer(PublicVariantSerializer):
+    """The owner's view of a variant (adds `is_active`), and the validation of a new one."""
+
+    label = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    price_amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.01"))
+    stock_quantity = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    attributes = serializers.JSONField(required=False)
+
+    class Meta(PublicVariantSerializer.Meta):
+        fields = [*PublicVariantSerializer.Meta.fields, "is_active"]
+        read_only_fields = ["position", "is_active"]
+
+    def validate_attributes(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Send the attributes as a list of name and value pairs.")
+        if len(value) > variants.MAX_ATTRIBUTES:
+            raise serializers.ValidationError(f"At most {variants.MAX_ATTRIBUTES} attributes.")
+        clean = {}
+        for key, item in value.items():
+            if not isinstance(item, str) or not item.strip() or not str(key).strip():
+                raise serializers.ValidationError("Each attribute needs a name and a text value.")
+            if len(str(key)) > 50 or len(item) > 100:
+                raise serializers.ValidationError("An attribute name or value is too long.")
+            clean[str(key).strip()] = item.strip()
+        return clean
+
+    def validate(self, data):
+        label = (data.get("label") or "").strip()
+        if not label:
+            label = " / ".join((data.get("attributes") or {}).values())[:100]
+        if not label:
+            raise serializers.ValidationError({"label": "Give the variant a name or at least one attribute."})
+        listing = self.context["listing"]
+        if variants.active(listing).filter(label__iexact=label).exists():
+            raise serializers.ValidationError({"label": "This listing already has a variant with that name."})
+        data["label"] = label
+        return data
+
+
 class PublicListingSerializer(serializers.ModelSerializer):
     # No contact_phone (or any phone) here: businesses are never contacted directly, so a public response must not
     # let anyone recover a business number. Owner and staff serializers keep it.
@@ -98,6 +150,8 @@ class PublicListingSerializer(serializers.ModelSerializer):
     sale_price = serializers.SerializerMethodField()
     was_price = serializers.SerializerMethodField()
     effective_price = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+    has_variants = serializers.SerializerMethodField()
 
     class Meta:
         model = Listing
@@ -105,13 +159,19 @@ class PublicListingSerializer(serializers.ModelSerializer):
             "id", "name", "description", "category", "zone", "price_amount", "price_unit",
             "tag", "lat", "lng", "main_photo", "photos", "created_at",
             "is_promoted", "specs", "service_duration", "avg_rating", "review_count",
-            "sale_price", "was_price", "effective_price",
+            "sale_price", "was_price", "effective_price", "variants", "has_variants",
             "business_owner", *LISTING_DECISION_FIELDS, "cancellation_policy",
         ]
         # This serializer only ever backs read-only views (list/detail/
         # related), but mark the decision fields read-only explicitly anyway
         # so a future write usage can't accept them unvalidated.
         read_only_fields = LISTING_DECISION_FIELDS
+
+    def get_variants(self, obj):
+        return PublicVariantSerializer(variants.active_rows(obj), many=True).data
+
+    def get_has_variants(self, obj):
+        return bool(variants.active_rows(obj))
 
     def get_is_promoted(self, obj):
         return bool(getattr(obj, "is_promoted", False))
@@ -233,14 +293,8 @@ def validate_sale_price(data, instance=None):
     return data
 
 
-def save_sent_fields(instance, validated_data):
-    """Write only the fields this request sent (catalogue plan 6). ModelSerializer.update saves the whole row, which would
-    write back the catalogue_product and stock_quantity this request read over a staff grouping decision or a
-    checkout's decrement that committed meanwhile."""
-    for attr, value in validated_data.items():
-        setattr(instance, attr, value)
-    instance.save(update_fields=[*validated_data, "updated_at"])
-    return instance
+# Moved to listings.services; kept importable from here for the callers that already use it.
+save_sent_fields = services.save_sent_fields
 
 
 class OwnerListingManageSerializer(serializers.ModelSerializer):
@@ -411,6 +465,8 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     # a second round-trip — same shape as PublicListingSerializer/
     # ModerationListingSerializer's `photos` field.
     photos = ListingPhotoSerializer(many=True, read_only=True)
+    variants = ListingVariantSerializer(many=True, read_only=True)
+    has_variants = serializers.SerializerMethodField()
 
     # The product's barcode (catalogue plan 6): typed with spaces or hyphens, kept as its 14-digit GTIN.
     barcode = serializers.CharField(required=False, allow_blank=True, max_length=40)
@@ -418,13 +474,16 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Listing
         fields = [
-            "id", "category", "zone", "name", "description", "price_amount", "sale_price", "price_unit",
+            "id", "variants", "has_variants", "category", "zone", "name", "description", "price_amount", "sale_price", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "specs",
             "service_duration", "units_total", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
             "status", "rejection_reason", "dropped_at", "discontinued_at", "created_at", "updated_at",
         ]
         read_only_fields = ["status", "rejection_reason", "dropped_at", "discontinued_at", "created_at", "updated_at"]
         extra_kwargs = {"contact_phone": {"required": False}, "units_total": {"required": False}}
+
+    def get_has_variants(self, obj):
+        return any(row.is_active for row in obj.variants.all())
 
     def validate_barcode(self, value):
         return clean_listing_barcode(value, self.instance)
@@ -442,9 +501,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         owner = self.context["request"].user
-        if not validated_data.get("contact_phone"):
-            validated_data["contact_phone"] = owner.profile.business_contact_phone
-        return Listing.objects.create(business_owner=owner, **validated_data)
+        return services.create_listing(owner, validated_data)
 
 
 class ModerationListingSerializer(serializers.ModelSerializer):
