@@ -611,6 +611,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
 - **Owed before the switch (not performed in 3F, ruling R22):** each new screen at 360, 768 and 1280 px for horizontal overflow and `DESIGN.md` conformance; the staff panels against `scripts/staff-layout-audit.js` (needs a preview on 4173 and the API on 8110); one real-phone pass of the step-up prompt over the withdraw form; a staging run of top-up, pay from wallet, add a number, withdraw, and a stuck-withdrawal resolution by two staff accounts on the simulated provider (`SIMULATED_PAYOUT_OUTCOME=pending`). The backend suite (`wallets orders`) is the controller's.
 - **Switch-on checklist additions:** Plan 4 Tasks 14-15 shipped (the customer wallet tabs; until then the wallet components have no customer page, F5); the stale copy in (d) branched on the ledger; the owed manual checks above done.
 - **Open items found during the build:** Plan 4F must put its Money sub-tabs inside 3F's single `money` tab (R1, Director ruling "Money and Payouts in one tab"; 4F's G1 and its Step 0 grep for "payouts" need editing). Plan 4 must pass `orderHref` to `TransactionsList` (R6: no default, an order link renders only when the caller supplies one; no `/my-account/orders/{id}` route exists). Rider endpoints also answer `id_required` and `daily_count_limit` (Plan 5F's screens must word them). The backend sends no `topup_hold_minutes`, so the top-up screen carries no "withdrawable after N hours" line (R2); add it when the field exists. Gate (xvi) refund notices as in (c).
+- **3F follow-ups, closed by plan 4F Task 3:** the reconciliation mismatch notice now links to the staff tab id `reconciliation` (it linked to `wallets-reconciliation`, so no Open button showed), and `CartDrawer`'s total and the MoMo processing quote include the server's delivery fee when `DELIVERY_FEE_ENABLED` is on and promotions are off (`delivery-preview` answers `delivery`; `delivery.rates.cart_delivery_quote`).
 
 ### 7F-C follow-ups (2026-10-19)
 
@@ -1028,6 +1029,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
 - (lxvii) **The `ServicesPanel` shows a generic error for the new price validation.** `ServiceRequestRespondView` now
   answers 400 `{"price": "Enter a price in GH₵ above 0.00, like 150.00."}`, but the frontend does not surface the
   `price` error. This ships as soon as Plan 1b merges, with the ledger on or off: surface it before merging.
+  *Surfaced by plan 4F Task 12: `ServicesPanel` shows the server's `price` message.*
 - (lxviii) **The switch-on runbook must drain open Hubtel sessions.** A service, stay or ticket session started while
   the ledger was off carries no charge and no `metadata["ledger"]` mark; if it is paid after switch-on its finalizer
   records it at the full price with no processing charge, and reconciliation skips it. Let every open session resolve
@@ -1058,7 +1060,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
   `_wallet_in_use`'s docstring names them. Done in Plan 1b; kept here so the Collections screen copy is checked.
 - (lxxvii) **`ServicesPanel.jsx` (about lines 77-78) sends the raw number input** as the quote price. The always-on price
   check (gate (lxvii)) answers 400 `price`, which the panel shows as a generic error: the frontend must surface it
-  before this ships to production.
+  before this ships to production. *Surfaced by plan 4F Task 12 (the same change closes (lxvii)).*
 
 ### Stage 4 (vendor dashboard and texts, backend) reconciliation (2026-10-16)
 
@@ -1122,14 +1124,16 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   or a Plan 4b) must add `BookingSale` as a second row source (`kind: "booking"`) to `vendor.sale_groups` / `rows` /
   `statement` and the `awaiting_call` count, the three booking kinds to `vendor.FOLD`, and booking paid / release texts
   to `vendor_texts`, before `LEDGER_ENABLED` is turned on.
-  *Progress (plan 4F Tasks 1-2): booking rows (`vendor/bookings/`), the overview's `awaiting_call` count, the three booking
-  `FOLD` kinds in the daily summary and one statement row per booking sale are done. Task 4 built the booking texts
-  (`vendor_texts.booking_paid`, `booking_released`, `booking_on_hold`, called from `ledger.sales`; reference and amounts
-  only, no customer detail): gate (lxxxiii) is closed on the backend.*
+  *Closed by plan 4F Tasks 1, 2 and 4: booking rows (`vendor/bookings/`), the overview's `awaiting_call` count, the three
+  booking `FOLD` kinds in the daily summary and one statement row per booking sale, and booking paid / released / on-hold
+  texts (`vendor_texts.booking_paid`, `booking_released`, `booking_on_hold`, called from `ledger.sales`; reference and
+  amounts only, no customer detail). The screens that show them are built (see (lxxxv)).*
 - (lxxxiv) **Retention.** `VendorText` rows (amounts and order numbers only) are kept indefinitely; decide a purge beside
   `otp.retention`.
 - (lxxxv) **Frontend (Plan 4F):** the overview with the cap meter, sales with filters, the daily summary, the export,
-  the fee page and the texts settings.
+  the fee page and the texts settings. *Built by plan 4F (ledger still off): the owner-only `components/dashboard/money/`
+  folder inside 3F's single Money tab, with Payouts as a sub-tab, held by `MoneyNoInventionSweep.test.jsx`. The manual
+  checks at 360, 768 and 1280 px and the live-backend walkthrough are owed to the staging smoke before the switch.*
 - (lxxxvi) **At-least-once texts.** A worker that dies between the claim and the provider's answer leaves the text to be
   tried again after 10 minutes; with a real provider the business may get it twice.
 - (lxxxvii) **DECIDED 2026-10-18:** a suspended business gets no money texts: its queued texts are dropped (never sent, not backfilled when it is reinstated); in-app notices are kept. Built by plan 7D Task 3. Original text, superseded: **Owner question: a suspended business still gets money texts** (its money still moves).

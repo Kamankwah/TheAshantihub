@@ -160,3 +160,9 @@ monolith holding most components, with extractions living in `components/`,
   `WalletNoInventionSweep.test.jsx` is the conformance contract for every wallet screen: add a new wallet
   screen to its list.
 - **The vendor tab is "Money"** (`id: "money"`, one tab for payouts and the wallet), not "Payouts".
+- **Vendor money screens (`components/dashboard/money/`) are owner-only.** They show platform fees, so nothing
+  outside `components/dashboard/` may import the folder (`MoneyNoInventionSweep.test.jsx` scans for it). `VendorMoney`
+  is the one Money tab, with Payouts (3F's `VendorPayouts`) as a sub-tab. Every money value sits in a `data-amount`
+  element styled `walletStyles("dashboard").amount`; signed amounts use `signedGhs` (`walletMoney.js`). Release hours
+  come only from booking-terms (`useBookingTerms`), never a literal "24/48/72 hours". Booking sales are read from
+  `vendor/bookings/`, not the order sales list. The sweep test is the conformance contract: add a new Money screen to it.

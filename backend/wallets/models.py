@@ -126,7 +126,8 @@ class ReconciliationRun(models.Model):
 
 class VendorText(models.Model):
     """A text to a business about its money (spec §6; vendor plan 4): one per paid order and business, one per release
-    and business, one daily digest. Queued in the transaction that moved the money (so it exists only if that committed),
+    and business, one daily digest, one per refund, withdrawal or balance warning, and (plan 4F) one per booking sale
+    paid, released or put on hold (`ledger.BookingSale`; `order` is empty for those). Queued in the transaction that moved the money (so it exists only if that committed),
     sent after commit through otp.senders and retried by wallets.tasks.send_due_vendor_texts. Holds no customer's name,
     phone or address and never the business's whole number (`to_hint` is masked). `notification` is the in-app copy,
     kept even when the text could not be sent."""
