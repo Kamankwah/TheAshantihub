@@ -537,3 +537,41 @@ class RedeliveryFixRoundTests(RedeliveryBase):
         self.second_trip(order, self.own)
         self.assertEqual(riders.fee_rider(order).pk, self.swift.staff_id)
         self.assertEqual(riders.fee_rider(order, at_settle=True).pk, self.swift.staff_id)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class QueueRowAssignLimitTests(RedeliveryBase):
+    """Plan 5F Task 10: the queue row says when AshantiHub's riders come first or a re-delivery waits for its fee."""
+
+    def row(self, order):
+        from delivery import config
+        from delivery.views_queue import _queue_row
+
+        return _queue_row(order, timezone.now(), config.effective_rules(), config.effective_limits())
+
+    def test_queue_row_waits_for_the_redelivery_fee(self):
+        from delivery import dispatching
+
+        order = self.unavailable()
+        limit = self.row(order)["assign_limit"]
+        self.assertEqual(limit, {"code": "redelivery_fee_unpaid", "label": dispatching.REDELIVERY_UNPAID})
+        self.ask(order)
+        self.assertEqual(self.row(order)["assign_limit"]["code"], "redelivery_fee_unpaid")
+
+    def test_queue_row_after_payment_is_in_house_first(self):
+        from delivery import dispatching
+
+        order = self.unavailable()
+        self.pay(self.ask(order))
+        limit = self.row(order)["assign_limit"]
+        self.assertEqual(limit, {"code": "redelivery_in_house_first", "label": "Re-delivery: AshantiHub's own riders first"})
+        self.assertEqual(limit["label"], dispatching.REDELIVERY_IN_HOUSE_FIRST)
+
+    def test_returned_job_is_in_house_first(self):
+        order = self.failed_other("wrong_address")
+        limit = self.row(order)["assign_limit"]
+        self.assertEqual(limit, {"code": "in_house_first", "label": "Re-assigned: AshantiHub's own riders first"})
+
+    def test_fresh_order_has_no_limit(self):
+        order = self.door_order()
+        self.assertIsNone(self.row(order)["assign_limit"])

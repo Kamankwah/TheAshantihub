@@ -30,6 +30,7 @@ def _queue_row(order, now, rules, limits, zones=None):
         "offer": {"id": live.pk, "rider": live.rider.staff.full_name, "expires_at": live.expires_at, "seconds_left": max(0, int((live.expires_at - now).total_seconds()))} if live else None,
         "held_until": hold.release_at if hold and hold.release_at > now else None,
         "refusals": order.offers.filter(status__in=(Offer.DECLINED, Offer.EXPIRED)).count(),
+        "assign_limit": dispatching.assign_limit(order),
     })
     return row
 
