@@ -101,6 +101,30 @@ def registration_confirmed(owner):
     return True  # no request ever made: online owner, or grandfathered (R3 c); staff registration creates its row
 
 
+CONFIRMED, WAITING, UNCONFIRMED = "confirmed", "waiting", "unconfirmed"
+
+
+def registration_states(owner_ids, now=None):
+    """`registration_confirmed` for many owners in one query: {owner_id: state}. CONFIRMED when the per-owner function
+    is True (a confirmed registration row, or no registration row at all: grandfathered); otherwise WAITING when a
+    registration link is open and unexpired, else UNCONFIRMED (declined, revoked, lapsed). Keep the two in step."""
+    now = now or timezone.now()
+    states = {pk: CONFIRMED for pk in owner_ids}  # no row at all: grandfathered
+    confirmed, waiting, asked = set(), set(), set()
+    rows = OwnerConfirmation.objects.filter(business_owner_id__in=list(states), scope=OwnerConfirmation.REGISTRATION)
+    for owner_id, confirmed_at, declined_at, revoked_at, expires_at in rows.values_list(
+        "business_owner_id", "confirmed_at", "declined_at", "revoked_at", "expires_at",
+    ):
+        asked.add(owner_id)
+        if confirmed_at is not None:
+            confirmed.add(owner_id)
+        elif declined_at is None and revoked_at is None and expires_at >= now:
+            waiting.add(owner_id)
+    for owner_id in asked - confirmed:
+        states[owner_id] = WAITING if owner_id in waiting else UNCONFIRMED
+    return states
+
+
 def _registration_row_confirmed(owner):
     return OwnerConfirmation.objects.filter(
         business_owner=owner, scope=OwnerConfirmation.REGISTRATION, confirmed_at__isnull=False,
@@ -348,6 +372,11 @@ def detach(draft, staff, *, withdraw=False, payload=None):
 
 # --- what staff see -------------------------------------------------------------------------------------------------
 
+def is_lapsed(status, confirmed_at, expires_at, now):
+    """A draft awaiting the owner whose link expired unconfirmed (derived, never stored)."""
+    return status == ListingDraft.AWAITING_OWNER and confirmed_at is None and expires_at < now
+
+
 def state_of(draft):
     """A draft's confirmation state for staff. No token, hash, link or whole phone number."""
     confirmation = draft.confirmation
@@ -357,10 +386,7 @@ def state_of(draft):
             "send_note": "Not sent to the owner yet" if draft.status == ListingDraft.DRAFT else "",
         }
     state = draft.status
-    if (
-        state == ListingDraft.AWAITING_OWNER and confirmation.confirmed_at is None
-        and confirmation.expires_at < timezone.now()
-    ):
+    if is_lapsed(state, confirmation.confirmed_at, confirmation.expires_at, timezone.now()):
         state = LAPSED
     return {
         "state": state,

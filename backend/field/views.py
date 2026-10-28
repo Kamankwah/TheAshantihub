@@ -17,6 +17,9 @@ from django.utils.dateparse import parse_date
 from accounts.models import BusinessOwner, Role, ScoutAssignment, StaffUser
 from accounts.permissions import HasAnyRolePermission, HasRolePermission
 
+from targets import models as target_models
+from targets import services as target_services
+
 from . import prospects as prospects_module
 from . import services
 from .models import Prospect, VisitCheckIn
@@ -414,9 +417,13 @@ class ProspectListCreateView(APIView):
         wanted = request.query_params.get("status", "all")
         listed = own.filter(status=wanted) if wanted in counts and wanted != "all" else own.exclude(status=Prospect.REGISTERED)
         rows = sorted(prospects_module.with_last_visit(listed)[:500], key=lambda p: _prospect_order(p, now))
+        prospects_module.attach_pipelines(rows)
+        today = timezone.localdate(now)
         return Response({
             "counts": counts,
             "signed_up_this_month": own.filter(registered_at__gte=_month_start_local(now)).count(),
+            # The same count the scout's Targets "listings" measure uses, so the two can never disagree.
+            "listings_live_this_month": target_services.actual(request.user, target_models.LISTINGS, today.replace(day=1), today),
             "results": [prospect_item(prospect) for prospect in rows],
         })
 
@@ -437,6 +444,7 @@ class ProspectListCreateView(APIView):
         except VisitError as error:
             return _refused(error)
         prospect = prospects_module.with_last_visit(Prospect.objects.filter(pk=prospect.pk)).get()
+        prospects_module.attach_pipelines([prospect])
         return Response(prospect_item(prospect), status=201)
 
 
@@ -447,8 +455,13 @@ class ProspectDetailView(APIView):
     def _own(self, request, pk):
         return get_object_or_404(prospects_module.with_last_visit(Prospect.objects.filter(scout=request.user)), pk=pk)
 
+    def _attached(self, request, pk):
+        prospect = self._own(request, pk)
+        prospects_module.attach_pipelines([prospect])
+        return prospect
+
     def get(self, request, pk):
-        return Response(prospect_item(self._own(request, pk)))
+        return Response(prospect_item(self._attached(request, pk)))
 
     def patch(self, request, pk):
         prospect = self._own(request, pk)
@@ -459,4 +472,4 @@ class ProspectDetailView(APIView):
             prospects_module.update_prospect(prospect, serializer.validated_data, request=request)
         except VisitError as error:
             return _refused(error)
-        return Response(prospect_item(self._own(request, pk)))
+        return Response(prospect_item(self._attached(request, pk)))

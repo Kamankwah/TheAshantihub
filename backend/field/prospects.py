@@ -10,7 +10,7 @@ from django.utils import timezone
 from accounts.phones import normalize_gh_phone, phone_key
 from activity.services import record
 from calls.models import CallLog
-from portfolio import checks
+from portfolio import checks, confirmations
 from staff_tasks.models import Task
 from staff_tasks.services import create_task
 
@@ -150,3 +150,80 @@ def link_registration(prospect, owner, business_name):
     CallLog.objects.filter(related_type="prospect", related_id=str(prospect.pk), staff=prospect.scout).update(
         related_type="business_owner", related_id=str(owner.pk), related_label=business_name[:200],
     )
+
+
+STAGES = ("prospect", "registered", "awaiting_owner", "confirmed", "listing", "live")
+
+
+def attach_pipelines(prospects):
+    """Set `.pipeline` on each prospect: {stage, listings: {drafts, awaiting_owner, lapsed, pending_approval, live}}.
+    Four queries however many prospects there are. The counts are the prospect's own scout's work on the business:
+    drafts = still being prepared (not yet sent), awaiting_owner / lapsed = sent and waiting / link ran out
+    (confirmations.is_lapsed), pending_approval = submitted and not yet decided, live = published listings plus
+    approved events. Stage is the furthest step reached (see STAGES): `awaiting_owner` is an open, unexpired
+    registration link, `registered` is registered with the owner neither confirmed nor waiting, `confirmed` is
+    confirmations.registration_confirmed (grandfathered owners included), `listing` is any non-withdrawn draft or any
+    listing or event by the scout, `live` is a published listing or approved event."""
+    from events.models import Event
+    from listings.models import Listing
+    from portfolio.models import ListingDraft
+
+    prospects = list(prospects)
+    owner_ids = {p.registered_business_id for p in prospects if p.registered_business_id}
+    scout_ids = {p.scout_id for p in prospects}
+    now = timezone.now()
+    states = confirmations.registration_states(owner_ids, now) if owner_ids else {}
+    counts = {}
+
+    def empty():
+        return {"drafts": 0, "awaiting_owner": 0, "lapsed": 0, "pending_approval": 0, "live": 0, "made": 0}
+
+    def bucket(owner_id, scout_id):
+        return counts.setdefault((owner_id, scout_id), empty())
+
+    if owner_ids:
+        drafts = ListingDraft.objects.filter(business_owner_id__in=owner_ids, created_by_id__in=scout_ids).exclude(
+            status=ListingDraft.WITHDRAWN,
+        ).values_list(
+            "business_owner_id", "created_by_id", "status", "confirmation__confirmed_at", "confirmation__expires_at",
+            "approval__status",
+        )
+        for owner_id, scout_id, status, confirmed_at, expires_at, approval_status in drafts:
+            row = bucket(owner_id, scout_id)
+            row["made"] += 1
+            if status == ListingDraft.DRAFT:
+                row["drafts"] += 1
+            elif status == ListingDraft.AWAITING_OWNER:
+                lapsed = expires_at is not None and confirmations.is_lapsed(status, confirmed_at, expires_at, now)
+                row["lapsed" if lapsed else "awaiting_owner"] += 1
+            elif status == ListingDraft.SUBMITTED and approval_status == "pending":
+                row["pending_approval"] += 1
+        for owner_id, scout_id, status in Listing.objects.filter(
+            business_owner_id__in=owner_ids, created_by_staff_id__in=scout_ids,
+        ).values_list("business_owner_id", "created_by_staff_id", "status"):
+            row = bucket(owner_id, scout_id)
+            row["made"] += 1
+            row["live"] += status == Listing.PUBLISHED
+        for owner_id, scout_id, status in Event.objects.filter(
+            submitted_by_business_id__in=owner_ids, created_by_staff_id__in=scout_ids,
+        ).values_list("submitted_by_business_id", "created_by_staff_id", "status"):
+            row = bucket(owner_id, scout_id)
+            row["made"] += 1
+            row["live"] += status == Event.APPROVED
+
+    for prospect in prospects:
+        owner_id = prospect.registered_business_id
+        row = dict(counts.get((owner_id, prospect.scout_id)) or empty())
+        made = row.pop("made")
+        if owner_id is None:
+            stage = "prospect"
+        elif row["live"]:
+            stage = "live"
+        elif made:
+            stage = "listing"
+        else:
+            stage = {
+                confirmations.CONFIRMED: "confirmed", confirmations.WAITING: "awaiting_owner",
+            }.get(states[owner_id], "registered")
+        prospect.pipeline = {"stage": stage, "listings": row}
+    return prospects
