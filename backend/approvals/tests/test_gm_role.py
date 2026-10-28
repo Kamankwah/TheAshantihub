@@ -106,10 +106,10 @@ class MoneyKindsTests(Base):
         self.assertTrue(services.can_decide(listing, self.gm))
 
     def test_money_kinds_the_gm_could_otherwise_see_in_the_pool_stay_out_of_its_inbox(self):
-        # delivery_promo.approve is an Operations permission the GM inherits; the money flag still wins
+        # Migration 0063 took delivery_promo.approve off the GM; the money flag bars it from the kind regardless
         kind = registry.get_kind("marketing.delivery_promo_funding")
         self.assertTrue(kind.money)
-        self.assertIn(kind.pool_permission, self.gm.effective_permission_codenames())
+        self.assertNotIn(kind.pool_permission, self.gm.effective_permission_codenames())
         approval = ApprovalRequest.objects.create(
             kind=kind.key, title="Promo", maker=self.scout, pool_permission=kind.pool_permission,
             stage=ApprovalRequest.POOL, due_at=timezone.now(),

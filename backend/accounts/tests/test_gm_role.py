@@ -22,7 +22,8 @@ class GmSeedTests(TestCase):
 
     def test_gm_holds_operations_desk_work_but_not_client_onboarding(self):
         gm = perms("general_manager")
-        makers = {"businesses.register", "users.manage", "listings.stage"}  # users.manage would rewrite an owner's phone and email
+        # users.manage would rewrite an owner's phone and email; delivery_promo.approve is a money kind's pool (0063).
+        makers = {"businesses.register", "users.manage", "listings.stage", "delivery_promo.approve"}
         self.assertEqual((perms("operations") - makers) - gm, set())
         self.assertEqual(gm & makers, set())
         self.assertTrue({"kyc.approve", "listings.moderate", "event.approve", "hero_media.approve"} <= gm)
@@ -53,14 +54,19 @@ class GmHoldsNoMoneyKindPermissionTests(TestCase):
     loudly then.
 
     What guarantees the GM never decides money is the engine's `money` flag (`rules.barred`, `approvers_for`), not the
-    pool permission: two permissions are shared with kinds the GM may decide and so are held on purpose
-    (`portfolio.manage` also governs business.update, `delivery_promo.approve` is seeded to Operations as a whole). Those
-    two are listed here; any OTHER money or sudo kind whose pool permission the GM holds is a failure to fix."""
+    pool permission: `portfolio.manage` is shared with a kind the GM may decide (business.update) and so is held on
+    purpose; it is the only one listed here. `delivery_promo.approve` was held too until migration 0063 took it off the
+    role (Director decision 2026-10-28: its only kind is a money kind). Any OTHER money or sudo kind whose pool
+    permission the GM holds is a failure to fix."""
 
-    HELD_ON_PURPOSE = {"portfolio.manage", "delivery_promo.approve"}
+    HELD_ON_PURPOSE = {"portfolio.manage"}
 
     def money_kinds(self):
         return [kind for kind in registry.all_kinds().values() if kind.money or kind.requires_sudo]
+
+    def test_gm_lacks_delivery_promo_approve_and_operations_keeps_it(self):
+        self.assertNotIn("delivery_promo.approve", perms("general_manager"))
+        self.assertIn("delivery_promo.approve", perms("operations"))
 
     def test_the_registry_has_money_and_sudo_kinds_to_check(self):
         kinds = registry.all_kinds().values()
