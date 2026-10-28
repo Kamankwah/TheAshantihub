@@ -159,4 +159,17 @@ monolith holding most components, with extractions living in `components/`,
   MSW wallet defaults in `mocks/handlers.js` are "ledger on, empty"; override with `server.use(...)`.
   `WalletNoInventionSweep.test.jsx` is the conformance contract for every wallet screen: add a new wallet
   screen to its list.
+- **Rider wallet and dispatch money screens (Plan 5F).** `RiderWalletHome` and `RiderWalletHistory` mount 3F's
+  destination, withdrawal and history components on `RIDER_WALLET_BASE` (`/api/delivery/rider/wallet`). The rider
+  Earnings tab (`RiderEarningsTab`) branches on `rider/me.rider.wallet`, then on the wallet's own 409 (`ledger_off`
+  or `wallet_disabled` falls back to the payroll earnings); no wallet call is made for an AshantiHub rider. The MSW default for `/api/delivery/rider/wallet/*` is 409 `ledger_off` (unlike 3F's "ledger on, empty" wallet defaults), so a test that wants the wallet must register its own handlers.
+  `RiderMoneyPanel` (staff) renders `acct-rider-payouts` and falls back to `AccountingShellPanel` on `ledger_off`,
+  so the shell's "No rider rate exists" text is only the ledger-off fallback. Balances that can go below zero use
+  `signedGhs`. `RiderMoneyNoInventionSweep.test.jsx` is the conformance contract for these screens.
 - **The vendor tab is "Money"** (`id: "money"`, one tab for payouts and the wallet), not "Payouts".
+- **Vendor money screens (`components/dashboard/money/`) are owner-only.** They show platform fees, so nothing
+  outside `components/dashboard/` may import the folder (`MoneyNoInventionSweep.test.jsx` scans for it). `VendorMoney`
+  is the one Money tab, with Payouts (3F's `VendorPayouts`) as a sub-tab. Every money value sits in a `data-amount`
+  element styled `walletStyles("dashboard").amount`; signed amounts use `signedGhs` (`walletMoney.js`). Release hours
+  come only from booking-terms (`useBookingTerms`), never a literal "24/48/72 hours". Booking sales are read from
+  `vendor/bookings/`, not the order sales list. The sweep test is the conformance contract: add a new Money screen to it.

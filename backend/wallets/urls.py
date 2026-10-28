@@ -10,6 +10,7 @@ urlpatterns = [
     path("staff/reconciliation/", views_staff.StaffReconciliationView.as_view(), name="wallet-staff-reconciliation"),
     path("vendor/", views_vendor.VendorOverviewView.as_view(), name="wallet-vendor"),
     path("vendor/sales/", views_vendor.VendorSalesView.as_view(), name="wallet-vendor-sales"),
+    path("vendor/bookings/", views_vendor.VendorBookingsView.as_view(), name="wallet-vendor-bookings"),
     path("vendor/daily/", views_vendor.VendorDailyView.as_view(), name="wallet-vendor-daily"),
     path("vendor/statement/export/", views_vendor.VendorStatementExportView.as_view(), name="wallet-vendor-statement-export"),
     path("vendor/fees/", views_vendor.VendorFeesView.as_view(), name="wallet-vendor-fees"),

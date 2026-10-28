@@ -15,7 +15,7 @@ import { walletStyles } from './walletStyles.js'
 // the destination or amount actually submitted differs from the last one sent,
 // and after a success. The charge is shown
 // only once the server has answered; nothing is estimated here.
-export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet', onDone }) {
+export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet', onDone, refusalAction }) {
   const s = walletStyles(tone)
   const queryClient = useQueryClient()
   const destinations = useWalletDestinations({ basePath })
@@ -28,6 +28,7 @@ export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet',
   const [chosen, setChosen] = useState(undefined)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [errorCode, setErrorCode] = useState(null)
   const [result, setResult] = useState(null)
 
   if (destinations.error && !destinations.data) {
@@ -57,6 +58,7 @@ export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet',
     inFlight.current = true
     setBusy(true)
     setError(null)
+    setErrorCode(null)
     setResult(null)
     try {
       // Decided at submit time from what is being sent, so editing and reverting the amount (or "100" vs "100.00") reuses the id.
@@ -72,6 +74,7 @@ export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet',
     } catch (err) {
       const m = walletMessage(err)
       const freeAt = refusalCode(err) === 'topup_held' ? formatWhen(err.body?.free_at) : null
+      setErrorCode(refusalCode(err))
       setError(freeAt ? `${m.text} It can be withdrawn from ${freeAt}.` : m.text)
     } finally {
       inFlight.current = false
@@ -104,6 +107,7 @@ export default function WithdrawForm({ tone = 'light', basePath = '/api/wallet',
         onChange={(e) => { setAmount(e.target.value.trim()); setResult(null) }}
       />
       {error && <div role="alert" style={{ ...s.error, marginTop: 12 }}>{error}</div>}
+      {error && refusalAction && errorCode ? refusalAction(errorCode) : null}
       {result && (
         <div role="status" style={{ marginTop: 12 }}>
           {result.amount != null && <div style={s.value}>{formatGhs(result.amount)} withdrawal</div>}

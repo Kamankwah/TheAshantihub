@@ -610,7 +610,17 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
 - **Gate checks recorded 2026-10-21:** (a) gate (xxiv): `requestSecondaryEmail`/`requestSecondaryPhone` and their confirm calls (`hooks/useAuth.js`) are plain `apiPost`s, so `apiClient.js`'s one step-up retry covers them, but no component calls them yet (no recovery-contact screen exists), so it was read, not run: the walkthrough step "add recovery contact (ledger on)" stays owed, and a screen that adds a contact is Plan 2F's follow-up. (b) gate (xxxii): registration's payout step (`submitPayoutInfo`) still uses the unforced `PATCH business-owners/me/payout/`; left as is, forcing it needs a step-up in registration first. (c) gate (xvi): dispute and delivery refunds send no customer notice; needs a backend notification, the statement row is the notice. (d) gates (xiii) and (xxxi): the "no money moves" copy in `RefundsPanel.jsx` (`SimulatedBanner`) and `LaterPhasePanels.jsx` is **not changed here** and still says so with the ledger on; branch both on the ledger.
 - **Owed before the switch (not performed in 3F, ruling R22):** each new screen at 360, 768 and 1280 px for horizontal overflow and `DESIGN.md` conformance; the staff panels against `scripts/staff-layout-audit.js` (needs a preview on 4173 and the API on 8110); one real-phone pass of the step-up prompt over the withdraw form; a staging run of top-up, pay from wallet, add a number, withdraw, and a stuck-withdrawal resolution by two staff accounts on the simulated provider (`SIMULATED_PAYOUT_OUTCOME=pending`). The backend suite (`wallets orders`) is the controller's.
 - **Switch-on checklist additions:** Plan 4 Tasks 14-15 shipped (the customer wallet tabs; until then the wallet components have no customer page, F5); the stale copy in (d) branched on the ledger; the owed manual checks above done.
-- **Open items found during the build:** Plan 4F must put its Money sub-tabs inside 3F's single `money` tab (R1, Director ruling "Money and Payouts in one tab"; 4F's G1 and its Step 0 grep for "payouts" need editing). Plan 4 must pass `orderHref` to `TransactionsList` (R6: no default, an order link renders only when the caller supplies one; no `/my-account/orders/{id}` route exists). Rider endpoints also answer `id_required` and `daily_count_limit` (Plan 5F's screens must word them). The backend sends no `topup_hold_minutes`, so the top-up screen carries no "withdrawable after N hours" line (R2); add it when the field exists. Gate (xvi) refund notices as in (c).
+- **Open items found during the build:** Plan 4F must put its Money sub-tabs inside 3F's single `money` tab (R1, Director ruling "Money and Payouts in one tab"; 4F's G1 and its Step 0 grep for "payouts" need editing) — done by 4F (Task 7). Plan 4 must pass `orderHref` to `TransactionsList` (R6: no default, an order link renders only when the caller supplies one; no `/my-account/orders/{id}` route exists). Rider endpoints also answer `id_required` and `daily_count_limit` (Plan 5F's screens must word them). The backend sends no `topup_hold_minutes`, so the top-up screen carries no "withdrawable after N hours" line (R2); add it when the field exists. Gate (xvi) refund notices as in (c).
+- **3F follow-ups, closed by plan 4F Task 3:** the reconciliation mismatch notice now links to the staff tab id `reconciliation` (it linked to `wallets-reconciliation`, so no Open button showed), and `CartDrawer`'s total and the MoMo processing quote include the server's delivery fee when `DELIVERY_FEE_ENABLED` is on and promotions are off (`delivery-preview` answers `delivery`; `delivery.rates.cart_delivery_quote`).
+
+### Before LEDGER_ENABLED is turned on — Plan 5F (rider and dispatch money screens)
+
+- **BUILT 2026-10-28 (5F, ledger still off):** the rider's wallet (balance, commission held, deliveries, days, statement, payout numbers and withdrawals with the daily count line) mounted from 3F's components on `RIDER_WALLET_BASE`, behind the Earnings tab; the Delivery Manager's "works for" control; the Accountant's Rider payouts (wallets, daily commission, withdrawals, one rider's wallet); refund figures and the whole-order refund on the delivery-case screen; Re-deliveries (Super Admin and Pickup Desk) and Free delivery in the Super Admin's Marketplace group (Director ruling 8); the dispatch queue says "own riders first" (Task 10); payroll lists only in-house trips and the re-delivery fees owed to in-house riders (Task 11). Gate (xci) is built; (cxxv), (cxxix) and (cxxxi) are updated above. 3F's parked R24 (paged wallet rows keyed by holder) is closed by Task 6.
+- **Six additive backend reads (5F, Director G3; no permission or write changed):** (a) rider summary count fields and `balance_note`; (b) `holder_type` filter on staff withdrawals; (c) refund figures, kept fee, free-delivery funder, whole-refund flag and ledger-aware money copy on the delivery case; (d) `redeliverable` / `redelivery_fee` / `not_redeliverable_reason` on the re-delivery list; (e) `assign_limit` on queue rows; (f) re-delivery fees owed on the payroll reads.
+- **Verification record (2026-10-28, 5F closeout):** no-invention sweep `RiderMoneyNoInventionSweep.test.jsx` 8/8 (every element showing a GH₵ figure is tabular and not gold, including amounts quoted inside sentences). Full frontend suite under heavy load: 319 files, 2868 tests, with 10 files and 15 tests failing in that run (App.routing manifest link, BusinessDashboard hours prompt, StaffDashboard x5, darkModeSmoke /faq, CartDrawer.wallet pending read, AdminCommandCenter fraud link gate, OverviewPanel, RegisterBusinessPanel, ReportsPanel, StepIn x2); re-run of those files together passed 8 of 10, and the two left (StaffDashboard "Analytics panel real counts", AdminCommandCenter "reconciliation fraud link gate") pass alone (load flakes, none in 5F files). `npm run build` passes. Backend `wallets delivery ledger orders disputes` (one run, `DB=ashantihub17`, `--parallel 1 --noinput`): 1578 tests, OK.
+- **Gate checks, read in the code (listed, not changed):** (xii) `delivery/config.py` `refund_consequences` still says the money "returns ... at once" whenever the ledger is on, even for an order paid before it was on; (xcvi) the Accounting dashboard still lacks the rider liability and commission-income lines (5F's daily commission is per day only); (xcii) rider identity still rests on one person; `acct-rider-payouts` keeps the stale shell text ("No rider rate exists ...") but it is now only the ledger-off fallback.
+- **Owed before switch-on (not run in the 5F build: no browser, phone or staging):** (1) rider withdrawal events show the amount: open "My activity" as a rider and the staff Activity screen and confirm "GH₵ ..." as sent; (2) AshantiHub-funded promos (7F-E Task 5) create and approve end to end and Operations sees the approval in Approvals; (3) every new screen at 360, 768 and 1280 px (`scripts/staff-layout-audit.js` for the staff panels); (4) the rider wallet on a real phone with the step-up code prompt over a withdrawal; (5) the staging walkthrough with the ledger on and the simulated provider: make a rider third-party (Delivery Manager proposes, Super Admin approves), deliver and release an order and check the earning, add a number after the Ghana Card is approved, withdraw three times and see the fourth refused with the reset time, run the 00:20 commission job and see the Accountant's daily commission, open a coupon delivery case and refund it whole, ask for a re-delivery as the Pickup Desk, pay it as the customer, see the queue chip and the payroll line after completion, repeat with no AshantiHub rider on shift so a third-party rider makes the second trip and see "Re-delivery paid to you" in that rider's wallet and no payroll line, and open Free delivery and Re-deliveries from the Super Admin's Marketplace group.
+- **Build-time rulings to recheck:** the Pickup Desk finds Re-deliveries in the default "System" group until Plan 1F gives it a Desk menu; the Super Admin's Marketplace group order needs re-checking once 1F merges. The no-invention sweep for these screens is `components/admin/panels/rider/__tests__/RiderMoneyNoInventionSweep.test.jsx`.
 
 ### 7F-C follow-ups (2026-10-19)
 
@@ -719,7 +729,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
 
 ### Before LEDGER_ENABLED is turned on — Stage 5 additions
 
-- (xci) **Frontend (Plan 5F).** The rider app's wallet: the balance; the reserve as "AshantiHub's commission, taken after
+- (xci) **BUILT by Plan 5F (2026-10-28), switches still off; see "Before LEDGER_ENABLED is turned on — Plan 5F".** **Frontend (Plan 5F).** The rider app's wallet: the balance; the reserve as "AshantiHub's commission, taken after
   midnight"; earnings per delivery with their status; each day's gross, commission and net; the statement; payout
   destinations and withdrawals with the step-up prompt; `409 wallet_disabled` for AshantiHub's own riders and
   `409 id_required` until the Ghana Card is approved. The Delivery Manager's "works for" control on the rider profile (it
@@ -1028,6 +1038,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
 - (lxvii) **The `ServicesPanel` shows a generic error for the new price validation.** `ServiceRequestRespondView` now
   answers 400 `{"price": "Enter a price in GH₵ above 0.00, like 150.00."}`, but the frontend does not surface the
   `price` error. This ships as soon as Plan 1b merges, with the ledger on or off: surface it before merging.
+  *Surfaced by plan 4F Task 12: `ServicesPanel` shows the server's `price` message.*
 - (lxviii) **The switch-on runbook must drain open Hubtel sessions.** A service, stay or ticket session started while
   the ledger was off carries no charge and no `metadata["ledger"]` mark; if it is paid after switch-on its finalizer
   records it at the full price with no processing charge, and reconciliation skips it. Let every open session resolve
@@ -1058,7 +1069,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
   `_wallet_in_use`'s docstring names them. Done in Plan 1b; kept here so the Collections screen copy is checked.
 - (lxxvii) **`ServicesPanel.jsx` (about lines 77-78) sends the raw number input** as the quote price. The always-on price
   check (gate (lxvii)) answers 400 `price`, which the panel shows as a generic error: the frontend must surface it
-  before this ships to production.
+  before this ships to production. *Surfaced by plan 4F Task 12 (the same change closes (lxvii)).*
 
 ### Stage 4 (vendor dashboard and texts, backend) reconciliation (2026-10-16)
 
@@ -1122,10 +1133,16 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   or a Plan 4b) must add `BookingSale` as a second row source (`kind: "booking"`) to `vendor.sale_groups` / `rows` /
   `statement` and the `awaiting_call` count, the three booking kinds to `vendor.FOLD`, and booking paid / release texts
   to `vendor_texts`, before `LEDGER_ENABLED` is turned on.
+  *Closed by plan 4F Tasks 1, 2 and 4: booking rows (`vendor/bookings/`), the overview's `awaiting_call` count, the three
+  booking `FOLD` kinds in the daily summary and one statement row per booking sale, and booking paid / released / on-hold
+  texts (`vendor_texts.booking_paid`, `booking_released`, `booking_on_hold`, called from `ledger.sales`; reference and
+  amounts only, no customer detail). The screens that show them are built (see (lxxxv)).*
 - (lxxxiv) **Retention.** `VendorText` rows (amounts and order numbers only) are kept indefinitely; decide a purge beside
   `otp.retention`.
 - (lxxxv) **Frontend (Plan 4F):** the overview with the cap meter, sales with filters, the daily summary, the export,
-  the fee page and the texts settings.
+  the fee page and the texts settings. *Built by plan 4F (ledger still off): the owner-only `components/dashboard/money/`
+  folder inside 3F's single Money tab, with Payouts as a sub-tab, held by `MoneyNoInventionSweep.test.jsx`. The manual
+  checks at 360, 768 and 1280 px and the live-backend walkthrough are owed to the staging smoke before the switch.*
 - (lxxxvi) **At-least-once texts.** A worker that dies between the claim and the provider's answer leaves the text to be
   tried again after 10 minutes; with a real provider the business may get it twice.
 - (lxxxvii) **DECIDED 2026-10-18:** a suspended business gets no money texts: its queued texts are dropped (never sent, not backfilled when it is reinstated); in-app notices are kept. Built by plan 7D Task 3. Original text, superseded: **Owner question: a suspended business still gets money texts** (its money still moves).
@@ -1173,7 +1190,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   refunded whole, `refundable` 0; the approval re-checks at apply). It runs `refund_order(order, None)`: the rider is paid in
   full, the vendor's money, the Delivery payable and the subsidy (D - (F - N)) are reversed, the customer's credit is 0
   (`Dispute.refund_amount` 0.00) and the order is cancelled. The dispute payload's `order_whole_refund_at_zero` drives a
-  checkbox in the staff DisputesPanel; the delivery-case screen has no control for it yet (API only).
+  checkbox in the staff DisputesPanel; the delivery-case screen now has the control (built by 5F Task 8: the whole-refund checkbox, "Can still be refunded", the kept fee and who funded a free delivery).
 - (cxxvi) **CLOSED (xciii-open): one canonical lock order (plan 7F-E Task 2).** `orders/locks.py` holds it: the approval or
   dispute row, the Order row, its OrderFeeSnapshot rows (by pk), its DeliveryAssignment row, the order's open Redelivery row
   (level 4b, Task 7), the PickupStop rows, the Rider row (`of=("self",)`), every ledger Account in one sorted pass
@@ -1216,7 +1233,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   via `booking_pay.pay`), in the Account `redelivery_payable` (per order); the fee is not in `Order.total_amount`, so R1 and
   `refunds.left` are untouched. The second rider is in-house and has no wallet: the fee is booked to platform delivery income
   at completion and the amount owed to that rider for payroll outside the app is recorded on the `Redelivery` row (rider, fee,
-  completed time); no payroll screen shows it yet. Refunds: a whole refund before the second rider's pickup returns the fee,
+  completed time); the payroll screens now list the fees owed to in-house riders (built by 5F Tasks 9 and 11). Refunds: a whole refund before the second rider's pickup returns the fee,
   after it settles it; partial refunds never touch it; cancel is allowed while awaiting payment and while paid but not
   assigned (a paid fee returns to the customer's wallet) and refused once assigned (409 `redelivery_not_cancellable`); a second
   trip that fails after the rider collected the goods settles the fee and marks the request completed, so an attempt 2 can be

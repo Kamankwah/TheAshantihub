@@ -103,7 +103,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const cartSignature = items.map((i) => `${i.id}:${i.quantity}`).join(",");
   // After-hours notice: independent of promotions (its own endpoint). Shown only for a rider delivery the server says is
   // deferred; nothing while loading or if the read fails. Platform hours are never presented as the shop's own.
-  const { data: preview } = useDeliveryPreview("door_to_door", { enabled: user?.accountType === "customer" && deliveryMethod === "door_to_door" && items.length > 0, cartKey: cartSignature });
+  const { data: preview, isError: previewFailed, refetch: refetchPreview } = useDeliveryPreview("door_to_door", { enabled: user?.accountType === "customer" && deliveryMethod === "door_to_door" && items.length > 0, cartKey: cartSignature, lat: promosOn ? null : deliveryLat, lng: promosOn ? null : deliveryLng });
   const deferredFrom = deliveryMethod === "door_to_door" && preview?.deferred ? formatAccraDayTime(preview.delivery_from) : null;
   useEffect(() => {
     if (!promosOn || items.length === 0) { setQuote(null); return; }
@@ -124,13 +124,13 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   }, [promosOn, cartSignature, appliedCode, deliveryMethod, deliveryLat, deliveryLng]);
   // Delivery as the server will charge it (the quote mirrors checkout): fee is null until a delivery point
   // is chosen, "0.00" with waived=true when a business's free-delivery promo covers the whole order.
-  const delivery = promosOn ? quote?.delivery : null;
+  const delivery = promosOn ? quote?.delivery : preview?.delivery ?? null;
   const itemsTotal = promosOn && quote?.total ? quote.total : cart?.total;
   // Checkout refuses a door-to-door point outside the Ashanti Region, and payment runs before checkout, so the
   // pay button stays off until a quote for THIS pin has resolved and says it is in area (the delivery note
   // above carries the quote's message). A pending, stale or failed quote also keeps it off.
-  // Known limit: with promotions off there is no quote endpoint, so the region cannot be checked here and the
-  // button stays on; checkout still refuses an out-of-area point (a test pins this).
+  // With promotions off the delivery-preview answer carries the same `delivery` block for this pin, so
+  // `outOfArea` reads it from there; checkout still refuses an out-of-area point (a test pins this).
   const pinChosen = deliveryMethod === "door_to_door" && deliveryLat != null;
   const outOfArea = deliveryMethod === "door_to_door" && delivery?.fee_status === "out_of_area";
   const regionUnchecked = promosOn && pinChosen && (quoting || quotedFor !== pinKey || quoteFailed);
@@ -140,7 +140,8 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   // button stays off until the limits have actually been read (a customer only; staff are gated separately).
   const guardUnchecked = user?.accountType === "customer" && (guardPending || guardError);
   const deliveryLimitBlock = !!guardBlock && guardBlock.code !== "not_deliverable";
-  const shownTotal = delivery?.fee != null && itemsTotal != null ? (parseFloat(itemsTotal) + parseFloat(delivery.fee)).toFixed(2) : itemsTotal;
+  // Whole pesewas (addGhs), never a float sum; with no fee known the shown total is the items alone.
+  const shownTotal = delivery?.fee != null && itemsTotal != null ? (addGhs(itemsTotal, delivery.fee) ?? itemsTotal) : itemsTotal;
   const [couponError, setCouponError] = useState("");
 
   // Only the server's ledger_off answer means "off" (today's flow, no picker, no payment_method). While the wallet
@@ -157,9 +158,12 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   // The server's charge for paying shownTotal by mobile money (shared cache with the picker's own line). A total that
   // is not a positive amount cannot be quoted: mobile money stays blocked and the wallet is the way to pay.
   const quotable = isPlausibleAmount(shownTotal);
-  const { data: processingData, error: processingError, isError: processingFailed, refetch: refetchProcessing } = useWalletProcessing(momoWithPicker ? shownTotal : "");
-  const processingReady = !momoWithPicker || processingData?.payment_processing !== undefined;
-  const processingPending = momoWithPicker && quotable && !processingData && !processingFailed;
+  // Promotions off, a pin chosen, mobile money with the picker: the processing quote (and Confirm & Pay) wait for the
+  // server's delivery fee for THIS pin, so a charge is never quoted on less than the server takes.
+  const feeWait = momoWithPicker && !promosOn && pinChosen && preview === undefined;
+  const { data: processingData, error: processingError, isError: processingFailed, refetch: refetchProcessing } = useWalletProcessing(momoWithPicker && !feeWait ? shownTotal : "");
+  const processingReady = !feeWait && (!momoWithPicker || processingData?.payment_processing !== undefined);
+  const processingPending = momoWithPicker && !feeWait && quotable && !processingData && !processingFailed;
   const payReady0 = !walletChecking && !walletFailed && processingReady;
   // canBuy too: if the opening moves while the confirm step is open, paying stops.
   const payReady = canBuy && doorToDoorReady && !guardBlock && !guardUnchecked && payReady0 && !walletPaying;
@@ -470,7 +474,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
             {guardUnchecked && !guardBlock && <div data-testid="cart-guard-unchecked" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>{guardError ? "We couldn't check your delivery limits yet. Try again shortly." : "Checking your delivery limits…"}</div>}
             {pickerShown && (
               <div style={{ marginBottom: 12 }}>
-                <PaymentMethodPicker value={method} onChange={(m) => { setPaymentMethod(m); setCheckoutError(null); }} amount={shownTotal} />
+                <PaymentMethodPicker value={method} onChange={(m) => { setPaymentMethod(m); setCheckoutError(null); }} amount={shownTotal} quoteWaits={feeWait} />
               </div>
             )}
             {walletChecking && <div data-testid="cart-wallet-checking" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>Checking payment options…</div>}
@@ -481,6 +485,12 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
               </div>
             )}
             {momoWithPicker && !quotable && <div style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>There is nothing to pay by mobile money. Choose your AshantiHub wallet.</div>}
+            {feeWait && (
+              <div data-testid="cart-fee-checking" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>
+                {previewFailed ? "We couldn't check the delivery fee. " : "Checking the delivery fee…"}
+                {previewFailed && <button type="button" onClick={() => refetchPreview()} style={{ background: "none", border: "none", color: C.errInk, textDecoration: "underline", cursor: "pointer", fontSize: "0.72rem", fontFamily: "inherit" }}>Try again</button>}
+              </div>
+            )}
             {processingPending && <div data-testid="cart-processing-checking" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>Getting the payment processing charge…</div>}
             {momoWithPicker && quotable && processingFailed && (
               <div role="alert" style={{ background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>

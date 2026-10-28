@@ -181,4 +181,24 @@ describe('TransactionsList', () => {
     expect(errors.mock.calls.some((c) => String(c[0]).includes('same key'))).toBe(false)
     errors.mockRestore()
   })
+  it('path, filters and accountLabels default to the customer behaviour', async () => {
+    page([row({ id: 1 }), row({ id: 2, kind: 'order_payment', label: 'Order payment', direction: 'out', amount: '7.50', account: 'reserve' })])
+    renderIt()
+    await screen.findByText('Top-up')
+    expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Purchases' })).toBeInTheDocument()
+    expect(screen.queryByText('commission held')).toBeNull()
+  })
+
+  it('accountLabels keep the Pending and Available words', async () => {
+    page([
+      row({ id: 1, label: 'Held', account: 'reserve' }),
+      row({ id: 2, label: 'Waiting', account: 'pending' }),
+      row({ id: 3, label: 'Ready', account: 'available' }),
+    ])
+    renderIt({ accountLabels: { reserve: 'commission held' } })
+    expect(within((await screen.findByText('Held')).closest('li')).getByText('commission held')).toBeInTheDocument()
+    expect(within(screen.getByText('Waiting').closest('li')).getByText('Pending')).toBeInTheDocument()
+    expect(within(screen.getByText('Ready').closest('li')).getByText('Available')).toBeInTheDocument()
+  })
 })

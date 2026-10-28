@@ -238,5 +238,5 @@ def _raise(run, provider, differences):
         notify_staff_role(
             "wallets.view", "reconciliation_mismatch",
             f"Reconciliation for {run.day:%d %b %Y} found {len(differences)} difference(s)",
-            body="Nothing was corrected. Open Wallets, Reconciliation.", link="wallets-reconciliation", icon="🧮",
+            body="Nothing was corrected. Open Wallets, Reconciliation.", link="reconciliation", icon="🧮",
         )

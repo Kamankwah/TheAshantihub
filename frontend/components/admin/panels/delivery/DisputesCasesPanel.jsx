@@ -2,6 +2,7 @@ import { useState } from "react";
 import { apiPost } from "../../../../apiClient.js";
 import { apiErrorMessage } from "../../../../lib/apiErrorMessage.js";
 import { useDeliveryCase, useDeliveryCases } from "../../../../hooks/useDelivery.js";
+import { formatGhs } from "../../../wallet/walletMoney.js";
 import { D } from "../../theme.js";
 import { button, chip, dim, field } from "../panelStyles.js";
 import { scroll, table, td, th } from "../opsPeopleParts.jsx";
@@ -13,6 +14,8 @@ import { Empty, ErrorLine, Filters, Note, WARN, clock, dayTime, linkStyle, money
 // calls; the decision is recorded, never executed as money: a refund becomes an approval
 // request and payments are simulated, and the screen says so before it is recorded.
 const TYPES = [["", "All"], ["not_received", "Not received"], ["damaged", "Damaged"], ["wrong_item", "Wrong or missing item"], ["unreachable", "Customer unreachable"], ["return", "Return"]];
+// Amounts inside a sentence keep tabular figures like every other amount (DESIGN.md); the ink is the surrounding text's.
+const NUM = { fontVariantNumeric: "tabular-nums" };
 const TYPE_COLOR = { not_received: D.red, damaged: D.gold, wrong_item: D.textDim, unreachable: D.blue, return: D.amber };
 
 export function CasesList({ onOpenCase }) {
@@ -74,15 +77,21 @@ function DecisionForm({ detail, onDone }) {
   const [note, setNote] = useState("");
   const [stop, setStop] = useState(false);
   const [ops, setOps] = useState(false);
+  const [whole, setWhole] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const caseId = detail.case.id;
-  const ready = outcome && fault && note.trim() && (outcome !== "refund" || amount);
+  const order = detail.order;
+  const wholeRefund = outcome === "refund" && whole && !!order.whole_refund_at_zero;
+  const ready = outcome && fault && note.trim() && (outcome !== "refund" || amount || wholeRefund);
   const submit = async () => {
     setError("");
     setBusy(true);
     try {
-      await apiPost(`/api/delivery/cases/${caseId}/decide/`, { outcome, fault, note, refund_amount: outcome === "refund" ? amount : undefined, stop_rider_jobs: stop, send_to_operations: ops });
+      const body = wholeRefund
+        ? { outcome, fault, note, whole_refund: true, stop_rider_jobs: stop, send_to_operations: ops }
+        : { outcome, fault, note, refund_amount: outcome === "refund" ? amount : undefined, stop_rider_jobs: stop, send_to_operations: ops };
+      await apiPost(`/api/delivery/cases/${caseId}/decide/`, body);
       onDone();
     } catch (err) {
       setError(apiErrorMessage(err, "Could not record the decision."));
@@ -102,10 +111,25 @@ function DecisionForm({ detail, onDone }) {
       <ErrorLine>{error}</ErrorLine>
       {radios("outcome", "What happens to the order", detail.outcomes, outcome, setOutcome)}
       {outcome === "refund" && (
-        <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700, color: D.text, maxWidth: 220 }}>
-          Refund amount (GH₵, at most {money(detail.order.total)})
-          <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} style={field} />
-        </label>
+        <>
+          {order.refundable != null && <Note><span style={NUM}>{`Can still be refunded: ${formatGhs(order.refundable)}`}</span></Note>}
+          {order.delivery_fee_kept != null && order.delivery_fee_kept !== "0.00" && (
+            <Note><span style={NUM}>{`The ${formatGhs(order.delivery_fee_kept)} delivery fee is not refunded: the goods were picked up or delivered, so the fee is earned.`}</span></Note>
+          )}
+          {order.free_delivery && (
+            <Note><span style={NUM}>{`Delivery was free for the customer: a promo paid by ${order.free_delivery.funded_by === "platform" ? "AshantiHub" : "the business"} covers the ${formatGhs(order.free_delivery.amount)} fee.`}</span></Note>
+          )}
+          <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700, color: D.text, maxWidth: 220, ...NUM }}>
+            Refund amount (GH₵{formatGhs(order.refundable ?? order.total) ? `, at most ${formatGhs(order.refundable ?? order.total)}` : ""})
+            <input inputMode="decimal" value={wholeRefund ? "" : amount} onChange={(e) => setAmount(e.target.value)} disabled={wholeRefund} style={{ ...field, opacity: wholeRefund ? 0.5 : 1 }} />
+          </label>
+          {order.whole_refund_at_zero && (
+            <label style={{ display: "flex", gap: 6, alignItems: "flex-start", fontSize: "0.82rem", color: D.text }}>
+              <input type="checkbox" checked={whole} onChange={(e) => setWhole(e.target.checked)} />
+              <span style={NUM}>Refund the whole order. The customer gets GH₵ 0.00 back: after the coupon, what they paid only covered the delivery fee, which the rider keeps. The order is cancelled and the rider is paid.</span>
+            </label>
+          )}
+        </>
       )}
       {radios("fault", "Who was at fault", detail.faults, fault, setFault)}
       <label style={{ fontSize: "0.82rem", color: D.text }}><input type="checkbox" checked={ops} onChange={(e) => setOps(e.target.checked)} /> Send to Operations as possible fraud (you keep the delivery decision)</label>
@@ -114,7 +138,7 @@ function DecisionForm({ detail, onDone }) {
         Note (required, kept with the case)
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={2000} style={field} />
       </label>
-      <Note>{detail.payments} A refund goes to Accounting as a request and Super Admin approves it. You will be asked for your password.</Note>
+      <Note><span style={NUM}>{detail.payments}{order.refundable == null ? " A refund goes to Accounting as a request and Super Admin approves it." : ""} You will be asked for your password.</span></Note>
       <div><button type="button" disabled={!ready || busy} onClick={submit} style={button(D.gold, D.text, !ready || busy)}>Record decision</button></div>
     </section>
   );
@@ -175,11 +199,11 @@ export function CaseDetail({ id, onBack, onOpenDelivery }) {
               <div style={{ fontSize: "0.82rem", color: D.text, whiteSpace: "pre-wrap" }}>{data.description || "No description was written."}</div>
               <span style={dim}>Customers raise cases through AshantiHub Support. The rider&apos;s own account is in their note above, when they wrote one.</span>
             </section>
-            {data.refund && <Note>Refund request #{data.refund.approval_id}: {money(data.refund.amount)} · {data.refund.status} · asked by {data.refund.asked_by}{data.refund.decided_by ? `, decided by ${data.refund.decided_by}` : ""}. Payments are simulated; no money has moved.</Note>}
+            {data.refund && <Note><span style={NUM}>Refund request #{data.refund.approval_id}: {data.refund.whole ? "whole-order refund (nothing to give back)" : formatGhs(data.refund.amount)} · {data.refund.status} · asked by {data.refund.asked_by}{data.refund.decided_by ? `, decided by ${data.refund.decided_by}` : ""}. {data.payments}</span></Note>}
             {data.decision ? (
               <section aria-labelledby="done" style={section}>
                 <h3 id="done" style={sectionTitle}>Decision recorded</h3>
-                <div style={{ fontSize: "0.85rem", color: D.text }}><b>{data.decision.outcome_label}</b>{data.decision.refund_amount ? ` · ${money(data.decision.refund_amount)}` : ""} · fault: {data.faults[data.decision.fault] || data.decision.fault}</div>
+                <div style={{ fontSize: "0.85rem", color: D.text }}><b>{data.decision.outcome_label}</b>{data.refund?.whole ? " · Whole-order refund" : data.decision.refund_amount ? ` · ${money(data.decision.refund_amount)}` : ""} · fault: {data.faults[data.decision.fault] || data.decision.fault}</div>
                 <div style={{ fontSize: "0.82rem", color: D.text, whiteSpace: "pre-wrap" }}>{data.decision.note}</div>
                 <span style={dim}>By {data.decision.decided_by?.full_name} on {dayTime(data.decision.decided_at)}.</span>
               </section>

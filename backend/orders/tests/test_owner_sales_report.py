@@ -99,3 +99,32 @@ class OwnerSalesReportTests(TestCase):
     def test_report_requires_a_business_owner(self):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.customer, 'customer')}")
         self.assertEqual(self.client.get("/api/orders/owner/report/").status_code, 403)
+
+    # G8: once the ledger is on, the old report and its CSV carry no customer name.
+    def test_review_focus_no_customer_name_while_the_ledger_is_on(self):
+        self._paid_order((self.product, 1))
+        self._auth(self.owner)
+        with self.settings(LEDGER_ENABLED=True):
+            report = self.client.get("/api/orders/owner/report/").json()
+            csv_body = self.client.get("/api/orders/owner/report/export/").content.decode()
+        self.assertIs(report["customer_names"], False)
+        self.assertEqual(len(report["rows"]), 1)
+        for row in report["rows"]:
+            self.assertNotIn("customer", row)
+        self.assertNotIn("Yaa Buyer", str(report))
+        self.assertNotIn("Yaa Buyer", csv_body)
+        header = csv_body.splitlines()[0]
+        self.assertNotIn("Customer", header)
+        self.assertIn("Kente Cloth", csv_body)
+        self.assertEqual(len(csv_body.splitlines()[1].split(",")), len(header.split(",")))
+
+    def test_ledger_off_report_and_csv_keep_the_customer_column(self):
+        self._paid_order((self.product, 1))
+        self._auth(self.owner)
+        with self.settings(LEDGER_ENABLED=False):
+            report = self.client.get("/api/orders/owner/report/").json()
+            csv_body = self.client.get("/api/orders/owner/report/export/").content.decode()
+        self.assertIs(report["customer_names"], True)
+        self.assertEqual(report["rows"][0]["customer"], "Yaa Buyer")
+        self.assertIn("Customer", csv_body.splitlines()[0])
+        self.assertIn("Yaa Buyer", csv_body)
