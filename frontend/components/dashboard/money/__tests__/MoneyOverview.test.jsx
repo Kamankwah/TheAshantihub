@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import BusinessCommandCenter from '../../BusinessCommandCenter.jsx'
 import { server } from '../../../../mocks/server.js'
+import MoneyOverview from '../MoneyOverview.jsx'
 import VendorMoney from '../VendorMoney.jsx'
 
 const API = 'http://localhost:8000'
@@ -25,6 +26,15 @@ const off = () => server.use(
 const amountOf = (text) => screen.getByText(text).closest('[data-amount]') || screen.getByText(text)
 
 describe('MoneyOverview', () => {
+  it('test_a_server_error_on_the_overview_is_shown_not_silent', async () => {
+    server.use(
+      http.get(`${API}/api/wallet/`, () => HttpResponse.json({ kind: 'vendor', pending: '120.00', available: '48.50' })),
+      http.get(`${API}/api/wallet/vendor/`, () => HttpResponse.json({ detail: 'boom' }, { status: 500 })),
+    )
+    wrap(<MoneyOverview onOpenPayouts={() => {}} />)
+    expect(await screen.findByRole('alert', {}, { timeout: 10000 })).toBeInTheDocument() // the hook retries a 500 twice first
+  }, 15000)
+
   it('test_ledger_off_shows_one_line_and_no_sub_tabs', async () => {
     off()
     wrap(<VendorMoney businessKind="product" />)

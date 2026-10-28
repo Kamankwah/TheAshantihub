@@ -180,20 +180,23 @@ def release_at(sale, now=None, *, hours=None):
     end of the event's day plus `event_release_delay_hours` (an event carries no end time). The settings are read at
     `now`, so a change applies to every sale not yet released. `hours` (release_hours(now)) saves the lookups for a list."""
     now = now or timezone.now()
-    hours = hours or release_hours(now)
+    key = {
+        BookingSale.SERVICE: "service_auto_accept_hours", BookingSale.STAY: "stay_issue_window_hours",
+    }.get(sale.kind, "event_release_delay_hours")
+    setting = hours[key] if hours is not None else settings_store.current(key, now)  # one lookup, only the one needed
     if sale.kind == BookingSale.SERVICE:
         done = sale.service_request.completed_at
         if done is None:
             return None
-        auto = done + timedelta(hours=hours["service_auto_accept_hours"])
+        auto = done + timedelta(hours=setting)
         accepted = sale.customer_accepted_at
         return min(auto, accepted) if accepted is not None else auto
     if sale.kind == BookingSale.STAY:
         start = datetime.combine(sale.booking.check_in, STAY_CHECK_IN_TIME, tzinfo=dt_timezone.utc)
-        return start + timedelta(hours=hours["stay_issue_window_hours"])
+        return start + timedelta(hours=setting)
     event_day = sale.event.event_date.astimezone(dt_timezone.utc).date()
     day_end = datetime.combine(event_day + timedelta(days=1), time(0, 0), tzinfo=dt_timezone.utc)
-    return day_end + timedelta(hours=hours["event_release_delay_hours"])
+    return day_end + timedelta(hours=setting)
 
 
 def release_due(now=None):
@@ -212,8 +215,9 @@ def release_due(now=None):
         .select_related("service_request", "booking", "event")
     )
     released = 0
+    hours = release_hours(now)
     for candidate in candidates:
-        due = release_at(candidate, now)
+        due = release_at(candidate, now, hours=hours)
         if due is None or due > now:
             continue
         if candidate.kind == BookingSale.TICKETS and candidate.event.status in (Event.PENDING, Event.REJECTED):
@@ -223,7 +227,7 @@ def release_due(now=None):
         try:
             with transaction.atomic():
                 sale = lock(candidate)
-                due = release_at(sale, now)
+                due = release_at(sale, now, hours=hours)
                 if due is None or due > now:
                     continue
                 if _release_on_clock(sale, now, f"Released automatically at {timezone.localtime(now):%Y-%m-%d %H:%M}."):

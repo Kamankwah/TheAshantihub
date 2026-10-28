@@ -54,8 +54,9 @@ WALLET_TOO_LOW = "Your AshantiHub wallet doesn't hold enough for this order."
 
 
 class DeliveryPreviewView(APIView):
-    """GET /api/orders/delivery-preview/?fulfilment=door_to_door — read from the caller's cart, independent of promotions:
-    when delivery would wait for a closed vendor to open ({delivery_from, delivered_from, deferred, source})."""
+    """GET /api/orders/delivery-preview/?fulfilment=door_to_door[&lat=&lng=] — read from the caller's cart, independent of
+    promotions: when delivery would wait for a closed vendor to open ({delivery_from, delivered_from, deferred, source}),
+    plus `delivery`, the fee block checkout will add for the pin given by `lat`/`lng` (null for store pickup or fees off)."""
 
     permission_classes = [IsAuthenticated, IsCustomer]
 

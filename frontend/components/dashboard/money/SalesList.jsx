@@ -22,7 +22,7 @@ function SalesPage({ source, status, dateFrom, dateTo, page, onLoaded, onRangeEr
   const args = { status, dateFrom, dateTo, page }
   const sales = useVendorSales({ ...args, enabled: source === 'orders' })
   const bookings = useVendorBookings({ ...args, enabled: source === 'bookings' })
-  const { data, error, isLoading } = source === 'orders' ? sales : bookings
+  const { data, error, isLoading, refetch } = source === 'orders' ? sales : bookings
   const rangeError = page === 1 && error?.status === 400 ? error : null
 
   useEffect(() => { if (data) onLoaded(Boolean(data.next)) }, [data]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -31,7 +31,14 @@ function SalesPage({ source, status, dateFrom, dateTo, page, onLoaded, onRangeEr
   }, [rangeError]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <div style={s.note}>Loading…</div>
-  if (error && !rangeError) return <div role="alert" style={s.error}>{walletMessage(error).text}</div>
+  if (error && !rangeError) {
+    return (
+      <div role="alert" style={s.error}>
+        {walletMessage(error).text}{' '}
+        <button type="button" style={s.ghost} onClick={() => refetch()}>Try again</button>
+      </div>
+    )
+  }
   if (!data) return null
   if (page === 1 && data.results.length === 0) {
     return <div style={s.note}>{source === 'orders' ? 'No sales in this range yet.' : 'No bookings in this range yet.'}</div>

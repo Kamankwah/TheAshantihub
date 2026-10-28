@@ -130,6 +130,15 @@ class BookingRowTests(BookingsBase):
         row = self.row(sale)
         self.assertEqual((row["on_hold"], row["status_label"], row["release_at"]), (True, "On hold while AshantiHub checks the event", None))
 
+    def test_tickets_for_a_cancelled_event_are_on_hold_with_no_release_time(self):
+        sale = self.paid_tickets()
+        Event.objects.filter(pk=self.event.pk).update(status=Event.CANCELLED)
+        row = self.row(sale)
+        self.assertEqual(
+            (row["on_hold"], row["status_label"], row["release_at"]),
+            (True, "On hold: the event was cancelled and its tickets are being refunded", None),
+        )
+
     def test_a_due_sale_not_yet_released_says_due_for_release(self):
         sale = self.paid_service()
         self.done(sale, timezone.now() - timedelta(hours=60))

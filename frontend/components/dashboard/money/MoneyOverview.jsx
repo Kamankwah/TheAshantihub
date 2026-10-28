@@ -1,5 +1,6 @@
 import { useVendorWalletOverview } from '../../../hooks/useWallet.js'
 import BalanceSummary from '../../wallet/BalanceSummary.jsx'
+import { walletMessage } from '../../wallet/walletErrors.js'
 import { formatGhs } from '../../wallet/walletMoney.js'
 import { walletStyles } from '../../wallet/walletStyles.js'
 import FeeCapMeter from './FeeCapMeter.jsx'
@@ -8,11 +9,12 @@ import WhenYouGetPaid from './WhenYouGetPaid.jsx'
 // The Money tab's first sub-tab. Every figure is what the server sent.
 export default function MoneyOverview({ onOpenPayouts }) {
   const s = walletStyles('dashboard')
-  const { data } = useVendorWalletOverview()
+  const { data, error } = useVendorWalletOverview()
   const showWithdrawing = data?.withdrawing != null && data.withdrawing !== '0.00'
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <BalanceSummary tone="dashboard" />
+      {error && !data && <div role="alert" style={s.error}>{walletMessage(error).text}</div>}
       {data && (
         <div style={s.card}>
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>

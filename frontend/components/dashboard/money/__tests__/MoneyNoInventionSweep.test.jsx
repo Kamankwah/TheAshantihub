@@ -122,7 +122,8 @@ describe('money screens conformance sweep', () => {
       const { container } = wrap(ui())
       await screen.findByText(ready)
       await waitFor(() => expect(container.textContent.length).toBeGreaterThan(0))
-      sweep(container)
+      if (_name === 'MoneyOverview') await waitFor(() => expect(sweep(container)).toBeGreaterThan(0))
+      else sweep(container)
     })
   })
 
@@ -144,7 +145,7 @@ describe('money screens conformance sweep', () => {
     fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'service' } })
     fireEvent.click(screen.getByRole('button', { name: 'Work it out' }))
     await screen.findByText(/platform fee/)
-    sweep(container)
+    expect(sweep(container)).toBeGreaterThan(0)
   })
 
   it('Payments Sales Overview with customer_names false shows no customer', async () => {

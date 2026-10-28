@@ -103,7 +103,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const cartSignature = items.map((i) => `${i.id}:${i.quantity}`).join(",");
   // After-hours notice: independent of promotions (its own endpoint). Shown only for a rider delivery the server says is
   // deferred; nothing while loading or if the read fails. Platform hours are never presented as the shop's own.
-  const { data: preview, isError: previewFailed, refetch: refetchPreview } = useDeliveryPreview("door_to_door", { enabled: user?.accountType === "customer" && deliveryMethod === "door_to_door" && items.length > 0, cartKey: cartSignature, lat: deliveryLat, lng: deliveryLng });
+  const { data: preview, isError: previewFailed, refetch: refetchPreview } = useDeliveryPreview("door_to_door", { enabled: user?.accountType === "customer" && deliveryMethod === "door_to_door" && items.length > 0, cartKey: cartSignature, lat: promosOn ? null : deliveryLat, lng: promosOn ? null : deliveryLng });
   const deferredFrom = deliveryMethod === "door_to_door" && preview?.deferred ? formatAccraDayTime(preview.delivery_from) : null;
   useEffect(() => {
     if (!promosOn || items.length === 0) { setQuote(null); return; }
@@ -129,8 +129,8 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   // Checkout refuses a door-to-door point outside the Ashanti Region, and payment runs before checkout, so the
   // pay button stays off until a quote for THIS pin has resolved and says it is in area (the delivery note
   // above carries the quote's message). A pending, stale or failed quote also keeps it off.
-  // Known limit: with promotions off there is no quote endpoint, so the region cannot be checked here and the
-  // button stays on; checkout still refuses an out-of-area point (a test pins this).
+  // With promotions off the delivery-preview answer carries the same `delivery` block for this pin, so
+  // `outOfArea` reads it from there; checkout still refuses an out-of-area point (a test pins this).
   const pinChosen = deliveryMethod === "door_to_door" && deliveryLat != null;
   const outOfArea = deliveryMethod === "door_to_door" && delivery?.fee_status === "out_of_area";
   const regionUnchecked = promosOn && pinChosen && (quoting || quotedFor !== pinKey || quoteFailed);

@@ -101,6 +101,17 @@ describe('SalesList', () => {
     expect(urls.every((u) => u.get('page') === null)).toBe(true)
   })
 
+  it('test_a_failed_page_can_be_retried', async () => {
+    let calls = 0
+    server.use(http.get(`${API}/api/wallet/vendor/sales/`, () => {
+      calls += 1
+      return calls <= 3 ? HttpResponse.json({ detail: 'boom' }, { status: 500 }) : envelope([orderRow()])
+    }))
+    wrap(<SalesList businessKind="product" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }, { timeout: 8000 })) // the hook retries a 500 twice first
+    expect(await screen.findByText('Order #41')).toBeInTheDocument()
+  }, 15000)
+
   it('test_dates_are_sent_as_typed_and_blank_dates_are_not_sent', async () => {
     const urls = []
     server.use(http.get(`${API}/api/wallet/vendor/sales/`, ({ request }) => { urls.push(new URL(request.url).searchParams); return envelope([]) }))

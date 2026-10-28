@@ -34,6 +34,7 @@ export default function FeeCapMeter({ feeCap }) {
           aria-valuemin={0}
           aria-valuemax={limit}
           aria-valuenow={Math.min(used, limit)}
+          aria-valuetext={`GH₵ ${feeCap.used} of GH₵ ${feeCap.limit}`}
           style={{ marginTop: 12, height: 10, borderRadius: 5, background: D.panelBg2, overflow: 'hidden' }}
         >
           <div style={{ width: `${percent}%`, height: '100%', background: D.blue }} />

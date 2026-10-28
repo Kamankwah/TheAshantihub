@@ -404,9 +404,9 @@ def booking_hold_text(sale):
 def _booking_text(sale, kind, key, title, body):
     """Notify and queue one booking text for the sale's business; True if one was queued."""
     owner = sale.business_owner
-    if VendorText.objects.filter(key=key).exists():
-        return False  # already texted (and noticed): a retry or a second report adds neither
     with transaction.atomic():  # a savepoint: a database error here must not poison the caller's transaction
+        if VendorText.objects.filter(key=key).exists():
+            return False  # already texted (and noticed): a retry or a second report adds neither
         notice = notify_business_owner(owner, VENDOR_MONEY, title, body=body, link="/business-dashboard", icon="💰")
         if owner.is_suspended:
             return False  # in-app copy kept, no text, nothing queued to backfill when the suspension is lifted
@@ -431,17 +431,18 @@ def booking_released(sale, journal):
     if not escrow.enabled() or journal is None:
         return False
     try:
-        released = sum(
-            line.amount for line in JournalLine.objects.filter(
-                journal=journal, side=JournalLine.CREDIT, account__kind=Account.VENDOR_AVAILABLE,
-                account__owner_type=OWNER_TYPE, account__owner_id=str(sale.business_owner_id),
+        with transaction.atomic():  # a savepoint: a failing SELECT must not abort the caller's transaction
+            released = sum(
+                line.amount for line in JournalLine.objects.filter(
+                    journal=journal, side=JournalLine.CREDIT, account__kind=Account.VENDOR_AVAILABLE,
+                    account__owner_type=OWNER_TYPE, account__owner_id=str(sale.business_owner_id),
+                )
             )
-        )
-        fee = vendor.booking_figures(sale)[1]
-        return _booking_text(
-            sale, VendorText.BOOKING_RELEASED, f"booking-released-{sale.pk}", f"Booking #{sale.pk} released",
-            booking_released_text(sale, released, fee),
-        )
+            fee = vendor.booking_figures(sale)[1]
+            return _booking_text(
+                sale, VendorText.BOOKING_RELEASED, f"booking-released-{sale.pk}", f"Booking #{sale.pk} released",
+                booking_released_text(sale, released, fee),
+            )
     except Exception as exc:  # noqa: BLE001 - a text never stops a release
         logger.error("Booking released text not queued: %s", type(exc).__name__)
         return False
@@ -578,7 +579,7 @@ def digest_text(day, summary, pending, available):
     """`summary` is one day of vendor.daily (GH₵ strings); `pending` and `available` are pesewas now."""
     orders = summary["orders"]
     return (
-        f"AshantiHub {day:%d %b}: {orders} order{'' if orders == 1 else 's'} paid, items GHS {summary['sold']}. "
+        f"AshantiHub {day:%d %b}: {orders} sale{'' if orders == 1 else 's'} paid, GHS {summary['sold']}. "
         f"Released GHS {summary['released']}, fees GHS {summary['fees']}, refunds GHS {summary['refunded']}. "
         f"Now Pending GHS {money(pending)}, Available GHS {money(available)}."
     )

@@ -10,7 +10,7 @@ owner-scoped order isolation). No customer's name, phone or address appears here
 rows. Product orders have `sale_groups` / `rows`; Plan 1b's booking sales (ledger.BookingSale: services, stays and
 tickets) have `booking_sales` / `booking_rows`, rows of kind "booking" served at vendor/bookings/. Their money is in
 Pending and Available and their fees count toward the cap; their journal lines fold into the daily summary's columns
-and each is one statement line (no item name); they have no texts yet. Like the order rows they carry no customer name, phone or
+and each is one statement line (no item name); they have texts (vendor_texts: paid, released, on hold). Like the order rows they carry no customer name, phone or
 address and, for a problem the customer reported, only that one exists, never what it says (Director ruling G3)."""
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -178,6 +178,7 @@ def rows(owner, groups):
 
 BOOKING_ON_HOLD_PROBLEM = "On hold: a problem was reported"
 BOOKING_ON_HOLD_EVENT = "On hold while AshantiHub checks the event"
+BOOKING_ON_HOLD_CANCELLED = "On hold: the event was cancelled and its tickets are being refunded"
 BOOKING_WAITING_FOR_DONE = "Waiting for you to mark the service done"
 BOOKING_WAITING_SERVICE = "Waiting for the customer to accept, or the automatic release"
 BOOKING_WAITING_STAY = "Releases after the guest's check-in window"
@@ -242,14 +243,15 @@ def booking_rows(owner, sales_page, now=None):
     for sale in sales_page:
         status = booking_status_of(sale)
         under_review = sale.kind == BookingSale.TICKETS and sale.event.status in (Event.PENDING, Event.REJECTED)
+        cancelled = sale.kind == BookingSale.TICKETS and sale.event.status == Event.CANCELLED
         problem = sale.dispute_id in open_problems
         awaiting = status == AWAITING
-        on_hold = awaiting and (problem or under_review)
+        on_hold = awaiting and (problem or under_review or cancelled)
         due = sales.release_at(sale, now, hours=hours) if awaiting and not on_hold else None
         if not awaiting:
             label = LABELS[status]
         elif on_hold:
-            label = BOOKING_ON_HOLD_PROBLEM if problem else BOOKING_ON_HOLD_EVENT
+            label = BOOKING_ON_HOLD_PROBLEM if problem else (BOOKING_ON_HOLD_CANCELLED if cancelled else BOOKING_ON_HOLD_EVENT)
         elif due is None:
             label = BOOKING_WAITING_FOR_DONE
         elif due <= now:
