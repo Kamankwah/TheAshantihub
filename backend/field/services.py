@@ -6,6 +6,7 @@ chain lock until commit)."""
 import math
 from datetime import timedelta
 from decimal import Decimal
+from typing import NamedTuple
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -26,6 +27,7 @@ EARTH_RADIUS_M = 6371008.8
 LOCATION_NEEDED = "Location is needed to check in"
 CHECKOUT_LOCATION_NEEDED = "Location is needed to check out"
 VISIT_CLOSED = "This visit is already closed."
+CHANGE_VISIT_NEEDS_REQUEST = "A change verification visit starts from a change request assigned to you."
 
 
 class VisitError(Exception):
@@ -74,33 +76,53 @@ def open_visit(scout):
     ).first()
 
 
-def visit_target(scout, *, business_owner_id=None, scout_assignment_id=None, prospect_id=None):
-    """(business_owner, assignment, prospect) the scout may check in at, else
-    a 404 — so a scout can't learn which other places exist. A managed
-    business needs businesses.manage_portfolio; a verification needs
-    scouts.verify and the scout's own open assignment; a prospect needs
-    businesses.register and to be the scout's own, not yet registered."""
+class VisitTarget(NamedTuple):
+    business_owner: object
+    scout_assignment: object
+    prospect: object
+    change_request: object
+
+
+def visit_target(scout, *, business_owner_id=None, scout_assignment_id=None, prospect_id=None,
+                 change_request_id=None):
+    """VisitTarget(business_owner, assignment, prospect, change_request) the
+    scout may check in at, else a 404 — so a scout can't learn which other
+    places exist. A managed business needs businesses.manage_portfolio; a
+    verification needs scouts.verify and the scout's own open assignment; a
+    prospect needs businesses.register and to be the scout's own, not yet
+    registered; a change verification needs scouts.verify and a business
+    detail change request assigned to this scout and still waiting for its
+    visit (portfolio.detail_changes)."""
     perms = scout.effective_permission_codenames()
+    if change_request_id:
+        from portfolio.models import BusinessDetailChangeRequest
+
+        change = BusinessDetailChangeRequest.objects.select_related("business_owner__profile").filter(
+            pk=change_request_id, assigned_scout=scout, status=BusinessDetailChangeRequest.ASSIGNED,
+        ).first()
+        if change is None or "scouts.verify" not in perms:
+            raise VisitError("We couldn't find that place.", 404, "not_found")
+        return VisitTarget(change.business_owner, None, None, change)
     if prospect_id:
         from .models import Prospect
 
         prospect = Prospect.objects.filter(pk=prospect_id, scout=scout).exclude(status=Prospect.REGISTERED).first()
         if prospect is None or "businesses.register" not in perms:
             raise VisitError("We couldn't find that place.", 404, "not_found")
-        return None, None, prospect
+        return VisitTarget(None, None, prospect, None)
     if scout_assignment_id:
         assignment = ScoutAssignment.objects.select_related("business_owner__profile").filter(
             pk=scout_assignment_id, scout=scout, status=ScoutAssignment.ASSIGNED,
         ).first()
         if assignment is None or "scouts.verify" not in perms:
             raise VisitError("We couldn't find that place.", 404, "not_found")
-        return assignment.business_owner, assignment, None
+        return VisitTarget(assignment.business_owner, assignment, None, None)
     owner = BusinessOwner.objects.select_related("profile").filter(
         pk=business_owner_id, account_manager=scout,
     ).exclude(kyc_status=BusinessOwner.REJECTED).first()
     if owner is None or "businesses.manage_portfolio" not in perms:
         raise VisitError("We couldn't find that place.", 404, "not_found")
-    return owner, None, None
+    return VisitTarget(owner, None, None, None)
 
 
 def prospect_pin(prospect):
@@ -111,18 +133,22 @@ def prospect_pin(prospect):
     return lat, lng
 
 
-def check_in(scout, *, business_owner_id=None, scout_assignment_id=None, prospect_id=None, purpose, lat, lng,
-             accuracy_m, request=None):
+def check_in(scout, *, business_owner_id=None, scout_assignment_id=None, prospect_id=None, change_request_id=None,
+             purpose, lat, lng, accuracy_m, request=None):
     if lat is None or lng is None or accuracy_m is None:
         raise VisitError(LOCATION_NEEDED)
-    owner, assignment, prospect = visit_target(
+    owner, assignment, prospect, change = visit_target(
         scout, business_owner_id=business_owner_id, scout_assignment_id=scout_assignment_id,
-        prospect_id=prospect_id,
+        prospect_id=prospect_id, change_request_id=change_request_id,
     )
     if assignment is not None:
         purpose = VisitCheckIn.VERIFICATION
+    elif change is not None:
+        purpose = VisitCheckIn.CHANGE_VERIFICATION
     elif purpose == VisitCheckIn.VERIFICATION:
         raise VisitError("A verification visit starts from a verification assignment.")
+    elif purpose == VisitCheckIn.CHANGE_VERIFICATION:
+        raise VisitError(CHANGE_VISIT_NEEDS_REQUEST)
     now = timezone.now()
     if prospect is not None:
         pin = prospect_pin(prospect)
@@ -136,7 +162,8 @@ def check_in(scout, *, business_owner_id=None, scout_assignment_id=None, prospec
             if current is not None:
                 raise VisitError(f"Check out of {_place(current)} first", 409, "open_visit")
             visit = VisitCheckIn.objects.create(
-                scout=scout, business_owner=owner, scout_assignment=assignment, prospect=prospect, purpose=purpose,
+                scout=scout, business_owner=owner, scout_assignment=assignment, prospect=prospect,
+                change_request=change, purpose=purpose,
                 checked_in_at=now, lat=_decimal(lat), lng=_decimal(lng), accuracy_m=round(accuracy_m),
                 distance_m=distance, outside_radius=outside,
             )
@@ -148,7 +175,8 @@ def check_in(scout, *, business_owner_id=None, scout_assignment_id=None, prospec
                 _maybe_open_review(scout, visit, now)
             record(scout, "visit.check_in", target=visit,
                    after={"business_owner_id": owner.pk if owner else None,
-                          "prospect_id": prospect.pk if prospect else None, "purpose": purpose,
+                          "prospect_id": prospect.pk if prospect else None,
+                          "change_request_id": change.pk if change else None, "purpose": purpose,
                           "distance_m": distance,
                           "outside_radius": outside}, request=request)
     except IntegrityError:
@@ -208,6 +236,10 @@ def update_open_visit(visit, *, purpose=None, notes=None, request=None):
                 raise VisitError("A verification visit keeps its purpose.")
             if purpose == VisitCheckIn.VERIFICATION and not locked.scout_assignment_id:
                 raise VisitError("A verification visit starts from a verification assignment.")
+            if locked.change_request_id and purpose != VisitCheckIn.CHANGE_VERIFICATION:
+                raise VisitError("A change verification visit keeps its purpose.")
+            if purpose == VisitCheckIn.CHANGE_VERIFICATION and not locked.change_request_id:
+                raise VisitError(CHANGE_VISIT_NEEDS_REQUEST)
             locked.purpose = purpose
         if notes is not None:
             locked.notes = notes

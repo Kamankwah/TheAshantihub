@@ -1,6 +1,4 @@
 import type { ComponentType, CSSProperties } from "react";
-import { ContactInfoPanel } from "@/components/ui/contact-info-panel.tsx";
-import { ContactSocialRing } from "@/components/ui/contact-social-ring.tsx";
 import { ContactEnquiryForm } from "@/components/ui/contact-enquiry-form.tsx";
 
 export type ContactPageProps = {
@@ -19,9 +17,9 @@ export type ContactPageProps = {
 };
 
 // ─── ContactPage ─────────────────────────────────────────────────────────
-// The Contact tab's main shell — hero heading, a two-column
-// ContactInfoPanel/ContactSocialRing row, and the full-width
-// ContactEnquiryForm below. Does NOT render ContactCtaBand or Footer2 —
+// The Contact tab's main shell — hero heading, and the
+// ContactEnquiryForm. Message form only: no contact details (phone, email,
+// address) are shown on this page. Does NOT render ContactCtaBand or Footer2 —
 // those stay in App.jsx, rendered separately after this component.
 export function ContactPage({ user: _user, onCreateAccount: _onCreateAccount, WhatsAppButton: _WhatsAppButton }: ContactPageProps) {
   return (
@@ -33,13 +31,8 @@ export function ContactPage({ user: _user, onCreateAccount: _onCreateAccount, Wh
           </h1>
           <p className="text-muted-foreground max-w-xl mx-auto">
             Questions about a listing, a partnership, or your business
-            account? We're based in Kumasi and we reply fast.
+            account? Send us a message and AshantiHub Support will reply.
           </p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
-          <ContactInfoPanel />
-          <ContactSocialRing />
         </div>
 
         <ContactEnquiryForm />

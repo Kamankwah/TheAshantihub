@@ -21,6 +21,7 @@ from listings.models import Listing
 from disputes.serializers import DisputeSerializer
 from notifications.services import notify_customer
 from payments.models import CheckoutSession
+from storefront.permissions import MarketplaceOpen
 from marketing import checkout as promo_checkout
 from marketing import code_guard
 from marketing import promos
@@ -31,6 +32,7 @@ from ledger.money import from_pesewas, to_pesewas
 from payments.providers import get_provider
 from payments.services import process_payment
 
+from . import hold, locks
 from .models import DeliveryAssignment, Order, OrderItem
 from .serializers import (
     DeliveryOrderSerializer,
@@ -49,6 +51,18 @@ MOMO, WALLET = "momo", "wallet"
 PAYMENT_METHODS = (MOMO, WALLET)
 WALLET_OFF = "Paying from your AshantiHub wallet isn't switched on yet."
 WALLET_TOO_LOW = "Your AshantiHub wallet doesn't hold enough for this order."
+
+
+class DeliveryPreviewView(APIView):
+    """GET /api/orders/delivery-preview/?fulfilment=door_to_door — read from the caller's cart, independent of promotions:
+    when delivery would wait for a closed vendor to open ({delivery_from, delivered_from, deferred, source})."""
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def get(self, request):
+        cart = Cart.objects.filter(customer=request.user).first()
+        items = list(cart.items.select_related("listing")) if cart is not None else []
+        return Response(hold.quote(items, request.query_params.get("fulfilment") or Order.DOOR_TO_DOOR))
 
 
 class OrderCheckoutView(APIView):
@@ -71,7 +85,7 @@ class OrderCheckoutView(APIView):
     (see payments.services._finalize_order_checkout).
     """
 
-    permission_classes = [IsAuthenticated, IsCustomer]
+    permission_classes = [IsAuthenticated, IsCustomer, MarketplaceOpen]
 
     def post(self, request):
         cart = Cart.objects.filter(customer=request.user).first()
@@ -180,12 +194,13 @@ class OrderCheckoutView(APIView):
             if quoted is not None:
                 fee_card, fee_quote = quoted
                 # A live free-delivery promo covering every line waives the fee (marketing.waivers);
-                # the original amount stays in the breakdown.
-                waiver = waivers.covering_waiver([i.listing for i in items], timezone.now())
+                # the original amount stays in the breakdown. An AshantiHub-funded promo waives it only when the fee
+                # fits in its budget cap, decided under the promo's row lock (a hard cap: concurrent checkouts wait).
+                waiver = waivers.covering_waiver([i.listing for i in items], timezone.now(), fee=fee_quote["total"], lock=True)
                 charged, fee_quote = waivers.apply_to_fee(waiver, fee_quote)
                 total += charged
             order = Order.objects.create(
-                customer=request.user, status=Order.PENDING, total_amount=total,
+                customer=request.user, status=Order.PENDING, total_amount=total, ready_not_before=hold.for_items(items),
                 delivery_fee=charged if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card, route_plan=plan,
                 **(promo.order_extras() if promo else {}),
                 delivery_method=delivery_method,
@@ -292,7 +307,19 @@ _LEGACY_STOP_READS = ("items__listing__business_owner__profile", "items__listing
 def _customer_orders(customer):
     return (
         Order.objects.filter(customer=customer).select_related("delivery_assignment", "coupon")
-        .prefetch_related("delivery_assignment__stops", *_LEGACY_STOP_READS)
+        .prefetch_related("delivery_assignment__stops", *_LEGACY_STOP_READS, _open_redeliveries())
+    )
+
+
+def _open_redeliveries():
+    """An order's open re-delivery request (Plan 7F-E Task 7), read by OrderSerializer, in one query for the whole list."""
+    from django.db.models import Prefetch
+
+    from delivery.models import Redelivery
+
+    return Prefetch(
+        "redeliveries", queryset=Redelivery.objects.filter(status__in=Redelivery.OPEN_STATUSES).order_by("-attempt"),
+        to_attr="open_redeliveries",
     )
 
 
@@ -606,23 +633,30 @@ class AssignDispatchView(APIView):
         return [HasRolePermission("delivery.manage")]
 
     def post(self, request, pk):
-        order = generics.get_object_or_404(Order, pk=pk)
-        if order.status != Order.PAID or order.delivery_method != Order.DOOR_TO_DOOR:
-            return Response(
-                {"detail": "Only a paid door-to-door order can be assigned a dispatch."},
-                status=400,
-            )
-        dispatch = generics.get_object_or_404(StaffUser, pk=request.data.get("dispatch"))
-        if dispatch.role.name != "dispatch":
-            return Response({"dispatch": "That staff member is not a dispatch."}, status=400)
+        from django.http import Http404
 
         from delivery import services as delivery_services
 
-        try:
-            assignment = delivery_services.assign(order, dispatch, request.user, mode=DeliveryAssignment.MANUAL)
-        except delivery_services.DeliveryError as exc:
-            return Response(exc.body(), status=exc.status_code)
-        _sync_order_delivery_status(order, assignment.status)
+        with db_transaction.atomic():
+            try:
+                order = locks.lock_order(pk)  # the order row before its assignment (orders/locks.py)
+            except Order.DoesNotExist:
+                raise Http404 from None
+            if order.status != Order.PAID or order.delivery_method != Order.DOOR_TO_DOOR:
+                return Response(
+                    {"detail": "Only a paid door-to-door order can be assigned a dispatch."},
+                    status=400,
+                )
+            if delivery_services.is_held(order):
+                return Response(delivery_services.not_due_error(order).body(), status=409)
+            dispatch = generics.get_object_or_404(StaffUser, pk=request.data.get("dispatch"))
+            if dispatch.role.name != "dispatch":
+                return Response({"dispatch": "That staff member is not a dispatch."}, status=400)
+            try:
+                assignment = delivery_services.assign(order, dispatch, request.user, mode=DeliveryAssignment.MANUAL)
+            except delivery_services.DeliveryError as exc:
+                return Response(exc.body(), status=exc.status_code)
+            _sync_order_delivery_status(order, assignment.status)
         notify_customer(
             order.customer, "order_status", "Your delivery is on its way",
             body=f"A courier has been assigned to Order #{order.id}.",
@@ -683,9 +717,7 @@ class DeliveryPickupView(APIView):
     def post(self, request, pk):
         from delivery import services as delivery_services
 
-        assignment = generics.get_object_or_404(
-            DeliveryAssignment.objects.select_for_update(), pk=pk, dispatch=request.user
-        )
+        assignment = locks.lock_job_or_404(pk, dispatch_id=request.user.pk)  # the order row first (orders/locks.py)
         try:
             delivery_services.legacy_pickup(assignment, request.user, request.data.get("code"))
         except delivery_services.DeliveryError as exc:
@@ -705,9 +737,7 @@ class DeliveryDeliverView(APIView):
     def post(self, request, pk):
         from delivery import services as delivery_services
 
-        assignment = generics.get_object_or_404(
-            DeliveryAssignment.objects.select_for_update(), pk=pk, dispatch=request.user
-        )
+        assignment = locks.lock_job_or_404(pk, dispatch_id=request.user.pk)  # the order row first (orders/locks.py)
         try:
             delivery_services.legacy_deliver(assignment, request.user, request.data.get("code"))
         except delivery_services.DeliveryError as exc:
@@ -724,17 +754,19 @@ class ConfirmReceiptView(APIView):
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def post(self, request, pk):
-        order = generics.get_object_or_404(Order, pk=pk, customer=request.user)
-        assignment = getattr(order, "delivery_assignment", None)
-        if assignment is None:
-            return Response({"detail": "This order has no delivery to confirm."}, status=400)
-        if assignment.status != DeliveryAssignment.DELIVERED:
-            return Response(
-                {"detail": "You can only confirm receipt once the courier marks it delivered."},
-                status=400,
-            )
-        assignment.status = DeliveryAssignment.CONFIRMED
-        assignment.confirmed_at = timezone.now()
-        assignment.save(update_fields=["status", "confirmed_at"])
-        _sync_order_delivery_status(order, assignment.status)
+        generics.get_object_or_404(Order, pk=pk, customer=request.user)
+        with db_transaction.atomic():
+            order = locks.lock_order(pk)  # it writes the assignment and the order: the order row first (orders/locks.py)
+            assignment = locks.lock_assignment(order)
+            if assignment is None:
+                return Response({"detail": "This order has no delivery to confirm."}, status=400)
+            if assignment.status != DeliveryAssignment.DELIVERED:
+                return Response(
+                    {"detail": "You can only confirm receipt once the courier marks it delivered."},
+                    status=400,
+                )
+            assignment.status = DeliveryAssignment.CONFIRMED
+            assignment.confirmed_at = timezone.now()
+            assignment.save(update_fields=["status", "confirmed_at"])
+            _sync_order_delivery_status(order, assignment.status)
         return Response({"id": order.id, "status": assignment.status})

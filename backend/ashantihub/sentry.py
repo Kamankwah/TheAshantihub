@@ -22,6 +22,10 @@ EXTRA_DENYLIST = [
     # Business money texts (wallets.vendor_texts): the business's whole number in a frame. `to` is deliberately NOT
     # listed: the daily summary's response uses a "to" key (the range end), and scrubbing it would hide a harmless date.
     "phone",
+    # Chat assistant intake (messaging): a visitor's typed contact details in a request body or a frame.
+    "contact_phone", "contact_email", "contact_name",
+    # A business's requested new name, sign-in phone or email (portfolio.detail_changes), in a request body or a frame.
+    "new_value",
     # Query parameters, in case a failing query's values (the same whole number, as a lookup value) are attached under a
     # key of this name. Not verified: that `params` is the key Sentry's SQL integration uses is an assumption, so this
     # is a best-effort guard, not a guarantee.

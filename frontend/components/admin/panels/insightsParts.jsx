@@ -9,7 +9,7 @@ import { errorStyle, h2 } from "./portfolioParts.jsx";
 // Shared pieces of the Super Admin Insights and Money screens. Every figure on
 // these screens is counted from records; a thing no record backs is named under
 // "Not recorded" or "Not measured yet", never shown as a zero.
-export const warn = "#A33A00";
+export const warn = D.warnInk;
 export const section = { ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 10 };
 export const sectionTitle = { margin: 0, color: D.text, fontSize: "0.95rem", fontWeight: 800 };
 export const page = { display: "flex", flexDirection: "column", gap: 14 };
@@ -114,7 +114,7 @@ export const isoDay = (date) => {
 export function ShareBar({ share, label, color = D.gold }) {
   const pct = Math.max(0, Math.min(100, Math.round(share * 100)));
   return (
-    <div role="img" aria-label={label} style={{ height: 8, borderRadius: 999, background: "#EADFC6", overflow: "hidden", minWidth: 80 }}>
+    <div role="img" aria-label={label} style={{ height: 8, borderRadius: 999, background: D.panelBg3, overflow: "hidden", minWidth: 80 }}>
       <div style={{ height: 8, width: `${pct}%`, background: color }} />
     </div>
   );

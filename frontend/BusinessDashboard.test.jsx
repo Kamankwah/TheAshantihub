@@ -34,6 +34,25 @@ function makeAuth(overrides = {}) {
   }
 }
 
+describe('BusinessDashboard opening hours', () => {
+  const owner = { fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }
+
+  it('dashboard shows "Hours not set" prompt that opens the hours editor', async () => {
+    mockDashboardData({ profile: { ghana_card_number: 'GHA-1', business_kind: 'product', hours: [], has_hours: false } })
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={owner} />)
+    expect(await screen.findByText('Hours not set')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Set opening hours' }))
+    expect(await screen.findByLabelText('Monday opens')).toBeInTheDocument()
+  })
+
+  it('shows no prompt for a business that has hours, or when the server does not say', async () => {
+    mockDashboardData({ profile: { ghana_card_number: 'GHA-1', hours: [], has_hours: true } })
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={owner} />)
+    await waitFor(() => expect(screen.getByText(/Akwaaba, Abena/)).toBeInTheDocument())
+    expect(screen.queryByText('Hours not set')).not.toBeInTheDocument()
+  })
+})
+
 describe('BusinessDashboard approval gating', () => {
   it('shows the normal tabs when verified', async () => {
     mockDashboardData()
@@ -617,7 +636,9 @@ describe('BusinessDashboard Listings & Prices — create a new listing', () => {
 describe('BusinessDashboard Listings & Prices — business-kind create gating', () => {
   // The default categories handler serves Hotels (service, id 1) and Food
   // (product, id 2). A product/service business_kind on the profile should lock
-  // the create button label + category dropdown to that kind.
+  // the create button label + category dropdown to that kind. Since ruling R34 the
+  // dropdown groups categories (<optgroup> per department, one "Services" group),
+  // so options read as bare labels rather than "🍲 Food (product)".
   it('locks the create form to products for a product business', async () => {
     mockDashboardData({ profile: {
       ghana_card_number: 'GHA-1', gps_address: 'AK-1', business_contact_phone: '+233200000000',
@@ -628,8 +649,8 @@ describe('BusinessDashboard Listings & Prices — business-kind create gating', 
     const createBtn = await screen.findByText('➕ List a New Product')
     fireEvent.click(createBtn)
     await screen.findByText('➕ New Listing')
-    expect(screen.getByText('🍲 Food (product)')).toBeInTheDocument()
-    expect(screen.queryByText('🏨 Hotels (service)')).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Food' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Hotels' })).not.toBeInTheDocument()
   })
 
   it('locks the create form to services for a service business', async () => {
@@ -642,8 +663,8 @@ describe('BusinessDashboard Listings & Prices — business-kind create gating', 
     const createBtn = await screen.findByText('➕ List a New Service')
     fireEvent.click(createBtn)
     await screen.findByText('➕ New Listing')
-    expect(screen.getByText('🏨 Hotels (service)')).toBeInTheDocument()
-    expect(screen.queryByText('🍲 Food (product)')).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Hotels' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Food' })).not.toBeInTheDocument()
   })
 
   it('falls back to offering both kinds when business_kind is null', async () => {
@@ -655,8 +676,8 @@ describe('BusinessDashboard Listings & Prices — business-kind create gating', 
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('➕ List a New Product / Service'))
     await screen.findByText('➕ New Listing')
-    expect(screen.getByText('🍲 Food (product)')).toBeInTheDocument()
-    expect(screen.getByText('🏨 Hotels (service)')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Food' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Hotels' })).toBeInTheDocument()
   })
 })
 

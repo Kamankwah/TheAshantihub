@@ -14,6 +14,7 @@ from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner, IsCustomer
 from cart.models import Cart
 from listings.models import Listing
+from orders import hold
 from orders.models import Order, OrderItem
 
 from . import code_guard
@@ -432,8 +433,9 @@ def _delivery_quote(request, items):
     if lat not in (None, "") and lng not in (None, "") and not region.in_service_area(lat, lng):
         return {"fee": None, "fee_status": "out_of_area", "waived": False, "waiver_name": None, "waived_fee": None, "mixed_note": None, "message": region.OUT_OF_AREA_MESSAGE}
     listings = [i.listing for i in items]
-    waiver = waivers.covering_waiver(listings, timezone.now())
     quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
+    # The same promo checkout would apply: an AshantiHub-funded one only while the fee fits in its cap (no lock here).
+    waiver = waivers.covering_waiver(listings, timezone.now(), fee=quoted[1]["total"] if quoted else None)
     original = money(quoted[1]["total"]) if quoted else None
     from delivery import config
 
@@ -456,10 +458,12 @@ class CartQuoteView(APIView):
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def post(self, request):
-        if not enabled():
-            return Response({"enabled": False})
         cart = Cart.objects.filter(customer=request.user).first()
         items = list(cart.items.select_related("listing")) if cart else []
+        # When delivery would wait for a closed vendor to open (orders.hold): ISO time with the Accra offset, else null.
+        held = hold.quote(items, request.data.get("delivery_method"))
+        if not enabled():
+            return Response({"enabled": False})  # exactly this while promotions are off (a regression test pins it)
         typed = promo_checkout.normalise_code(request.data.get("coupon_code"))
         if typed and code_guard.blocked(request):
             return Response({"detail": code_guard.TOO_MANY}, status=429)
@@ -473,7 +477,7 @@ class CartQuoteView(APIView):
             data = promo_checkout.quote_data(priced)
             data["coupon_error"] = exc.message
             data["delivery"] = _delivery_quote(request, items)
-            return Response(data)
+            return Response({**data, **held})
         data = promo_checkout.quote_data(priced)
         data["delivery"] = _delivery_quote(request, items)
-        return Response(data)
+        return Response({**data, **held})

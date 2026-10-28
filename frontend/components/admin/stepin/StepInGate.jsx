@@ -22,7 +22,7 @@ export default function StepInGate({ Shell, ...props }) {
 
 const refuse = () => Promise.reject(Object.assign(new Error("Read-only view"), { status: 403, body: { code: "view_only" } }));
 
-function StepInShell({ Shell, view, auth, onExit, onViewSite, NotificationsSlot }) {
+function StepInShell({ Shell, view, auth, onExit, onViewSite, NotificationsSlot, theme, toggleTheme }) {
   const parent = useQueryClient();
   const [client] = useState(() => new QueryClient({ defaultOptions: parent.getDefaultOptions() }));
   // Requests carry X-View-As only while this is mounted. A layout effect runs
@@ -77,7 +77,7 @@ function StepInShell({ Shell, view, auth, onExit, onViewSite, NotificationsSlot 
 
   return (
     <QueryClientProvider client={client}>
-      <Shell auth={targetAuth} viewAs={viewAs} onExit={signOut} onViewSite={onViewSite ? viewSite : undefined} NotificationsSlot={NotificationsSlot} />
+      <Shell auth={targetAuth} viewAs={viewAs} onExit={signOut} onViewSite={onViewSite ? viewSite : undefined} NotificationsSlot={NotificationsSlot} theme={theme} toggleTheme={toggleTheme} />
     </QueryClientProvider>
   );
 }

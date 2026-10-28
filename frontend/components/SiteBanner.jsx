@@ -9,7 +9,9 @@ import { sendBannerBeacon, usePublicBanners } from "../hooks/useMarketingBanners
 // link is followed. Both are count-only beacons that never block the page. The link is an
 // internal path handed to `onNavigate` (props are threaded from App; this file never imports it).
 // A banner about one paying business says "Sponsored" and never wears the verified mark.
-const HEIGHT = { home_hero: 340, home_strip: 150, category_top: 150, events_top: 150 };
+// `flash` is Marketing's one-line flash banner; the marketplace home shows it
+// as text (storefront/FlashStrip), and only an image flash banner would come here.
+const HEIGHT = { home_hero: 340, home_strip: 150, category_top: 150, events_top: 150, flash: 56 };
 
 function BannerBody({ banner, slot, onNavigate }) {
   const ref = useRef(null);
@@ -37,7 +39,7 @@ function BannerBody({ banner, slot, onNavigate }) {
       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "18px 16px 12px", background: "linear-gradient(transparent, rgba(0,0,0,0.65))", color: "#fff", textAlign: "left", fontWeight: 800, fontSize: slot === "home_hero" ? "1.5rem" : "1rem" }}>
         {banner.title}
       </div>
-      {banner.sponsored && <span style={{ position: "absolute", top: 8, right: 8, background: "#fff", color: C.darkBrown, borderRadius: 6, padding: "2px 8px", fontSize: "0.65rem", fontWeight: 800, letterSpacing: "0.04em" }}>Sponsored</span>}
+      {banner.sponsored && <span style={{ position: "absolute", top: 8, right: 8, background: C.surface, color: C.ink, borderRadius: 6, padding: "2px 8px", fontSize: "0.65rem", fontWeight: 800, letterSpacing: "0.04em" }}>Sponsored</span>}
     </>
   );
   const frame = { position: "relative", display: "block", width: "100%", padding: 0, border: 0, overflow: "hidden", background: C.darkBrown, borderRadius: 0 };

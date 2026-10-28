@@ -33,6 +33,7 @@ approve's on-commit run); later stages are specs only.
 | 15 | Low stock | Per-offer threshold with sales-based default (<7 days cover), fallback 5 units; alert once on crossing; sold-out alert at zero; zero-stock offers hidden. |
 | 17 | Release of vendor money (products) | **Owner decision 2026-10-15.** Vendor money is not held for long. Once the product reaches the customer and both the rider and the customer have confirmed, a **Support staff member calls the customer** to check it matches what was bought. A positive result releases the money at once. Otherwise a dispute is raised and settled within **72 hours of purchase**. |
 | 18 | Store pickup | **Owner decision 2026-10-15.** Collected at the AshantiHub office within **24 hours** of purchase. Confirmed by AshantiHub staff in a **new Pickup Desk role**. |
+| 19 | Opening hours: follow-up rulings | **Owner decisions 2026-10-19**, following the opening-hours ruling of 2026-10-18. (1) A **scout-onboarded business must enter opening hours at registration** (the same `hours_required` 400). Live shops that already have no hours are **not blocked**: they show "Hours not set" and dispatch uses the platform window. A hourless unclaimed scout business **cannot be claimed** until staff add hours. (2) A delivery/dispatch manager (`delivery.manage`) can **send a rider early** to a held order, giving a reason of 3+ characters: `POST /api/delivery/orders/<id>/send-early/` sets `ready_not_before` to now, logs `delivery.early_send` with who, when and why, and tells the customer "Your order is being sent now". A second call, or an order that is not held, answers 409 `not_held`; a cancelled or refunded order is refused with 409 `not_sendable`. (3) Managers get a **Scheduled** list of held paid orders, `GET /api/delivery/scheduled/` (paginated, soonest first, matching `scheduled_count`), with a **Send now** button. **Further answers 2026-10-19.** (a) A **staff screen replaces the `set_business_hours` command** as the way to enter hours for hourless scout businesses: `PUT /api/portfolio/businesses/<id>/hours/`, permission `businesses.manage_portfolio` or `portfolio.manage` (account manager, Operations, Super Admin; Support cannot), same validation as owners, logged as `business.hours_set` with old and new values. Staff lists get a "Hours not set" badge and filter. The command stays as a fallback. (b) The Scheduled list is readable by `delivery.manage` or `orders.manage_delivery` holders, who also get a Scheduled nav item; **Send now** (send-early) stays on `delivery.manage` and is hidden from read-only users. (c) The owner will deal with live hourless claims himself. |
 | 16 | Governance | Super admin or accounts propose, the other approves; logged; applies only to later orders; super admin emergency edit, logged. |
 
 ## 2. Ledger core
@@ -72,7 +73,7 @@ statement and flags differences.
 5. **Withdrawal.** Amount moves to in-transit, is instructed via the provider, completes on
    confirmation, and reverses automatically on failure. The user bears the withdrawal charge.
 6. **End of day (third-party riders).** Reserve posted to commission income; day's gross,
-   commission and net recorded. A reversed delivery reverses its share of the reserve.
+   commission and net recorded. (A refund never reverses a rider's delivery pay: once any pickup is done the delivery fee belongs to the rider, plan 7F-D; the `reversed_at` columns are unused.)
 
 Company riders have no wallet; their pay stays with payroll.
 
@@ -126,7 +127,7 @@ effective time. Super admin may edit directly in an emergency (logged). Added 20
 `digest_batch_size` (200; businesses per digest batch) and `digest_time_budget_seconds` (600; longest one digest batch may run), the three low-stock numbers
 `low_stock_cover_days` (7), `low_stock_fallback_units` (5) and `stock_cover_window_days` (28), and also: `service_auto_accept_hours` (48),
 `stay_issue_window_hours` (24) and `event_release_delay_hours` (48) for the booking milestones (§4.2); the verification-overdue
-window now covers products only.
+window now covers products only. Added 2026-10-19 (plan 7F-D Task 3): `rider_withdrawals_per_day` (3; 1 to 20; riders' withdrawals per Accra day, on top of the amount limits). Added 2026-10-19 (plan 7F-E Task 7): `redelivery_fee_pesewas` (1500, a placeholder GH₵ 15.00 to be confirmed by the owner; 0 to 20000; the fee the customer pays for a re-delivery, gate (cxxx)).
 
 ### 3.4 Subscriptions
 
@@ -159,6 +160,15 @@ release). Products are unchanged (§4.1: Support's call, 72 hours from purchase)
 | Service | when the customer accepts in the app, or automatically this long after the business marks it done | `service_auto_accept_hours` (48) |
 | Stay | this long after the scheduled check-in time (14:00 Accra), whether or not the guest arrived | `stay_issue_window_hours` (24) |
 | Event tickets | this long after the end of the event's day (an event carries no end time); a door scan only tells the customer and records evidence, the organiser is liable for its scans | `event_release_delay_hours` (48) |
+
+2026-10-19 owner ruling, event cancellation: an event can be cancelled by its organiser (`POST events/mine/<id>/cancel/`,
+reason of 5-300 characters, refused once the event date has passed) or by Operations (`events/moderation/<id>/cancel/`,
+sudo). Every ticket is refunded in full, price plus the processing charge. The ticket price comes out of the
+organiser's Pending or Available (Available may go negative after release); AshantiHub bears only the processing
+charge (Dr provider fees). A cancelled event takes no new sales, renewals or edits, buyers and the organiser are told,
+and an hourly job (beat, minute 50) finishes any refund left over. Built in 7F-C Tasks 1-2. 2026-10-19 owner ruling, door scans: a scan
+never releases money, with the ledger on or off; a ticket with no `BookingSale` (a legacy ticket) stays held until
+Accounting releases it by hand, and the scan only records evidence and tells the customer. Built in 7F-C Task 3.
 
 An open dispute stops the timer until it closes. A customer can report a problem before release (it opens a dispute and
 tells Support). Before the milestone a cancel follows the vendor's cancellation policy, snapshotted on the sale at payment:
@@ -194,7 +204,7 @@ A store-pickup order is collected at the AshantiHub office within 24 hours of pu
 
 ## 7. Third-party dispatch
 
-Per-delivery earnings shown to the rider; reserve and daily commission per §2.2 and §3.3. Company
+Per-delivery earnings shown to the rider; reserve and daily commission per §2.2 and §3.3. The delivery fee belongs to the rider once any pickup is done (gate (xciii)); riders are capped at `rider_withdrawals_per_day` withdrawals a day (gate (xcviii)). Round 3 (2026-10-19): a delivery re-assigned before completion pays the first rider nothing and is done by AshantiHub's own riders only (gate (cxxviii)); a re-delivery the customer pays for is gate (cxxix); a refund never returns a coupon-reduced fee beyond what the customer actually paid (gate (cxxv)). Company
 riders: wallet disabled by role.
 
 ## 8. Payout destinations
@@ -214,7 +224,9 @@ per-transaction limits are editable.
   bound to the action; at **every sign-in for staff and vendors**; for customers on a **new
   device or after a gap** (editable, default 30 days).
 - **Authenticator-app 2FA:** optional for anyone, with recovery codes; when enabled it replaces
-  the sign-in OTP.
+  the sign-in OTP. 2026-10-19 owner ruling: the authenticator app is offered (setup, confirm, and sign-in asking for
+  it) whatever `OTP_SIGNIN_ENFORCED` says; with the switches off a step-up code for `authenticator_change` can be
+  texted or emailed so a customer or owner can set it up. Built in 7F-C Task 5.
 - Trusted-device records, lockouts, an audit log of OTP events, an SMS-spend alert, and recovery
   via the other channel or an approved staff-assisted request.
 
@@ -288,6 +300,9 @@ Follow-ups found in the final review; none is reachable while the flag stays off
   When `ledger/sales.py` lands the test also needs a cross-category case: an order payment and a booking payment for the same business racing the shared lifetime cap.
 - (iv) **Legacy vendor-shop store pickups** can never be marked collected once the ledger is on (the desk handles AshantiHub-office pickups), so their money would stay in Pending. A rollout/process decision for the owner.
 - (v) **Mismatch dispute.** The dispute created by `verification.record` sets `raised_by=customer` although it is staff-logged (the convention in `disputes/models.py` is `raised_by` null plus `logged_by`), and it neither notifies the customer nor tasks the account managers. Decide before Support uses it at volume.
+- (vi) **Round 3 (2026-10-19, plan 7F-E).** The Task 2 race tests (`ledger.tests.test_lock_order` and `PickupRaceTests`) pass 20 times in a row, run alone and serially.
+- (vii) **A coupon whole-refund journal balances (R1, gate (cxxv)):** pay the order with a coupon, pick up, refund whole, and check the journal and the customer, rider and subsidy balances.
+- (viii) **A re-delivery fee journal balances and reconciles (gate (cxxix)):** pay a re-delivery by wallet and by mobile money, complete it, and check the journals and that `wallets/reconciliation.LEDGER_KINDS` (which lists `CheckoutSession.REDELIVERY_FEE`) matches the provider lines.
 
 ### Stage 3 carry-forward
 
@@ -310,7 +325,7 @@ Found while writing the Stage 2 plan (`docs/superpowers/plans/2026-10-16-otp-sec
 - **O2 Sign-up.** The account row is created first; registration answers a code challenge instead of a token, and the token comes after the code. Customers and vendors who never confirmed a contact confirm once at their next sign-in. For staff the emailed invite link is the check.
 - **O3 Policy numbers** (customer gap 30 days, SMS alert 500/day) live on `staffsecurity.SecurityPolicy`, changed by a Super Admin with the password re-entered, not through the money-settings maker-checker.
 - **O4 Step-up.** Customers and vendors confirm with a texted or emailed code (an authenticator code is not accepted for step-up); staff keep password re-entry (`RequiresSudo`), except third-party riders, who confirm withdrawals and payout destinations with a texted or emailed code like customers (Plan 5). Applied now to payout details, adding a recovery email/phone, and authenticator changes. There is no change-password or change-primary-contact endpoint yet; `password_change` and `withdrawal` are defined for when they exist (Stage 3).
-- **O5 SMS.** The Hubtel SMS client in `marketing/providers/hubtel_sms.py` (unverified against a live account) is reused through `OTP_SMS_PROVIDER=hubtel`; the default `simulated` sends nothing.
+- **O5 SMS.** While `OTP_SMS_PROVIDER=simulated` an SMS code send answers `channel_unavailable` (no text is claimed sent). The Hubtel SMS client in `marketing/providers/hubtel_sms.py` (unverified against a live account) is reused through `OTP_SMS_PROVIDER=hubtel`; the default `simulated` sends nothing.
 - **O6 Not yet moved.** The customer secondary-contact codes (`accounts.serializers.CustomerSecondary*`) still keep their code in clear and return `demo_code` for SMS; moving them onto the OTP service changes their API and is a follow-up. Until then a secondary phone is never a code channel (`otp.identity.contacts()` ignores it, however `secondary_phone_verified` reads); a verified secondary email still is (its code is emailed).
 - **O7 Audit.** OTP events go to `otp.OtpEvent`, not the hash-chained activity log (high volume, customer-side, and the lock and the hourly limits are counted from it). Staff wrong codes also reach the sign-in history; policy changes and staff-assisted recovery also reach the activity log.
 
@@ -318,7 +333,7 @@ Found while writing the Stage 2 plan (`docs/superpowers/plans/2026-10-16-otp-sec
 
 `OTP_SIGNIN_ENFORCED`, `OTP_STEP_UP_ENFORCED` and `OTP_SIGNUP_VERIFICATION_ENFORCED` all default off and must stay off until every item below is done.
 
-- **Frontend screens (Plan 2F):** code entry (a customer or vendor login answers `two_factor_required` + `mfa_token`; the code goes to `/api/otp/sign-in/verify/`, not the staff two-factor URL); a trusted-device checkbox and keeping `device_token` (customers only); step-up prompts (on `step_up_required`, one retry carrying `X-Step-Up-Token`; the step-up endpoints answer `409 otp_off` while no switch asks for a code); 2FA settings for customers and vendors. The code-entry screen must also handle `two_factor_required` answered by `/api/otp/sign-in/verify/` itself (a correct SIGN_UP code does not skip an enabled authenticator) and resend `trust_device` with the authenticator step, handle `409 no_channel` (nothing on file: contact Support) and `400 channel_unavailable` (offer the other way).
+- **DONE 2026-10-20, Frontend screens (Plan 2F, built; switches still off):** the sign-in/sign-up code screen (`components/OtpSignIn.jsx`, shown by `AuthModal` and `BusinessRegistrationFlow`; a customer or vendor `two_factor_required` goes to `/api/otp/sign-in/verify/`, a staff one stays on the staff endpoint; handles an authenticator owed after a sign-up code, `no_channel` and `channel_unavailable`); the trusted-device checkbox and the customers-only `ashantihub.deviceToken` (`hooks/useAuth.js`, `lib/otp.js`); the step-up retry in `apiClient.js` with `StepUpPrompt` mounted once in `main.jsx` (one retry carrying `X-Step-Up-Token`); the security cards in `components/security/` (customer `SettingsTab`, business `ProfilePanel`); Super Admin's two OTP numbers, Support's recovery request form and the text-spend label in the staff panels. The backend always answers `available: true` for the authenticator (7F-C), so the UI's `available: false` branch is defensive only. **Texts while simulated (final review R12):** while `OTP_SMS_PROVIDER=simulated`, an SMS code send (sign-in or step-up) answers `400 channel_unavailable` ("Texts aren't being sent yet. Choose email instead.") and sends and logs no text, so no screen claims one was sent; the step-up / authenticator set-up for a phone-only account therefore waits for Hubtel SMS. **Still owed before any switch:** the staging walkthrough with all three switches on against a real backend (customer sign-in on a new device -> chooser -> code -> trusted device ticked -> second sign-in skips the code; owner every time; staff without an authenticator gets the code screen; sign-up confirm screen; authenticator set-up and sign-in with an app code and a recovery code; change payout details and see the prompt and the retry; add a recovery email/phone with the ledger on (step-up prompt appears, retry succeeds); Remove all devices; Support request -> Super Admin approval; 360px width with no horizontal scroll on the code screen and prompt; `TwoFactorSetup`'s palette on customer and business surfaces; Android/iOS real-device PWA checks as for the staff PWA). The walkthrough reads codes from emailed codes (the console mail backend) or from real Hubtel texts; texted codes are refused while `simulated`. Known limits, not 2F's to fix: the text-spend notice wording in `backend/otp/spend.py` points at a code log and text balance that have no screen; the trusted-device checkbox cannot show the day count before sign-in; the device list has no "this device" marker until the backend returns one; a staff-visible OTP code log and masked OtpEvent view is still a gate; a foreign-phone-only account gets `no_channel` with no operational path.
 - **A real SMS provider:** Hubtel SMS credentials and an Approved Sender ID, then `OTP_SMS_PROVIDER=hubtel` (the default `simulated` sends nothing).
 - **Hubtel SMS client unverified:** `marketing/providers/hubtel_sms.py` has never sent through a live account; prove one real OTP text first.
 - **Existing accounts with only a foreign phone (or no usable contact):** they get `409 no_channel` and cannot sign in; Support must add an email first (the operational path is not built).
@@ -475,7 +490,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
 
 - (xxiv) **Wallet and recovery-contact step-up is forced while the ledger is on,** so the Plan 2F frontend must handle
   `step_up_required` on the add-recovery-contact screens (they answer 403 with the ledger on until it does), and a
-  customer with no usable contact (`no_channel`) cannot add one. Every must-fix in "Before the OTP
+  customer with no usable contact (`no_channel`) cannot add one. The add-secondary-email/phone calls (`useAuth`) are plain `apiPost`s, so the Plan 2F `apiClient.js` step-up mechanism is expected to cover them; proven by the "add recovery contact (ledger on)" step of the Plan 2F walkthrough (list above). Every must-fix in "Before the OTP
   switches are turned on" (notice send limits, a real SMS provider, the secondary-email confirmation) must be done
   before the ledger is on.
 - (xxv) **Hubtel payouts, status and name lookups are not connected:** with `PAYMENTS_PROVIDER=hubtel`, adding a
@@ -515,14 +530,39 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   no sudo, and send no notice; the portfolio `business.update` approval can change a KYC-verified owner's name with no
   re-KYC. While the ledger is on these need sudo and maker-checker, the old contacts must be notified, and a contact or
   name change must restart the cooling period or block withdrawals.
+  **Built (7C Task 5):** while the ledger is on, those two PATCH doors need sudo and submit `wallets.holder_details_edit`
+  (two_people; one approval from another `users.manage` holder or a Super Admin applies it). Applying revalidates, restarts
+  `payout_cooling_hours` on the holder's destinations and logs the change masked; a stale check uses a keyed digest. Not
+  built: notices to the old contacts, the portfolio `business.update` route (parked), and a staff-name edit door.
+  2026-10-19 owner ruling: a scout can no longer change a business's name or contact at all; the business files the
+  change itself, a scout visits to verify it, and two staff approve it with the password, restarting the cooling
+  period; built in 7F-C Tasks 6-9 (`portfolio.detail_changes`, `business.detail_change`; the portfolio
+  `business.update` route no longer carries `full_name`, `login_phone` or `email`, Task 9). Notices to the old
+  contact are built in 7F-C Task 11 (the holder is told, in the app and at the old contact, of a staff edit or an
+  applied request). Applying a new sign-in contact also revokes the owner's trusted devices; JWTs already issued
+  stay valid (stateless, no revocation mechanism). The staff-name door is still open (a third-party rider's
+  `StaffUser` name is not a payout holder edit and tells nobody). Owner question: should Operations be able to edit a
+  third-party rider's staff name at all while the ledger is on?
 - (xxxv) **DECIDED 2026-10-18:** a second approver (maker-checker) is required to fail a stuck withdrawal, for any amount (built by plan 7C Task 4, approval kind `wallets.withdrawal_resolution`). Original text, superseded: **Owner question: a second approver (maker-checker) for failing a stuck withdrawal by hand** is undecided (plan
   B6). Today `wallets.manage` plus sudo and a password suffice, after the provider is asked.
+  2026-10-19 owner ruling: confirmed; a payout stuck at PROCESSING can be settled only as "paid" with evidence,
+  never failed. Chain wording (the note naming how many approvals are needed above the co-sign limit) corrected in 7F-C
+  Task 11.
 - (xxxvi) **Amount cases and the staff fail action.** A CONFIRMED amount case is treated like a dismissed one. Staff fail
   is REFUSED (409 `provider_processing`) while the provider says PROCESSING or answers any unmapped status; an
   unreachable provider answers 503 and changes nothing. A payout the provider keeps reporting as PROCESSING, or with a
   different amount, therefore cannot be ended in the app: a maker-checker "settle as paid / fail with provider evidence"
-  action is required before switch-on. Owner to confirm.
+  action is required before switch-on.
   **DECIDED 2026-10-18:** the maker-checker "settle as paid / fail with provider evidence" action is the way out for a payout stuck at processing, with mandatory evidence (built by plan 7C Task 4); the staff fail door submits it rather than failing directly.
+  **Built (7C Task 4):** `wallets.withdrawal_resolution`
+  (two_people, sudo; `POST staff/withdrawals/<id>/resolve/`, and the fail door asks with outcome failed). The provider is
+  asked again at approval: PROCESSING (or unmapped) blocks "failed" (409 `provider_processing`); "paid" with evidence is
+  allowed; a provider not wired to report (NotConnected) lets the evidence stand; an opposite final answer is 409
+  `provider_changed`.
+  2026-10-19 owner ruling: a payout stuck at PROCESSING can be settled only as "paid" with evidence, never failed
+  (owner confirmed; the earlier "owner should confirm" question is closed). The chain note now quotes the
+  approval setting `cosign_threshold` (7F-C Task 11). The holder's row lock is taken before the duplicate-pending
+  check there (7F-C Task 11).
 - (xxxvii) **The simulated statement is built from AshantiHub's own records,** so reconciliation can only prove sessions
   and journals agree. Plan 7 must supply: a Hubtel status client that raises a distinct "unreachable" exception (see
   (xxvii-b)), real `find()`, `pending_payouts()` and `statement()` implementations, and a flag on any reference that
@@ -557,9 +597,70 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   not assert the token was spent. Plan text B6, E5 and the line near 428 is stale; this spec is correct.
 - (li) **DECIDED 2026-10-18:** top-up money is withdrawable only after a hold of 1 hour, held in the governed setting `wallet_topup_hold_minutes` (default 60, minimum 60); setting in plan 7A Task 1, hold built by plan 7C Task 3. Original text, superseded: **Owner question: top-up money can be withdrawn immediately,** so a MoMo collection reversal after a withdrawal
   could cost AshantiHub money. Consider a hold period on newly topped-up funds.
+  **Built (7C Task 3):** `wallet_topup_hold_minutes` holds newly topped-up money. 2026-10-19: the refund-after-spend
+  bypass was tested (7F-C Task 4) and found not to exist in the old code; the tests are kept as regressions, the
+  held amount is capped by the balance, and `withdrawable` and `request` now share one formula.
 - (lii) **Migrations 0003 and 0004 of `wallets` could be folded into one before any deploy** (nothing is deployed yet;
   the 0003 file is root-owned, so fold it with the right permissions).
 - (liii) **Parked:** the daily/per-withdrawal limit check can race with a concurrent proposal and ignores future-dated rows.
+
+### Before LEDGER_ENABLED is turned on — Plan 3F (wallet screens)
+
+- **DONE 2026-10-21, Frontend screens (Plan 3F, built; ledger still off):** `components/wallet/` (top-up with the server's processing line, balance, statement with filter chips, payout destinations with the cooling-hours line, withdraw form with the server's charge and you-receive, withdrawal history, payment-method picker), the picker and processing quote at checkout (`CartDrawer`, `MoMoPayment` without the made-up 1.5% when a quote is given), the vendor "Money" tab (`VendorPayouts`, one tab for money and payouts) and the staff Wallets, Withdrawals (two-person resolution through `resolve/`) and Reconciliation panels. The cross-screen rules (no tel/WhatsApp, no card fields, no bare long digit runs, tabular amounts, no gold on an amount, no "1.5%", no NaN/undefined) are held by `WalletNoInventionSweep.test.jsx`; the 7C T5 request kinds are shown to list in Approvals by `kind_label` (`ApprovalsWalletKinds.test.jsx`). Staff cannot edit payout details from any current screen, so no screen creates a `wallets.holder_details_edit` request.
+- **Gate checks recorded 2026-10-21:** (a) gate (xxiv): `requestSecondaryEmail`/`requestSecondaryPhone` and their confirm calls (`hooks/useAuth.js`) are plain `apiPost`s, so `apiClient.js`'s one step-up retry covers them, but no component calls them yet (no recovery-contact screen exists), so it was read, not run: the walkthrough step "add recovery contact (ledger on)" stays owed, and a screen that adds a contact is Plan 2F's follow-up. (b) gate (xxxii): registration's payout step (`submitPayoutInfo`) still uses the unforced `PATCH business-owners/me/payout/`; left as is, forcing it needs a step-up in registration first. (c) gate (xvi): dispute and delivery refunds send no customer notice; needs a backend notification, the statement row is the notice. (d) gates (xiii) and (xxxi): the "no money moves" copy in `RefundsPanel.jsx` (`SimulatedBanner`) and `LaterPhasePanels.jsx` is **not changed here** and still says so with the ledger on; branch both on the ledger.
+- **Owed before the switch (not performed in 3F, ruling R22):** each new screen at 360, 768 and 1280 px for horizontal overflow and `DESIGN.md` conformance; the staff panels against `scripts/staff-layout-audit.js` (needs a preview on 4173 and the API on 8110); one real-phone pass of the step-up prompt over the withdraw form; a staging run of top-up, pay from wallet, add a number, withdraw, and a stuck-withdrawal resolution by two staff accounts on the simulated provider (`SIMULATED_PAYOUT_OUTCOME=pending`). The backend suite (`wallets orders`) is the controller's.
+- **Switch-on checklist additions:** Plan 4 Tasks 14-15 shipped (the customer wallet tabs; until then the wallet components have no customer page, F5); the stale copy in (d) branched on the ledger; the owed manual checks above done.
+- **Open items found during the build:** Plan 4F must put its Money sub-tabs inside 3F's single `money` tab (R1, Director ruling "Money and Payouts in one tab"; 4F's G1 and its Step 0 grep for "payouts" need editing). Plan 4 must pass `orderHref` to `TransactionsList` (R6: no default, an order link renders only when the caller supplies one; no `/my-account/orders/{id}` route exists). Rider endpoints also answer `id_required` and `daily_count_limit` (Plan 5F's screens must word them). The backend sends no `topup_hold_minutes`, so the top-up screen carries no "withdrawable after N hours" line (R2); add it when the field exists. Gate (xvi) refund notices as in (c).
+
+### 7F-C follow-ups (2026-10-19)
+
+Built in `docs/superpowers/plans/2026-10-19-wallet-rulings-7f-c-followups.md` (branch feature/wallet-rulings-7c):
+
+- (7F-C-a) **Frontend contracts (rulings R1, R8; 7F-C Task 10).** The staff-edit screen reads `approval_id` from a 201
+  (the change waits for a second person), staff sudo and the fail-with-evidence 201 are contract-tested, and the owner
+  profile has a "request a name or contact change" form (`DetailChangeRequest`). **Not built:** a step-up prompt, and
+  no staff screens exist yet for Operations to assign a scout to a detail-change request, for a scout to check in for
+  a `change_verification` visit and record the outcome, or for staff to cancel an event (the endpoints exist). The
+  owner form is live and not tied to the ledger switch, so filed requests sit at REQUESTED until those screens exist;
+  with the ledger on the owner cannot file at all (no step-up prompt UI). Owner question: hide the owner form until
+  the staff screens exist?
+- (7F-C-b) **Owner questions still open after 7F-C** (record the answer here and close):
+  1. R3's field list: the owner may request `full_name`, `login_phone` and `email`; `business_name` was left out.
+     Should it be added?
+  2. The unclaimed-business path: an unclaimed owner cannot file a request (409); a scout's hand-over claim still sets
+     an unclaimed owner's email once (`accounts/claims.py`). What is the rule?
+  3. The processing charge on an event cancellation: the ticket price is refunded out of the organiser's
+     Pending or Available (Available may go negative), and AshantiHub bears the processing charge. Is that the right
+     split?
+  4. An organiser cannot cancel after the event date has passed (Task 2 ruling). Should Operations alone be able to?
+  5. A new sign-in contact revokes trusted devices but not already-issued JWTs (stateless). Build token revocation?
+  6. An applied detail change has no owner undo. Should one exist (and for how long)?
+  7. The frontend has no step-up prompt, so with the ledger on (step-up always forced) an owner cannot file a detail
+     change from the form until the wallet frontend (Plan 3F) lands.
+  8. A Hubtel payment confirmed after the event was cancelled is marked FAILED (`metadata.not_applied =
+     "event_cancelled"`, webhook answers 200) with no ticket and no staff queue; the customer's money is refunded by
+     hand from the webhook note. Add a queue?
+  9. The staff-name door is open (see (xxxiv)).
+  10. Filing a detail change sends nothing to the current contact (the old contact is told only after apply), and
+      with the ledger and OTP switches off no step-up is needed, so a stolen session meets only the scout visit. Tell
+      the current contact at filing?
+  11. The Operations member who assigned the scout is not excluded from deciding the approval, so one Operations
+      person plus a scout they picked can complete a change.
+  12. The maker scout can cancel the approval alone.
+  13. A staff-approved `holder_details` contact change does not end trusted devices, while `detail_change` does.
+- (7F-C-c) **Still open from 7C, not fixed in 7F-C:** staff authenticator guesses are not counted toward the daily
+  cap (the race of l.333) and a trusted-device sign-in bypasses it; the provider is asked twice per withdrawal
+  approval while locks are held; the scan-notice retry sweep; real concurrency tests (the lock-order tests assert query
+  order and captured on-commit callbacks); renewal after a cancel is unrefunded. Done: a partly refunded sale no longer loops in the cancel
+  sweep (the refund is capped at min(price, room), Task 2).
+- (7F-C-d) **Open before the switch is turned on:** (a) a ticket sold while the ledger was on and cancelled after it
+  is switched off is refunded outside the ledger (`events.cancellation._sale_of` returns None when off): its money
+  stays in organiser Pending and the buyer is told Support will refund; the fix is to find the sale regardless of the
+  switch and leave the ticket for the sweep while off (this also covers the `in_ledger` / `unreleased_legacy` filters
+  ignoring `LEDGER_ENABLED`). (b) A failing approvals hook is swallowed (`approvals/services.py` ~274-283), which can
+  leave a detail-change request VERIFIED forever with no staff action to close it. (c) `ledger.sales.record_verification`
+  "matches" has no cancelled-event guard. (d) Tickets released under the old scan rule on an event cancelled now:
+  AshantiHub refunds the buyer by hand while the organiser keeps the payout.
 
 ### Stage 5 (third-party dispatch) reconciliation (2026-10-16)
 
@@ -641,7 +742,8 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
   DECIDED 2026-10-18: a rider's withdrawal activity events show the amount (built by plan 7D Task 2; the payout number stays masked). Original text: Owner question (Task 6): a rider's withdrawal activity events carry the amount and are readable by Operations and line
   managers who lack `wallets.view`; decide whether to log only the reference. Owner question: `staff_row` returns the
   withdrawal's `provider_reference` to every `wallets.view` holder, riders' withdrawals included.
-- (xciii) **DECIDED 2026-10-18:** a third-party rider whose delivery was picked up (`picked_up_at` set) before a whole refund is paid, net of the rider commission split (90% of the delivery fee to the rider, 10% commission), and the remainder, including the 10% commission, goes to the customer; a rider who was only assigned (no pickup) gets nothing. If a coupon leaves the customer less than the rider share, the customer's credit floors at 0 and AshantiHub bears the shortfall. `OrderRefund.rider_pesewas` records the share, the posting is keyed `rider-refund-{order.pk}` (idempotent), and pay waits for Support's decision on the refund. Built by plan 7D Task 1. Original text, superseded: **Owner question: a rider is paid nothing for a delivery whose order is refunded whole,** before release (the fee
+- (xciii-open) **CLOSED by plan 7F-E Task 2 (2026-10-19, round 3):** `orders/locks.py` is the one canonical lock order; the race is covered by `ledger/tests/test_lock_order.py` (see (cxxvi)). Original text, kept as history: **OPEN lock-order item (final review of plan 7F-D):** a rider's pickup locks the DeliveryAssignment row and then saves the order row (`DeliveryAssignment.sync_order`), while `refunds.refund_order` locks the order row then the assignment row. The two can deadlock (Postgres aborts one; no money is lost, the request fails and is retried). Not fixed: the delivery write paths that lock an assignment then save the order are many (`delivery/views_rider.py`, `delivery/views_live.py`, `delivery/services.py`, `orders/views.py`); the fix is to lock the Order row first on each.
+- (xciii) **DECIDED 2026-10-19 (round 2), supersedes 2026-10-18:** the delivery fee belongs to the rider once any pickup is done; goods refunds never return it, and with no pickup a whole refund returns it to the customer. The rider is paid through the usual 90/10 split. A promo-covered fee is paid by the promo's owner (a business promo is debited from the business, an AshantiHub promo from the promo subsidy account). A coupon shortfall is covered by AshantiHub (7D ruling 5 kept). `OrderRefund.delivery_kept_pesewas` replaces `rider_pesewas`. For multi-stop jobs "any pickup" replaces 7D ruling 7, and the 7D final-review note on the promo-funded rider pay gap is closed. The vendor sales view and the paid text count only business-funded promos. Built by plan 7F-D Tasks 1-2. Open questions: (a) an in-house rider who picked up: the fee is kept as platform income (assumed). (b) A failed delivery re-assigned to a second rider: the fee is paid once, to the rider on the assignment when it is settled (the current `assignment.dispatch_id`, see (d)), never twice. (c) A staff-created AshantiHub-funded free-delivery promo (the field exists, there is no screen). (d) A failed delivery re-assigned to a second rider: `stops.reopen_for_new_rider` clears every stop's `collected_at` while a single-stop `picked_up_at` survives, so the earned-fee evidence can disappear for multi-stop jobs and the payee is the current rider (pre-existing at release). Superseded text (2026-10-18): a third-party rider whose delivery was picked up (`picked_up_at` set) before a whole refund is paid, net of the rider commission split (90% of the delivery fee to the rider, 10% commission), and the remainder, including the 10% commission, goes to the customer; a rider who was only assigned (no pickup) gets nothing. If a coupon leaves the customer less than the rider share, the customer's credit floors at 0 and AshantiHub bears the shortfall. `OrderRefund.rider_pesewas` records the share, the posting is keyed `rider-refund-{order.pk}` (idempotent), and pay waits for Support's decision on the refund. Built by plan 7D Task 1. Original text, superseded: **Owner question: a rider is paid nothing for a delivery whose order is refunded whole,** before release (the fee
   goes back to the customer, W4) or after it (the earning is taken back and the balance may go below zero), even when the
   business was at fault and the rider did the work. The alternative is for AshantiHub to pay the rider from its own
   income in those cases. (See also (c): the same wait applies to an unreachable customer, who never pays the rider.)
@@ -650,9 +752,10 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
   refunds), the ledger refuses the posting and with it the whole refund. Either allow the commission-income account
   to go negative for that one posting (`allow_negative`, as the rider's balance does), or gate the refund and tell
   Support. Not built.
-  **OPEN owner question (found in final review, 2026-10-18):** before release, Delivery payable holds only the fee the customer paid; a delivery fee covered by the free-delivery promo is taken from the business only at release, so on a pre-release refund after pickup the rider gets nothing (`backend/ledger/riders.py` `refund_trip` returns None when `delivery_pesewas == 0`). With delivery fees off by default ((xcvii)) this is the common case today. Who funds rider pay for a promo-covered fee on a refund: the business, AshantiHub, or nobody? Not built; decision needed.
+  **DECIDED 2026-10-19, closed by plan 7F-D ((xciii)): the promo's owner pays the rider when the delivery was done; nothing moves otherwise. Original question (found in final review, 2026-10-18):** before release, Delivery payable holds only the fee the customer paid; a delivery fee covered by the free-delivery promo is taken from the business only at release, so on a pre-release refund after pickup the rider gets nothing (`backend/ledger/riders.py` `refund_trip`, since deleted, returned None when `delivery_pesewas == 0`). With delivery fees off by default ((xcvii)) this is the common case today. Who funds rider pay for a promo-covered fee on a refund: the business, AshantiHub, or nobody? Not built; decision needed.
+  **Round 3 (2026-10-19):** (a) CLOSED, an in-house rider who picked up leaves the fee as platform income (owner: yes). (b) and (d) CLOSED by R3/R4 (gates (cxxviii), (cxxix)): the first rider is unpaid when a delivery is re-assigned before completion and the pickup rule is evaluated on the current leg; the first rider keeps the fee when the trip was completed and the customer was away. (c) CLOSED by plan 7F-E Tasks 4-5 (gate (cxxiv)). Coupon shortfall refinement: stays: a whole refund pays the rider in full when the coupon left the customer less than the fee, AshantiHub covering the gap from the subsidy; changed: R1 (gate (cxxv)).
 - (xciv) **A rider switched back to AshantiHub's own can still owe money later.** The switch is refused while money is
-  open, but a whole refund after release of an older third-party delivery still reverses its earning (it works on the
+  open. (Superseded by (xciii): a refund no longer reverses a rider's earning, so this can no longer arise from a refund.) Originally, a whole refund after release of an older third-party delivery reversed its earning (it works on the
   earning, not on the current flag), leaving a negative balance on a closed wallet with no way to recover it in the app
   (payroll deduction or write-off is a process decision; the rider's account stays listed to `wallets.view` staff, though
   their own read answers `409 wallet_disabled`).
@@ -670,6 +773,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
   A flagged rider gets `409 otp_off` for step-up codes with the ledger off. The Ghana Card expiry date is required at upload
   and approval only while the ledger is on; `id_verified` (the money gate) always needs it, so cards approved before
   switch-on without one must be re-reviewed.
+  Round 3 (2026-10-19): re-deliveries are done by in-house riders (gate (cxxix)), so this note is unaffected; a rider switched to in-house is still refused while money is open.
 - (xcv) **The end-of-day commission job is a no-op while the ledger is off** (like (xxxix)). The switch is one-way ((x)),
   so a reserve is stranded only if the ledger is switched off, which it must never be. A missed night is caught up by the
   next run (built).
@@ -684,7 +788,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
 - (xcvii) **Delivery fees are off (`DELIVERY_FEE_ENABLED`, default off).** Until they are charged most orders carry no
   delivery fee, and a third-party rider earns only fees a business covered with its free-delivery promo. Third-party
   riders need delivery fees on (owner decision 2026-10-13).
-- (xcviii) **Owner question: rider withdrawal limits.** Riders share the customers' and vendors' governed limits
+- (xcviii) **DECIDED 2026-10-19:** riders share the governed amount limits and are additionally capped at `rider_withdrawals_per_day` (default 3) withdrawals per Accra day; refusal code `daily_count_limit` with `resets_at`; built by plan 7F-D Task 3. Original text: **Owner question: rider withdrawal limits.** Riders share the customers' and vendors' governed limits
   (GH₵ 5,000 per withdrawal, GH₵ 10,000 a day, 24-hour cooling); separate rider limits would need new settings.
 - (xcix) **DECIDED 2026-10-18:** `Rider.company_name` stays free text; company records only if a real company signs (no build). Original text: **Owner question: rider companies.** `Rider.company_name` is free text. If a rider company itself is to be
   contracted, invoiced or paid (instead of each rider), a company record and company payouts are a new plan.
@@ -766,7 +870,7 @@ nothing until `CATALOGUE_MATCHER_ENABLED` is on, and sold-out listings leave sea
   every column, so any PATCH, even a price change, wrote back the stock it had read; Stage 6 saves only the sent fields
   (`listings.serializers.save_sent_fields`), but a PATCH that sends `stock_quantity` still races. Lock the row for the
   read-modify-write; the alerts' re-arm rule reads the same number.
-- (cv) **The public listing serializer still carries `contact_phone` (pre-existing).** `PublicListingSerializer`
+- (cv) **Resolved by Plan M1B: the public responses no longer carry the business contact phone (owner and staff keep it).** Original note: **The public listing serializer still carried `contact_phone` (pre-existing).** `PublicListingSerializer`
   exposes the listing's `contact_phone` to anyone, against "businesses cannot be contacted directly". The catalogue rows
   leave it out; decide whether to drop it from the public shape (check the frontend first). The same serializer also exposes
   `business_owner.full_name` (`BusinessOwnerMiniSerializer`): the owner's personal name on every public listing detail.
@@ -852,14 +956,15 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
   together (`fees.charged_to_date`), read after the business's Pending account is locked.
 - **B3 Journals.** `booking-pay-<session reference>`, `booking-release-<sale>`, `booking-refund-<sale>-<source>`; the
   nightly reconciliation expects `booking-pay-` for the three kinds when the session is marked `metadata["ledger"]`.
-- **B4 Handed over (§4.2).** A service the business marked done; a stay checked in; tickets once one of the purchase is
+- **B4 Handed over (§4.2).** (Since 7F-C Task 3 a scan releases nothing; a cancelled event's tickets are refunded in
+  full, Tasks 1-2.) A service the business marked done; a stay checked in; tickets once one of the purchase is
   scanned or the event's date has passed. Receipt is confirmed by Support on the call, or by a ticket scanned at the
   door. Provisional, owner to confirm (gate (lvii)): for bookings the 72-hour window runs from hand-over, not from purchase as §4.1 says for products.
 - **B5 Release and disputes.** As products: Support's "matches" releases at once; "does not match" opens a dispute
   logged the disputes way (`raised_by` null, `logged_by` the staff member), linked on the sale, which alone blocks
   release.
 - **B6 Ticket escrow flags.** With the ledger on, a ticket's held/released flag follows its sale: a scan no longer
-  releases it, release releases the purchase's tickets, the manual release and hold answer `409 ledger_on`, and the
+  releases it (nor does it with the ledger off: legacy tickets wait for Accounting, 7F-C Task 3), release releases the purchase's tickets, the manual release and hold answer `409 ledger_on`, and the
   Accountant's ticket refund pays the ticket's price to the wallet.
 - **B7 Paying.** The three pay endpoints take `payment_method` and carry "payment processing" on MoMo while the ledger is
   on, like order checkout; a wallet must cover the whole booking. Tickets for customer-organised events stay outside the
@@ -1033,3 +1138,135 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   queue with other jobs; a slow provider can hold a worker for up to the send budget (75 s) per run. A circuit breaker
   (3 failures in a row opens it for 120 s, across workers) and the beat entry's 280 s expiry limit the harm, but route
   `wallets.tasks.send_vendor_text` and `send_due_vendor_texts` to their own queue and worker first.
+- (cxxiv) **Ruling R2 (owner, round 3 follow-up): AshantiHub-funded free-delivery promos.** Marketing creates them (new
+  permission `delivery_promo.fund`, held by Marketing and Super Admin); every one needs approval from Operations or a Super
+  Admin through the approvals engine (kind `marketing.delivery_promo_funding`, pool permission `delivery_promo.approve`
+  seeded to `operations` and `super_admin`, chain pool then Super Admin, password again to approve); the maker never
+  approves their own, a Super Admin's own applies at once, and there is no threshold shortcut. A required budget cap
+  bounds the spend: `live_waivers` stops waiving once the owed charges reach the cap (derived, not a status change). The
+  cap was SOFT here (an unlocked count of OWED charges, so concurrent checkouts could overshoot it by about one fee each,
+  and the last order waived a full fee even when less of the cap was left); **it is HARD since gate (cxxxi)(5)**. A promo covers one named business's items.
+  Coupons, campaigns, banners and the send policy stay Super Admin only; the owner-submitted promo review by
+  `site_promo.manage` staff is business-funded only. Also: a blocked business (KYC not verified) answers 403 on the platform
+  endpoint, as `create_for_staff` does (not 400); spend counts OWED charges only; a cap above the co-sign threshold
+  (`approvals/rules.py`) on a staged request needs two approvals (approver plus co-signer), as any large request does;
+  and Marketing, who lacks `users.view`, finds a business through a read-only search endpoint gated by
+  `delivery_promo.fund` that returns the business id and name only (`delivery-promos/business-search/`). Built by plan 7F-E
+  Tasks 4-5; closes (xciii)(c).
+
+- (cxxv) **Ruling R1 (owner, round 3): a refund never gives back more than the customer paid (plan 7F-E Task 1).** When a
+  coupon leaves the customer less than the delivery fee, a partial refund is capped so the held fee is never taken from the
+  customer's credit: `refunds.Left.partial = max(0, N - done.customer - fee_held)`, shared by `refund_order` and `check`, and a scoped
+  refund with no amount takes the smaller of the shop items and `partial`. Reconciliation with 7F-D: **stays** (7D ruling 5,
+  (xciii)): when the customer paid less than the fee kept (N < kept), a whole refund gives the customer's credit 0, the rider
+  is still paid in full, and AshantiHub covers the gap from the promo subsidy (`_post` credits `subsidy - shortfall`);
+  **changes**: (a) a partial or scoped refund can no longer hand back customer money the fee needs; (b) the fee is reserved
+  from the first refund, before any pickup exists; (c) processing money is no longer eaten by the kept fee; (d) the staff
+  "can still be refunded" figure is the real credit. In the data, `OrderRefund.amount_pesewas` is now the real credit and never
+  includes the kept fee, so `wallet_pesewas = amount_pesewas + processing_pesewas`, and the old floor at 0 and the `unfunded`
+  figure are gone. `OrderRefund.subsidy_pesewas` still records the whole coupon share closed off (so
+  `left()` reaches 0). Staff see "can still be refunded" (`refundable`) on the dispute and the order screen. Known limits:
+  `OrderRefund` rows written under the old rule (staging test data only) read `wallet_pesewas` too high by the kept fee;
+  when the order total N is at or below the fee F after a pickup, `refundable` is 0 and every door refuses an amount of 0, so
+  dispute resolution (unscoped only) and the delivery-case refund ask for that whole refund with an explicit `whole_refund`
+  flag and no amount (7F-E fix wave: `refunds.whole_at_zero_refusal` / `check_whole`; ledger on, payment recorded, not already
+  refunded whole, `refundable` 0; the approval re-checks at apply). It runs `refund_order(order, None)`: the rider is paid in
+  full, the vendor's money, the Delivery payable and the subsidy (D - (F - N)) are reversed, the customer's credit is 0
+  (`Dispute.refund_amount` 0.00) and the order is cancelled. The dispute payload's `order_whole_refund_at_zero` drives a
+  checkbox in the staff DisputesPanel; the delivery-case screen has no control for it yet (API only).
+- (cxxvi) **CLOSED (xciii-open): one canonical lock order (plan 7F-E Task 2).** `orders/locks.py` holds it: the approval or
+  dispute row, the Order row, its OrderFeeSnapshot rows (by pk), its DeliveryAssignment row, the order's open Redelivery row
+  (level 4b, Task 7), the PickupStop rows, the Rider row (`of=("self",)`), every ledger Account in one sorted pass
+  (`posting.lock`), then the activity-chain lock. A DeliveryAssignment row is locked only through `lock_assignment` (needs the
+  order from `lock_order`, else `LockOrderError`) or `lock_job` / `lock_job_or_404`; `ledger/tests/test_lock_order.py` fails if
+  any other module locks the assignment, and holds the three race tests (rider pickup, legacy dispatch pickup, re-assign
+  against a whole refund). Note: `delivery.dispatching.Offer` rows are not named in the order (a pre-existing theoretical
+  Offer-to-Order cycle; `accept_offer` and `force_assign` call `lock_order`).
+- (cxxvii) **Support's cancel keeps the pickup evidence (plan 7F-E Task 3).** After a pickup, `orders.support._cancel` keeps
+  the assignment row (status FAILED, `order_cancelled`, `failed_at`) so the rider is still paid and the fee is not returned;
+  with no pickup the row is deleted as before. The DeliveryEvent step for the note is `CANT_DELIVER` ("Order cancelled by
+  Support after pickup"), since no cancel step exists and a new one needs a choices migration. `_cancel` locks the order, the fee
+  snapshots, then the assignment (gate (cxxvi)).
+- (cxxviii) **Ruling R3 (owner, round 3): re-assignment (plan 7F-E Task 6).** A re-assignment is a job that is accepted or
+  further along, or has failed, and is given to a different rider; a swap of a still-`assigned` job is ordinary dispatch.
+  A re-assigned delivery is done by AshantiHub's own riders only (409 `redelivery_in_house_only`: "A re-assigned delivery is
+  done by AshantiHub's own riders."), enforced in `assign`, in the dispatch ranking (reason "Re-assigned: AshantiHub's own
+  riders only") and in a manager's manual offer. The 7F-D pickup rule is refined (see its Global Constraints): it is evaluated
+  on the current leg. A pickup counts only when `collected_by` / `picked_up_by` is the assignment's current rider, or is null on
+  rows older than this change; every reset of the job clears `picked_up_at` / `picked_up_by` and the reopened stops'
+  `collected_at` / `collected_by` (history stays in the append-only `DeliveryEvent` rows). So a refund after re-assignment and
+  before the new rider's pickup returns the fee to the customer; after the new rider's pickup the fee is kept as platform income
+  (the rider is in-house); completion pays the current rider; the first rider gets nothing. A failed job given again to the
+  same rider is allowed and starts a new leg. `Rider.employment` is read without a rider lock in `assign` (a rider lock there
+  would invert gate (cxxvi); release pays the completer anyway), so an employment switch racing an assign could let a
+  third-party rider through, and the money gate at release still holds. Owner awareness: the in-house-only rule is not a
+  money rule and is not behind `LEDGER_ENABLED`, so it applies in production on deploy even with the ledger off: a failed or
+  accepted job cannot be given to a third-party rider, and if no in-house rider is on shift the job stalls. Mid-route swap: stops the first rider collected stay
+  done and count for no one; if the second rider skips all the rest, the pickup stamp names the earlier stop's collector, not
+  the manager who skipped; a null stamp (older row) counts for whoever is on the job, which matters only for an in-flight swap
+  during the deploy.
+- (cxxix) **Ruling R4 (owner, round 3): re-delivery at the customer's request (plan 7F-E Task 7).** A `Redelivery` row (one
+  open request per order; statuses `awaiting_payment`, `paid`, `assigned`, `completed`, `cancelled`, `refunded`) is opened by
+  staff holding `orders.redeliver` (Support, Pickup Desk, Super Admin). "Customer not available" is case (b):
+  `CUSTOMER_UNAVAILABLE_REASONS = ("no_answer",)` with `arrived_drop_at` set; any other failure reason is case (a), where the
+  first trip's fee is handled by the pickup rule. In case (b) the first rider keeps the original fee: the payee is
+  `Redelivery.first_rider` tested at `first_leg_ended_at`, the fee is earned once a request exists, an in-house first rider
+  leaves it as platform income, and a third-party first rider is paid once at release or at a whole refund's settle. The
+  re-delivery fee is paid by the customer, from the wallet or by mobile money (the provider's processing charge goes on top
+  via `booking_pay.pay`), in the Account `redelivery_payable` (per order); the fee is not in `Order.total_amount`, so R1 and
+  `refunds.left` are untouched. The second rider is in-house and has no wallet: the fee is booked to platform delivery income
+  at completion and the amount owed to that rider for payroll outside the app is recorded on the `Redelivery` row (rider, fee,
+  completed time); no payroll screen shows it yet. Refunds: a whole refund before the second rider's pickup returns the fee,
+  after it settles it; partial refunds never touch it; cancel is allowed while awaiting payment and while paid but not
+  assigned (a paid fee returns to the customer's wallet) and refused once assigned (409 `redelivery_not_cancellable`); a second
+  trip that fails after the rider collected the goods settles the fee and marks the request completed, so an attempt 2 can be
+  opened (the customer pays again); a GH₵ 0.00 fee marks the request paid at once with no journal; a payment arriving for a
+  request no longer waiting is credited to the customer's wallet (journal `redelivery-stray-<ref>`). Journals: pay, settle,
+  refund, stray; reconciliation reads the session's `metadata.journal_key`. Errors: 409 `not_redeliverable`, `redelivery_open`,
+  `redelivery_fee_unpaid`, `redelivery_in_house_only`, `redelivery_not_cancellable`, `nothing_to_pay`, `ledger_off`. With the
+  ledger off the POST endpoints answer 409 `ledger_off`, the list answers empty, and `assign` is unchanged; the assign gate
+  applies only to orders paid through the ledger (`redelivery.ledger_paid`) or with an open request, so orders paid before the
+  ledger was on are never held. The Super Admin holds `orders.redeliver` but has API access only (the Support panel is for the
+  `support` role). Lock order gains level 4b (gate (cxxvi)). Known limits: repeated mobile-money clicks open new sessions (a late
+  duplicate is credited to the wallet); a shop-scoped refund that refunds every item does not close a paid request.
+- (cxxx) **Ruling R5 (owner, round 3): the re-delivery fee is a governed setting (plan 7F-E Task 7).**
+  `redelivery_fee_pesewas`, default 1500 (GH₵ 15.00, **a placeholder to be confirmed by the owner**), bounds 0 to 20000, changed
+  by Super Admin with sudo, and copied onto the request when it is opened so a later change never reprices an open one. It is
+  not on the `RateCard` and works while `DELIVERY_FEE_ENABLED` is off. Listed in §3.3. Who changes it: see gate (cxxxi)(1).
+- (cxxxi) **Director rulings (2026-10-20), branch `fix/director-rulings-1`.** The owner delegated these decisions.
+  (1) The re-delivery fee is changed by Operations as well as the Super Admin: permission `redelivery_fee.manage`
+  (Operations, Super Admin) and approval kind `ledger.redelivery_fee` (same payload, checks, apply and audit as
+  `ledger.setting`; pool `redelivery_fee.manage`, chain pool then Super Admin, sudo to approve, never the maker; a Super
+  Admin's own applies at once). Every change of that one key goes through this kind, whoever proposes it; an Operations
+  lead reads only that setting on `GET /api/ledger/settings/` and gets 403 for any other key. Operations has a "Re-delivery
+  fee" screen under Settings. Default GH₵ 15.00, bounds GH₵ 0 to 200, unchanged.
+  (2) A re-assigned delivery (gate (cxxviii)) goes to AshantiHub's own riders while one is available
+  (`delivery.dispatching.in_house_available`: on shift, not on a break, fresh fix, no job hold, not suspended, under the
+  active-job limit, papers valid, under the cash cap, not declined on the order, within the pickup radius, the radius
+  skipped when the pickup has no pin); when none is, a third-party rider may take it. The fallback is noted on the
+  "assigned" `DeliveryEvent` and recorded as activity `delivery.reassigned_third_party` (after commit); the ranking reports
+  `third_party_fallback` and the dispatch queue says so. The rider who completes the trip is paid (release pays the
+  current rider; the first leg counts for no one). This closes the stall noted in (cxxviii). The second trip of a paid
+  re-delivery at the customer's request (gate (cxxix)) follows the same rule (in-house first, a third-party fallback
+  only when none is available, logged the same way), and its fee goes to the rider who completes that trip: an in-house
+  rider through payroll (the Redelivery row; `owed_through_payroll`, `paid_through: "payroll"`), a third-party rider
+  through the wallet, posted in the settle's transaction as `redelivery-rider-<id>` (kind `rider_redelivery_earning`:
+  Dr platform delivery income / Cr Rider balance net + Cr Rider reserve at the `rider_commission_bp` in force when the
+  customer paid the fee) with a `RiderEarning` whose `redelivery` is set (`order` null; exactly one of the two, a check
+  constraint), which the end-of-day commission job posts like a delivery earning. Paid when the trip is done (delivered,
+  failed after the pickup, or a whole refund after that pickup), not at the order's release: the fee is outside the
+  order's escrow. Never twice (one earning per re-delivery, journal idempotent on its key), never both wallet and payroll,
+  and the first rider's original-fee earning (`RiderEarning.order`) is separate. A whole refund locks the second-trip
+  rider's row before the original fee rider's.
+  (3) "Customer not available" (gate (cxxix)) is `CUSTOMER_UNAVAILABLE_REASONS = ("no_answer", "refused")`, both with
+  `arrived_drop_at` set: a refusal reported before the rider reached the address is still a plain re-assignment.
+  (4) Support may set any business's opening hours (permission `businesses.set_hours`, Support and Super Admin; same staff
+  endpoint and rules, recorded as `business.hours_set`), from the Support business profile. Send now
+  (`delivery/orders/<id>/send-early/`) takes `orders.manage_delivery` as well as `delivery.manage`; the reason stays
+  required and recorded (`delivery.early_send`). The Scheduled list is in the Super Admin (Marketplace) and Operations
+  (Service) menus.
+  (5) The budget cap of an AshantiHub-funded free-delivery promo is HARD: checkout decides the waiver under the promo's row
+  lock (`waivers.covering_waiver(..., fee=, lock=True)`, waivers in id order after the listing locks), counting the owed
+  charges after the lock, and waives a fee only when it fits in what is left (else the customer pays the fee). The cart
+  quote applies the same fit without a lock. Covered by `marketing/tests/test_platform_waivers.PlatformCapRaceTests`
+  (threaded, run on its own).

@@ -44,7 +44,16 @@ function mockRegistration({ check = NO_MATCH, register } = {}) {
 
 const type = (label, value) => fireEvent.change(screen.getByLabelText(label), { target: { value } })
 
-async function fillOwnerAndBusiness({ email = '' } = {}) {
+function fillHours() {
+  fireEvent.change(screen.getByLabelText('Monday opens'), { target: { value: '08:00' } })
+  fireEvent.change(screen.getByLabelText('Monday closes'), { target: { value: '18:00' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Copy Monday to weekdays' }))
+  fireEvent.click(screen.getByLabelText('Saturday closed'))
+  fireEvent.click(screen.getByLabelText('Sunday closed'))
+  fireEvent.click(screen.getByRole('button', { name: 'Use these hours' }))
+}
+
+async function fillOwnerAndBusiness({ email = '', hours = true } = {}) {
   type("Owner's full name (as on Ghana Card)", 'Gifty Asantewaa')
   type("Owner's phone", '020 123 4761')
   if (email) type("Owner's email (optional)", email)
@@ -52,6 +61,7 @@ async function fillOwnerAndBusiness({ email = '' } = {}) {
   type('Kind of business', 'service')
   await screen.findByRole('option', { name: 'Hotels' })
   type('Category', '1')
+  if (hours) fillHours()
   fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
 }
 
@@ -140,6 +150,34 @@ describe('RegisterBusinessPanel — the four steps', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
     expect(screen.getByText("Add the owner's full name.")).toBeInTheDocument()
     expect(screen.getByLabelText("Owner's full name (as on Ghana Card)")).toBeInTheDocument()
+  })
+})
+
+describe('RegisterBusinessPanel — opening hours', () => {
+  it('scout form requires the weekly hours editor before submit', async () => {
+    const seen = mockRegistration()
+    renderPanel()
+    await fillOwnerAndBusiness({ hours: false })
+    expect(screen.getByRole('form', { name: 'Weekly opening hours' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
+    expect(screen.getByText('Enter the weekly opening hours and press Use these hours.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Use my location' })).not.toBeInTheDocument()
+    fillHours()
+    expect(screen.getByText('Mon-Fri 08:00-18:00, Sat-Sun closed')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
+    await fillLocation()
+    takePhotos()
+    expect(await screen.findByText(/No exact match/)).toBeInTheDocument()
+    expect(screen.getByText('Mon-Fri 08:00-18:00, Sat-Sun closed')).toBeInTheDocument()
+    const append = vi.spyOn(FormData.prototype, 'append')
+    fireEvent.click(screen.getByRole('button', { name: 'Submit for KYC' }))
+    await screen.findByText('Sent to Ama Boateng for KYC')
+    const sent = Object.fromEntries(append.mock.calls.map(([key, value]) => [key, value]))
+    const days = JSON.parse(sent.hours)
+    expect(days).toHaveLength(7)
+    expect(days[0]).toEqual({ weekday: 0, closed: false, opens: '08:00', closes: '18:00' })
+    expect(days[6]).toEqual({ weekday: 6, closed: true, opens: null, closes: null })
+    expect(seen.registerContentType).toMatch(/^multipart\/form-data/)
   })
 })
 

@@ -77,13 +77,15 @@ class CartItemCreateView(APIView):
                 return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
             item = CartItem.objects.filter(cart=cart, listing=listing).first()
             if item is not None:
+                # Ruling R33: adding the line again re-reads today's price (a sale that ended, or one just started).
                 item.quantity += quantity
-                item.save(update_fields=["quantity"])
+                item.unit_price_snapshot = listing.effective_price
+                item.save(update_fields=["quantity", "unit_price_snapshot"])
                 created = False
             else:
                 item = CartItem.objects.create(
                     cart=cart, listing=listing, quantity=quantity,
-                    unit_price_snapshot=listing.price_amount,
+                    unit_price_snapshot=listing.effective_price,
                 )
                 created = True
 
@@ -135,7 +137,16 @@ class CartItemUpdateDeleteView(APIView):
         item = self.get_item(request, pk)
         serializer = CartItemUpdateSerializer(item, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
+        old_quantity = item.quantity
         serializer.save()
+        # Ruling R33: a quantity change re-reads the listing's current price (effective_price), so a line added during
+        # a sale that has since ended is charged the regular price for the new quantity. A listing whose price was
+        # removed keeps the old snapshot (the line cannot be re-added, and checkout prices from the snapshot).
+        if item.quantity != old_quantity:
+            current = item.listing.effective_price
+            if current is not None and current != item.unit_price_snapshot:
+                item.unit_price_snapshot = current
+                item.save(update_fields=["unit_price_snapshot"])
         return Response(CartItemSerializer(item).data)
 
     def delete(self, request, pk):

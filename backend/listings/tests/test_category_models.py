@@ -36,8 +36,11 @@ SEEDED_KINDS = {
 
 class CategoryModelTests(TestCase):
     def test_all_fifteen_categories_are_seeded(self):
+        # The department tree (0023) adds rows with a department or sub-category slug; the pre-tree set is the rest.
         self.assertEqual(
-            set(Category.objects.values_list("slug", flat=True)), SEEDED_SLUGS | EVENT_SLUGS | {"beverages"}  # beverages: 0020
+            set(Category.objects.filter(parent__isnull=True, kind__in=[Category.SERVICE, Category.EVENT]).values_list("slug", flat=True))
+            | set(Category.objects.filter(slug__in=SEEDED_SLUGS | {"beverages"}).values_list("slug", flat=True)),
+            SEEDED_SLUGS | EVENT_SLUGS | {"beverages"},  # beverages: 0020
         )
 
     def test_event_categories_are_seeded_with_kind_event(self):

@@ -12,7 +12,8 @@ from accounts.authentication import issue_token
 from accounts.testing import staff_token
 from accounts.two_factor import encrypt_secret
 from otp import authenticator, devices, senders
-from otp.models import AccountAuthenticator, OtpEvent
+from accounts.models import BusinessOwner, Customer
+from otp.models import AccountAuthenticator, OtpChallenge, OtpEvent
 
 from .helpers import PASSWORD, last_sms_code, make_customer, make_owner, make_support, wrong_code
 
@@ -51,12 +52,14 @@ class AuthenticatorBase(TestCase):
 
 
 class SetupTests(AuthenticatorBase):
-    def test_it_is_not_offered_while_sign_in_codes_are_off(self):
-        response = self.client.post("/api/otp/authenticator/setup/")
-        self.assertEqual((response.status_code, response.json()["code"]), (409, "otp_off"))
-        self.assertFalse(self.client.get("/api/otp/authenticator/").json()["available"])
+    def test_setup_available_with_signin_switch_off(self):
+        response = self.client.post("/api/otp/authenticator/setup/", HTTP_X_STEP_UP_TOKEN=self.step_up())
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(set(response.json()), {"secret", "otpauth_uri"})
 
-    @ON
+    def test_get_reports_available_true(self):
+        self.assertTrue(self.client.get("/api/otp/authenticator/").json()["available"])
+
     def test_setting_it_up_needs_a_step_up_code_even_with_step_up_switched_off(self):
         response = self.client.post("/api/otp/authenticator/setup/")
         self.assertEqual((response.status_code, response.json()["code"]), (403, "step_up_required"))
@@ -82,6 +85,111 @@ class SetupTests(AuthenticatorBase):
         client = APIClient()
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(make_support())}")
         self.assertEqual(client.get("/api/otp/authenticator/").status_code, 403)
+
+
+class SwitchesOffTests(TestCase):
+    """Plan 7F-C R6: with every switch off the app is still offered, setup still needs a step-up code, and an
+    enabled app is asked for at the next sign-in. Texted and emailed sign-in codes stay behind the switch."""
+
+    KINDS = {
+        "customer": (make_customer, "customer", "/api/accounts/customers/login/", "+233241234567"),
+        "business_owner": (make_owner, "business_owner", "/api/accounts/business-owners/login/", "+233201112233"),
+    }
+
+    def setUp(self):
+        cache.clear()
+        senders.sms_outbox.clear()
+        self.t0 = int(time.time())
+
+    def account(self, kind):
+        make, token_kind, login, identifier = self.KINDS[kind]
+        account = make()
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(account, token_kind)}")
+        return account, client, login, identifier
+
+    def password_step(self, login, identifier):
+        return APIClient().post(login, {"identifier": identifier, "password": PASSWORD}, format="json").json()
+
+    def step_up_token(self, client):
+        sent = client.post("/api/otp/step-up/send/", {"action": "authenticator_change", "channel": "sms"}, format="json")
+        self.assertEqual(sent.status_code, 200, sent.content)
+        response = client.post("/api/otp/step-up/verify/", {"action": "authenticator_change", "code": last_sms_code()}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()["step_up_token"]
+
+    def enrol(self, client):
+        secret = client.post("/api/otp/authenticator/setup/", HTTP_X_STEP_UP_TOKEN=self.step_up_token(client)).json()["secret"]
+        with mock.patch("accounts.two_factor._clock", return_value=self.t0):
+            response = client.post("/api/otp/authenticator/setup/confirm/", {"code": pyotp.TOTP(secret).at(self.t0)}, format="json")
+        return secret, response
+
+    def test_step_up_code_issued_for_authenticator_change_with_switches_off(self):
+        for kind in self.KINDS:
+            with self.subTest(kind):
+                senders.sms_outbox.clear()
+                _, client, _, _ = self.account(kind)
+                sent = client.post("/api/otp/step-up/send/", {"action": "authenticator_change", "channel": "sms"}, format="json")
+                self.assertEqual(sent.status_code, 200, sent.content)
+                self.assertEqual(len(senders.sms_outbox), 1)
+                # Other actions stay shut with every switch off.
+                other = client.post("/api/otp/step-up/send/", {"action": "payout_destination", "channel": "sms"}, format="json")
+                self.assertEqual((other.status_code, other.json()["code"]), (409, "otp_off"))
+
+    def test_setup_still_needs_a_step_up_code_with_switches_off(self):
+        for kind in self.KINDS:
+            with self.subTest(kind):
+                _, client, _, _ = self.account(kind)
+                response = client.post("/api/otp/authenticator/setup/")
+                self.assertEqual((response.status_code, response.json()["code"]), (403, "step_up_required"))
+                self.assertFalse(AccountAuthenticator.objects.exists())
+
+    def test_confirm_with_switch_off_returns_recovery_codes(self):
+        for kind in self.KINDS:
+            with self.subTest(kind):
+                account, client, _, _ = self.account(kind)
+                _, response = self.enrol(client)
+                self.assertEqual(response.status_code, 200, response.content)
+                self.assertEqual(len(response.json()["recovery_codes"]), 10)
+                self.assertTrue(authenticator.is_enabled(account))
+                self.assertTrue(client.get("/api/otp/authenticator/").json()["enabled"])
+                AccountAuthenticator.objects.all().delete()
+                Customer.objects.all().delete()
+                BusinessOwner.objects.all().delete()
+
+    def test_sign_in_asks_authenticator_after_setup_switch_off(self):
+        for kind in self.KINDS:
+            with self.subTest(kind):
+                senders.sms_outbox.clear()
+                _, client, login, identifier = self.account(kind)
+                secret, _ = self.enrol(client)
+                senders.sms_outbox.clear()
+                body = self.password_step(login, identifier)
+                self.assertEqual(set(body), {"two_factor_required", "mfa_token"})
+                # The ticket cannot be used to ask for a texted code, and no text was sent.
+                text = APIClient().post("/api/otp/sign-in/send/", {"mfa_token": body["mfa_token"], "channel": "sms"}, format="json")
+                self.assertEqual(text.json()["code"], "challenge_expired")
+                self.assertEqual(senders.sms_outbox, [])
+                with mock.patch("accounts.two_factor._clock", return_value=self.t0 + 30):
+                    done = APIClient().post(
+                        "/api/otp/sign-in/verify/", {"mfa_token": body["mfa_token"], "code": pyotp.TOTP(secret).at(self.t0 + 30)}, format="json",
+                    )
+                self.assertEqual(done.status_code, 200, done.content)
+                self.assertIn("token", done.json())
+                AccountAuthenticator.objects.all().delete()
+                Customer.objects.all().delete()
+                BusinessOwner.objects.all().delete()
+
+    def test_no_authenticator_means_plain_sign_in_switch_off(self):
+        for kind in self.KINDS:
+            with self.subTest(kind):
+                _, _, login, identifier = self.account(kind)
+                body = self.password_step(login, identifier)
+                self.assertEqual(set(body), {"token", "account_type", "id", "full_name"})
+                self.assertEqual(senders.sms_outbox, [])
+                self.assertFalse(OtpChallenge.objects.exists())
+                Customer.objects.all().delete()
+                BusinessOwner.objects.all().delete()
 
 
 @ON

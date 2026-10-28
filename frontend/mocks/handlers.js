@@ -9,6 +9,13 @@ function proposalReply(body) {
 }
 
 export const handlers = [
+  // OTP security overview and authenticator status (Plan 2F): every switch off, nothing on file.
+  http.get('http://localhost:8000/api/otp/me/', () => HttpResponse.json({
+    channels: [], authenticator: null, trusted_devices: [], switches: { sign_in: false, step_up: false, sign_up: false }, customer_gap_days: 30,
+  })),
+  http.get('http://localhost:8000/api/otp/authenticator/', () => HttpResponse.json({
+    enabled: false, enabled_at: null, recovery_codes_left: 0, available: false,
+  })),
   // What a customer is told before paying (cancellation policies and release hours): the server's defaults.
   http.get('http://localhost:8000/api/ledger/booking-terms/', () => {
     return HttpResponse.json({
@@ -20,6 +27,29 @@ export const handlers = [
       },
     })
   }),
+  // Marketplace opening (storefront). Default = the gate switched off (ruling
+  // R1): open, so no countdown and every buy button stays live. A test that
+  // needs the gate uses server.use(gatedOpening(...)) from mocks/opening.js.
+  http.get('http://localhost:8000/api/storefront/opening/', () => HttpResponse.json({
+    opens_at: '2026-11-06T06:00:00Z', server_now: new Date().toISOString(), is_open: true, gate_enabled: false,
+  })),
+  // Notify me: always "saved" (400 only for neither field, as the server answers).
+  http.post('http://localhost:8000/api/storefront/notify-me/', async ({ request }) => {
+    const body = await request.json().catch(() => ({}))
+    if (!body?.phone && !body?.email) return HttpResponse.json({ detail: 'Give a phone number or an email address.' }, { status: 400 })
+    return HttpResponse.json({ status: 'saved' })
+  }),
+  http.post('http://localhost:8000/api/storefront/notify-me/stop/', () => HttpResponse.json({ status: 'stopped' })),
+  // Marketplace home feeds (Task 10): nothing live by default, so every home
+  // section hides itself. Tests fill them with mocks/storefront.js.
+  http.get('http://localhost:8000/api/listings/categories/tree/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/listings/categories/:id/visit/', () => new HttpResponse(null, { status: 204 })),
+  http.get('http://localhost:8000/api/storefront/search/', () => HttpResponse.json({ products: [], services: [], stays: [], events: [] })),
+  http.get('http://localhost:8000/api/storefront/deals/', () => HttpResponse.json([])),
+  // Marketing's Sponsored products list (deals.manage): nothing flagged.
+  http.get('http://localhost:8000/api/listings/sponsored/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/storefront/home/', () => HttpResponse.json({ most_visited: [], ranked: false })),
+  http.get('http://localhost:8000/api/marketing/banners/', () => HttpResponse.json({ banners: [] })),
   // Marketing consent card (customer Settings, business Profile & Settings): nothing ticked, no wording.
   http.get('http://localhost:8000/api/marketing/consent/me/', () => {
     return HttpResponse.json({ channels: Object.fromEntries(['sms', 'whatsapp', 'email', 'inapp'].map((k) => [k, { label: k, status: null, at: null, wording: `Send me offers by ${k}.`, wording_label: '' }])) })
@@ -39,6 +69,8 @@ export const handlers = [
   http.get('http://localhost:8000/api/hero/active/', () => {
     return HttpResponse.json([])
   }),
+  // The business's own dated hero slides (HeroSlideForm in the Business tab) — none by default.
+  http.get('http://localhost:8000/api/hero/mine/slides/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/listings/categories/', () => {
     return HttpResponse.json([
       { id: 1, slug: 'hotels', icon: '🏨', label: 'Hotels', color: '#000080', kind: 'service' },
@@ -84,6 +116,9 @@ export const handlers = [
   http.get('http://localhost:8000/api/cart/guard/', () => HttpResponse.json({
     active: false, limits: { source: 'defaults', version: null, max_shops_per_delivery: 4, max_food_shops: 2, near_shop_radius_km: '3.00', detour_limit_pct: 40 },
     shops: [], food_shops: 0, at_shop_limit: false, at_food_limit: false, checkout: { any: null, door_to_door: null },
+  })),
+  http.get('http://localhost:8000/api/orders/delivery-preview/', () => HttpResponse.json({
+    delivery_from: null, delivered_from: null, deferred: false, source: null,
   })),
   http.get('http://localhost:8000/api/cart/', () => {
     return HttpResponse.json({ id: 1, items: [], total: '0.00', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' })
@@ -319,6 +354,16 @@ export const handlers = [
   http.get('http://localhost:8000/api/listings/hero/pending/', () => {
     return HttpResponse.json([])
   }),
+  // Free-delivery promos (staff queue and the AshantiHub-paid create) - overridden per test.
+  http.get('http://localhost:8000/api/marketing/delivery-promos/', () => HttpResponse.json({ results: [] })),
+  http.post('http://localhost:8000/api/marketing/delivery-promos/platform/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json({
+      id: 90, name: body.name, business_id: body.business_owner, business: 'Business', starts_at: body.starts_at, ends_at: body.ends_at, all_items: true, listings: [],
+      status: 'pending', effective_status: 'pending', live: false, source: 'staff', rejection_reason: '', covered_orders: 0, covered_total: '0.00',
+      funded_by: 'platform', budget_cap: body.budget_cap, spent: '0.00', awaiting_approval: true, approval_id: 91, approval: { id: 91, status: 'pending' },
+    }, { status: 201 })
+  }),
   http.get('http://localhost:8000/api/accounts/customers/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),
@@ -530,6 +575,26 @@ export const handlers = [
   http.post('http://localhost:8000/api/notifications/read-all/', () => {
     return HttpResponse.json({ unread_count: 0 })
   }),
+  // The business's own change requests (Profile & Settings): none by default.
+  http.get('http://localhost:8000/api/accounts/business-owners/me/detail-changes/', () => HttpResponse.json({ results: [] })),
+  // Wallets (Plan 3F): ledger ON and empty by default; a test needing the "off" state overrides with a 409 {code:'ledger_off'}.
+  http.get('http://localhost:8000/api/wallet/', () => HttpResponse.json({ kind: 'customer', balance: '0.00' })),
+  http.get('http://localhost:8000/api/wallet/vendor/', () => HttpResponse.json({
+    pending: '0.00', available: '0.00', withdrawable: '0.00', negative: false, awaiting_call: false, fee_cap: '0.00',
+  })),
+  http.get('http://localhost:8000/api/wallet/transactions/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/wallet/destinations/', () => HttpResponse.json({ results: [], cooling_hours: 24 })),
+  http.get('http://localhost:8000/api/wallet/withdrawals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/wallet/processing/', ({ request }) => {
+    const amount = new URL(request.url).searchParams.get('amount')
+    if (!amount) return HttpResponse.json({ amount: ['Enter an amount.'] }, { status: 400 })
+    return HttpResponse.json({ amount, payment_processing: '0.00', you_pay: amount, provider: 'simulated' })
+  }),
+  http.get('http://localhost:8000/api/wallet/staff/wallets/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/wallet/staff/withdrawals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/wallet/staff/reconciliation/', () => HttpResponse.json({ results: [] })),
+  // The staff wallet's fail-a-withdrawal door answers 201 {approval_id, status:'pending'}: a second person approves.
+  http.post('http://localhost:8000/api/wallet/staff/withdrawals/:id/fail/', () => HttpResponse.json({ approval_id: 9, status: 'pending' }, { status: 201 })),
   http.get('http://localhost:8000/api/approvals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/approvals/counts/', () => HttpResponse.json({ mine: 0, made: 0, team: 0, decided: 0, escalated_to_me: 0, makers: [], kinds: [], can_view_all: false })),
   http.get('http://localhost:8000/api/approvals/stats/', () => HttpResponse.json({ decided_today: 0, approved_today: 0, returned_today: 0, median_minutes: null })),
@@ -685,5 +750,11 @@ export const handlers = [
   http.get('http://localhost:8000/api/orders/owner/:id/tracking/', () => HttpResponse.json({
     stage: 'assigned', pickup: { lat: 5.6037, lng: -0.187, name: 'Akosua Ntoma' }, rider: { lat: 5.605, lng: -0.19, age_s: 45, stale: false },
     leg: { to: 'pickup', distance_km: 1.1, duration_s: 240, basis: 'road route' }, route: [[5.605, -0.19], [5.6037, -0.187]],
+  })),
+  // Re-delivery at the customer's request (Plan 7F-E Task 7): no request by default; paying succeeds at once.
+  http.get('http://localhost:8000/api/delivery/redeliveries/', () => HttpResponse.json({ results: [] })),
+  http.post('http://localhost:8000/api/orders/:id/redelivery/pay/', () => HttpResponse.json({
+    mode: 'immediate', payment_method: 'wallet', payment_processing: '0.00',
+    redelivery: { id: 1, order: 7, attempt: 1, status: 'paid', status_label: 'Paid, waiting for a rider', fee: '15.00', fee_pesewas: 1500 },
   })),
 ]

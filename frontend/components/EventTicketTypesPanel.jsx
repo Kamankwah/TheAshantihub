@@ -144,7 +144,7 @@ export default function EventTicketTypesPanel({ eventId }) {
               <div>
                 <div style={{ color: "white", fontWeight: 700, fontSize: "0.8rem" }}>
                   {tt.name}{" "}
-                  <span style={{ background: tt.delivery_method === "digital" ? `${C.kente2}33` : `${C.kente3}33`, color: tt.delivery_method === "digital" ? C.kente2 : C.kente3, fontSize: "0.6rem", fontWeight: 700, padding: "2px 8px", borderRadius: 20, marginLeft: 4 }}>
+                  <span style={{ background: tt.delivery_method === "digital" ? `${C.kente2}33` : `${C.kente3}33`, color: tt.delivery_method === "digital" ? C.trust : C.info, fontSize: "0.6rem", fontWeight: 700, padding: "2px 8px", borderRadius: 20, marginLeft: 4 }}>
                     {tt.delivery_method === "digital" ? "Digital" : "Physical"}
                   </span>
                   {!tt.is_active && (
@@ -258,7 +258,7 @@ const addBtnStyle = {
 const retryBtnStyle = {
   background: "none",
   border: `1px solid ${C.kente1}`,
-  color: C.kente1,
+  color: C.danger,
   borderRadius: 20,
   padding: "1px 8px",
   fontSize: "0.68rem",

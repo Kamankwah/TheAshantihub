@@ -28,7 +28,7 @@ class MultiAccountAuthenticationTests(TestCase):
             response.json(),
             {
                 "account_type": "customer", "id": self.customer.id, "full_name": "Ama Owusu",
-                "avatar": None, "email": self.customer.email, "phone": "+233241234567",
+                "avatar": None, "email": self.customer.email, "phone": "+233241234567", "can_buy": True,
             },
         )
 
@@ -57,6 +57,7 @@ class MultiAccountAuthenticationTests(TestCase):
             [
                 "messaging.manage", "disputes.flag", "users.view", "reviews.moderate",
                 "orders.support_update", "calls.view_peers", "contact_messages.manage", "calls.log",
-                "fraud.flag", "orders.verify", "otp.recovery",
+                "fraud.flag", "orders.verify", "otp.recovery", "orders.redeliver",
+                "businesses.set_hours",                           # Director ruling 7 (2026-10-20): Support sets hours
             ],
         )

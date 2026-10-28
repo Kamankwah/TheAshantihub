@@ -22,6 +22,7 @@ class ApprovalKind:
     amount_of: Optional[Callable] = None         # (request) -> Decimal | None; GH₵ the request moves, stored on request.amount
     public_payload: Optional[Callable] = None    # (request) -> dict; the payload as the activity log and the inbox may show it (contacts masked)
     two_people: bool = False                     # never applied by one person: a Super Admin's own request waits for someone else too
+    on_cancelled: Optional[Callable] = None      # (request) -> None; runs when the maker cancels it (close what waited on it)
 
 
 _KINDS = {}

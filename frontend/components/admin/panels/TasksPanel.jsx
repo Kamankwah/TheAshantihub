@@ -6,8 +6,8 @@ import { D, glassCard } from "../theme.js";
 import { toggleButton, toggleGroup } from "./opsPeopleParts.jsx";
 
 const VIEWS = [["today", "Today"], ["overdue", "Overdue"], ["upcoming", "Upcoming"], ["open", "All open"], ["done", "Done"]];
-const field = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", color: D.text, background: "#fff" };
-const pill = (active) => ({ background: active ? D.text : "transparent", color: active ? "#fff" : D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "6px 12px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" });
+const field = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", color: D.text, background: D.panelBg };
+const pill = (active) => ({ background: active ? D.text : "transparent", color: active ? D.pageBg : D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "6px 12px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" });
 const dim = { color: D.textDim, fontSize: "0.72rem" };
 
 // Open tasks fall into three groups: already late, due before midnight, later.
@@ -99,7 +99,7 @@ export default function TasksPanel({ auth }) {
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.72rem", fontWeight: 700, color: D.text }}>Due
             <input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} style={field} />
           </label>
-          <button type="submit" style={{ background: D.gold, color: D.text, border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 800, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Add task</button>
+          <button type="submit" style={{ background: D.gold, color: D.darkBrown, border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 800, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Add task</button>
         </form>
         <div role="group" aria-label="Which tasks" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {VIEWS.map(([id, label]) => <button key={id} type="button" aria-pressed={view === id} onClick={() => setView(id)} style={pill(view === id)}>{label}</button>)}

@@ -59,3 +59,24 @@ describe('HeroCarousel', () => {
     expect(screen.queryByLabelText('Next slide')).not.toBeInTheDocument()
   })
 })
+
+describe('HeroCarousel — film and video slides', () => {
+  it('renders a YouTube slide through youtube-nocookie and a video_url slide as <video>, never blank', async () => {
+    const rows = [
+      { id: 7, media_type: 'video', media: null, image: null, video_url: null, youtube_id: 'dQw4w9WgXcQ', caption: 'Watch the film' },
+      { id: 8, media_type: 'video', media: null, image: null, video_url: 'http://localhost:8000/media/hero_video/a.mp4', youtube_id: null, caption: 'Watch the clip' },
+      { id: 9, media_type: 'image', media: null, image: null, video_url: null, youtube_id: null, caption: 'Nothing to draw' },
+    ]
+    server.use(http.get('http://localhost:8000/api/hero/active/', () => HttpResponse.json(rows)))
+    const { container } = renderCarousel()
+    await screen.findByText('Watch the film')
+    const frame = container.querySelector('iframe')
+    expect(frame.getAttribute('src')).toBe('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')
+    // The unrenderable slide is dropped: two dots, not three.
+    expect(screen.getByLabelText('Go to slide 2')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Go to slide 3')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Next slide'))
+    expect(screen.getByText('Watch the clip')).toBeInTheDocument()
+    expect(container.querySelector('video').getAttribute('src')).toBe('http://localhost:8000/media/hero_video/a.mp4')
+  })
+})

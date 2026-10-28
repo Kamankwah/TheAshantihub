@@ -814,8 +814,7 @@ class Command(BaseCommand):
             if kind == "checked_in":
                 ticket.delivered_at = self.now
                 ticket.delivered_by_staff = self.support
-                ticket.escrow_status = Ticket.RELEASED
-                ticket.escrow_released_at = self.now
+                # A check-in is evidence only; the ticket stays held until Accounting releases it (Plan 7F-C R5).
             elif kind == "override":
                 ticket.escrow_status = Ticket.RELEASED
                 ticket.escrow_released_at = self.now

@@ -4,7 +4,7 @@ import { errorStyle } from "../portfolioParts.jsx";
 
 // Shared pieces of the Delivery Manager's screens. Nothing here invents a figure: a value the
 // server answers null for is shown as the word the screen gives for it, never as 0.
-export const WARN = "#A33A00";
+export const WARN = D.warnInk;
 export const money = (value) => (value === null || value === undefined || value === "" ? "Not set" : `GH₵ ${Number(value).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 export const clock = (iso) => (iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "");
 export const dayTime = (iso) => (iso ? new Date(iso).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
@@ -35,7 +35,7 @@ export function StepChip({ status, label }) {
 }
 
 export function Note({ children, tone }) {
-  return <div role="note" style={{ background: tone === "warn" ? "#FFF4E5" : D.panelBg2, border: `1px solid ${tone === "warn" ? "#E8621A66" : D.cardBorder}`, borderRadius: 10, padding: "8px 12px", fontSize: "0.78rem", color: D.text, lineHeight: 1.5 }}>{children}</div>;
+  return <div role="note" style={{ background: tone === "warn" ? D.warnBg : D.panelBg2, border: `1px solid ${tone === "warn" ? "#E8621A66" : D.cardBorder}`, borderRadius: 10, padding: "8px 12px", fontSize: "0.78rem", color: D.text, lineHeight: 1.5 }}>{children}</div>;
 }
 
 export function Empty({ children }) {
@@ -51,7 +51,7 @@ export function Filters({ label, options, value, onChange }) {
   return (
     <div role="group" aria-label={label} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       {options.map(([id, text]) => (
-        <button key={id} type="button" aria-pressed={value === id} onClick={() => onChange(id)} style={{ minHeight: 36, padding: "0 14px", borderRadius: 999, border: `1px solid ${D.cardBorder}`, background: value === id ? D.text : D.panelBg, color: value === id ? "#FDF6E3" : D.text, fontWeight: 700, fontSize: "0.78rem", cursor: "pointer", fontFamily: "inherit" }}>{text}</button>
+        <button key={id} type="button" aria-pressed={value === id} onClick={() => onChange(id)} style={{ minHeight: 36, padding: "0 14px", borderRadius: 999, border: `1px solid ${D.cardBorder}`, background: value === id ? D.text : D.panelBg, color: value === id ? D.pageBg : D.text, fontWeight: 700, fontSize: "0.78rem", cursor: "pointer", fontFamily: "inherit" }}>{text}</button>
       ))}
     </div>
   );

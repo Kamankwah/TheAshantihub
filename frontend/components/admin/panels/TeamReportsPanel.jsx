@@ -129,8 +129,8 @@ export default function TeamReportsPanel({ auth }) {
       {rows.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
           <Kpi label="Reports in" value={`${reports.length} of ${rows.length}`} sub={`${PERIODS.find(([id]) => id === period)?.[1]} reports, ${dayShort(data.period_start)}`} />
-          <Kpi label="Late reports" value={late} sub="After the deadline on the day" color={late ? "#A33A00" : undefined} />
-          <Kpi label="Copy-check flags" value={copies} sub="Reads like an earlier report" color={copies ? "#A30000" : undefined} />
+          <Kpi label="Late reports" value={late} sub="After the deadline on the day" color={late ? D.warnInk : undefined} />
+          <Kpi label="Copy-check flags" value={copies} sub="Reads like an earlier report" color={copies ? D.errInk : undefined} />
           <Kpi label="To review" value={waiting.length} sub="Acknowledge or return" />
         </div>
       )}
@@ -145,7 +145,7 @@ export default function TeamReportsPanel({ auth }) {
                   <thead><tr>{["Person", "Report", "Submitted", "Flags"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}<th scope="col" style={th}><span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>Open</span></th></tr></thead>
                   <tbody>
                     {waiting.map(({ staff, report }) => (
-                      <tr key={staff.id} style={{ background: openId === report.id ? "#FFFBF3" : "transparent" }}>
+                      <tr key={staff.id} style={{ background: openId === report.id ? D.panelBg2 : "transparent" }}>
                         <td style={td}><div style={{ fontWeight: 800 }}>{staff.full_name}</div><div style={dim}>{roleName(staff.role)}</div></td>
                         <td style={td}>{reportName(report)}</td>
                         <td style={{ ...td, ...figures }}>{report.submitted_at ? clock(report.submitted_at) : ""}</td>

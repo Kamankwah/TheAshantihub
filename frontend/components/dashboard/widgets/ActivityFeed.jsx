@@ -1,4 +1,4 @@
-import { D } from "../theme.js";
+import { D, tint } from "../theme.js";
 
 // Overview tab's "recent activity" timeline (sketch's "Live activity" card) —
 // built from data the Overview panel already fetches, NOT a live/websocket
@@ -50,7 +50,7 @@ export default function ActivityFeed({ transactions, reviews }) {
       {items.map((item, i) => (
         <div key={item.key} style={{ display: "flex", gap: 12 }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <div style={{ width: 28, height: 28, borderRadius: "50%", background: `${item.color}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0 }}>{item.icon}</div>
+            <div style={{ width: 28, height: 28, borderRadius: "50%", background: tint(item.color, "22"), display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0 }}>{item.icon}</div>
             {i < items.length - 1 && <div style={{ flex: 1, width: 2, background: D.divider, marginTop: 4, marginBottom: 4 }} />}
           </div>
           <div style={{ flex: 1, paddingBottom: 16, minWidth: 0 }}>

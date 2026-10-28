@@ -46,7 +46,7 @@ function ReportStrip({ reports }) {
   return (
     <ul aria-label="Day reports" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", gap: 6, flexWrap: "wrap" }}>
       {reports.map((r) => (
-        <li key={r.date} style={{ border: `1px solid ${D.cardBorder}`, borderRadius: 8, padding: "4px 8px", fontSize: "0.72rem", color: D.text, background: r.status === "returned" ? "#FDE8E8" : r.is_late ? "#FFF4E5" : D.panelBg }}>
+        <li key={r.date} style={{ border: `1px solid ${D.cardBorder}`, borderRadius: 8, padding: "4px 8px", fontSize: "0.72rem", color: D.text, background: r.status === "returned" ? D.errBg : r.is_late ? D.warnBg : D.panelBg }}>
           {`${dateOnly(r.date)} · ${REPORT_WORDS[r.status] || r.status}${r.is_late ? " · late" : ""}`}
         </li>
       ))}

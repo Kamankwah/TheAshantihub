@@ -1,14 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { C, CURRENCIES } from "../theme.js";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCart } from "../hooks/useCart.js";
 import { useCartGuard } from "../hooks/useCartGuard.js";
+import { useDeliveryPreview } from "../hooks/useDeliveryPreview.js";
+import { formatAccraDayTime } from "../lib/accraTime.js";
 import { apiPatch, apiPost, apiDelete } from "../apiClient.js";
 import { apiErrorMessage } from "../lib/apiErrorMessage.js";
 import { quoteCart, usePublicPromos } from "../hooks/usePublicPromos.js";
 import { useStaffGate } from "../hooks/useStaffGate.js";
+import { useCanBuy } from "../hooks/useCanBuy.js";
 import LocationPicker from "./LocationPicker.jsx";
 import StaffGateNotice from "./StaffGateNotice.jsx";
+import PaymentMethodPicker from "./wallet/PaymentMethodPicker.jsx";
+import { useWallet } from "../hooks/useWallet.js";
+import { useWalletProcessing } from "../hooks/useWalletProcessing.js";
+import { addGhs, isPlausibleAmount } from "./wallet/walletMoney.js";
+import { walletMessage } from "./wallet/walletErrors.js";
 
 // ─── CartDrawer ─────────────────────────────────────────────────────────────
 // Customer cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4). Mirrors App.jsx's
@@ -56,6 +64,12 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   // the cart while the modal is still open, which would otherwise drop the
   // displayed amount to 0 right as the success screen appears.
   const [checkoutAmount, setCheckoutAmount] = useState(0);
+  // The server's processing charge, snapshotted with the amount for the same reason.
+  const [checkoutProcessing, setCheckoutProcessing] = useState(undefined);
+  // "momo" | "wallet". The picker (and so any choice) exists only while the ledger is on.
+  const [paymentMethod, setPaymentMethod] = useState("momo");
+  const [walletPaying, setWalletPaying] = useState(false);
+  const walletPayingRef = useRef(false);
   // Delivery method chosen before paying (Wave F). Door-to-door needs an
   // address + phone; store pickup needs neither.
   const [deliveryMethod, setDeliveryMethod] = useState("store_pickup");
@@ -68,6 +82,9 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   // defence-in-depth layer so checkout itself refuses a staff session with
   // the shared staff notice.
   const staffGate = useStaffGate(user);
+  // Before the marketplace opens the cart still shows, but checkout is greyed
+  // with "Opens <D Mon>" unless this account may buy (see useCanBuy).
+  const { canBuy, label: opensLabel } = useCanBuy();
 
   const items = cart?.items || [];
 
@@ -84,6 +101,10 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const [quoteFailed, setQuoteFailed] = useState(false);
   const pinKey = `${deliveryMethod}:${deliveryLat}:${deliveryLng}`;
   const cartSignature = items.map((i) => `${i.id}:${i.quantity}`).join(",");
+  // After-hours notice: independent of promotions (its own endpoint). Shown only for a rider delivery the server says is
+  // deferred; nothing while loading or if the read fails. Platform hours are never presented as the shop's own.
+  const { data: preview } = useDeliveryPreview("door_to_door", { enabled: user?.accountType === "customer" && deliveryMethod === "door_to_door" && items.length > 0, cartKey: cartSignature });
+  const deferredFrom = deliveryMethod === "door_to_door" && preview?.deferred ? formatAccraDayTime(preview.delivery_from) : null;
   useEffect(() => {
     if (!promosOn || items.length === 0) { setQuote(null); return; }
     let live = true;
@@ -119,9 +140,29 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   // button stays off until the limits have actually been read (a customer only; staff are gated separately).
   const guardUnchecked = user?.accountType === "customer" && (guardPending || guardError);
   const deliveryLimitBlock = !!guardBlock && guardBlock.code !== "not_deliverable";
-  const payReady = doorToDoorReady && !guardBlock && !guardUnchecked;
   const shownTotal = delivery?.fee != null && itemsTotal != null ? (parseFloat(itemsTotal) + parseFloat(delivery.fee)).toFixed(2) : itemsTotal;
   const [couponError, setCouponError] = useState("");
+
+  // Only the server's ledger_off answer means "off" (today's flow, no picker, no payment_method). While the wallet
+  // read is loading, or after any other failure, checkout waits (with a reason and a retry) rather than opening the
+  // simulated-fee modal against a ledger that may be on.
+  const isCustomer = user?.accountType === "customer";
+  const { data: wallet, error: walletError, isPending: walletPending, refetch: refetchWallet } = useWallet({ enabled: isCustomer });
+  const pickerShown = !!wallet && wallet.balance !== undefined;
+  const walletOff = !!walletError && walletMessage(walletError).kind === "off";
+  const walletChecking = isCustomer && walletPending;
+  const walletFailed = isCustomer && !!walletError && !walletOff && !pickerShown;
+  const method = pickerShown ? paymentMethod : "momo";
+  const momoWithPicker = pickerShown && method === "momo";
+  // The server's charge for paying shownTotal by mobile money (shared cache with the picker's own line). A total that
+  // is not a positive amount cannot be quoted: mobile money stays blocked and the wallet is the way to pay.
+  const quotable = isPlausibleAmount(shownTotal);
+  const { data: processingData, error: processingError, isError: processingFailed, refetch: refetchProcessing } = useWalletProcessing(momoWithPicker ? shownTotal : "");
+  const processingReady = !momoWithPicker || processingData?.payment_processing !== undefined;
+  const processingPending = momoWithPicker && quotable && !processingData && !processingFailed;
+  const payReady0 = !walletChecking && !walletFailed && processingReady;
+  // canBuy too: if the opening moves while the confirm step is open, paying stops.
+  const payReady = canBuy && doorToDoorReady && !guardBlock && !guardUnchecked && payReady0 && !walletPaying;
 
   const formatAmount = (amount) => {
     const value = parseFloat(amount) || 0;
@@ -129,6 +170,9 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
     const rate = CURRENCIES[currency] ?? 1;
     return `${currency} ${(value * rate).toFixed(2)}`;
   };
+
+  // The order carries a non-zero payment-processing charge: the receipt then lists the order total, the charge and the total paid.
+  const charged = !!order?.payment_processing && order.payment_processing !== "0.00";
 
   const updateQuantity = async (item, nextQuantity) => {
     if (nextQuantity < 1) return;
@@ -159,10 +203,9 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
     }
   };
 
-  const handlePaymentSuccess = async (ref) => {
-    setCheckoutError(null);
-    try {
-      const response = await apiPost("/api/orders/checkout/", {
+  // The checkout body shared by both payment paths (delivery, coupon and pin exactly as before).
+  const checkoutBody = (extra = {}) => ({
+        ...extra,
         delivery_method: deliveryMethod,
         delivery_address: deliveryAddress,
         delivery_phone: deliveryPhone,
@@ -173,7 +216,12 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
         ...(deliveryMethod === "door_to_door" && deliveryLat != null
           ? { delivery_lat: deliveryLat, delivery_lng: deliveryLng }
           : {}),
-      });
+  });
+
+  const handlePaymentSuccess = async (ref) => {
+    setCheckoutError(null);
+    try {
+      const response = await apiPost("/api/orders/checkout/", checkoutBody(pickerShown ? { payment_method: "momo" } : {}));
       // Hubtel integration (docs/HUBTEL_INTEGRATION.md) — once
       // payments_provider is "hubtel", OrderCheckoutView returns
       // {mode:"redirect", checkout_url} instead of the placed order, since
@@ -196,6 +244,31 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
     }
   };
 
+  // Paying from the AshantiHub wallet: no payment modal; one checkout post. A refusal (insufficient_funds,
+  // ledger_off, ...) shows the server's own words and leaves the cart as it was.
+  const handleWalletPay = async () => {
+    if (staffGate.blocked() || walletPayingRef.current) return;
+    walletPayingRef.current = true;
+    setWalletPaying(true);
+    setCheckoutError(null);
+    try {
+      const response = await apiPost("/api/orders/checkout/", checkoutBody({ payment_method: "wallet" }));
+      if (response?.mode === "redirect") {
+        window.location.href = response.checkout_url;
+        return;
+      }
+      setOrder(response);
+      setStep("confirmation");
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["wallet"] });
+    } catch (err) {
+      setCheckoutError(apiErrorMessage(err, "We couldn't place your order. Please try again."));
+    } finally {
+      walletPayingRef.current = false;
+      setWalletPaying(false);
+    }
+  };
+
   const handlePaymentClose = () => {
     setShowPayment(false);
     if (order) setStep("confirmation");
@@ -212,23 +285,23 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
     if (!promosOn) return null;
     return (
       <div style={{ marginBottom: 10 }}>
-        {quote?.notes?.map((n) => <div key={n} style={{ fontSize: "0.68rem", color: "#555", marginBottom: 4 }}>{n}</div>)}
-        {quote?.lines?.some((l) => l.flash_sale) && <div style={{ fontSize: "0.68rem", color: "#555", marginBottom: 4 }}>Flash-sale prices are applied at checkout. Coupons don't apply to them.</div>}
+        {quote?.notes?.map((n) => <div key={n} style={{ fontSize: "0.68rem", color: C.inkDim, marginBottom: 4 }}>{n}</div>)}
+        {quote?.lines?.some((l) => l.flash_sale) && <div style={{ fontSize: "0.68rem", color: C.inkDim, marginBottom: 4 }}>Flash-sale prices are applied at checkout. Coupons don't apply to them.</div>}
         {quote?.coupon ? (
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.74rem", color: C.darkBrown, marginBottom: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.74rem", color: C.ink, marginBottom: 6 }}>
             <span>Coupon {quote.coupon.code}: − {formatAmount(quote.coupon.discount)}</span>
-            <button type="button" onClick={() => { setAppliedCode(""); setCouponInput(""); }} style={{ background: "none", border: "none", color: C.kente1, cursor: "pointer", fontSize: "0.7rem", fontWeight: 700 }}>Remove</button>
+            <button type="button" onClick={() => { setAppliedCode(""); setCouponInput(""); }} style={{ background: "none", border: "none", color: C.danger, cursor: "pointer", fontSize: "0.7rem", fontWeight: 700 }}>Remove</button>
           </div>
         ) : (
           <div style={{ display: "flex", gap: 6 }}>
             <label style={{ flex: 1 }}>
               <span style={{ position: "absolute", left: -9999 }}>Coupon code</span>
-              <input value={couponInput} onChange={(e) => { setCouponInput(e.target.value); setCouponError(""); }} placeholder="Coupon code" style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: "1.5px solid #e0e0e0", fontSize: "0.76rem", fontFamily: "inherit", boxSizing: "border-box" }} />
+              <input value={couponInput} onChange={(e) => { setCouponInput(e.target.value); setCouponError(""); }} placeholder="Coupon code" style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: `1.5px solid ${C.line}`, fontSize: "0.76rem", fontFamily: "inherit", boxSizing: "border-box" }} />
             </label>
-            <button type="button" disabled={!couponInput.trim() || quoting} onClick={() => setAppliedCode(couponInput.trim())} style={{ background: "#f0f0f0", color: C.darkBrown, border: "none", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}>Apply</button>
+            <button type="button" disabled={!couponInput.trim() || quoting} onClick={() => setAppliedCode(couponInput.trim())} style={{ background: C.surface2, color: C.ink, border: "none", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}>Apply</button>
           </div>
         )}
-        {couponError && <div role="alert" style={{ color: "#dc2626", fontSize: "0.7rem", marginTop: 4 }}>{couponError}</div>}
+        {couponError && <div role="alert" style={{ color: C.errInk, fontSize: "0.7rem", marginTop: 4 }}>{couponError}</div>}
       </div>
     );
   };
@@ -237,38 +310,38 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
     <>
     <div style={{ position: "fixed", inset: 0, zIndex: 999 }} onClick={onClose}>
       <div
-        style={{ position: "absolute", top: 65, right: 16, background: "white", borderRadius: 16, width: 340, maxHeight: "82vh", overflowY: "auto", boxShadow: "0 8px 40px rgba(0,0,0,0.2)" }}
+        style={{ position: "absolute", top: 65, right: 16, background: C.surface, borderRadius: 16, width: 340, maxHeight: "82vh", overflowY: "auto", boxShadow: "0 8px 40px rgba(0,0,0,0.2)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ padding: "14px 16px", borderBottom: "1px solid #f0f0f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontWeight: 800, color: C.darkBrown, fontSize: "0.85rem" }}>🛒 Your Cart {items.length > 0 ? `(${items.length})` : ""}</div>
-          <button onClick={onClose} aria-label="Close cart" style={{ background: "none", border: "none", cursor: "pointer", color: "#999", fontSize: "1.1rem" }}>✕</button>
+        <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 800, color: C.ink, fontSize: "0.85rem" }}>🛒 Your Cart {items.length > 0 ? `(${items.length})` : ""}</div>
+          <button onClick={onClose} aria-label="Close cart" style={{ background: "none", border: "none", cursor: "pointer", color: C.inkFaint, fontSize: "1.1rem" }}>✕</button>
         </div>
 
         {isLoading && (
-          <div style={{ padding: "20px", textAlign: "center", color: "#aaa", fontSize: "0.78rem" }}>Loading your cart…</div>
+          <div style={{ padding: "20px", textAlign: "center", color: C.inkFaint, fontSize: "0.78rem" }}>Loading your cart…</div>
         )}
 
         {isError && (
-          <div style={{ padding: "20px", textAlign: "center", color: "#dc2626", fontSize: "0.78rem" }}>
+          <div style={{ padding: "20px", textAlign: "center", color: C.errInk, fontSize: "0.78rem" }}>
             Could not load your cart.
-            <div><button onClick={() => refetch()} style={{ marginTop: 8, background: "none", border: `1px solid ${C.kente1}`, color: C.kente1, borderRadius: 20, padding: "4px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button></div>
+            <div><button onClick={() => refetch()} style={{ marginTop: 8, background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "4px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button></div>
           </div>
         )}
 
         {!isLoading && !isError && step === "cart" && (
           <>
-            {actionError && <div style={{ margin: "10px 14px 0", background: "#fee2e2", color: "#dc2626", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem" }}>{actionError}</div>}
+            {actionError && <div style={{ margin: "10px 14px 0", background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem" }}>{actionError}</div>}
 
             {items.length === 0 && (
-              <div style={{ padding: "20px", textAlign: "center", color: "#aaa", fontSize: "0.78rem" }}>Your cart is empty.<br />Add items from the Business tab to get started.</div>
+              <div style={{ padding: "20px", textAlign: "center", color: C.inkFaint, fontSize: "0.78rem" }}>Your cart is empty.<br />Add items from the Business tab to get started.</div>
             )}
 
             {items.map((item) => (
-              <div key={item.id} style={{ padding: "10px 14px", borderBottom: "1px solid #f9f9f9", display: "flex", gap: 10, alignItems: "center" }}>
+              <div key={item.id} style={{ padding: "10px 14px", borderBottom: `1px solid ${C.line}`, display: "flex", gap: 10, alignItems: "center" }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: "0.78rem", color: C.darkBrown }}>{item.listing_name}</div>
-                  <div style={{ fontSize: "0.65rem", color: "#888" }}>{formatAmount(item.unit_price_snapshot)} each</div>
+                  <div style={{ fontWeight: 700, fontSize: "0.78rem", color: C.ink }}>{item.listing_name}</div>
+                  <div style={{ fontSize: "0.65rem", color: C.inkDim }}>{formatAmount(item.unit_price_snapshot)} each</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                     <button
                       disabled={pendingId === item.id || item.quantity <= 1}
@@ -286,28 +359,29 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 800, fontSize: "0.78rem", color: C.darkBrown }}>{formatAmount(item.line_total)}</div>
+                  <div style={{ fontWeight: 800, fontSize: "0.78rem", color: C.ink }}>{formatAmount(item.line_total)}</div>
                   <button
                     disabled={pendingId === item.id}
                     onClick={() => removeItem(item)}
                     aria-label={`Remove ${item.listing_name} from cart`}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: C.kente1, fontSize: "0.9rem", marginTop: 4 }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: C.danger, fontSize: "0.9rem", marginTop: 4 }}
                   >✕</button>
                 </div>
               </div>
             ))}
 
             {items.length > 0 && (
-              <div style={{ padding: "14px 16px", borderTop: "1px solid #f0f0f0" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", fontWeight: 800, color: C.darkBrown, marginBottom: 10 }}>
+              <div style={{ padding: "14px 16px", borderTop: `1px solid ${C.line}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", fontWeight: 800, color: C.ink, marginBottom: 10 }}>
                   <span>Total</span>
                   <span>{formatAmount(shownTotal)}</span>
                 </div>
                 <PromoBlock />
                 <button
-                  onClick={() => { if (staffGate.blocked()) return; setStep("confirm"); }}
-                  style={{ width: "100%", background: C.gold, color: C.darkBrown, border: "none", borderRadius: 24, padding: "11px", fontWeight: 900, fontSize: "0.82rem", cursor: "pointer", fontFamily: "inherit" }}
-                >Checkout →</button>
+                  disabled={!canBuy}
+                  onClick={() => { if (!canBuy || staffGate.blocked()) return; setStep("confirm"); }}
+                  style={{ width: "100%", background: canBuy ? C.gold : C.surface3, color: canBuy ? C.darkBrown : C.inkDim, border: "none", borderRadius: 24, padding: "11px", fontWeight: 900, fontSize: "0.82rem", cursor: canBuy ? "pointer" : "not-allowed", fontFamily: "inherit" }}
+                >{canBuy ? "Checkout →" : opensLabel}</button>
                 {staffGate.shownFor && <StaffGateNotice style={{ marginTop: 10 }} />}
               </div>
             )}
@@ -316,28 +390,28 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
 
         {!isLoading && !isError && step === "confirm" && (
           <div style={{ padding: "16px" }}>
-            <div style={{ fontWeight: 800, color: C.darkBrown, fontSize: "0.85rem", marginBottom: 10 }}>Confirm your order</div>
+            <div style={{ fontWeight: 800, color: C.ink, fontSize: "0.85rem", marginBottom: 10 }}>Confirm your order</div>
             {items.map((item) => (
-              <div key={`confirm-${item.id}`} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.76rem", color: "#555", marginBottom: 6 }}>
+              <div key={`confirm-${item.id}`} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.76rem", color: C.inkDim, marginBottom: 6 }}>
                 <span>{item.listing_name} × {item.quantity}</span>
-                <span style={{ fontWeight: 700, color: C.darkBrown }}>{formatAmount(item.line_total)}</span>
+                <span style={{ fontWeight: 700, color: C.ink }}>{formatAmount(item.line_total)}</span>
               </div>
             ))}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, color: C.kente2, fontSize: "0.9rem", borderTop: "1px solid #eee", paddingTop: 8, marginTop: 8, marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, color: C.price, fontSize: "0.9rem", borderTop: `1px solid ${C.line}`, paddingTop: 8, marginTop: 8, marginBottom: 14 }}>
               <span>Total</span>
               <span>{formatAmount(shownTotal)}</span>
             </div>
             {promosOn && quote?.coupon && (
-              <div style={{ fontSize: "0.72rem", color: "#555", margin: "-8px 0 12px" }}>Includes coupon {quote.coupon.code}: − {formatAmount(quote.coupon.discount)}</div>
+              <div style={{ fontSize: "0.72rem", color: C.inkDim, margin: "-8px 0 12px" }}>Includes coupon {quote.coupon.code}: − {formatAmount(quote.coupon.discount)}</div>
             )}
             {delivery && (
-              <div data-testid="cart-delivery" style={{ fontSize: "0.72rem", color: "#555", margin: "-8px 0 12px" }}>
+              <div data-testid="cart-delivery" style={{ fontSize: "0.72rem", color: C.inkDim, margin: "-8px 0 12px" }}>
                 {delivery.waived
-                  ? <>Delivery: <b style={{ color: C.kente2 }}>Free</b> ({delivery.waiver_name}){delivery.waived_fee != null ? <>, saving {formatAmount(delivery.waived_fee)}</> : null}</>
+                  ? <>Delivery: <b style={{ color: C.trust }}>Free</b> ({delivery.waiver_name}){delivery.waived_fee != null ? <>, saving {formatAmount(delivery.waived_fee)}</> : null}</>
                   : delivery.fee != null
                     ? <>Delivery: {formatAmount(delivery.fee)}</>
                     : delivery.fee_status === "out_of_area"
-                      ? <b data-testid="cart-delivery-out-of-area" role="alert" style={{ color: "#dc2626" }}>{delivery.message}</b>
+                      ? <b data-testid="cart-delivery-out-of-area" role="alert" style={{ color: C.errInk }}>{delivery.message}</b>
                       : delivery.fee_status === "no_rate_card"
                         ? <>No delivery fee is being charged right now.</>
                         : <>Choose your delivery location on the map to see the delivery fee. Without one, no delivery fee is added.</>}
@@ -355,13 +429,13 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
             )}
 
             {/* Delivery method (Wave F) */}
-            <div style={{ fontWeight: 800, color: C.darkBrown, fontSize: "0.78rem", marginBottom: 8 }}>How would you like it?</div>
+            <div style={{ fontWeight: 800, color: C.ink, fontSize: "0.78rem", marginBottom: 8 }}>How would you like it?</div>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
               {[["store_pickup", "🏬 Store pickup"], ["door_to_door", "🚚 Door-to-door"]].map(([value, label]) => (
                 <button
                   key={value}
                   onClick={() => setDeliveryMethod(value)}
-                  style={{ flex: 1, background: deliveryMethod === value ? C.kente2 : "#f0f0f0", color: deliveryMethod === value ? "white" : "#666", border: "none", borderRadius: 12, padding: "9px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
+                  style={{ flex: 1, background: deliveryMethod === value ? C.kente2 : C.surface2, color: deliveryMethod === value ? "white" : C.inkDim, border: "none", borderRadius: 12, padding: "9px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
                 >
                   {label}
                 </button>
@@ -373,13 +447,13 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                   value={deliveryAddress}
                   onChange={(e) => setDeliveryAddress(e.target.value)}
                   placeholder="Delivery address"
-                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e0e0e0", fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: `1.5px solid ${C.line}`, fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
                 />
                 <input
                   value={deliveryPhone}
                   onChange={(e) => setDeliveryPhone(e.target.value)}
                   placeholder="Contact phone for delivery"
-                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e0e0e0", fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: `1.5px solid ${C.line}`, fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
                 />
                 <LocationPicker
                   lat={deliveryLat}
@@ -390,17 +464,44 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
               </div>
             )}
 
-            {promosOn && pinChosen && quoteFailed && <div data-testid="cart-delivery-unchecked" style={{ fontSize: "0.72rem", color: "#555", marginBottom: 12 }}>We couldn't check delivery to this location yet. Try again.</div>}
-            {guardBlock && <div data-testid="cart-guard-block" role="alert" style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{guardBlock.detail}{deliveryLimitBlock && <div>Store pickup is still available.</div>}</div>}
-            {guardUnchecked && !guardBlock && <div data-testid="cart-guard-unchecked" style={{ fontSize: "0.72rem", color: "#555", marginBottom: 12 }}>{guardError ? "We couldn't check your delivery limits yet. Try again shortly." : "Checking your delivery limits…"}</div>}
-            {checkoutError && <div style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{checkoutError}</div>}
+            {deferredFrom && <div data-testid="cart-after-hours" style={{ background: C.warnBg, color: C.warnInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{preview.source === "business_hours" ? `Shop is closed now. Delivery starts ${deferredFrom}.` : `Delivery starts ${deferredFrom}.`}</div>}
+            {promosOn && pinChosen && quoteFailed && <div data-testid="cart-delivery-unchecked" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>We couldn't check delivery to this location yet. Try again.</div>}
+            {guardBlock && <div data-testid="cart-guard-block" role="alert" style={{ background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{guardBlock.detail}{deliveryLimitBlock && <div>Store pickup is still available.</div>}</div>}
+            {guardUnchecked && !guardBlock && <div data-testid="cart-guard-unchecked" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>{guardError ? "We couldn't check your delivery limits yet. Try again shortly." : "Checking your delivery limits…"}</div>}
+            {pickerShown && (
+              <div style={{ marginBottom: 12 }}>
+                <PaymentMethodPicker value={method} onChange={(m) => { setPaymentMethod(m); setCheckoutError(null); }} amount={shownTotal} />
+              </div>
+            )}
+            {walletChecking && <div data-testid="cart-wallet-checking" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>Checking payment options…</div>}
+            {walletFailed && (
+              <div role="alert" style={{ background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>
+                {walletMessage(walletError).text}{" "}
+                <button type="button" onClick={() => refetchWallet()} style={{ background: "none", border: "none", color: C.errInk, textDecoration: "underline", cursor: "pointer", fontSize: "0.72rem", fontFamily: "inherit" }}>Try again</button>
+              </div>
+            )}
+            {momoWithPicker && !quotable && <div style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>There is nothing to pay by mobile money. Choose your AshantiHub wallet.</div>}
+            {processingPending && <div data-testid="cart-processing-checking" style={{ fontSize: "0.72rem", color: C.inkDim, marginBottom: 12 }}>Getting the payment processing charge…</div>}
+            {momoWithPicker && quotable && processingFailed && (
+              <div role="alert" style={{ background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>
+                {apiErrorMessage(processingError, "We couldn't get the payment processing charge.")}{" "}
+                <button type="button" onClick={() => refetchProcessing()} style={{ background: "none", border: "none", color: C.errInk, textDecoration: "underline", cursor: "pointer", fontSize: "0.72rem", fontFamily: "inherit" }}>Try again</button>
+              </div>
+            )}
+            {checkoutError && <div style={{ background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{checkoutError}</div>}
             {staffGate.shownFor && <StaffGateNotice style={{ marginBottom: 12 }} />}
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setStep("cart")} style={{ flex: 1, background: "#f0f0f0", color: "#666", border: "none", borderRadius: 20, padding: "10px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>← Back</button>
+              <button onClick={() => setStep("cart")} style={{ flex: 1, background: C.surface2, color: C.inkDim, border: "none", borderRadius: 20, padding: "10px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>← Back</button>
               <button
-                onClick={() => { if (staffGate.blocked()) return; setCheckoutAmount(parseFloat(shownTotal) || 0); setShowPayment(true); }}
+                onClick={() => {
+                  if (staffGate.blocked()) return;
+                  if (method === "wallet") { handleWalletPay(); return; }
+                  setCheckoutAmount(parseFloat(shownTotal) || 0);
+                  setCheckoutProcessing(pickerShown ? processingData?.payment_processing : undefined);
+                  setShowPayment(true);
+                }}
                 disabled={!payReady}
-                style={{ flex: 2, background: payReady ? C.kente2 : "#ccc", color: "white", border: "none", borderRadius: 20, padding: "10px", fontWeight: 900, cursor: payReady ? "pointer" : "not-allowed", fontFamily: "inherit" }}
+                style={{ flex: 2, background: payReady ? C.kente2 : C.surface3, color: "white", border: "none", borderRadius: 20, padding: "10px", fontWeight: 900, cursor: payReady ? "pointer" : "not-allowed", fontFamily: "inherit" }}
               >
                 Confirm &amp; Pay
               </button>
@@ -411,18 +512,24 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
         {!isLoading && !isError && step === "confirmation" && order && (
           <div style={{ padding: "20px 16px", textAlign: "center" }}>
             <div style={{ fontSize: "2.4rem", marginBottom: 10 }}>✅</div>
-            <div style={{ fontWeight: 900, color: C.kente2, fontSize: "0.95rem", marginBottom: 6 }}>Order Confirmed!</div>
-            <div style={{ background: "#f9f9f9", borderRadius: 12, padding: "12px 14px", marginBottom: 14, textAlign: "left", fontSize: "0.74rem", lineHeight: 1.8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "#888" }}>Order Ref</span><span style={{ fontWeight: 700 }}>#{order.id}</span></div>
+            <div style={{ fontWeight: 900, color: C.trust, fontSize: "0.95rem", marginBottom: 6 }}>Order Confirmed!</div>
+            <div style={{ background: C.surface2, borderRadius: 12, padding: "12px 14px", marginBottom: 14, textAlign: "left", fontSize: "0.74rem", lineHeight: 1.8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.inkDim }}>Order Ref</span><span style={{ fontWeight: 700 }}>#{order.id}</span></div>
               {order.items?.map((oi, i) => (
                 <div key={oi.id ?? i} style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "#888" }}>{oi.listing_name || oi.listing} × {oi.quantity}</span>
+                  <span style={{ color: C.inkDim }}>{oi.listing_name || oi.listing} × {oi.quantity}</span>
                   <span>{formatAmount(oi.line_total)}</span>
                 </div>
               ))}
-              <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #e0e0e0", paddingTop: 6, marginTop: 4 }}>
-                <span style={{ fontWeight: 800 }}>Total Paid</span>
-                <span style={{ fontWeight: 900, color: C.kente2 }}>{formatAmount(order.total_amount)}</span>
+              {charged ? (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.inkDim }}>Order total</span><span>{formatAmount(order.total_amount)}</span></div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.inkDim }}>Payment processing</span><span style={{ fontVariantNumeric: "tabular-nums" }}>{formatAmount(order.payment_processing)}</span></div>
+                </>
+              ) : null}
+              <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${C.line}`, paddingTop: 6, marginTop: 4 }}>
+                <span style={{ fontWeight: 800 }}>{charged ? "Total paid" : "Total Paid"}</span>
+                <span style={{ fontWeight: 900, color: C.price }}>{formatAmount(charged ? (addGhs(order.total_amount, order.payment_processing) ?? order.total_amount) : order.total_amount)}</span>
               </div>
             </div>
             <button onClick={startOver} style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 24, padding: "10px 22px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>Continue Shopping</button>
@@ -440,6 +547,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
       <PaymentComponent
         amount={checkoutAmount}
         purpose="AshantiHub Order Checkout"
+        {...(checkoutProcessing !== undefined ? { processing: checkoutProcessing } : {})}
         businessName={user?.fullName || ""}
         onSuccess={handlePaymentSuccess}
         onClose={handlePaymentClose}
@@ -453,9 +561,9 @@ const stepperBtnStyle = {
   width: 22,
   height: 22,
   borderRadius: "50%",
-  border: "1px solid #ddd",
-  background: "white",
-  color: C.darkBrown,
+  border: `1px solid ${C.line}`,
+  background: C.surface,
+  color: C.ink,
   fontWeight: 800,
   fontSize: "0.85rem",
   cursor: "pointer",

@@ -65,6 +65,15 @@ class SupportOrderTests(TestCase):
         self.assertEqual([e["key"] for e in data["timeline"]], ["placed", "assigned"])
         self.assertIn("Delivery", data["delivery_note"])
         self.assertEqual(data["actions"], ["running_late", "cancelled_by_customer"])
+        self.assertIsNone(data["refundable"])                     # the ledger is off: no figure is invented
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_detail_carries_what_can_still_be_refunded(self):
+        from ledger import escrow
+
+        escrow.record_order_payment(self.order)
+        self.auth(self.support)
+        self.assertEqual(self.client.get(f"/api/orders/support/{self.order.pk}/").json()["refundable"], "420.00")
 
     def test_the_payments_banner_comes_from_the_provider_setting(self):
         self.auth(self.support)
@@ -153,6 +162,15 @@ class SupportOrderTests(TestCase):
         self.assertEqual(self.post(status="cancelled_by_customer", reason="x").status_code, 409)
         self.order.refresh_from_db()
         self.assertEqual(self.order.status, Order.PAID)
+
+    def test_support_screen_still_refuses_cancel_after_pickup(self):
+        DeliveryAssignment.objects.create(order=self.order, status=DeliveryAssignment.PICKED_UP, picked_up_at=timezone.now())
+        self.order.delivery_status = Order.OUT_FOR_DELIVERY
+        self.order.save()
+        self.auth(self.support)
+        response = self.post(status="cancelled_by_customer", reason="x")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(DeliveryAssignment.objects.get(order=self.order).status, DeliveryAssignment.PICKED_UP)
 
     def test_a_delivered_order_accepts_neither_action(self):
         self.order.delivery_status = Order.DELIVERED

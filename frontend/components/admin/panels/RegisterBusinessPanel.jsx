@@ -4,12 +4,15 @@ import { apiPost, apiPostForm } from "../../../apiClient.js";
 import { useDevicePosition } from "../../../hooks/useDevicePosition.js";
 import { useProspects } from "../../../hooks/useProspects.js";
 import { useRegistrationOptions } from "../../../hooks/useRegistrationOptions.js";
+import { CategoryOptions } from "../../../lib/categoryOptions.jsx";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
+import BusinessHoursEditor from "../../BusinessHoursEditor.jsx";
 import LocationPicker from "../../LocationPicker.jsx";
 import { D, glassCard } from "../theme.js";
 import { useMyCommission } from "../../../hooks/useCommission.js";
 import OwnerHandover, { SendClaimLinkCard } from "./OwnerHandover.jsx";
 import PhotoSlot, { hhmm, revokePreview } from "./PhotoSlot.jsx";
+import { hoursSummary } from "./hoursSummary.js";
 import { MATCH_LABELS, alreadyBelongsText } from "./registrationCheckCopy.js";
 import { button, callout, chip, dim, field, linkButton } from "./panelStyles.js";
 
@@ -32,6 +35,7 @@ const BLANK = {
   zone: "", gps_address: "",
   lat: "", lng: "", location_accuracy_m: "", location_is_manual: false, location_at: "",
   ghana_card_number: "", maker_note: "",
+  hours: null, // the weekly hours the owner gave: [{weekday, closed, opens, closes}] x7, null until entered
   prospect_id: "", prospect_name: "", // set when the scout starts from the prospect list
 };
 const NO_PHOTOS = { signboard_photo: null, ghana_card_front: null };
@@ -167,7 +171,13 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
   const draftKey = draftKeyFor(auth?.user?.id);
   const scoutFirstName = firstName(auth?.user?.full_name) || "your scout";
   const [restored] = useState(() => readDraft(draftKey));
-  const [form, setForm] = useState(() => ({ ...BLANK, ...(restored?.form || {}) }));
+  const [form, setForm] = useState(() => {
+    const draft = { ...BLANK, ...(restored?.form || {}) };
+    const week = draft.hours;
+    // A draft from an older build (or a damaged one) may not hold a well-formed week: drop it rather than crash.
+    if (!(Array.isArray(week) && week.length === 7 && week.every((d) => d && typeof d === "object" && Number.isInteger(Number(d.weekday))))) draft.hours = null;
+    return draft;
+  });
   const [step, setStep] = useState(() => Math.min(Math.max(Number(restored?.step) || 0, 0), 2));
   const [savedAt, setSavedAt] = useState(() => restored?.saved_at || null);
   const [retakePhotos, setRetakePhotos] = useState(() => Boolean(restored));
@@ -190,6 +200,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
   const prospectList = useProspects("all", { enabled: prospectId != null });
   const prospect = prospectId != null ? (prospectList.data?.results || []).find((p) => p.id === prospectId) : null;
   const [askProspect, setAskProspect] = useState(false);
+  const [editingHours, setEditingHours] = useState(false);
 
   const startFromProspect = (p) => {
     dirty.current = true;
@@ -307,6 +318,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
       if (!form.business_name.trim()) return "Add the business name.";
       if (!form.business_kind) return "Choose the kind of business.";
       if (!form.business_category) return "Choose a category.";
+      if (!form.hours) return "Enter the weekly opening hours and press Use these hours.";
     }
     if (n === 1) {
       if (!hasPin) return "Set the map pin — use your location or place it by hand.";
@@ -379,6 +391,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
     put("ghana_card_number", form.ghana_card_number.trim());
     put("maker_note", form.maker_note.trim());
     put("prospect_id", form.prospect_id);
+    fd.append("hours", JSON.stringify(form.hours));
     try {
       const result = await apiPostForm("/api/portfolio/register/", fd);
       for (const key of ["prospects", "call-counterparts", "portfolio"]) queryClient.invalidateQueries({ queryKey: [key] });
@@ -397,6 +410,11 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
         dirty.current = true;
         setForm((f) => ({ ...f, prospect_id: "", prospect_name: "" }));
         setActionError("That prospect is no longer on your list, so this registration is no longer linked to one. Nothing else changed. Submit again to register it as a new business.");
+      } else if (err.body?.code === "hours_required" || err.body?.code === "hours_invalid") {
+        dirty.current = true;
+        setEditingHours(true); // keep what was entered and reopen the editor so it can be corrected
+        setStep(0);
+        setStepError(err.body.detail || "Enter the weekly opening hours.");
       } else if (err.body?.code === "duplicate") {
         setDuplicate({ detail: err.body.detail || "Already registered — ask Operations.", matched: err.body.matched || [] });
       } else {
@@ -514,9 +532,23 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
             <Field label="Category" hint={categoryHint}>
               <select value={form.business_category} onChange={update("business_category")} disabled={!form.business_kind} style={input}>
                 <option value="">{form.business_kind ? "Choose a category" : "Choose the kind first"}</option>
-                {options.categories.map((c) => <option key={c.id} value={String(c.id)}>{c.label}</option>)}
+                <CategoryOptions categories={options.categories} />
               </select>
             </Field>
+            <div style={{ borderTop: `1px solid ${D.divider}`, paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={labelStyle}>Opening hours</div>
+              {form.hours && !editingHours ? (
+                <>
+                  <div role="status" style={{ ...dim, color: D.text, fontWeight: 700 }}>{hoursSummary(form.hours)}</div>
+                  <div><button type="button" onClick={() => setEditingHours(true)} style={linkButton}>Change hours</button></div>
+                </>
+              ) : (
+                <div style={{ borderRadius: 12, padding: 12 }}>
+                  <BusinessHoursEditor initialDays={form.hours || undefined} saveLabel="Use these hours"
+                    onSave={(days) => { dirty.current = true; setSavedForLater(false); setForm((f) => ({ ...f, hours: days })); setEditingHours(false); setStepError(null); }} />
+                </div>
+              )}
+            </div>
             <div style={actions}>
               <button type="button" onClick={next} style={button(D.gold, D.text)}>Next: Location</button>
               <button type="button" onClick={saveForLater} style={button(D.panelBg, D.text)}>Save and finish later</button>
@@ -605,6 +637,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
               ["Owner", form.owner_full_name], ["Phone", form.owner_phone], ["Email", form.owner_email],
               ["Business", form.business_name], ["Kind", [KIND_LABELS[form.business_kind], categoryName].filter(Boolean).join(" · ")],
             ]} />
+            <ReviewGroup title="Opening hours" editLabel="Edit opening hours" onEdit={() => goTo(0)} rows={[["Hours", hoursSummary(form.hours)]]} />
             <ReviewGroup title="Location" editLabel="Edit location" onEdit={() => goTo(1)} rows={[
               ["Map pin", form.location_is_manual ? "Placed by hand" : `From your location · ±${accuracy} m`],
               ["Area", zoneName], ["Ghana Post", form.gps_address],

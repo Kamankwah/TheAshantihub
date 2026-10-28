@@ -1,6 +1,6 @@
 import FlashPriceTag from "./FlashPriceTag.jsx";
 import { useState } from "react";
-import { C } from "../theme.js";
+import { C, tint } from "../theme.js";
 import { apiPost } from "../apiClient.js";
 import { useListing } from "../hooks/useListing.js";
 import { useCartGuard } from "../hooks/useCartGuard.js";
@@ -11,6 +11,8 @@ import { useListingQuestions } from "../hooks/useListingQuestions.js";
 import { useOwnerReviews } from "../hooks/useOwnerReviews.js";
 import { useSiteSettings } from "../hooks/useSiteSettings.js";
 import { useStaffGate } from "../hooks/useStaffGate.js";
+import PriceLine, { listingPriceAmounts } from "./PriceLine.jsx";
+import { useCanBuy } from "../hooks/useCanBuy.js";
 import ScrollSpyTabs from "./ScrollSpyTabs.jsx";
 import StaffGateNotice from "./StaffGateNotice.jsx";
 import BookingTermsNote from "./BookingTermsNote.jsx";
@@ -99,6 +101,9 @@ export default function ListingDetailPage({
   // marketplace), but Book / Request / Add to Cart show the shared staff
   // notice instead of proceeding.
   const staffGate = useStaffGate(user);
+  // Before the marketplace opens, Add to Cart and Book are greyed with
+  // "Opens <D Mon>" unless this account may buy (see useCanBuy).
+  const { canBuy, label: opensLabel } = useCanBuy();
 
   if (isLoading) {
     return (
@@ -132,11 +137,6 @@ export default function ListingDetailPage({
   // at click time by staffGate above.
   const isBusinessAccount = !!user && !staffGate.isStaff && user.accountType !== "customer";
   const tabs = isService ? SERVICE_TABS : PRODUCT_TABS;
-
-  const displayPrice = () => {
-    if (item.price_amount == null) return null;
-    return `GHS ${item.price_amount}${item.price_unit || ""}`;
-  };
 
   const renderSection = (tabId) => {
     switch (tabId) {
@@ -172,7 +172,7 @@ export default function ListingDetailPage({
       <div style={{ display: "flex", gap: 28, flexWrap: "wrap", marginTop: 16 }}>
         {/* Gallery */}
         <div style={{ flex: "1 1 380px", minWidth: 300 }}>
-          <div style={{ height: 340, borderRadius: 16, overflow: "hidden", position: "relative", background: `linear-gradient(135deg,${accentColor}22,${accentColor}44)` }}>
+          <div style={{ height: 340, borderRadius: 16, overflow: "hidden", position: "relative", background: `linear-gradient(135deg,${tint(accentColor, "22")},${tint(accentColor, "44")})` }}>
             {gallery.length > 0 ? (
               <img src={gallery[galleryIndex]} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             ) : (
@@ -228,8 +228,9 @@ export default function ListingDetailPage({
               {item.tag}
             </span>
           )}
-          {displayPrice() && (
-            <div style={{ color: accentColor, fontWeight: 900, fontSize: "1.15rem", marginBottom: 14 }}>{displayPrice()}</div>
+          {/* effective_price (sale while live), only was_price struck through — the DealsRow rule. */}
+          {listingPriceAmounts(item).current != null && (
+            <div style={{ marginBottom: 14 }}><PriceLine item={item} tone="dark" size="1.15rem" /></div>
           )}
           <FlashPriceTag listingId={item.id} />
 
@@ -274,10 +275,10 @@ export default function ListingDetailPage({
                 {checkIn && <BookingTermsNote kind="stay" policy={item.cancellation_policy} start={stayStart(checkIn, bookingTerms.data?.stay_check_in_time)} />}
                 {bookingError && <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{bookingError}</div>}
                 <button
-                  disabled={booking || !checkIn || !checkOut}
+                  disabled={booking || !checkIn || !checkOut || !canBuy}
                   onClick={async () => {
                     setBookingError(null);
-                    if (staffGate.blocked()) return;
+                    if (!canBuy || staffGate.blocked()) return;
                     if (!user) { setBookingError("Sign in as a customer to book."); return; }
                     setBooking(true);
                     try {
@@ -291,9 +292,9 @@ export default function ListingDetailPage({
                       setBooking(false);
                     }
                   }}
-                  style={{ width: "100%", minHeight: 44, background: checkIn && checkOut ? C.gold : "rgba(255,255,255,0.08)", color: checkIn && checkOut ? C.darkBrown : "rgba(255,255,255,0.45)", border: "none", borderRadius: 20, fontSize: "0.82rem", fontWeight: 900, cursor: checkIn && checkOut ? "pointer" : "not-allowed", fontFamily: "inherit" }}
+                  style={{ width: "100%", minHeight: 44, background: canBuy && checkIn && checkOut ? C.gold : "rgba(255,255,255,0.08)", color: canBuy && checkIn && checkOut ? C.darkBrown : "rgba(255,255,255,0.45)", border: "none", borderRadius: 20, fontSize: "0.82rem", fontWeight: 900, cursor: canBuy && checkIn && checkOut ? "pointer" : "not-allowed", fontFamily: "inherit" }}
                 >
-                  {booking ? "Booking…" : item.price_amount != null ? `Book · GHS ${item.price_amount}/night` : "Book"}
+                  {!canBuy ? opensLabel : booking ? "Booking…" : item.price_amount != null ? `Book · GHS ${item.price_amount}/night` : "Book"}
                 </button>
               </div>
             )
@@ -362,10 +363,10 @@ export default function ListingDetailPage({
           </div>
           ) : (
           <button
-            disabled={addingToCart || item.price_amount == null || !onAddToCart}
+            disabled={addingToCart || item.price_amount == null || !onAddToCart || !canBuy}
             title={item.price_amount == null ? "This listing has no price set" : undefined}
             onClick={async () => {
-              if (!onAddToCart) return;
+              if (!onAddToCart || !canBuy) return;
               setCartError(null);
               if (staffGate.blocked()) return;
               setAddingToCart(true);
@@ -383,17 +384,17 @@ export default function ListingDetailPage({
               marginTop: 16,
               width: "100%",
               minHeight: 44,
-              background: item.price_amount == null ? "rgba(255,255,255,0.08)" : addedToCart ? C.kente2 : C.gold,
-              color: item.price_amount == null ? "rgba(255,255,255,0.45)" : addedToCart ? "white" : C.darkBrown,
-              border: item.price_amount == null ? "1px solid rgba(255,255,255,0.15)" : "none",
+              background: item.price_amount == null || !canBuy ? "rgba(255,255,255,0.08)" : addedToCart ? C.kente2 : C.gold,
+              color: item.price_amount == null || !canBuy ? "rgba(255,255,255,0.45)" : addedToCart ? "white" : C.darkBrown,
+              border: item.price_amount == null || !canBuy ? "1px solid rgba(255,255,255,0.15)" : "none",
               borderRadius: 20,
               fontSize: "0.82rem",
               fontWeight: 900,
-              cursor: item.price_amount == null ? "not-allowed" : "pointer",
+              cursor: item.price_amount == null || !canBuy ? "not-allowed" : "pointer",
               fontFamily: "inherit",
             }}
           >
-            {addingToCart ? "Adding…" : addedToCart ? "Added to Cart ✓" : item.price_amount == null ? "No Price Set" : "Add to Cart"}
+            {!canBuy ? opensLabel : addingToCart ? "Adding…" : addedToCart ? "Added to Cart ✓" : item.price_amount == null ? "No Price Set" : "Add to Cart"}
           </button>
           )}
           {cartError && (
@@ -892,7 +893,7 @@ function MoreOptionsSection({ related, onOpenListing, label }) {
                 <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.7rem" }}>{r.zone?.name}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {r.price_amount != null && <span style={{ color: C.gold, fontWeight: 800, fontSize: "0.82rem" }}>GHS {r.price_amount}{r.price_unit || ""}</span>}
+                {r.price_amount != null && <span style={{ color: C.lightGold, fontWeight: 800, fontSize: "0.82rem" }}>GHS {r.price_amount}{r.price_unit || ""}</span>}
                 <button onClick={() => onOpenListing && onOpenListing(r.id)} style={viewBtnStyle}>View</button>
               </div>
             </div>

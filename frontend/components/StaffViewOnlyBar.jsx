@@ -17,7 +17,7 @@ export default function StaffViewOnlyBar({ onBackToDashboard, onSignOut }) {
       position: "fixed", top: 0, left: 0, right: 0, zIndex: 150, height: STAFF_VIEW_ONLY_BAR_HEIGHT, boxSizing: "border-box",
       display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
       paddingLeft: "max(12px, env(safe-area-inset-left, 0px))", paddingRight: "max(12px, env(safe-area-inset-right, 0px))",
-      background: C.cream, color: C.darkBrown, borderBottom: `1px solid ${C.gold}66`,
+      background: C.canvas, color: C.ink, borderBottom: `1px solid ${C.gold}66`,
       fontSize: "0.74rem",
     }}>
       <span style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
@@ -25,7 +25,7 @@ export default function StaffViewOnlyBar({ onBackToDashboard, onSignOut }) {
         <span className="ah-staff-bar-short">Staff · view only</span>
       </span>
       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-        <button type="button" aria-label="Back to dashboard" onClick={onBackToDashboard} style={{ ...barButton, background: C.white, border: `1px solid ${C.gold}66` }}>
+        <button type="button" aria-label="Back to dashboard" onClick={onBackToDashboard} style={{ ...barButton, background: C.surface, border: `1px solid ${C.gold}66` }}>
           <span className="ah-staff-bar-long">Back to dashboard</span>
           <span className="ah-staff-bar-short">Dashboard</span>
         </button>
@@ -45,6 +45,6 @@ export default function StaffViewOnlyBar({ onBackToDashboard, onSignOut }) {
 }
 
 const barButton = {
-  color: C.darkBrown, borderRadius: 999, padding: "0 12px", minHeight: 30,
+  color: C.ink, borderRadius: 999, padding: "0 12px", minHeight: 30,
   fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
 };

@@ -64,10 +64,10 @@ one deliberate pairing across the whole app.
 - **Draft/neutral:** `#8A7A6B` (warm gray, listing "draft" status — the other non-`C` hex).
 - **Staff role accents** (`components/admin/theme.js` `ROLE_ACCENTS`, the role chip + active-nav mark) reuse palette tokens — super admin = gold, admin = kente navy, accountant = kente red, marketing = kente green, support = `ghGreen`, scout = dark brown, delivery manager = deep gold, dispatch = orange — and **identify a role, not a status**: a red accountant chip is not an error, an orange dispatch chip is not "pending".
 - **Borders:** gold at low opacity — `#D4A01733` light / `#D4A01740` dark.
-- **Dark mode:** already defined in `index.css` `.dark` — page `#160E08` (`C.void`), text `#F5DEB3`, cards `#2C1810`, same gold primary. Toggle lives on the public Navbar only; dashboards are always-light by design.
+- **Dark mode (every page — owner decision 2026-10-19):** page `#160E08` (`C.void`), cards `#2C1810`, recessed well `#3D281A`, text `#F5DEB3` (dim/faint as light-gold alphas), same gold primary; kente green/red/navy retuned for contrast on brown (`#2F9E2F` / `#E03A3A` / `#9A9AFF`). Customer, business, staff and public pages all follow the toggle (header toggle on the public site; a toggle in the business, staff and account top bars); the first visit follows the device. Implemented as `--ah-*` CSS variables (`index.css`, mirrored in `theme.js` `THEME_TOKENS`) read through `C`'s theme tokens (`C.canvas`, `C.surface`, `C.ink`, `C.price`, `C.trust`, …) and `D`. QR codes stay on white (`C.paper`); photos are never inverted.
 
 ### Trust-surface color rules (non-negotiable)
-- **Prices, totals, checkout amounts:** dark-brown text, tabular figures, **zero decoration**. Money must look like money. Never gold, never on a pattern.
+- **Prices, totals, checkout amounts:** dark-brown text (`C.price`; light gold `#F5DEB3` on dark surfaces), tabular figures, **zero decoration**. Money must look like money. Never gold, never on a pattern.
 - **Verification badges:** kente-**green** check as the mark, **neutral chrome** (cream/white field, thin border, "Verified business" label). **Never gold** — gold is the brand/promoted color, so a gold "verified" badge blurs *trusted* with *paid-to-be-here*. **Verification and advertising must look different.**
 - **Checkout / payment / KYC forms:** near-neutral, cream canvas, white cards, one gold confirm button, generous space. Calm = trustworthy.
 - **Never** a kente pattern behind body text, prices, or data tables.
@@ -109,8 +109,8 @@ trust grows. It answers "is this a real Kumasi business?" at a glance.
 - Avoid generic AI slop: no purple gradient heroes, no 3-column icon-in-a-circle grids, no centered-everything, no gradient CTA buttons, no `system-ui` as the display/body star.
 
 ## Implementation Notes (where things live)
-- `frontend/theme.js` → `C` palette + `CURRENCIES` (single source of truth for inline-styled surfaces).
-- `frontend/components/dashboard/theme.js` → `D` (light "artisan" mirror of `C`), `glassCard`, `sectionTitle`, `CHART`, status-meta maps, `ghs()`.
+- `frontend/theme.js` → `C` palette + `CURRENCIES` (single source of truth for inline-styled surfaces). Brand keys are fixed hex; theme keys (`canvas`, `surface`, `ink`, `price`, …) are `var(--ah-*)` and follow light/dark; `tint(color, "22")` replaces hex-alpha suffixes for them.
+- `frontend/components/dashboard/theme.js` → `D` ("artisan" mirror of `C`, theme-aware), `glassCard`, `sectionTitle`, `CHART`, status-meta maps, `ghs()`.
 - `frontend/index.css` → shadcn/Tailwind CSS-var tokens (`:root` light, `.dark`, `.command-center`), remapped from generic Nova to `C`. **Keep in sync with `C` by hand** — no automated bridge.
 - Two token systems coexist by design: inline-style `C`/`D` (legacy customer + dashboard surfaces) and Tailwind/shadcn (new `components/ui/*.tsx`, `shadcn-scope`-wrapped). The typography change touches both: the global font stacks and `index.css`'s `@theme --font-sans`.
 
@@ -122,3 +122,4 @@ trust grows. It answers "is this a real Kumasi business?" at a glance.
 | 2026-07-18 | Typography: Fraunces + Plus Jakarta Sans (retire Geist/Georgia/browser-default) | The real gap — no global font today. One editorial serif + one legible workhorse sans with tabular figures delivers "premium shell, trustworthy core." |
 | 2026-07-18 | Verified badge is kente-green + neutral, never gold | Gold is the brand/promoted color; a gold "verified" badge would blur trusted with paid. Verification and advertising must look different. |
 | 2026-07-18 | Verified-tier kente band documented as Phase 2 principle | Ownable trust pattern; deferred as net-new component on a hardening branch. |
+| 2026-10-19 | Dark mode on every page (customer, business, staff, public), default follows the device | Owner decision for launch (plan M1B task 4). Palette hues unchanged; only the surface/text tokens flip, kente status hues get dark-surface retunes, prices go light gold on dark, QR codes stay on white. |

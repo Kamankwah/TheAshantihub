@@ -38,7 +38,10 @@ class PublicBrowsingTests(TestCase):
         # kind=event categories (0012_seed_event_categories.py, Phase 6) + beverages (0020).
         response = self.client.get("/api/listings/categories/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()), 21)
+        # The flat list also carries the department tree (listings 0023); the 21 pre-tree rows are all still in it.
+        from listings.department_seed import DEPARTMENTS, sub_slug
+        seeded = {d[0] for d in DEPARTMENTS} | {sub_slug(d[0], s) for d in DEPARTMENTS for s in d[4]}
+        self.assertEqual(len([c for c in response.json() if c["slug"] not in seeded]), 21)
 
     def test_categories_endpoint_includes_kind(self):
         # The frontend's Products/Services category split (Phase 3) groups

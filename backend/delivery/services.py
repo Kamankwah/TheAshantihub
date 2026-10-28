@@ -179,32 +179,161 @@ def _code_matches(expected, given):
 
 
 # ── Assigning ──────────────────────────────────────────────────────────────────────────────────
+def not_due_error(order):
+    from accounts.hours import ACCRA
+
+    when = order.ready_not_before.astimezone(ACCRA).strftime("%a %d %b, %H:%M")
+    return DeliveryError(f"The business opens {when}; this delivery is held until then and cannot be assigned yet.", 409, "not_due")
+
+
+def is_held(order, now=None):
+    """Held = a vendor was closed at purchase and the opening is still ahead (the rule assign() and board.waiting_orders use)."""
+    return order.ready_not_before is not None and order.ready_not_before > (now or timezone.now())
+
+
+def send_early(order_id, staff, reason, *, request=None):
+    """A delivery manager releases a held order before the vendors open: ready_not_before becomes now, so the order joins the
+    queue and the customer's "delivery starts" time moves up. Only a paid door-to-door order that is still held (and not
+    wholly refunded). The decision is logged (delivery.early_send: who, when, why) and the customer told, once: a second
+    call finds the order no longer held and answers 409 not_held, changing nothing.
+    Lock order: the order row only (the same first lock refunds and release take), then nothing else is locked."""
+    from activity.services import record
+    from orders.models import Order
+
+    reason = (reason or "").strip()
+    if len(reason) < 3:
+        raise DeliveryError("Give a reason of at least 3 characters.", 400, "reason_required")
+    reason = reason[:200]
+    with transaction.atomic():
+        order = Order.objects.select_for_update(of=("self",)).get(pk=order_id)
+        if order.status != Order.PAID or order.delivery_method != Order.DOOR_TO_DOOR or order.refunds.filter(whole=True).exists():
+            raise DeliveryError("Only a paid door-to-door order that has not been refunded can be sent early.", 409, "not_sendable")
+        now = timezone.now()
+        if not is_held(order, now):
+            raise DeliveryError("This order is not being held for an opening time.", 409, "not_held")
+        before = order.ready_not_before
+        order.ready_not_before = now
+        order.save(update_fields=["ready_not_before"])
+        notify_customer(
+            order.customer, "order_status", "Your order is being sent now",
+            body=f"Order #{order.id} is being sent now.", link="/my-account", icon="🚚",
+        )
+        # record() takes the global activity advisory lock until commit, so it is the last call in the transaction.
+        record(
+            staff, "delivery.early_send", target=order, request=request, method="POST",
+            summary=f"Sent early: {reason}"[:300], before={"ready_not_before": before.isoformat()}, after={"ready_not_before": now.isoformat(), "reason": reason},
+        )
+    return order
+
+
+IN_HOUSE_ONLY_MESSAGE = "A re-assigned delivery is done by AshantiHub's own riders."
+FALLBACK_NOTE = "Third-party rider: no AshantiHub rider was available for this re-assigned delivery."
+
+
+def is_reassignment(existing):
+    """True when the order's assignment `existing` (or None) has been accepted or taken further, or has failed: giving it
+    to a different rider is a re-assignment (Plan 7F-E Task 6). A job still waiting to be accepted is ordinary dispatch."""
+    from orders.models import DeliveryAssignment
+
+    return existing is not None and existing.status != DeliveryAssignment.ASSIGNED
+
+
+def third_party_reassignment(existing, rider):
+    """True when giving `existing` to `rider` (a Rider row, or None for a dispatch with no rider profile, who counts as
+    AshantiHub's own) is a re-assignment to a rider who is not AshantiHub's own."""
+    return (
+        is_reassignment(existing) and rider is not None and existing.dispatch_id != rider.staff_id
+        and rider.employment != Rider.ASHANTIHUB
+    )
+
+
+def reassignment_refused(existing, rider, order, now=None):
+    """True when a re-assignment to a third-party rider must be refused: AshantiHub's own riders come first (Plan 7F-E
+    Task 6, Ruling R3), and a third-party rider may take a re-assigned delivery only while none of them is available for
+    the order (Director ruling 2, 2026-10-20: dispatching.in_house_available). The one test that assign, the ranking and a
+    manager's offer all use. A paid re-delivery at the customer's request stays in-house only (redelivery.check_assign)."""
+    if not third_party_reassignment(existing, rider):
+        return False
+    from .dispatching import in_house_available
+
+    return in_house_available(order, now=now)
+
+
+def _log_fallback(order, rider_staff, assigned_by, previous_rider_id, previous_status):
+    """The activity record of a third-party fallback, written after commit so the global activity lock is never held
+    while the assigning path takes further row locks (as delivery.redelivery does)."""
+    from activity.services import record
+
+    after = {
+        "order": order.pk, "rider": rider_staff.pk, "previous_rider": previous_rider_id, "previous_status": previous_status,
+        "reason": "no_in_house_rider_available",
+    }
+    transaction.on_commit(lambda: record(
+        assigned_by, "delivery.reassigned_third_party", target_type="orders.order", target_id=str(order.pk),
+        target_label=f"Order #{order.pk}", summary=f"Order #{order.pk} re-assigned to a third-party rider: no AshantiHub rider was available",
+        after=after,
+    ))
+
+
+def in_house_only_error():
+    return DeliveryError(IN_HOUSE_ONLY_MESSAGE, 409, "redelivery_in_house_only")
+
+
 def assign(order, rider_staff, assigned_by, *, mode):
     """Give a paid door-to-door order to a rider (one assignment per order). Creates the four-digit
     codes the first time and stamps an ``assigned`` event. Re-assigning before the rider has picked up
-    swaps the rider and starts the job again; once the goods are picked up it is refused."""
+    swaps the rider and starts the job again; once the goods are picked up it is refused. `order` must be
+    locked by the caller (orders.locks.lock_order: the order row before its assignment).
+
+    A re-assignment (Plan 7F-E Task 6, owner Ruling R3) is a job the first rider had accepted or taken further, or one
+    that failed, given to a different rider: it goes to AshantiHub's own riders while one is available (409
+    redelivery_in_house_only), and only when none is may a third-party rider take it (Director ruling 2: the fallback is
+    noted on the assigned event and in the activity log, delivery.reassigned_third_party). It ends the first rider's leg,
+    and the rider who completes the trip is the one paid. A failure where the customer was not available
+    (delivery.redelivery) is re-assigned only once the customer paid the re-delivery fee, to an AshantiHub rider. Any
+    reset of the job (a swap, or a failed job given again) clears the assignment's pickup stamp and the reopened stops'
+    collection stamps, so the first leg's pickup counts for no one (ledger.riders.pickup_made); it stays in the
+    append-only DeliveryEvent rows. A swap of a job still waiting to be accepted is ordinary dispatch, open to any rider."""
+    from orders import locks
     from orders.models import DeliveryAssignment
 
     now = timezone.now()
-    existing = DeliveryAssignment.objects.select_for_update().filter(order=order).first()
+    if is_held(order, now):
+        raise not_due_error(order)
+    existing = locks.lock_assignment(order)
     previous_reason = existing.failed_reason if existing is not None else ""
     failed = existing is not None and existing.status == DeliveryAssignment.FAILED  # read before the reset below changes it
     if existing is not None and existing.status not in (
         DeliveryAssignment.ASSIGNED, DeliveryAssignment.ACCEPTED, DeliveryAssignment.AT_PICKUP, DeliveryAssignment.FAILED,
     ):
         raise DeliveryError("This delivery is already on the road or finished, so it cannot be given to another rider.", 409, "not_reassignable")
-    assignment = existing or DeliveryAssignment(order=order)
     swapped = existing is not None and existing.dispatch_id != rider_staff.pk
+    rider = Rider.objects.filter(staff=rider_staff).select_related("vehicle").first()
+    if reassignment_refused(existing, rider, order, now):
+        raise in_house_only_error()
+    # Allowed: no AshantiHub rider is available (Director ruling 2). A swap of a paid re-delivery's second trip is one too.
+    fallback = third_party_reassignment(existing, rider)
+    previous_rider_id, previous_status = (existing.dispatch_id, existing.status) if existing is not None else (None, None)
+    from . import redelivery
+
+    # Re-delivery at the customer's request (Plan 7F-E Task 7): a customer-unavailable failure waits for the paid fee
+    # (409 redelivery_fee_unpaid) and the second trip is an AshantiHub rider's while one is available (409
+    # redelivery_in_house_only; Director ruling 2). Checked, with the request's row locked (after the assignment row),
+    # before anything below writes.
+    serving = redelivery.check_assign(order, existing, rider)
+    fallback = fallback or (
+        serving is not None and serving.rider_id != rider_staff.pk and rider is not None and rider.employment != Rider.ASHANTIHUB
+    )
+    assignment = existing or DeliveryAssignment(order=order)
     assignment.dispatch = rider_staff
     assignment.assigned_by = assigned_by
     assignment.assignment_mode = mode
     if existing is None or swapped or existing.status == DeliveryAssignment.FAILED:
         assignment.status = DeliveryAssignment.ASSIGNED
-        for field in ("accepted_at", "arrived_pickup_at", "arrived_drop_at", "failed_at"):
+        for field in ("accepted_at", "arrived_pickup_at", "arrived_drop_at", "failed_at", "picked_up_at", "picked_up_by"):
             setattr(assignment, field, None)
         assignment.failed_reason = assignment.failed_note = ""
         assignment.pickup_code_attempts = assignment.drop_code_attempts = 0
-    rider = Rider.objects.filter(staff=rider_staff).select_related("vehicle").first()
     if rider is not None and rider.vehicle_id:
         assignment.vehicle_id = rider.vehicle_id
     from . import stops
@@ -222,7 +351,12 @@ def assign(order, rider_staff, assigned_by, *, mode):
     stops.ensure_stops(assignment)
     if existing is not None and (swapped or failed):
         stops.reopen_for_new_rider(assignment, failed=failed, all_skipped=previous_reason == ALL_STOPS_SKIPPED)
-    DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.ASSIGNED, at=now, by=assigned_by)
+    DeliveryEvent.objects.create(
+        assignment=assignment, step=DeliveryEvent.ASSIGNED, at=now, by=assigned_by, note=FALLBACK_NOTE if fallback else "",
+    )
+    redelivery.link_rider(serving, rider_staff, assigned_by)
+    if fallback:
+        _log_fallback(order, rider_staff, assigned_by, previous_rider_id, previous_status)
     return assignment
 
 
@@ -321,8 +455,8 @@ def pickup(assignment, rider_staff, code, lat, lng, accuracy):
     last = len(stops.open_stops(assignment)) == 1
     step = DeliveryEvent.PICKED_UP if last else DeliveryEvent.COLLECTED_STOP
     event = _stamp(assignment, step, rider_staff, (stop.lat, stop.lng), lat, lng, accuracy, at_stop=stop)
-    stop.status, stop.collected_at = PickupStop.COLLECTED, event.at
-    stop.save(update_fields=["status", "collected_at"])
+    stop.status, stop.collected_at, stop.collected_by_id = PickupStop.COLLECTED, event.at, assignment.dispatch_id
+    stop.save(update_fields=["status", "collected_at", "collected_by"])
     _after_stop(assignment, stop, rider_staff, event.at, left_shop=True)
     return event
 
@@ -352,8 +486,16 @@ def _after_stop(assignment, stop, by, at, *, left_shop, summary_event=False):
         return
     if summary_event:
         DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.PICKED_UP, at=at, by=by, note="The last shop was skipped.")
-    assignment.status, assignment.picked_up_at = DeliveryAssignment.PICKED_UP, at
-    assignment.save(update_fields=["status", "picked_up_at"])
+    # The pickup belongs to the rider on the job (not to a manager whose skip ended the pickups), but only when that rider
+    # collected a stop of their own: after a mid-route swap the goods may all be an earlier rider's, whose leg has ended, so
+    # the stamp names that rider and counts for no one (ledger.riders.pickup_made; Plan 7F-E Task 6).
+    collected = assignment.stops.filter(status=PickupStop.COLLECTED)
+    if collected.filter(collected_by_id=assignment.dispatch_id).exists():
+        by_id = assignment.dispatch_id
+    else:
+        by_id = collected.exclude(collected_by=None).order_by("sequence").values_list("collected_by_id", flat=True).first()
+    assignment.status, assignment.picked_up_at, assignment.picked_up_by_id = DeliveryAssignment.PICKED_UP, at, by_id
+    assignment.save(update_fields=["status", "picked_up_at", "picked_up_by"])
     _sync(assignment)
 
 
@@ -506,6 +648,9 @@ def deliver(assignment, rider_staff, code, lat, lng, accuracy):
 
     snapshot_rider_pay(assignment)
     _sync(assignment)
+    from . import redelivery
+
+    redelivery.complete(assignment, event.at)     # a second trip at the customer's request: its fee is earned (Plan 7F-E Task 7)
     notify_customer(
         assignment.order.customer, "order_status", "Your order has been delivered",
         body=f"Order #{assignment.order_id} has been delivered. Please confirm you received it.", link="/my-account", icon="📦",
@@ -570,6 +715,10 @@ def cant_deliver(assignment, rider_staff, reason, note, lat, lng, accuracy):
     assignment.failed_reason = reason
     assignment.failed_note = (note or "")[:500]
     assignment.save(update_fields=["status", "failed_at", "failed_reason", "failed_note"])
+    from . import redelivery
+
+    # A second trip at the customer's request that fails after its rider collected the goods keeps its fee (Plan 7F-E Task 7).
+    redelivery.complete(assignment, event.at)
     dispute = open_case_for_failed_delivery(assignment)
     manager = rider_staff.manager
     if manager is not None and manager.is_active:
@@ -712,11 +861,11 @@ def legacy_pickup(assignment, rider_staff, code):
         _check_stop_code(assignment, rows[0], code)
     now = timezone.now()
     if rows:
-        rows[0].status, rows[0].collected_at = PickupStop.COLLECTED, now
-        rows[0].save(update_fields=["status", "collected_at"])
+        rows[0].status, rows[0].collected_at, rows[0].collected_by_id = PickupStop.COLLECTED, now, assignment.dispatch_id
+        rows[0].save(update_fields=["status", "collected_at", "collected_by"])
     assignment.status = DeliveryAssignment.PICKED_UP
-    assignment.picked_up_at = now
-    assignment.save(update_fields=["status", "picked_up_at"])
+    assignment.picked_up_at, assignment.picked_up_by_id = now, assignment.dispatch_id
+    assignment.save(update_fields=["status", "picked_up_at", "picked_up_by"])
     DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.PICKED_UP, at=now, by=rider_staff, stop=rows[0] if rows else None)
     _sync(assignment)
 
@@ -736,6 +885,9 @@ def legacy_deliver(assignment, rider_staff, code):
     snapshot_rider_pay(assignment)
     DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.DELIVERED, at=now, by=rider_staff)
     _sync(assignment)
+    from . import redelivery
+
+    redelivery.complete(assignment, now)          # a second trip at the customer's request: its fee is earned (Plan 7F-E Task 7)
     notify_customer(
         assignment.order.customer, "order_status", "Your order has been delivered",
         body=f"Order #{assignment.order_id} has been delivered. Please confirm you received it.", link="/my-account", icon="📦",

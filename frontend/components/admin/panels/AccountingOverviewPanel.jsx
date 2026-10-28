@@ -28,7 +28,7 @@ function Tile({ label, value, sub, subColor, onClick }) {
   );
 }
 
-const warn = "#A33A00";
+const warn = D.warnInk;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 export default function AccountingOverviewPanel({ auth, onNavigate }) {

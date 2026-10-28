@@ -26,7 +26,7 @@ from otp import step_up
 from staffsecurity import signin as signin_log
 from staffsecurity.models import StaffSignInRecord
 
-from . import claims, kyc, sessions, two_factor
+from . import claims, hours, kyc, sessions, two_factor
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
 from .models import (
@@ -47,8 +47,11 @@ from .permissions import (
     can_lead_team,
     can_manage_staff,
 )
+from storefront import opening
 from .phones import filter_by_phone, phone_key
 from .serializers import (
+    BusinessHoursSerializer,
+    hours_payload,
     INVITE_TOKEN_LIFETIME,
     invite_state,
     BusinessOwnerKYCDetailSerializer,
@@ -117,6 +120,7 @@ def me(request):
         )
         data["email"] = request.user.email
         data["phone"] = request.user.phone
+    data["can_buy"] = opening.can_buy(request.user)  # a Customer before opening is False; everyone else True
     return Response(data)
 
 
@@ -744,7 +748,7 @@ class HolderDetailsGuard:
                 {"detail": "That is already the current value.", "code": "no_change"}, status=status.HTTP_400_BAD_REQUEST,
             )
         if changed:
-            RequiresSudo().has_permission(request, self)
+            sessions.require_sudo(request)  # raises 403 sudo_required
         # The message and the response never echo what was sent but not applied.
         serializer.initial_data = {key: value for key, value in request.data.items() if not holder_details.protected(instance, key)}
         raw = getattr(request, "_request", request)
@@ -1394,6 +1398,62 @@ class PayoutDetailUpdateView(generics.UpdateAPIView):
             return super().update(request, *args, **kwargs)
 
 
+def _detail_change_refused(exc):
+    return Response({"detail": exc.message, "code": exc.code}, status=exc.status_code)
+
+
+class OwnerDetailChangeListCreateView(APIView):
+    """A business asks to change its owner's name, sign-in phone or email (plan 7F-C R3; portfolio.detail_changes).
+    GET lists its requests (contacts masked); POST {field, new_value, reason} files one: 201, or 400/409 {detail, code}.
+    While the ledger is on a step-up code is always asked (detail_change). The view records its own event, without the
+    raw value."""
+
+    permission_classes = [IsBusinessOwner]
+    activity_exempt = True
+    throttle_scope = "owner_detail_change"
+
+    def get_throttles(self):
+        return super().get_throttles() if self.request.method == "POST" else []
+
+    def get(self, request):
+        from portfolio import detail_changes
+        from portfolio.models import BusinessDetailChangeRequest
+
+        rows = BusinessDetailChangeRequest.objects.filter(business_owner=request.user).select_related("assigned_scout")
+        return Response({"results": [detail_changes.row(change) for change in rows]})
+
+    def post(self, request):
+        from portfolio import detail_changes
+
+        body = request.data if isinstance(request.data, dict) else {}
+        try:
+            with transaction.atomic():
+                step_up.require(request, step_up.DETAIL_CHANGE, force=escrow.enabled())
+                change = detail_changes.request_change(
+                    request.user, body.get("field"), body.get("new_value"), body.get("reason"), http_request=request,
+                )
+        except detail_changes.DetailChangeError as exc:
+            return _detail_change_refused(exc)
+        return Response(detail_changes.row(change), status=status.HTTP_201_CREATED)
+
+
+class OwnerDetailChangeWithdrawView(APIView):
+    """POST: the business withdraws its own request while it is requested or assigned (404 / 409 otherwise)."""
+
+    permission_classes = [IsBusinessOwner]
+    activity_exempt = True
+
+    def post(self, request, pk):
+        from portfolio import detail_changes
+
+        try:
+            with transaction.atomic():
+                change = detail_changes.withdraw(request.user, pk, http_request=request)
+        except detail_changes.DetailChangeError as exc:
+            return _detail_change_refused(exc)
+        return Response(detail_changes.row(change))
+
+
 class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
     serializer_class = BusinessOwnerProfileUpdateSerializer
     permission_classes = [IsBusinessOwner]
@@ -1401,6 +1461,35 @@ class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user.profile
+
+
+class BusinessHoursView(APIView):
+    """GET/PUT /api/accounts/business/hours/ — the signed-in business's own weekly opening hours.
+    PUT replaces the whole week; a rule broken answers 400 {"detail": ...} in plain words."""
+
+    permission_classes = [IsBusinessOwner]
+
+    def _body(self, owner):
+        return {"days": hours_payload(owner), "has_hours": hours.has_hours(owner)}
+
+    def get(self, request):
+        return Response(self._body(request.user))
+
+    def put(self, request):
+        serializer = BusinessHoursSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"detail": _first_message(serializer.errors)}, status=400)
+        try:
+            hours.set_week(request.user, serializer.validated_data["days"])
+        except hours.HoursError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(self._body(request.user))
+
+
+def _first_message(errors):
+    while isinstance(errors, (dict, list)) and errors:
+        errors = next(iter(errors.values())) if isinstance(errors, dict) else errors[0]
+    return str(errors)
 
 
 class CustomerProfileUpdateView(generics.RetrieveUpdateAPIView):
@@ -1489,6 +1578,11 @@ class TermsAcceptView(APIView):
         if owner.compute_registration_step() != "terms":
             return Response(
                 {"registration_step": "Business and payment information must be complete before accepting terms."},
+                status=400,
+            )
+        if not hours.has_hours(owner):
+            return Response(
+                {"code": "hours_required", "detail": "Enter your weekly opening hours before you submit."},
                 status=400,
             )
         profile = owner.profile

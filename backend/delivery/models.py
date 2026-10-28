@@ -240,6 +240,8 @@ class PickupStop(models.Model):
     planned_arrival = models.DateTimeField(null=True, blank=True)
     arrived_at = models.DateTimeField(null=True, blank=True)
     collected_at = models.DateTimeField(null=True, blank=True)
+    # The rider on the job when this stop was collected (Plan 7F-E Task 6); cleared with collected_at when the stop reopens.
+    collected_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     skip_note = models.CharField(max_length=500, blank=True)
     skipped_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     dispute = models.OneToOneField("disputes.Dispute", null=True, blank=True, on_delete=models.SET_NULL, related_name="pickup_stop")
@@ -517,13 +519,23 @@ class RiderCommissionPosting(models.Model):
 
 class RiderEarning(models.Model):
     """What a third-party rider earned for one order (spec §2.2 step 2(c), §7): the delivery fee AshantiHub took at the
-    order's release (`gross_pesewas`: the fee the customer paid plus a fee the business covered with its free-delivery
-    promo), split at `commission_bp` (the rate in force when the order was paid) into `reserve_pesewas`, held until the
+    order's release or, for a whole refund after a pickup, at that refund (`gross_pesewas`: the fee the customer paid plus
+    a fee the business covered with its free-delivery promo), split at `commission_bp` (the rate in force when the order was paid) into `reserve_pesewas`, held until the
     end of `earned_on` (Accra), and `net_pesewas`, withdrawable at once. Written in the release's transaction (journal
-    order-rider-<order>); afterwards only the end-of-day posting (`commission_posting`) and a reversal on a whole refund
-    after release (`reversed_at`, `reversal_journal`) are written to it."""
+    order-rider-<order>) or the refund's; afterwards only the end-of-day posting (`commission_posting`) is written to it.
+    `reversed_at` and `reversal_journal` are unused historical columns, always null: the delivery fee belongs to the rider
+    once a pickup is done, so no refund ever takes it back (Plan 7F-D).
 
-    order = models.OneToOneField("orders.Order", on_delete=models.PROTECT, related_name="rider_earning")
+    A row is for exactly one fee: an order's ORIGINAL delivery fee (`order`, journal order-rider-<order>), or the fee of a
+    re-delivery at the customer's request whose second trip a third-party rider made as the fallback when no in-house
+    rider was available (`redelivery`, journal redelivery-rider-<id>; Director ruling 2, 2026-10-20; ledger.redelivery).
+    So an order has at most one original-fee row (anything that asks "was a rider paid this order's delivery fee" reads
+    `order`) and one row per re-delivery, and the end-of-day commission posting takes both kinds alike."""
+
+    order = models.OneToOneField("orders.Order", null=True, blank=True, on_delete=models.PROTECT, related_name="rider_earning")
+    redelivery = models.OneToOneField(
+        "delivery.Redelivery", null=True, blank=True, on_delete=models.PROTECT, related_name="rider_earning",
+    )
     rider = models.ForeignKey(Rider, on_delete=models.PROTECT, related_name="earnings")
     gross_pesewas = models.BigIntegerField()
     commission_bp = models.PositiveIntegerField()
@@ -552,4 +564,74 @@ class RiderEarning(models.Model):
                 condition=models.Q(gross_pesewas=models.F("reserve_pesewas") + models.F("net_pesewas")),
                 name="delivery_rider_earning_adds_up",
             ),
+            models.CheckConstraint(
+                condition=models.Q(order__isnull=False, redelivery__isnull=True) | models.Q(order__isnull=True, redelivery__isnull=False),
+                name="delivery_rider_earning_one_fee",
+            ),
         ]
+
+
+# ── Re-delivery at the customer's request (Plan 7F-E Task 7, owner Rulings R4/R5; rules in delivery.redelivery) ─────
+class Redelivery(models.Model):
+    """The customer was not at the address when the first rider completed the trip (the assignment failed `no_answer`
+    after `arrived_drop_at`), the goods came back, and Support or the Pickup Desk asked, at the customer's request, for
+    the order to be delivered again. The customer pays `fee_pesewas` (the governed `redelivery_fee_pesewas` copied here
+    when it was asked for) before the second trip can be assigned; that money waits in the order's Re-delivery payable
+    and becomes platform delivery income when the second trip's rider completes it (`rider`, `completed_at`). An in-house
+    rider is owed it through payroll, outside the app (`owed_through_payroll`); a third-party rider, who makes the second
+    trip only when no in-house rider is available (Director ruling 2), is paid it into their wallet at that moment
+    (`rider_earning`, ledger.redelivery.credit_rider). The first rider (`first_rider`, whose leg ended at
+    `first_leg_ended_at`) keeps the order's original delivery fee (ledger.riders.fee_rider). Integer pesewas only."""
+
+    AWAITING_PAYMENT, PAID, ASSIGNED, COMPLETED, CANCELLED, REFUNDED = (
+        "awaiting_payment", "paid", "assigned", "completed", "cancelled", "refunded",
+    )
+    STATUS_CHOICES = [
+        (AWAITING_PAYMENT, "Waiting for the customer to pay"), (PAID, "Paid, waiting for a rider"),
+        (ASSIGNED, "Given to a rider"), (COMPLETED, "Second trip done"), (CANCELLED, "Cancelled"),
+        (REFUNDED, "Cancelled, fee returned to the wallet"),
+    ]
+    OPEN_STATUSES = (AWAITING_PAYMENT, PAID, ASSIGNED)
+
+    order = models.ForeignKey("orders.Order", on_delete=models.PROTECT, related_name="redeliveries")
+    attempt = models.PositiveSmallIntegerField()
+    first_rider = models.ForeignKey("accounts.StaffUser", null=True, on_delete=models.PROTECT, related_name="+")
+    first_leg_ended_at = models.DateTimeField()
+    fee_pesewas = models.BigIntegerField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=AWAITING_PAYMENT)
+    requested_by = models.ForeignKey("accounts.StaffUser", on_delete=models.PROTECT, related_name="+")
+    reason = models.TextField()
+    checkout_session = models.ForeignKey(
+        "payments.CheckoutSession", null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+    )
+    paid_at = models.DateTimeField(null=True, blank=True)
+    rider = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    completed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    pay_journal = models.ForeignKey("ledger.Journal", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    settle_journal = models.ForeignKey("ledger.Journal", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    refund_journal = models.ForeignKey("ledger.Journal", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["order", "attempt"], name="delivery_redelivery_attempt_unique"),
+            models.UniqueConstraint(
+                fields=["order"], condition=models.Q(status__in=("awaiting_payment", "paid", "assigned")),
+                name="delivery_one_open_redelivery_per_order",
+            ),
+            models.CheckConstraint(condition=models.Q(fee_pesewas__gte=0), name="delivery_redelivery_fee_not_negative"),
+        ]
+
+    def __str__(self):
+        return f"Re-delivery {self.attempt} of order #{self.order_id} ({self.status})"
+
+    @property
+    def owed_through_payroll(self):
+        """True when AshantiHub owes the second trip's rider this fee outside the app: the trip is done, the fee was paid
+        and settled, and no third-party wallet payment was made for it (an in-house rider). Never both."""
+        return (
+            self.status == self.COMPLETED and self.rider_id is not None and self.settle_journal_id is not None
+            and not RiderEarning.objects.filter(redelivery_id=self.pk).exists()
+        )

@@ -2,7 +2,7 @@
 journal, and the lifetime cap shared with product orders. Review Focus 1 (the cap across categories, also at the same
 moment) and 2 (a payment that is not the price writes nothing)."""
 import threading
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
 
 from django.db import connection, transaction
@@ -49,8 +49,9 @@ class RecordBookingPaymentTests(BookingBase):
         self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, self.owner), 0)
 
     def test_stays_use_the_services_table_and_tickets_the_events_table(self):
-        newer = FeeRuleSet.objects.create(category=FeeRuleSet.EVENT, effective_from=timezone.now() - timedelta(minutes=1))
-        FeeBand.objects.create(rule_set=newer, lower_pesewas=0, upper_pesewas=None, percent_bp=300)        # events: 3%
+        # An older events table (3%), dated well before the suggested one: the newest in force must win, not this.
+        older = FeeRuleSet.objects.create(category=FeeRuleSet.EVENT, effective_from=datetime(2021, 1, 1, tzinfo=dt_timezone.utc))
+        FeeBand.objects.create(rule_set=older, lower_pesewas=0, upper_pesewas=None, percent_bp=300)
         today = timezone.localdate()
         booking = Booking.objects.create(
             customer=self.customer, listing=self.lodge, business_owner=self.owner, check_in=today + timedelta(days=1),
@@ -58,8 +59,9 @@ class RecordBookingPaymentTests(BookingBase):
             status=Booking.CONFIRMED,
         )
         # This test is about which fee table each kind uses, so drop the setUp pin and use the suggested ladders.
-        for category in (FeeRuleSet.SERVICE, FeeRuleSet.EVENT):
-            FeeRuleSet.objects.filter(category=category).order_by("-effective_from").first().delete()
+        for pinned in self.pinned_fee_rules:
+            pinned.delete()
+        suggested = {c: FeeRuleSet.objects.filter(category=c).order_by("-effective_from", "-id").first() for c in (FeeRuleSet.SERVICE, FeeRuleSet.EVENT)}
         stay = sales.record_payment(self.session(CheckoutSession.BOOKING, "300.00", booking_id=booking.pk), BookingSale.STAY, booking, self.owner)
         tickets = sales.record_payment(
             self.session(CheckoutSession.TICKET_PURCHASE, "100.00", unit_price="50.00", quantity=2),
@@ -67,6 +69,7 @@ class RecordBookingPaymentTests(BookingBase):
         )
         self.assertEqual((stay.category, stay.base_pesewas, stay.charged_pesewas), (FeeRuleSet.SERVICE, 30000, 600))
         self.assertEqual((tickets.category, tickets.base_pesewas, tickets.charged_pesewas), (FeeRuleSet.EVENT, 10000, 250))
+        self.assertEqual((stay.rule_set, tickets.rule_set), (suggested[FeeRuleSet.SERVICE], suggested[FeeRuleSet.EVENT]))
         self.assertEqual((stay.booking, tickets.event), (booking, self.event))
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.owner), 40000)
 

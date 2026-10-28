@@ -1,4 +1,4 @@
-import { D } from "../theme.js";
+import { D, tint } from "../theme.js";
 import { ChartEmpty } from "./ChartFrame.jsx";
 
 // Plan-entitlement usage meters: how much of the subscription's real
@@ -32,9 +32,9 @@ export default function UsageMeters({ data }) {
               <div style={{
                 height: "100%", width: `${pct}%`, borderRadius: 10,
                 background: unlimited
-                  ? `linear-gradient(90deg, ${color}55, ${color}22)`
-                  : `linear-gradient(90deg, ${over ? D.red : color}, ${color}aa)`,
-                boxShadow: `0 0 12px ${(over ? D.red : color)}66`,
+                  ? `linear-gradient(90deg, ${tint(color, "55")}, ${tint(color, "22")})`
+                  : `linear-gradient(90deg, ${over ? D.red : color}, ${tint(color, "aa")})`,
+                boxShadow: `0 0 12px ${tint((over ? D.red : color), "66")}`,
                 transition: "width 0.6s ease",
               }} />
             </div>

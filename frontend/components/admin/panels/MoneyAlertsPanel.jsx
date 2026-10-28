@@ -48,7 +48,7 @@ function Alert({ alert, onResolved }) {
       {open && (
         <form onSubmit={resolve} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <input aria-label={`Note for ${alert.title}`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What you checked (required)" maxLength={280} style={{ ...field, flex: 1, minWidth: 220 }} />
-          <button type="submit" disabled={note.trim().length < 5 || busy} style={button(D.text, "#FDF6E3", note.trim().length < 5 || busy)}>Resolve</button>
+          <button type="submit" disabled={note.trim().length < 5 || busy} style={button(D.text, D.pageBg, note.trim().length < 5 || busy)}>Resolve</button>
           <button type="button" onClick={() => setOpen(false)} style={button(D.panelBg, D.text)}>Cancel</button>
         </form>
       )}

@@ -13,6 +13,7 @@ urlpatterns = [
     path("businesses/export/", oversight.BusinessExportView.as_view(), name="portfolio-business-export"),
     path("businesses/<int:pk>/oversight/", oversight.BusinessOversightView.as_view(), name="portfolio-business-oversight"),
     path("businesses/<int:pk>/", views.PortfolioBusinessDetailView.as_view(), name="portfolio-business-detail"),
+    path("businesses/<int:pk>/hours/", views.BusinessHoursStaffView.as_view(), name="portfolio-business-hours"),
     path("businesses/<int:pk>/orders/", views.BusinessOrdersView.as_view(), name="portfolio-business-orders"),
     path(
         "businesses/<int:pk>/orders/<int:order_id>/delivery-problem/",
@@ -30,5 +31,13 @@ urlpatterns = [
     path("listings/<int:pk>/photos/", views.ProposeListingPhotosView.as_view(), name="portfolio-propose-photos"),
     path("meta/listing-form/", views.ListingFormMetaView.as_view(), name="portfolio-listing-form-meta"),
     path("owner/changes/", views.OwnerChangeListView.as_view(), name="portfolio-owner-changes"),
+    path("detail-changes/", views.DetailChangeListView.as_view(), name="portfolio-detail-changes"),
+    path("detail-changes/mine/", views.MyDetailChangesView.as_view(), name="portfolio-detail-changes-mine"),
+    path(
+        "detail-changes/<int:pk>/assign/", views.DetailChangeAssignView.as_view(), name="portfolio-detail-change-assign",
+    ),
+    path(
+        "detail-changes/<int:pk>/verify/", views.DetailChangeVerifyView.as_view(), name="portfolio-detail-change-verify",
+    ),
     path("owner/changes/<int:pk>/undo/", views.OwnerChangeUndoView.as_view(), name="portfolio-owner-change-undo"),
 ]

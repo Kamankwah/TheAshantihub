@@ -16,6 +16,7 @@ from ledger.models import BookingSale
 from ledger.money import from_pesewas
 from payments import booking_pay
 from payments.models import CheckoutSession
+from storefront.permissions import MarketplaceOpen
 
 from .availability import is_available, min_units_free
 from .models import Booking
@@ -54,7 +55,7 @@ class BookingCreateView(APIView):
     check_in, check_out, units}.
     """
 
-    permission_classes = [IsAuthenticated, IsCustomer]
+    permission_classes = [IsAuthenticated, IsCustomer, MarketplaceOpen]
 
     def post(self, request):
         serializer = BookingCreateSerializer(data=request.data)

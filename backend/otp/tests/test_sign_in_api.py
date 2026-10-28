@@ -62,6 +62,14 @@ class SwitchedOffTests(SignInApiBase):
         self.assertEqual(OtpChallenge.objects.count(), 0)
 
 
+class NoAuthenticatorSwitchOffTests(SignInApiBase):
+    def test_no_authenticator_means_plain_sign_in_switch_off(self):
+        # Nobody is forced into a second step, and no code is texted or emailed.
+        for kind, identifier in (("customer", "+233241234567"), ("business_owner", "+233201112233")):
+            self.assertEqual(set(self.login(kind, identifier).json()), SIGNED_IN)
+        self.assertEqual((senders.sms_outbox, OtpChallenge.objects.count()), ([], 0))
+
+
 @ON
 class VendorSignInTests(SignInApiBase):
     def test_the_password_step_answers_a_challenge_without_a_token(self):

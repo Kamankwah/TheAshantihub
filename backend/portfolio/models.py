@@ -78,3 +78,55 @@ class BusinessHealthSnapshot(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["business_owner", "date"], name="one_health_snapshot_per_day"),
         ]
+
+
+# The statuses of a request still in progress (one per business and field): module-level so Meta can use it.
+DETAIL_CHANGE_LIVE_STATUSES = ("requested", "assigned", "verified")
+
+
+class BusinessDetailChangeRequest(models.Model):
+    """A business asking to change its owner's name, sign-in phone or email (plan 7F-C, ruling R3). The business files
+    it itself (portfolio.detail_changes); Operations assigns a scout who is not its registrar or account manager; the
+    scout verifies it on site; then two people approve it with the password (business.detail_change). `new_value` is
+    kept unmasked because applying needs it: it never goes into a log, notice, approval title or activity body."""
+
+    FULL_NAME, LOGIN_PHONE, EMAIL = "full_name", "login_phone", "email"
+    FIELD_CHOICES = [(FULL_NAME, "Name"), (LOGIN_PHONE, "Sign-in phone"), (EMAIL, "Email")]
+    REQUESTED, ASSIGNED, VERIFIED = "requested", "assigned", "verified"
+    NOT_VERIFIED, APPROVED, REJECTED, WITHDRAWN = "not_verified", "approved", "rejected", "withdrawn"
+    STATUS_CHOICES = [
+        (REQUESTED, "Requested"), (ASSIGNED, "Scout assigned"), (VERIFIED, "Verified on site"),
+        (NOT_VERIFIED, "Not verified"), (APPROVED, "Approved"), (REJECTED, "Rejected"), (WITHDRAWN, "Withdrawn"),
+    ]
+    LIVE_STATUSES = DETAIL_CHANGE_LIVE_STATUSES
+    WITHDRAWABLE_STATUSES = (REQUESTED, ASSIGNED)
+
+    business_owner = models.ForeignKey(BusinessOwner, on_delete=models.CASCADE, related_name="detail_change_requests")
+    field = models.CharField(max_length=20, choices=FIELD_CHOICES)
+    new_value = models.CharField(max_length=254)
+    reason = models.CharField(max_length=300)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=REQUESTED)
+    requested_at = models.DateTimeField(default=timezone.now)
+    assigned_scout = models.ForeignKey(StaffUser, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    assigned_by = models.ForeignKey(StaffUser, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    assigned_at = models.DateTimeField(null=True, blank=True)
+    visit = models.ForeignKey("field.VisitCheckIn", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verification_note = models.CharField(max_length=500, blank=True, default="")
+    approval = models.ForeignKey(
+        "approvals.ApprovalRequest", on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+    )
+    # When the request ended: approved, rejected, not verified or withdrawn.
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-requested_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["business_owner", "field"], condition=Q(status__in=DETAIL_CHANGE_LIVE_STATUSES),
+                name="one_live_detail_change_per_field",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.get_field_display()} change for business owner {self.business_owner_id} ({self.status})"

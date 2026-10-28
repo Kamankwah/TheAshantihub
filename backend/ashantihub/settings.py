@@ -128,6 +128,7 @@ INSTALLED_APPS = [
     "realtime",
     "delivery",
     "routing",
+    "storefront",
 ]
 
 MIDDLEWARE = [
@@ -394,6 +395,14 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
     "DEFAULT_THROTTLE_RATES": {
         "vendor_statement_export": "6/min",
+        # Marketplace opening: the public "Notify me" form and its one-click stop link. 30/hour, not 5: mobile
+        # carriers put many phones behind one address (CGNAT), and the throttle keys on the address.
+        "notify_me": "30/hour",
+        "notify_me_stop": "30/hour",
+        "category_visit": "60/min",
+        "storefront_search": "120/min",
+        "storefront_deals": "120/min",
+        "storefront_home": "120/min",
         "customer_register": "5/min",
         "business_owner_register": "5/min",
         "staff_activate": "5/min",
@@ -412,6 +421,8 @@ REST_FRAMEWORK = {
         "owner_claim": "10/min",
         # A staff member emailing owners claim links (portfolio.views.ClaimLinkView).
         "claim_link": "5/hour",
+        # A business asking to change its name, sign-in phone or email (portfolio.detail_changes).
+        "owner_detail_change": "10/hour",
         # The Hubtel webhook is a public, unauthenticated endpoint (Hubtel
         # calls it from the internet, not a logged-in app user) — generous
         # but not unlimited, since it's dark/unexercised until HUBTEL_* env
@@ -504,6 +515,10 @@ CELERY_TASK_PUBLISH_RETRY_POLICY = {"max_retries": 1, "interval_start": 0, "inte
 # Each job's owning app adds its own entry; core/tests/test_background_jobs.py
 # fails if an entry names a task that doesn't exist. Times are Africa/Accra.
 CELERY_BEAT_SCHEDULE = {
+    "storefront-send-opening-notices": {
+        "task": "storefront.tasks.send_opening_notices",
+        "schedule": 60.0,
+    },
     "activity-verify-chain": {
         "task": "activity.tasks.verify_activity_chain_nightly",
         "schedule": crontab(hour=1, minute=45),
@@ -584,6 +599,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "delivery.tasks.run_engine",
         "schedule": 10.0,  # offers time out and the auto-assign switch is honoured every 10 seconds
     },
+    "delivery-release-deferred": {
+        "task": "delivery.tasks.release_deferred_orders",
+        "schedule": 300.0,  # every 5 minutes: orders held until their vendor opened that are now due
+    },
     "delivery-purge-pings": {
         "task": "delivery.tasks.purge_old_pings",
         "schedule": crontab(hour=3, minute=50),
@@ -599,6 +618,10 @@ CELERY_BEAT_SCHEDULE = {
     "ledger-release-due-booking-sales": {
         "task": "ledger.tasks.release_due_booking_sales",
         "schedule": crontab(minute=40),  # hourly: services, stays and tickets past their release time; a no-op while the ledger is off
+    },
+    "ledger-finish-cancelled-event-refunds": {
+        "task": "ledger.tasks.finish_cancelled_event_refunds",
+        "schedule": crontab(minute=50),  # hourly: tickets of a cancelled event a cancel left unrefunded; a no-op when none are
     },
     "ledger-post-rider-commission": {
         "task": "ledger.tasks.post_rider_commission",
@@ -661,6 +684,10 @@ CATALOGUE_MATCHER_ENABLED = env.bool("CATALOGUE_MATCHER_ENABLED", default=False)
 # hides the offer"). Off until the Plan 6F screens tell a business to leave the count empty when it does not count stock;
 # the listing's own page and the other-sellers list are not affected by it (see listings.visibility.sold_out_q).
 SOLD_OUT_HIDDEN_ENABLED = env.bool("SOLD_OUT_HIDDEN_ENABLED", default=False)
+
+# The marketplace opening gate (storefront.opening). Off by default: while off the marketplace is open to everyone
+# and nothing is blocked. Turn on once the opening time is confirmed.
+MARKETPLACE_GATE_ENABLED = env.bool("MARKETPLACE_GATE_ENABLED", default=False)
 
 # One-time codes and 2-step sign-in for everyone (otp app; spec §9, plan docs/superpowers/plans/2026-10-16-otp-security.md).
 # All three default OFF: with them off, sign-in, sign-up and every sensitive endpoint behave exactly as before. Turn

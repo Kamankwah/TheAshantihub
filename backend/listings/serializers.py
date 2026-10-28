@@ -5,6 +5,7 @@ from rest_framework import serializers
 from accounts.models import BusinessOwner
 from billing.models import Subscription
 
+from . import pricing
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
 
 # The product/service decision fields added by the comprehensive listing-
@@ -29,7 +30,9 @@ class ListingPhotoSerializer(serializers.ModelSerializer):
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ["id", "slug", "icon", "label", "color", "kind", "is_accommodation", "is_food"]
+        # `parent` (the parent category's id, or null for a department / top-level row) lets business and staff
+        # forms group the ~300 flat rows under their department (ruling R34). Read-only: the tree is set by migration.
+        fields = ["id", "slug", "icon", "label", "color", "kind", "is_accommodation", "is_food", "parent"]
         # `kind` has a model-level default (PRODUCT), which would otherwise
         # make it optional on create — but staff must consciously choose
         # Product vs Service when creating a category (the admin form forces
@@ -39,7 +42,7 @@ class CategorySerializer(serializers.ModelSerializer):
         extra_kwargs = {"kind": {"required": True}}
         # is_food (the delivery food rules, cart.guard) is set by migration only (listings 0020: food and beverages);
         # it is shown, never changed through the category screens.
-        read_only_fields = ["is_food"]
+        read_only_fields = ["is_food", "parent"]
 
 
 
@@ -73,6 +76,8 @@ class BusinessOwnerMiniSerializer(serializers.ModelSerializer):
 
 
 class PublicListingSerializer(serializers.ModelSerializer):
+    # No contact_phone (or any phone) here: businesses are never contacted directly, so a public response must not
+    # let anyone recover a business number. Owner and staff serializers keep it.
     category = CategorySerializer(read_only=True)
     zone = ZoneSerializer(read_only=True)
     photos = ListingPhotoSerializer(many=True, read_only=True)
@@ -88,13 +93,19 @@ class PublicListingSerializer(serializers.ModelSerializer):
     # backing this serializer (reviews/ratings/Q&A plan, docs/PROJECT_SCOPE.md).
     avg_rating = serializers.SerializerMethodField()
     review_count = serializers.SerializerMethodField()
+    # Deals (Plan M1 Task 6): the sale price only while it is a real discount, and a "was" price only when the
+    # regular price has stood 7 full days (listings.pricing) - otherwise null, never an invented value.
+    sale_price = serializers.SerializerMethodField()
+    was_price = serializers.SerializerMethodField()
+    effective_price = serializers.SerializerMethodField()
 
     class Meta:
         model = Listing
         fields = [
             "id", "name", "description", "category", "zone", "price_amount", "price_unit",
-            "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "created_at",
+            "tag", "lat", "lng", "main_photo", "photos", "created_at",
             "is_promoted", "specs", "service_duration", "avg_rating", "review_count",
+            "sale_price", "was_price", "effective_price",
             "business_owner", *LISTING_DECISION_FIELDS, "cancellation_policy",
         ]
         # This serializer only ever backs read-only views (list/detail/
@@ -104,6 +115,17 @@ class PublicListingSerializer(serializers.ModelSerializer):
 
     def get_is_promoted(self, obj):
         return bool(getattr(obj, "is_promoted", False))
+
+    def get_sale_price(self, obj):
+        return str(pricing.dec(obj.sale_price)) if pricing.is_discounted(obj) else None
+
+    def get_was_price(self, obj):
+        was = pricing.was_price(obj)
+        return None if was is None else str(was)
+
+    def get_effective_price(self, obj):
+        value = obj.effective_price
+        return None if value is None else str(value)
 
     def get_avg_rating(self, obj):
         return getattr(obj, "avg_rating", None)
@@ -186,6 +208,31 @@ def clean_listing_barcode(value, instance=None, category=None):
     return key
 
 
+SALE_NOT_GOODS_MESSAGE = "Only goods and food can have a sale price. Services and stays are charged their regular price."
+SALE_PRICE_MESSAGE = "A sale price must be above 0 and below the regular price."
+
+
+def validate_sale_price(data, instance=None):
+    """0 < sale_price < price_amount, using the incoming price_amount when both are sent. Null ends the sale. A sale
+    goes live at once: this is the only check, there is no approval."""
+    sale = data.get("sale_price")
+    if sale is None:
+        # Lowering the price to or under a stored sale price would leave an inert sale that revives when the price is
+        # raised again: end it now. An explicit null already ends it.
+        stored = getattr(instance, "sale_price", None)
+        incoming = data.get("price_amount")
+        if "sale_price" not in data and stored is not None and incoming is not None and incoming <= stored:
+            data["sale_price"] = None
+        return data
+    category = data.get("category") or getattr(instance, "category", None)
+    if category is not None and not pricing.sale_allowed(category):
+        raise serializers.ValidationError({"sale_price": SALE_NOT_GOODS_MESSAGE})
+    price = data["price_amount"] if "price_amount" in data else getattr(instance, "price_amount", None)
+    if price is None or not (0 < sale < price):
+        raise serializers.ValidationError({"sale_price": SALE_PRICE_MESSAGE})
+    return data
+
+
 def save_sent_fields(instance, validated_data):
     """Write only the fields this request sent (catalogue plan 6). ModelSerializer.update saves the whole row, which would
     write back the catalogue_product and stock_quantity this request read over a staff grouping decision or a
@@ -214,12 +261,15 @@ class OwnerListingManageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Listing
         fields = [
-            "id", "price_amount", "price_unit", "tag", "contact_phone",
+            "id", "price_amount", "sale_price", "price_unit", "tag", "contact_phone",
             "specs", "service_duration", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
         ]
 
     def validate_barcode(self, value):
         return clean_listing_barcode(value, self.instance)
+
+    def validate(self, data):
+        return validate_sale_price(data, self.instance)
 
     def update(self, instance, validated_data):
         return save_sent_fields(instance, validated_data)
@@ -358,7 +408,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Listing
         fields = [
-            "id", "category", "zone", "name", "description", "price_amount", "price_unit",
+            "id", "category", "zone", "name", "description", "price_amount", "sale_price", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "specs",
             "service_duration", "units_total", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
             "status", "rejection_reason", "created_at", "updated_at",
@@ -372,6 +422,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     def validate(self, data):
         if data.get("barcode"):
             clean_listing_barcode(data["barcode"], self.instance, data.get("category"))
+        validate_sale_price(data, self.instance)
         return validate_listing_for_owner(
             self.context["request"].user, data, instance=self.instance, initial_data=self.initial_data,
         )
@@ -408,7 +459,7 @@ class ModerationListingSerializer(serializers.ModelSerializer):
             "zone", "price_amount", "price_unit", "tag", "contact_phone", "lat", "lng",
             "main_photo", "photos", "specs", "service_duration", *LISTING_DECISION_FIELDS,
             "status", "rejection_reason", "created_at",
-            "reviewed_by_name", "reviewed_at", "open_fraud_cases", "subscription_overdue",
+            "reviewed_by_name", "reviewed_at", "open_fraud_cases", "subscription_overdue", "sponsored",
         ]
         # Read-only on this staff view; a reviewer sees every answer the owner gave.
         read_only_fields = LISTING_DECISION_FIELDS
@@ -439,7 +490,9 @@ class HeroMediaModerationSerializer(serializers.ModelSerializer):
     mirrors ModerationListingSerializer's field selection.
     """
 
-    business_owner_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+    business_owner_name = serializers.CharField(source="business_owner.full_name", read_only=True, default=None)
+    created_by_staff_name = serializers.CharField(source="created_by_staff.full_name", read_only=True, default=None)
+    youtube_id = serializers.CharField(read_only=True)
     # Approver attribution (staff moderation-queue restructuring) — backs the
     # Approved/Rejected tabs' "who actioned this" line.
     reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
@@ -451,6 +504,8 @@ class HeroMediaModerationSerializer(serializers.ModelSerializer):
             "id", "business_owner", "business_owner_name", "media", "media_type", "caption",
             "status", "rejection_reason", "submitted_at", "approved_at", "expires_at",
             "extended_days", "reviewed_by_name", "reviewed_by_role", "reviewed_at",
+            "title", "video_file", "youtube_url", "youtube_id", "link_path", "starts_at", "ends_at",
+            "created_by_staff_name",
         ]
 
 
@@ -485,9 +540,15 @@ class HeroMediaStaffSerializer(HeroMediaModerationSerializer):
 
 
 class HeroActiveSerializer(serializers.ModelSerializer):
-    """Public shape for the live hero slider — GET /api/hero/active/."""
+    """Public shape for the live hero slider — GET /api/hero/active/. The first block is the
+    slide itself; the second is what the older slider reads (`media`, the CTA fields, dates) and
+    stays so it keeps working. No phone, email or owner id is ever exposed."""
 
-    business_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+    image = serializers.SerializerMethodField()
+    video_url = serializers.SerializerMethodField()
+    youtube_id = serializers.CharField(read_only=True, default=None)
+    listing_id = serializers.IntegerField(read_only=True, default=None)
+    # No `business_name`: it was the owner's personal full_name, and no slider shows it.
     # The listing behind this hero slide, so the slider's Buy Now / Engage
     # Service CTA can route to the cart (product) or the listing (service).
     listing_kind = serializers.CharField(source="listing.category.kind", read_only=True, default=None)
@@ -498,9 +559,69 @@ class HeroActiveSerializer(serializers.ModelSerializer):
     class Meta:
         model = HeroMediaSubmission
         fields = [
-            "id", "media", "media_type", "caption", "business_name", "approved_at", "expires_at",
-            "listing", "listing_kind", "price_amount",
+            "id", "media_type", "image", "video_url", "youtube_id", "title", "caption", "link_path", "listing_id",
+            "media", "approved_at", "expires_at", "listing", "listing_kind", "price_amount",
         ]
+
+    def _url(self, field):
+        if not field:
+            return None
+        request = self.context.get("request")
+        return request.build_absolute_uri(field.url) if request else field.url
+
+    def get_image(self, obj):
+        return self._url(obj.media)
+
+    def get_video_url(self, obj):
+        return self._url(obj.video_file)
+
+
+class HeroSlideInputSerializer(serializers.Serializer):
+    """Input for a new slide (business submission and staff-made): multipart, validated through
+    listings.hero_rules. The same rules apply to both."""
+
+    media_type = serializers.ChoiceField(choices=["image", "video"], default="image")
+    media = serializers.FileField(required=False, allow_null=True)
+    video_file = serializers.FileField(required=False, allow_null=True)
+    youtube_url = serializers.CharField(required=False, allow_blank=True, max_length=300)
+    title = serializers.CharField(required=False, allow_blank=True, max_length=140)
+    caption = serializers.CharField(required=False, allow_blank=True, max_length=140)
+    starts_at = serializers.DateTimeField()
+    ends_at = serializers.DateTimeField()
+    link_path = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    listing = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate(self, data):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from . import hero_rules
+        from .moderation_checks import CONTACT_DETAILS_MESSAGE, contact_details_in
+
+        media = data.get("media")
+        if media is not None and media.size > 5 * 1024 * 1024:
+            raise serializers.ValidationError({"media": "The photo must be 5 MB or smaller."})
+
+        def fail(field, exc):
+            raise serializers.ValidationError({field: exc.messages[0]})
+
+        try:
+            hero_rules.validate_window(data["starts_at"], data["ends_at"])
+        except DjangoValidationError as exc:
+            fail("ends_at", exc)
+        try:
+            data.update(hero_rules.validate_media(
+                data["media_type"], data.get("media"), data.get("video_file"), (data.get("youtube_url") or "").strip(),
+            ))
+        except DjangoValidationError as exc:
+            fail("media" if data["media_type"] == "image" else "video_file", exc)
+        try:
+            data["link_path"] = hero_rules.clean_link_path(data.get("link_path"))
+        except DjangoValidationError as exc:
+            fail("link_path", exc)
+        for field in ("title", "caption"):
+            if contact_details_in(data.get(field)):
+                raise serializers.ValidationError({field: CONTACT_DETAILS_MESSAGE})
+        return data
 
 
 class HeroSubmitSerializer(serializers.Serializer):

@@ -140,7 +140,8 @@ class LoginTests(TestCase):
             [
                 "messaging.manage", "disputes.flag", "users.view", "reviews.moderate",
                 "orders.support_update", "calls.view_peers", "contact_messages.manage", "calls.log",
-                "fraud.flag", "orders.verify", "otp.recovery",
+                "fraud.flag", "orders.verify", "otp.recovery", "orders.redeliver",
+                "businesses.set_hours",                           # Director ruling 7 (2026-10-20): Support sets hours
             ],
         )
 

@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
+import { gatedOpening } from './mocks/opening.js'
+import { setStoredAuth } from './apiClient.js'
 import ListingDetailPage from './components/ListingDetailPage.jsx'
 
 const LISTING = {
@@ -14,7 +16,6 @@ const LISTING = {
   price_amount: '450.00',
   price_unit: '/night',
   tag: 'Featured',
-  contact_phone: '+233244000001',
   lat: '6.688500',
   lng: '-1.624400',
   main_photo: 'http://localhost:8000/media/listing_photos/main/lodge.jpg',
@@ -75,6 +76,15 @@ describe('ListingDetailPage', () => {
     expect(await screen.findByText('Royal Ashanti Lodge')).toBeInTheDocument()
     expect(screen.getByText(/Luxury rooms with kente-draped interiors/)).toBeInTheDocument()
     expect(screen.getByText(/450/)).toBeInTheDocument()
+  })
+
+  it('shows no business phone or tel link even if a response still carried one', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, contact_phone: '+233244000001' })))
+    const { container } = renderPage()
+    expect(await screen.findByText('Royal Ashanti Lodge')).toBeInTheDocument()
+    expect(container.querySelector('a[href^="tel:"]')).toBeNull()
+    expect(container.querySelector('a[href*="wa.me"]')).toBeNull()
+    expect(container.textContent).not.toMatch(/233244000001|0244000001/)
   })
 
   it('renders a gallery thumbnail per photo', async () => {
@@ -625,5 +635,78 @@ describe('ListingDetailPage — policy and timing shown before paying (plan 7E)'
     await screen.findByText('Royal Ashanti Lodge')
     await new Promise((r) => setTimeout(r, 50))
     expect(screen.queryByTestId('booking-terms')).not.toBeInTheDocument()
+  })
+})
+
+// Before opening (gate on) Add to Cart and Book are greyed with the opening date.
+describe('ListingDetailPage — before the marketplace opens', () => {
+  const CUSTOMER = { id: 4, fullName: 'Ama Boateng', accountType: 'customer' }
+  function gated(canBuy, listing = LISTING) {
+    server.use(
+      gatedOpening({ opensAt: '2026-11-06T06:00:00Z', serverNow: '2026-11-01T06:00:00Z' }),
+      http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({ id: 4, can_buy: canBuy })),
+      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(listing)),
+    )
+    setStoredAuth({ token: 't', account_type: 'customer' })
+  }
+
+  it('buy_disabled_with_opens_label_before_opening: Add to Cart', async () => {
+    gated(false)
+    try {
+      renderPage({ user: CUSTOMER })
+      await screen.findByText('Royal Ashanti Lodge')
+      expect(await screen.findByRole('button', { name: 'Opens 6 Nov' })).toBeDisabled()
+      expect(screen.queryByText('Add to Cart')).not.toBeInTheDocument()
+    } finally { setStoredAuth(null) }
+  })
+
+  it('a signed-out visitor sees the same disabled state', async () => {
+    server.use(
+      gatedOpening({ opensAt: '2026-11-06T06:00:00Z', serverNow: '2026-11-01T06:00:00Z' }),
+      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)),
+    )
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(await screen.findByRole('button', { name: 'Opens 6 Nov' })).toBeDisabled()
+  })
+
+  it('enabled_when_can_buy_true: Add to Cart stays live for an allowlisted tester', async () => {
+    gated(true)
+    try {
+      renderPage({ user: CUSTOMER })
+      await screen.findByText('Royal Ashanti Lodge')
+      await waitFor(() => expect(screen.getByText('Add to Cart')).not.toBeDisabled())
+    } finally { setStoredAuth(null) }
+  })
+
+  it('buy_disabled_with_opens_label_before_opening: Book a stay', async () => {
+    gated(false, { ...LISTING, category: { ...LISTING.category, is_accommodation: true } })
+    try {
+      renderPage({ user: CUSTOMER })
+      await screen.findByText('Royal Ashanti Lodge')
+      fireEvent.change(screen.getByLabelText('Check-in'), { target: { value: '2026-11-08' } })
+      fireEvent.change(screen.getByLabelText('Check-out'), { target: { value: '2026-11-10' } })
+      expect(await screen.findByRole('button', { name: 'Opens 6 Nov' })).toBeDisabled()
+      expect(screen.queryByRole('button', { name: /^Book/ })).not.toBeInTheDocument()
+    } finally { setStoredAuth(null) }
+  })
+})
+
+describe('ListingDetailPage price', () => {
+  it('shows effective_price and strikes through only was_price', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, sale_price: '400.00', effective_price: '400.00', was_price: '450.00' })))
+    const { container } = renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.getByText('GHS 400.00/night')).toBeInTheDocument()
+    const struck = [...container.querySelectorAll('s')]
+    expect(struck.map((s) => s.textContent)).toEqual(['Was GHS 450.00'])
+  })
+
+  it('does not strike through price_amount when the sale has no honest was price', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, sale_price: '400.00', effective_price: '400.00', was_price: null })))
+    const { container } = renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.getByText('GHS 400.00/night')).toBeInTheDocument()
+    expect(container.querySelector('s')).toBeNull()
   })
 })

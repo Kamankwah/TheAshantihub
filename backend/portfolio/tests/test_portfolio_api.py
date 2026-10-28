@@ -36,13 +36,13 @@ TEST_MEDIA_ROOT = tempfile.mkdtemp()
 URL = "/api/portfolio/businesses/"
 ITEM_KEYS = {
     "id", "business_name", "owner_name", "login_phone", "zone", "kyc_status", "is_suspended", "suspension_reason",
-    "registration_channel",
+    "registration_channel", "has_hours",
     "needs_claim", "claimed_at", "account_manager", "health", "subscription", "listings_live",
     "listings_total", "listings_waiting", "last_order_at", "last_contact", "open_fraud_flags",
 }
 DETAIL_KEYS = ITEM_KEYS | {
     "business_kind", "business_category", "gps_address", "lat", "lng", "location_accuracy_m",
-    "location_is_manual", "location_set_by", "business_contact_phone", "business_description", "opening_hours",
+    "location_is_manual", "location_set_by", "business_contact_phone", "business_description", "opening_hours", "hours",
     "signboard_photo", "email", "registered_by", "created_at", "listings", "pending_requests", "recent_calls", "recent_visits",
     "assignments", "open_flags", "can_manage",
 }

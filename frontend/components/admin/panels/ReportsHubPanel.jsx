@@ -118,7 +118,7 @@ export default function ReportsHubPanel() {
                         {data.rows.map((r) => {
                           const [label, color] = STATE[r.state] || [r.state, D.textDim];
                           return (
-                            <tr key={r.staff.id} style={{ background: r.report?.id === openId ? "#FFFBF3" : "transparent" }}>
+                            <tr key={r.staff.id} style={{ background: r.report?.id === openId ? D.panelBg2 : "transparent" }}>
                               <td style={td}><div style={{ fontWeight: 800 }}>{r.staff.full_name}</div><div style={dim}>{roleName(r.staff.role)}</div></td>
                               <td style={{ ...td, ...figures }}>{r.report?.submitted_at ? clock(r.report.submitted_at) : "Not submitted"}
                                 {r.report?.is_late && <div style={{ ...dim, color: warn }}>Late</div>}

@@ -4,7 +4,7 @@ import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { useScoutAssignments } from "../../../hooks/useScoutAssignments.js";
 import { useScouts } from "../../../hooks/useScouts.js";
 import { useBusinessOwners } from "../../../hooks/useBusinessOwners.js";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, tint } from "../theme.js";
 
 // Admin-side scout assignment (punch-list item 11, scouts.assign): assign a
 // scout to a business for field verification, and track every assignment's
@@ -74,7 +74,7 @@ export default function ScoutAssignmentsPanel() {
                   {a.address_confirmed ? "✓ Address confirmed" : "✗ Address wrong"}
                 </span>
               )}
-              <span style={{ background: a.status === "visited" ? `${D.green}22` : `${D.amber}22`, color: a.status === "visited" ? D.green : D.amber, borderRadius: 20, padding: "2px 10px", fontSize: "0.64rem", fontWeight: 800 }}>{a.status}</span>
+              <span style={{ background: a.status === "visited" ? tint(D.green, "22") : `${D.amber}22`, color: a.status === "visited" ? D.green : D.amber, borderRadius: 20, padding: "2px 10px", fontSize: "0.64rem", fontWeight: 800 }}>{a.status}</span>
             </div>
           </div>
         ))}

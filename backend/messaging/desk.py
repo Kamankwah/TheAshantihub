@@ -9,7 +9,7 @@ from django.db.models import Case, Exists, F, IntegerField, OuterRef, Q, Subquer
 from django.utils import timezone
 
 from .models import Conversation, Message
-from .serializers import StaffMessageSerializer
+from .serializers import StaffMessageSerializer, contact_of
 
 SCOPES = ("mine", "unassigned", "all", "past", "snoozed", "resolved")
 SORTS = ("time_limit", "newest", "priority", "oldest")
@@ -174,6 +174,7 @@ def row(conversation, now=None):
         "resolution_code": conversation.resolution_code, "resolution_note": conversation.resolution_note,
         "unassigned_reason": conversation.unassigned_reason if conversation.assignee_id is None else "",
         "tags": [{"id": t.pk, "name": t.name} for t in conversation.tags.all()],
+        "contact": contact_of(conversation),
         "source": conversation.source, "source_label": SOURCE_LABELS.get(conversation.source, ""),
         "previous_conversation": conversation.previous_conversation_id,
         "created_at": conversation.created_at, "updated_at": conversation.updated_at,

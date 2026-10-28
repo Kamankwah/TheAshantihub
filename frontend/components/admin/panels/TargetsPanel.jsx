@@ -71,7 +71,7 @@ function MeasureCard({ measure, period }) {
       </div>
       {hasTarget && measure.target > 0 && (
         <div role="progressbar" aria-label={`${measure.label} progress`} aria-valuemin={0} aria-valuemax={measure.target} aria-valuenow={Math.min(measure.done, measure.target)}
-          style={{ height: 8, borderRadius: 999, background: "#EADFC6", overflow: "hidden" }}>
+          style={{ height: 8, borderRadius: 999, background: D.panelBg3, overflow: "hidden" }}>
           <div style={{ height: 8, width: `${pct}%`, background: D.text, borderRadius: 999 }} />
         </div>
       )}
@@ -90,7 +90,7 @@ function DayCell({ day }) {
   return (
     <li aria-label={aria} style={{
       borderRadius: 12, padding: "8px 2px", display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
-      background: muted ? "#F1ECE4" : D.panelBg, border: isToday ? `2px solid ${D.text}` : muted ? `1px dashed ${D.cardBorderStrong}` : `1px solid ${D.cardBorder}`,
+      background: muted ? D.panelBg2 : D.panelBg, border: isToday ? `2px solid ${D.text}` : muted ? `1px dashed ${D.cardBorderStrong}` : `1px solid ${D.cardBorder}`,
     }}>
       <span style={{ fontSize: "0.68rem", fontWeight: 700, color: D.textDim }}>{dow}</span>
       <span style={{ fontSize: "1.1rem", fontWeight: 800, color: muted ? D.textDim : D.text, ...figures }}>{date.getDate()}</span>
@@ -117,7 +117,7 @@ export default function TargetsPanel() {
       <div role="group" aria-label="Period" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", background: D.panelBg, border: `1px solid ${D.cardBorder}`, borderRadius: 12, padding: 4, gap: 4 }}>
         {PERIODS.map(([id, label]) => (
           <button key={id} type="button" aria-pressed={period === id} onClick={() => setPeriod(id)}
-            style={{ minHeight: 44, border: 0, borderRadius: 9, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: "0.88rem", background: period === id ? D.text : "transparent", color: period === id ? "#FDF6E3" : D.text }}>
+            style={{ minHeight: 44, border: 0, borderRadius: 9, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: "0.88rem", background: period === id ? D.text : "transparent", color: period === id ? D.pageBg : D.text }}>
             {label}
           </button>
         ))}
@@ -156,7 +156,7 @@ export default function TargetsPanel() {
           )}
 
           {data.has_targets && (
-            <section aria-labelledby="targets-daily" style={{ background: "#F5ECD8", borderRadius: 16, padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+            <section aria-labelledby="targets-daily" style={{ background: D.panelBg2, borderRadius: 16, padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
               <h3 id="targets-daily" style={{ ...h3, fontSize: "0.95rem" }}>Your daily targets</h3>
               <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
                 {data.daily.map((x) => (

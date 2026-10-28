@@ -19,12 +19,12 @@ export const td = { padding: "10px", borderBottom: `1px solid ${D.divider}`, ver
 export const scroll = { overflowX: "auto" };
 
 export const toggleGroup = { display: "inline-flex", background: D.panelBg, border: `1px solid ${D.cardBorder}`, borderRadius: 12, padding: 3, gap: 3 };
-export const toggleButton = (active) => ({ minHeight: 36, border: 0, borderRadius: 9, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: "0.8rem", padding: "0 12px", background: active ? D.text : "transparent", color: active ? "#FDF6E3" : D.text });
+export const toggleButton = (active) => ({ minHeight: 36, border: 0, borderRadius: 9, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: "0.8rem", padding: "0 12px", background: active ? D.text : "transparent", color: active ? D.pageBg : D.text });
 
 export function Bar({ pct, color = D.text, label }) {
   return (
     <div role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, Math.round(pct)))}
-      style={{ height: 6, borderRadius: 999, background: "#EADFC6", overflow: "hidden" }}>
+      style={{ height: 6, borderRadius: 999, background: D.panelBg3, overflow: "hidden" }}>
       <div style={{ height: 6, width: `${Math.max(0, Math.min(100, pct))}%`, background: color, borderRadius: 999 }} />
     </div>
   );

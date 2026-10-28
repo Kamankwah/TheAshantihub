@@ -1,6 +1,6 @@
 """Authenticator-app settings for customers and business owners (otp plan Task 9). Staff keep
-/api/accounts/staff/two-factor/…. Setting it up is offered only while OTP_SIGNIN_ENFORCED is on (it replaces the
-sign-in code, which exists only then); setting it up, turning it off and renewing recovery codes always need a
+/api/accounts/staff/two-factor/…. It is offered to everyone whatever OTP_SIGNIN_ENFORCED says (plan 7F-C R6): once on, it is asked for at every
+sign-in even with texted and emailed sign-in codes switched off. Setting it up, turning it off and renewing recovery codes always need a
 step-up code, whatever OTP_STEP_UP_ENFORCED says.
 
 GET  authenticator/                  -> {"enabled", "enabled_at", "recovery_codes_left", "available"}
@@ -16,11 +16,10 @@ from rest_framework.views import APIView
 from accounts.models import BusinessOwner, Customer
 from accounts.two_factor import SecretUnreadable
 
-from . import audit, authenticator, flags, step_up
+from . import audit, authenticator, step_up
 from .models import AUTHENTICATOR, OtpEvent
 from .views import UNREADABLE, _body, _text
 
-OFF = "The authenticator app can be used once sign-in codes are switched on."
 NOT_ON = "The authenticator app isn't on."
 WRONG_FIRST = "That code isn't right. Check the app shows AshantiHub and try again."
 
@@ -30,15 +29,11 @@ class IsCustomerOrOwner(BasePermission):
         return isinstance(request.user, (Customer, BusinessOwner))
 
 
-def _off():
-    return Response({"detail": OFF, "code": "otp_off"}, status=409)
-
-
 class AuthenticatorView(APIView):
     permission_classes = [IsCustomerOrOwner]
 
     def get(self, request):
-        return Response({**authenticator.status(request.user), "available": flags.sign_in_enforced()})
+        return Response({**authenticator.status(request.user), "available": True})
 
 
 class AuthenticatorSetupView(APIView):
@@ -49,8 +44,6 @@ class AuthenticatorSetupView(APIView):
     activity_exempt = True
 
     def post(self, request):
-        if not flags.sign_in_enforced():
-            return _off()
         with transaction.atomic():
             step_up.require(request, step_up.AUTHENTICATOR_CHANGE, force=True)
             secret, uri = authenticator.begin(request.user)
@@ -65,8 +58,6 @@ class AuthenticatorConfirmView(APIView):
     activity_exempt = True
 
     def post(self, request):
-        if not flags.sign_in_enforced():
-            return _off()
         try:
             codes = authenticator.confirm(request.user, _text(_body(request).get("code")) or "")
         except SecretUnreadable:

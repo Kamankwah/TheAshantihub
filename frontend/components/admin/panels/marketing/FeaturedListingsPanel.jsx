@@ -3,6 +3,7 @@ import { apiPost } from "../../../../apiClient.js";
 import { apiErrorMessage } from "../../../../lib/apiErrorMessage.js";
 import { useFeaturedCandidates, useFeaturedGrid } from "../../../../hooks/useMarketingBanners.js";
 import { D } from "../../theme.js";
+import SponsoredProducts from "./SponsoredProducts.jsx";
 import { Honest, Loading, PageHead, Section, button, chip, dim, errorStyle, figures, inputStyle, labelStyle, linkStyle, money, page, scroll, table, td, th } from "./mkParts.jsx";
 
 // ─── 13 Featured listings ────────────────────────────────────────────────────
@@ -10,11 +11,11 @@ import { Honest, Loading, PageHead, Section, button, chip, dim, errorStyle, figu
 // here for a featured promotion that an owner already bought (the promotion itself is approved
 // under Promotions). Slot prices are the price of the place, not what the owner paid.
 const CELL = {
-  booked: { bg: "#F5ECD8", fg: "#2C1810", border: "1px solid #F5ECD8" },
-  waiting: { bg: "#FBF3DC", fg: "#6A4A00", border: "1px solid #D4A017" },
-  open: { bg: "#FFFFFF", fg: "rgba(44,24,16,0.72)", border: "1px dashed #2C181066" },
-  held: { bg: "#FDE8E8", fg: "#A30000", border: "1px solid #FDE8E8" },
-  stopped: { bg: "#EEE", fg: "#555", border: "1px solid #CCC" },
+  booked: { bg: D.panelBg2, fg: D.text, border: `1px solid ${D.divider}` },
+  waiting: { bg: D.warnBg, fg: D.warnInk, border: `1px solid ${D.gold}` },
+  open: { bg: D.panelBg, fg: D.textDim, border: `1px dashed ${D.textFaint}` },
+  held: { bg: D.errBg, fg: D.errInk, border: `1px solid ${D.errBg}` },
+  stopped: { bg: D.panelBg3, fg: D.textDim, border: `1px solid ${D.divider}` },
 };
 const WORD = { open: "Open", booked: "Booked", waiting: "Waiting in Promotions", held: "Held", stopped: "Promotion stopped" };
 const shiftDate = (iso, weeks) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + weeks * 7); return d.toISOString().slice(0, 10); };
@@ -161,7 +162,7 @@ export default function FeaturedListingsPanel({ auth }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="ft-look" title="Paid and verified must never look alike">
           <div><span style={{ border: "2px solid #D4A017", borderRadius: 6, padding: "1px 8px", fontWeight: 800, fontSize: "0.75rem" }}>Featured</span> Paid placement: gold outline, the word “Featured”, no tick. It means the business paid for the spot, nothing more.</div>
-          <div><span style={{ color: "#00500A", fontWeight: 800, fontSize: "0.75rem" }}>✓ Verified</span> Verification: a green tick on a plain field. Earned through KYC by Operations. It can never be bought and never turns gold.</div>
+          <div><span style={{ color: D.okInk, fontWeight: 800, fontSize: "0.75rem" }}>✓ Verified</span> Verification: a green tick on a plain field. Earned through KYC by Operations. It can never be bought and never turns gold.</div>
           <div style={dim}>A featured listing from a verified business shows both, side by side, each in its own style.</div>
         </Section>
         <Section id="ft-block" title="Who can't book">
@@ -173,6 +174,7 @@ export default function FeaturedListingsPanel({ auth }) {
           <div style={dim}>A held business does not show on the site while the hold lasts.</div>
         </Section>
       </div>
+      {auth?.hasPermission?.("deals.manage") && <SponsoredProducts />}
     </div>
   );
 }

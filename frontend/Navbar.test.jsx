@@ -213,4 +213,22 @@ describe('Navbar', () => {
     fireEvent.click(toggleBtns[1])
     expect(toggleTheme).toHaveBeenCalledTimes(1)
   })
+
+  it('the theme prop drives the header colours through data-theme and CSS variables', () => {
+    const { container, rerender } = renderNavbar({ theme: 'light' })
+    const header = container.firstChild
+    expect(header).toHaveAttribute('data-theme', 'light')
+    expect(header.getAttribute('style')).toContain('var(--ah-header-bg')
+    rerender(
+      <Navbar page="home" setPage={vi.fn()} lang="en" setLang={vi.fn()} user={null} auth={{ logout: vi.fn() }}
+        handleLogoClick={vi.fn()} setAuthModal={vi.fn()} setShowNotifs={vi.fn()} setShowBizDash={vi.fn()}
+        setShowPayments={vi.fn()} setShowAccount={vi.fn()} setShowCart={vi.fn()} theme="dark" toggleTheme={vi.fn()} T={T} />,
+    )
+    expect(container.firstChild).toHaveAttribute('data-theme', 'dark')
+  })
+
+  it('is solid on the home page too (the transparent-over-Hero look retired with the Hero)', () => {
+    const { container } = renderNavbar({ page: 'home' })
+    expect(container.firstChild.getAttribute('style')).not.toContain('rgba(12, 8, 4, 0.32)')
+  })
 })

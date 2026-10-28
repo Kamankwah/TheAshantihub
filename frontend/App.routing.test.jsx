@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import AshantiHub from './App.jsx'
 import { apiFetch, getStoredAuth, setStoredAuth } from './apiClient.js'
 import { server } from './mocks/server.js'
+import { gatedOpening } from './mocks/opening.js'
 
 // docs/UI_MODERNIZATION_ROADMAP.md Phase D — real URL sync for `page`.
 // Before this phase, `page` was a bare useState with zero connection to
@@ -35,10 +36,47 @@ function renderAtPath(path) {
 
 describe('AshantiHub routing', () => {
   it(
-    'mounts at "/" and shows the Home tab',
+    'root_renders_storefront_home: "/" is the marketplace home, not the old Hero landing',
     async () => {
       renderAtPath('/')
-      expect(await screen.findByText(/Ashanti Rising/i, {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(await screen.findByTestId('storefront-home', {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(screen.queryByText(/A Kingdom Wired/i)).not.toBeInTheDocument()
+      // Task 10: the home has its own header (search + departments) in place
+      // of the Navbar's bar, and ends on the call-to-action block.
+      expect(screen.getByRole('search', { name: 'Site search' })).toBeInTheDocument()
+      expect(screen.getByRole('navigation', { name: 'Departments' })).toBeInTheDocument()
+      expect(screen.queryByText('Adwaso')).not.toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Sell on AshantiHub' })).toBeInTheDocument()
+      // Gate off (the default): no countdown takeover.
+      expect(screen.queryByRole('button', { name: 'Notify me' })).not.toBeInTheDocument()
+    },
+    8000,
+  )
+
+  it(
+    'before opening, "/" shows the countdown takeover above the marketplace home',
+    async () => {
+      server.use(gatedOpening({ opensAt: '2026-11-06T06:00:00Z', serverNow: '2026-11-01T06:00:00Z' }))
+      renderAtPath('/')
+      await screen.findByTestId('storefront-home', {}, { timeout: 3000 })
+      expect(await screen.findByRole('button', { name: 'Notify me' })).toBeInTheDocument()
+      expect(screen.getByText('The marketplace opens 6 Nov, 06:00')).toBeInTheDocument()
+    },
+    8000,
+  )
+
+  it(
+    '/notify/stop/:token posts the token and confirms the opt-out',
+    async () => {
+      let body = null
+      server.use(http.post('http://localhost:8000/api/storefront/notify-me/stop/', async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json({ status: 'stopped' })
+      }))
+      renderAtPath('/notify/stop/tok123')
+      expect(await screen.findByText('You will not get the opening message.', {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(body).toEqual({ token: 'tok123' })
+      expect(screen.queryByText('Page Not Found')).not.toBeInTheDocument()
     },
     8000,
   )
@@ -50,7 +88,7 @@ describe('AshantiHub routing', () => {
       expect(
         await screen.findByText(/business contact is handled by AshantiHub Support/i, {}, { timeout: 3000 }),
       ).toBeInTheDocument()
-      expect(screen.queryByText(/Ashanti Rising/i)).not.toBeInTheDocument()
+      expect(screen.queryByTestId('storefront-home')).not.toBeInTheDocument()
     },
     8000,
   )
@@ -63,6 +101,20 @@ describe('AshantiHub routing', () => {
         await screen.findByText(/Plan your visit around Kumasi's cultural calendar/i, {}, { timeout: 3000 }),
       ).toBeInTheDocument()
       expect(screen.queryByText(/business contact is handled by AshantiHub Support/i)).not.toBeInTheDocument()
+    },
+    8000,
+  )
+
+  it(
+    'a department link from the home lands on /business with that category filter',
+    async () => {
+      const asked = []
+      server.use(http.get('http://localhost:8000/api/listings/', ({ request }) => {
+        asked.push(new URL(request.url).searchParams.get('category'))
+        return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+      }))
+      renderAtPath('/business?category=books')
+      await waitFor(() => expect(asked).toContain('books'), { timeout: 4000 })
     },
     8000,
   )
@@ -83,6 +135,9 @@ describe('AshantiHub routing', () => {
       // asserted against directly — this is the same setPage prop Navbar
       // receives and calls unmodified (see Navbar.jsx/Navbar.test.jsx), now
       // backed by useNavigate() instead of a bare useState setter.
+      // Task 10: "/" shows the StorefrontHeader instead of the Navbar, so the
+      // walk starts there: its "All businesses" link (navigate) reaches
+      // /business, where the Navbar and its "Adwaso" link are back.
       window.history.pushState({}, '', '/')
       const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
       render(
@@ -93,8 +148,11 @@ describe('AshantiHub routing', () => {
         </QueryClientProvider>,
       )
 
+      fireEvent.click(await screen.findByRole('button', { name: 'All businesses' }, { timeout: 3000 }))
+      expect(window.location.pathname).toBe('/business')
+      fireEvent.click(screen.getAllByText('Events')[0])
+      expect(window.location.pathname).toBe('/events')
       // The Business nav link is labelled "Adwaso" (route stays /business).
-      await screen.findByText('Adwaso', {}, { timeout: 3000 })
       fireEvent.click(screen.getAllByText('Adwaso')[0])
       expect(window.location.pathname).toBe('/business')
 
@@ -275,7 +333,7 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
       try {
         renderAtPath('/my-account')
         expect(await screen.findByText('My Account', {}, { timeout: 3000 })).toBeInTheDocument()
-        expect(screen.queryByText(/Ashanti Rising/i)).not.toBeInTheDocument()
+        expect(screen.queryByTestId('storefront-home')).not.toBeInTheDocument()
       } finally {
         setStoredAuth(null)
       }
@@ -299,7 +357,7 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
       expect(await screen.findByText(/Ama's Lodge/i, {}, { timeout: 3000 })).toBeInTheDocument()
       // The surrounding Business-tab chrome (support-contact banner) stays mounted
       // around the PDP, same "scoped swap" convention as before this slice.
-      expect(screen.queryByText(/Ashanti Rising/i)).not.toBeInTheDocument()
+      expect(screen.queryByTestId('storefront-home')).not.toBeInTheDocument()
     },
     8000,
   )
@@ -447,7 +505,7 @@ describe('AshantiHub routing — /payment/return', () => {
       expect(
         await screen.findByText(/No payment reference found/i, {}, { timeout: 3000 }),
       ).toBeInTheDocument()
-      expect(screen.queryByText(/Ashanti Rising/i)).not.toBeInTheDocument()
+      expect(screen.queryByTestId('storefront-home')).not.toBeInTheDocument()
     },
     8000,
   )
@@ -846,5 +904,34 @@ describe('AshantiHub routing — /business/claim', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save my login' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }))
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+  }, 8000)
+})
+
+// Dark mode covers every page (owner decision, plan M1B task 4): the app root
+// and the marketplace home both paint from the --ah-* theme tokens.
+describe('AshantiHub — dark theme scope', () => {
+  afterEach(() => {
+    localStorage.removeItem('ashantihub.theme')
+    document.documentElement.classList.remove('dark')
+    delete document.documentElement.dataset.theme
+  })
+
+  it('the app root follows the theme on /business in dark mode', async () => {
+    localStorage.setItem('ashantihub.theme', 'dark')
+    const { container } = renderAtPath('/business')
+    await screen.findByText(/business contact is handled by AshantiHub Support/i, {}, { timeout: 3000 })
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    const rootStyle = container.firstChild.getAttribute('style')
+    expect(rootStyle).toContain('var(--ah-canvas')
+    expect(container.firstChild.style.background).not.toBe('rgb(253, 246, 227)')
+  }, 8000)
+
+  it('the marketplace home wrapper does follow the theme', async () => {
+    localStorage.setItem('ashantihub.theme', 'dark')
+    const { container } = renderAtPath('/')
+    const home = await screen.findByTestId('storefront-home', {}, { timeout: 3000 })
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(home.getAttribute('style')).toContain('var(--ah-canvas')
+    expect(container.firstChild.getAttribute('style')).toContain('var(--ah-canvas')
   }, 8000)
 })

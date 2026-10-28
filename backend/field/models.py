@@ -18,6 +18,8 @@ class VisitCheckIn(models.Model):
     DELIVERY_FOLLOW_UP = "delivery_follow_up"
     INFO_UPDATE = "info_update"
     VERIFICATION = "verification"
+    # Verifying a business's own name/contact change request on site (plan 7F-C R3; portfolio.detail_changes).
+    CHANGE_VERIFICATION = "change_verification"
     PURPOSE_CHOICES = [
         (PROSPECTING, "Prospecting"),
         (REGISTRATION, "Registration"),
@@ -26,6 +28,7 @@ class VisitCheckIn(models.Model):
         (DELIVERY_FOLLOW_UP, "Delivery follow-up"),
         (INFO_UPDATE, "Info update"),
         (VERIFICATION, "Verification"),
+        (CHANGE_VERIFICATION, "Change verification"),
     ]
 
     OPEN = "open"
@@ -44,6 +47,11 @@ class VisitCheckIn(models.Model):
     # prospect backfills business_owner; the prospect link stays.
     prospect = models.ForeignKey(
         "field.Prospect", on_delete=models.SET_NULL, null=True, blank=True, related_name="visits",
+    )
+    # The business's detail change request this visit verifies (purpose change_verification only).
+    change_request = models.ForeignKey(
+        "portfolio.BusinessDetailChangeRequest", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="visits",
     )
     purpose = models.CharField(max_length=30, choices=PURPOSE_CHOICES)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=OPEN)

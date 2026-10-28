@@ -7,6 +7,8 @@ order (posting.lock), the balance covers it (a negative vendor Available or ride
 withdrawals stay within the daily limit. Customers withdraw their wallet, vendors their Available, third-party riders
 their balance (never the commission reserve; wallets Plan 5); a negative Available or rider balance blocks any
 withdrawal."""
+from datetime import timedelta
+
 from django.db import IntegrityError, transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -70,6 +72,14 @@ def start_of_day(now):
     return timezone.localtime(now).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+def next_reset(now):
+    """The next 00:00 in AshantiHub's time zone after `now`: when a day's withdrawal count starts again. Built from local
+    calendar fields, so it is midnight whatever the offset."""
+    local = start_of_day(now)
+    tomorrow = (local + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return timezone.make_aware(tomorrow.replace(tzinfo=None), timezone.get_current_timezone())
+
+
 def clean_request_id(raw):
     if not isinstance(raw, str) or not 8 <= len(raw.strip()) <= 64:
         raise WithdrawalError(
@@ -90,11 +100,11 @@ def existing(holder, request_id):
 
 def withdrawable(holder, now=None, balance=None):
     """What the holder can withdraw now: the balance (read fresh unless the caller already holds the lock and passes it)
-    less top-ups still inside their hold window, never below zero."""
+    less top-ups still inside their hold window, never below zero. The one formula: `request` and the summaries use it."""
     now = now or timezone.now()
     if balance is None:
         balance = posting.balance_of(source_kind(holder), holder)
-    return max(balance - held_topups(holder, now)[0], 0)
+    return max(balance - held_topups(holder, now, balance)[0], 0)
 
 
 def request(holder, *, destination_id, amount_pesewas, request_id, now=None):
@@ -144,16 +154,26 @@ def request(holder, *, destination_id, amount_pesewas, request_id, now=None):
         raise WithdrawalError(NEGATIVE[kind], "negative_balance", 409)
     if amount_pesewas > balance:
         raise WithdrawalError(f"You have GH₵ {from_pesewas(max(balance, 0))} to withdraw.", "insufficient_funds", 409)
-    held, free_at = held_topups(holder, now)
-    if held and amount_pesewas > withdrawable(holder, now, balance):
+    available = withdrawable(holder, now, balance)
+    if amount_pesewas > available:
+        held, free_at = held_topups(holder, now, balance)
         raise WithdrawalError(
-            f"Money you just added is held until it can be withdrawn. You can withdraw GH₵ {from_pesewas(withdrawable(holder, now, balance))} now.",
+            f"Money you just added is held until it can be withdrawn. You can withdraw GH₵ {from_pesewas(available)} now.",
             "topup_held", 409, free_at=free_at.isoformat(), held_topup_pesewas=held,
         )
     today = mine(holder).filter(status__in=Withdrawal.COUNTED, created_at__gte=start_of_day(now)).aggregate(total=Sum("amount_pesewas"))["total"] or 0
     daily = settings_store.current("withdrawal_daily_limit_pesewas", now)
     if today + amount_pesewas > daily:
         raise WithdrawalError(f"You can withdraw GH₵ {from_pesewas(max(daily - today, 0))} more today.", "daily_limit", 409)
+    if isinstance(holder, StaffUser):  # a rider: at most so many a day (the owner's ruling; customers and businesses are not capped)
+        limit = settings_store.current("rider_withdrawals_per_day", now)
+        count = mine(holder).filter(status__in=Withdrawal.COUNTED, created_at__gte=start_of_day(now)).count()
+        if count >= limit:
+            raise WithdrawalError(
+                f"You can make {limit} withdrawal{'s' if limit != 1 else ''} a day, and you have made {count} today. "
+                "You can withdraw again from 00:00 (Accra) tomorrow.",
+                "daily_count_limit", 409, resets_at=next_reset(now).isoformat(), limit=limit,
+            )
     try:
         with transaction.atomic():
             withdrawal = Withdrawal.objects.create(

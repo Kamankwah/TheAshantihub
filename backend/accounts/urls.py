@@ -78,10 +78,21 @@ urlpatterns = [
     ),
     path("business-owners/me/payout/", views.PayoutDetailUpdateView.as_view(), name="payout-update"),
     path(
+        "business-owners/me/detail-changes/",
+        views.OwnerDetailChangeListCreateView.as_view(),
+        name="business-owner-detail-changes",
+    ),
+    path(
+        "business-owners/me/detail-changes/<int:pk>/withdraw/",
+        views.OwnerDetailChangeWithdrawView.as_view(),
+        name="business-owner-detail-change-withdraw",
+    ),
+    path(
         "business-owners/me/profile/",
         views.BusinessOwnerProfileUpdateView.as_view(),
         name="business-owner-profile-update",
     ),
+    path("business/hours/", views.BusinessHoursView.as_view(), name="business-hours"),
     path("business-owners/me/terms/", views.TermsAcceptView.as_view(), name="business-owner-terms"),
     path("kyc/pending/", views.KYCPendingQueueView.as_view(), name="kyc-pending"),
     path("kyc/stats/", views.KYCStatsView.as_view(), name="kyc-stats"),

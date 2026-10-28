@@ -14,7 +14,6 @@ const REAL_SHAPED_LISTING = {
   price_amount: '450.00',
   price_unit: '/night',
   tag: 'Featured',
-  contact_phone: '+233244000001',
   lat: '6.688500',
   lng: '-1.624400',
   main_photo: 'http://localhost:8000/media/listing_photos/main/lodge.jpg',
@@ -227,5 +226,35 @@ describe('Card ReviewsModal (Phase 4 — real backend data)', () => {
       comment: 'Wonderful experience, highly recommend!',
     }))
     expect(await screen.findByText('Review submitted! Thank you.')).toBeInTheDocument()
+  })
+})
+
+// The DealsRow price rule on the marketplace card: effective_price is the
+// price; only was_price is struck through; price_amount never is.
+describe('Card price', () => {
+  const renderCard = (item) => renderWithClient(
+    <Card item={item} accentColor="#000080" user={null} favourites={[]} onFavourite={vi.fn()} currency="GHS" onMessage={vi.fn()} />,
+  )
+
+  it('shows the sale (effective) price and strikes through only was_price', () => {
+    const { container } = renderCard({ ...REAL_SHAPED_LISTING, sale_price: '400.00', effective_price: '400.00', was_price: '450.00' })
+    expect(screen.getByText('GHS 400.00/night')).toBeInTheDocument()
+    const struck = container.querySelectorAll('s')
+    expect(struck).toHaveLength(1)
+    expect(struck[0].textContent).toBe('Was GHS 450.00')
+  })
+
+  it('never strikes through price_amount when there is no honest was_price', () => {
+    const { container } = renderCard({ ...REAL_SHAPED_LISTING, sale_price: '400.00', effective_price: '400.00', was_price: null })
+    expect(screen.getByText('GHS 400.00/night')).toBeInTheDocument()
+    expect(container.querySelector('s')).toBeNull()
+    expect(screen.queryByText(/450/)).not.toBeInTheDocument()
+  })
+
+  it('falls back to price_amount, dark-mode money colour, tabular', () => {
+    renderCard(REAL_SHAPED_LISTING)
+    const price = screen.getByText('GHS 450.00/night')
+    expect(price.style.fontVariantNumeric).toBe('tabular-nums')
+    expect(price.style.color).toBe('rgb(245, 222, 179)')
   })
 })

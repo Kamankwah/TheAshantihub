@@ -96,9 +96,15 @@ def hero_checks(submission):
     from .models import HeroMediaSubmission
 
     owner = submission.business_owner
+    if owner is None:  # a slide Marketing made itself is never checked
+        return []
     now = timezone.now()
     caption = submission.caption or ""
-    checks = [_photo_check(submission), _kyc_check(owner), _subscription_check(owner)]
+    dated = submission.starts_at is not None  # a slide with its own dates (free slider)
+    checks = [_kyc_check(owner)]
+    if not dated:  # dated slides are free: no photo-match, subscription or slot checks
+        checks.insert(0, _photo_check(submission))
+        checks.append(_subscription_check(owner))
 
     length = len(caption)
     checks.append(_check(
@@ -106,7 +112,7 @@ def hero_checks(submission):
         PASS if length <= HERO_CAPTION_MAX else FAIL, f"{length} of {HERO_CAPTION_MAX} characters.",
     ))
 
-    found = contact_details_in(caption)
+    found = contact_details_in(caption) or contact_details_in(submission.title)
     checks.append(_check(
         "contact_details", "No contact details in the caption",
         FAIL if found else PASS,
@@ -114,11 +120,14 @@ def hero_checks(submission):
         blocking=bool(found),
     ))
 
+    if dated:  # the free slider has no per-plan slot limit
+        return checks
+
     from .views import _hero_slots_for
 
     slots = _hero_slots_for(owner)
     live = (
-        HeroMediaSubmission.objects.filter(business_owner=owner, status=HeroMediaSubmission.APPROVED, expires_at__gt=now)
+        HeroMediaSubmission.objects.filter(business_owner=owner, status=HeroMediaSubmission.APPROVED, expires_at__gt=now, starts_at__isnull=True)
         .exclude(pk=submission.pk).count()
     )
     word = "slot" if slots == 1 else "slots"

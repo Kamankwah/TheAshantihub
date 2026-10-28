@@ -10,6 +10,7 @@ from rest_framework import serializers
 from accounts.gps import validate_ashanti_gps
 from accounts.kyc import address_correction
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
+from accounts.serializers import hours_payload
 from accounts.phones import mask_phone, normalize_gh_phone
 from accounts.validators import validate_image_content_type
 from approvals.models import ApprovalRequest
@@ -176,6 +177,15 @@ def _portfolio_mask_ip(ip):
     return ".".join(parts[:2] + ["x", "x"]) if len(parts) == 4 else ip
 
 
+def _has_hours(owner):
+    """Annotated by health.with_health_inputs; one query for an owner that was loaded without it."""
+    flag = getattr(owner, "has_hours", None)
+    if flag is None:
+        from accounts.hours import has_hours
+        return has_hours(owner)
+    return bool(flag)
+
+
 def portfolio_item(row, masked=False):
     """One business in a portfolio list (row: health.RatedBusiness). For a
     portfolio.manage holder (masked=True) (Operations) gets the sign-in phone masked, as in
@@ -195,6 +205,7 @@ def portfolio_item(row, masked=False):
         "registration_channel": owner.registration_channel,
         "needs_claim": owner.needs_claim,
         "claimed_at": owner.claimed_at,
+        "has_hours": _has_hours(owner),
         "account_manager": _portfolio_person(owner.account_manager),
         "health": {"rating": row.rating, "reasons": list(row.reasons)},
         "subscription": row.subscription,
@@ -256,7 +267,8 @@ def business_detail(row, request):
         "location_set_by": getattr(profile, "location_set_by", ""),
         "business_contact_phone": getattr(profile, "business_contact_phone", None),
         "business_description": getattr(profile, "business_description", ""),
-        "opening_hours": getattr(profile, "opening_hours", ""),
+        "opening_hours": getattr(profile, "opening_hours", ""),  # the old free text; may be empty
+        "hours": hours_payload(owner),
         "signboard_photo": _portfolio_file_url(request, getattr(profile, "signboard_photo", None)),
         "email": owner.email,
         "registered_by": _portfolio_person(owner.registered_by),
@@ -363,7 +375,8 @@ def business_review_sheet(owner, request):
             "business_kind": getattr(profile, "business_kind", None),
             "category": _portfolio_named(getattr(profile, "business_category", None), "label"),
             "zone": _portfolio_named(getattr(profile, "zone", None)),
-            "opening_hours": getattr(profile, "opening_hours", ""),
+            "opening_hours": getattr(profile, "opening_hours", ""),  # the old free text; may be empty
+            "hours": hours_payload(owner),
             "is_formal": bool(getattr(profile, "is_formal", False)),
             "tin_given": bool(getattr(profile, "tin", None)),
         },

@@ -54,7 +54,7 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "id", "status", "delivery_status", "total_amount", "placed_at", "items",
-            "delivery_assignment_status", "delivery_code", "delivery_stops", "delivery_fee", *DELIVERY_FIELDS,
+            "delivery_assignment_status", "delivery_code", "delivery_stops", "delivery_fee", "ready_not_before", *DELIVERY_FIELDS,
         ]
 
     def get_delivery_assignment_status(self, obj):
@@ -83,6 +83,15 @@ class OrderSerializer(serializers.ModelSerializer):
         if obj.coupon_id:
             data["discount_amount"] = str(obj.discount_amount)
             data["coupon_code"] = obj.coupon.code
+        # An open re-delivery at the customer's request (Plan 7F-E Task 7): the fee to pay and the state, so the order
+        # card can offer the payment. Only such an order carries it (no staff names, no reason).
+        from delivery import redelivery
+
+        if obj.delivery_method == Order.DOOR_TO_DOOR:
+            prefetched = getattr(obj, "open_redeliveries", None)      # orders.views._open_redeliveries
+            open_request = (prefetched[0] if prefetched else None) if prefetched is not None else redelivery.open_row(obj)
+            if open_request is not None:
+                data["redelivery"] = redelivery.customer_row(open_request)
         return data
 
 
@@ -277,7 +286,7 @@ class DeliveryOrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "id", "customer_name", "status", "delivery_status", "placed_at",
-            "items", "total_amount", "delivery_assignment", *DELIVERY_FIELDS,
+            "items", "total_amount", "delivery_assignment", "ready_not_before", *DELIVERY_FIELDS,
         ]
         read_only_fields = fields
 

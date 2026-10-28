@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from accounts.models import Customer
 from accounts.testing import make_staff
-from delivery.models import Rider, RiderDocument, RiderEarning, RiderEmploymentPeriod
+from delivery.models import PickupStop, Rider, RiderDocument, RiderEarning, RiderEmploymentPeriod
 from ledger import posting, riders
 from ledger.models import Account
 from marketing.models_waivers import DeliveryWaiver, WaivedFeeCharge
@@ -41,14 +41,25 @@ def delivered_by(order, rider_row, *, at=None, status=DeliveryAssignment.CONFIRM
     )
 
 
-def waived(order, owner, amount="15.00"):
+def stop_collected(order, owner, at=None, *, status=PickupStop.COLLECTED):
+    """One pickup stop of the order's delivery at `owner`'s shop, collected at `at` (now by default) unless `status` says
+    otherwise (a skipped or waiting stop has no collection time). The order must already have its assignment."""
+    assignment = DeliveryAssignment.objects.get(order=order)
+    collected = status == PickupStop.COLLECTED
+    return PickupStop.objects.create(
+        assignment=assignment, sequence=assignment.stops.count() + 1, business_owner=owner, status=status,
+        collected_at=(at or timezone.now()) if collected else None,
+    )
+
+
+def waived(order, owner, amount="15.00", funded_by="business"):
     """The business covered the order's delivery fee with its free-delivery promo (charged to it at release)."""
     now = timezone.now()
     waiver = DeliveryWaiver.objects.create(
         business_owner=owner, name="Free delivery week", starts_at=now - timedelta(days=1), ends_at=now + timedelta(days=1),
-        status=DeliveryWaiver.ACTIVE,
+        status=DeliveryWaiver.ACTIVE, funded_by=funded_by,
     )
-    return WaivedFeeCharge.objects.create(order=order, waiver=waiver, business_owner=owner, amount=Decimal(amount))
+    return WaivedFeeCharge.objects.create(order=order, waiver=waiver, business_owner=owner, amount=Decimal(amount), funded_by=funded_by)
 
 
 def earning(rider_row, *, gross, at, bp=1000):

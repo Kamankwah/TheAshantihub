@@ -80,3 +80,39 @@ describe('SupportPeoplePanel', () => {
     await waitFor(() => expect(seen).toEqual([{ kind: 'customer', id: 3 }]))
   })
 })
+
+describe('SupportPeoplePanel opening hours', () => {
+  // Director ruling 7 (2026-10-20): Support may set a business's opening hours (businesses.set_hours), on the profile.
+  const business = (hours) => http.get(`${API}/api/support/staff/businesses/5/360/`, () => HttpResponse.json({
+    kind: 'business', profile: { id: 5, name: 'Akosua Ntoma', owner_name: 'Akosua', phone: '024 *** 118', since: '2026-09-01T00:00:00Z', status: { key: 'verified', label: 'Verified' }, account_manager: null },
+    kpis: { listings_live: 2, listings_total: 3, conversations: 0, open_conversations: 0, calls: 0, last_call_at: null, reviews: 0 },
+    subscription: null, conversations: [], calls: [], hours,
+  }))
+  const opened = [http.post(`${API}/api/support/staff/profile-opened/`, () => HttpResponse.json({ recorded: true })), http.get(`${API}/api/support/staff/people/recent/`, () => HttpResponse.json([]))]
+
+  it('shows the hours and lets a holder of businesses.set_hours enter them', async () => {
+    let sent = null
+    server.use(business([]), ...opened, http.put(`${API}/api/portfolio/businesses/5/hours/`, async ({ request }) => {
+      sent = await request.json()
+      return HttpResponse.json({ days: sent.days, has_hours: true })
+    }))
+    wrap(<SupportPeoplePanel profile={{ kind: 'business', id: 5 }} auth={{ hasPermission: (c) => c === 'businesses.set_hours' }} />)
+    expect(await screen.findByRole('region', { name: 'Opening hours' })).toBeInTheDocument()
+    expect(screen.getByText('Read-only except opening hours')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Enter opening hours' }))
+    for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) {
+      fireEvent.change(screen.getByLabelText(`${day} opens`), { target: { value: '08:00' } })
+      fireEvent.change(screen.getByLabelText(`${day} closes`), { target: { value: '18:00' } })
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Save opening hours' }))
+    await waitFor(() => expect(sent?.days).toHaveLength(7))
+  })
+
+  it('shows the hours read-only without the permission', async () => {
+    server.use(business([]), ...opened)
+    wrap(<SupportPeoplePanel profile={{ kind: 'business', id: 5 }} auth={{ hasPermission: () => false }} />)
+    expect(await screen.findByRole('region', { name: 'Opening hours' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /opening hours/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Read-only')).toBeInTheDocument()
+  })
+})

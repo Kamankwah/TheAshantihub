@@ -16,7 +16,7 @@ import { errorStyle, eyebrow, h2 } from "./portfolioParts.jsx";
 // count the caller may not read (no service_issues.view) is left out, not zero.
 const PERIODS = [["today", "Today"], ["week", "Week"], ["month", "Month"]];
 const PERIOD_WORD = { today: "today", week: "this week", month: "this month" };
-const warn = "#A33A00";
+const warn = D.warnInk;
 
 function Kpi({ label, value, sub, subColor, onClick }) {
   const body = (

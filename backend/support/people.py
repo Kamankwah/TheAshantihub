@@ -13,6 +13,7 @@ from django.utils import timezone
 from accounts.claims import mask_email
 from accounts.models import BusinessOwner, Customer
 from accounts.phones import filter_by_phone, mask_phone, phone_key
+from accounts.serializers import hours_payload
 from billing.clock import subscription_state
 from calls.models import CallLog, purposes_for
 from calls.views import visible_calls
@@ -345,4 +346,7 @@ def business_360(owner, viewer):
         },
         "conversations": [_conversation_row(c, now) for c in convs.order_by("-updated_at")[:20]],
         "calls": [_call_row(c) for c in calls_qs.order_by("-started_at")[:20]],
+        # The weekly opening hours as entered ([] until someone enters them; never invented). Support may set them
+        # (businesses.set_hours, Director ruling 7) through PUT /api/portfolio/businesses/<id>/hours/.
+        "hours": hours_payload(owner),
     }

@@ -19,7 +19,7 @@ function CheckLine({ checks }) {
     <ul aria-label="Checks" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 2 }}>
       {checks.map((c) => (
         <li key={c.key} style={{ fontSize: "0.74rem", color: D.text }}>
-          <span aria-hidden="true" style={{ fontWeight: 800, color: c.status === "pass" ? "#00500A" : c.status === "warn" ? "#6A4A00" : "#A30000" }}>{c.status === "pass" ? "✓" : c.status === "warn" ? "~" : "!"} </span>
+          <span aria-hidden="true" style={{ fontWeight: 800, color: c.status === "pass" ? D.okInk : c.status === "warn" ? D.warnInk : D.errInk }}>{c.status === "pass" ? "✓" : c.status === "warn" ? "~" : "!"} </span>
           <span className="sr-only" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>{c.status === "pass" ? "Passed" : c.status === "warn" ? "Check" : "Failed"}: </span>
           {c.label}{c.status === "pass" ? "" : ` — ${c.detail}`}
         </li>
@@ -95,7 +95,7 @@ export default function PromotionsMarketing({ auth }) {
                             {canManage && rejectingId !== p.id && (
                               <div style={{ display: "flex", gap: 6 }}>
                                 <button type="button" disabled={busy || Boolean(p.fraud_hold)} onClick={() => call(p, "approve", {}, "Could not approve this promotion.")} style={button(D.text, D.panelBg, busy || Boolean(p.fraud_hold))}>Approve</button>
-                                <button type="button" disabled={busy} onClick={() => setRejectingId(p.id)} style={button(D.panelBg, "#A30000", busy)}>Reject</button>
+                                <button type="button" disabled={busy} onClick={() => setRejectingId(p.id)} style={button(D.panelBg, D.errInk, busy)}>Reject</button>
                               </div>
                             )}
                             {rejectingId === p.id && (
@@ -112,7 +112,7 @@ export default function PromotionsMarketing({ auth }) {
                         {tab === "active" && (
                           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                             <span style={dim}>{p.is_currently_active ? `${p.days_left ?? 0} ${p.days_left === 1 ? "day" : "days"} left` : "Scheduled, not ranking yet"}</span>
-                            {canManage && cancelling !== p.id && <button type="button" disabled={busy} onClick={() => setCancelling(p.id)} style={{ ...button(D.panelBg, "#A30000", busy), alignSelf: "flex-start" }}>Cancel</button>}
+                            {canManage && cancelling !== p.id && <button type="button" disabled={busy} onClick={() => setCancelling(p.id)} style={{ ...button(D.panelBg, D.errInk, busy), alignSelf: "flex-start" }}>Cancel</button>}
                             {cancelling === p.id && (
                               <div role="alertdialog" aria-label={`Cancel ${p.business_owner_name}'s promotion?`} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 <Honest tone="warn">Cancelling is not a refund. The listing stops being promoted now and the {money(p.amount_paid)} stays paid.</Honest>

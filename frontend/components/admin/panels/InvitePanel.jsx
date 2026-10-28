@@ -172,7 +172,7 @@ export default function InvitePanel({ auth }) {
                             {(v.start_date || v.areas.length > 0) && <div style={dim}>{[v.start_date ? `Starts ${longDay(v.start_date)}` : null, v.areas.length ? v.areas.join(", ") : null].filter(Boolean).join(" · ")}</div>}</td>
                           <td style={td}>{ROLE_LABEL[v.role] || v.role}</td>
                           <td style={td}>{dayShort(v.sent_at)}</td>
-                          <td style={{ ...td, color: exp.warn ? (exp.hard ? D.red : "#A33A00") : D.text, fontWeight: exp.warn ? 700 : 400 }}>{exp.text}</td>
+                          <td style={{ ...td, color: exp.warn ? (exp.hard ? D.red : D.warnInk) : D.text, fontWeight: exp.warn ? 700 : 400 }}>{exp.text}</td>
                           <td style={td}><span style={chip(stateColor)}>{stateLabel}</span></td>
                           <td style={td}>
                             {cancelling === v.id ? (

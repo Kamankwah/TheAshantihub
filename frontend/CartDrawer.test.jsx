@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
+import { gatedOpening } from './mocks/opening.js'
+import { setStoredAuth } from './apiClient.js'
 import CartDrawer from './components/CartDrawer.jsx'
 
 // Same stub as test/setup.js plus a second pin, so a test can move the pin from one point to another.
@@ -13,6 +15,16 @@ vi.mock('./components/LocationPicker.jsx', async () => {
       createElement('button', { type: 'button', onClick: () => { onChange(6.7, -1.62); if (onAddress) onAddress('KNUST Ave, Kumasi') } }, 'drop-pin'),
       createElement('button', { type: 'button', onClick: () => onChange(6.69, -1.62) }, 'drop-pin-out')),
   }
+})
+
+// These tests pin checkout with the wallet ledger off (no payment picker, no payment_method field), so the
+// wallet endpoints answer the server's ledger_off refusal; CartDrawer.wallet.test.jsx covers the ledger-on flow.
+beforeEach(() => {
+  const off = () => HttpResponse.json({ detail: "Wallets aren't switched on yet.", code: 'ledger_off' }, { status: 409 })
+  server.use(
+    http.get('http://localhost:8000/api/wallet/', off),
+    http.get('http://localhost:8000/api/wallet/processing/', off),
+  )
 })
 
 function StubPayment({ amount, onSuccess, onClose }) {
@@ -514,5 +526,67 @@ describe('CartDrawer and the delivery limits', () => {
       expect(await screen.findByText('Delivery value (not charged):')).toBeInTheDocument()
       expect(screen.queryByText(/straight-line estimate/)).not.toBeInTheDocument()
     })
+  })
+})
+
+describe('CartDrawer and the after-hours delivery notice', () => {
+  const preview = (body) => http.get('http://localhost:8000/api/orders/delivery-preview/', () => HttpResponse.json(body))
+  // 2026-10-20 is a Tuesday; Accra is UTC+0, so 08:00Z reads "Tue 08:00".
+  const DEFERRED = { delivery_from: '2026-10-20T08:00:00Z', delivered_from: '2026-10-20T08:00:00Z', deferred: true }
+  // A preview handler that tells the test when the request arrived, so absence is asserted after the answer was served.
+  const watchedPreview = (body, status = 200) => {
+    let seen
+    const hit = new Promise((resolve) => { seen = resolve })
+    const handler = http.get('http://localhost:8000/api/orders/delivery-preview/', () => { seen(); return HttpResponse.json(body, { status }) })
+    const settled = async () => {
+      await hit
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)) }) // let the served response reach the component
+    }
+    return { handler, settled }
+  }
+  const openDoorToDoor = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Checkout →' }))
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+  }
+
+  it('says the shop is closed and when delivery starts (business hours)', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), preview({ ...DEFERRED, source: 'business_hours' }))
+    renderDrawer()
+    await openDoorToDoor()
+    expect(await screen.findByTestId('cart-after-hours')).toHaveTextContent('Shop is closed now. Delivery starts Tue 08:00.')
+  })
+
+  it('never says the shop is closed when only platform hours defer it', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), preview({ ...DEFERRED, source: 'platform' }))
+    renderDrawer()
+    await openDoorToDoor()
+    const note = await screen.findByTestId('cart-after-hours')
+    expect(note).toHaveTextContent('Delivery starts Tue 08:00.')
+    expect(note).not.toHaveTextContent(/closed/i)
+  })
+
+  it('shows no notice when the shop is open', async () => {
+    const open = watchedPreview({ delivery_from: null, delivered_from: null, deferred: false, source: null })
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), open.handler)
+    renderDrawer()
+    await openDoorToDoor()
+    await open.settled()
+    expect(screen.queryByTestId('cart-after-hours')).not.toBeInTheDocument()
+  })
+
+  it('shows the notice with promotions off, and nothing when the preview fails or for store pickup', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), preview({ ...DEFERRED, source: 'business_hours' }))
+    const { unmount } = renderDrawer()
+    fireEvent.click(await screen.findByRole('button', { name: 'Checkout →' }))
+    expect(screen.queryByTestId('cart-after-hours')).not.toBeInTheDocument() // store pickup is the default
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+    expect(await screen.findByTestId('cart-after-hours')).toBeInTheDocument()
+    unmount()
+    const failing = watchedPreview({ detail: 'x' }, 500)
+    server.use(failing.handler)
+    renderDrawer()
+    await openDoorToDoor()
+    await failing.settled()
+    expect(screen.queryByTestId('cart-after-hours')).not.toBeInTheDocument()
   })
 })

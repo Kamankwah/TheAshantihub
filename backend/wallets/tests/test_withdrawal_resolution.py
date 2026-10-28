@@ -7,7 +7,9 @@ from datetime import timedelta
 from unittest import mock
 
 from django.core.cache import cache
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -81,6 +83,27 @@ class WithdrawalResolutionTests(TestCase):
 
     def paid_journals(self, withdrawal):
         return Journal.objects.filter(key=f"withdrawal-paid-{withdrawal.reference}").count()
+
+    def test_the_rules_screen_words_the_chain_with_the_cosign_setting_key(self):
+        response = self.client_for(self.boss).get("/api/approvals/rules/")
+        self.assertEqual(response.status_code, 200, response.content)
+        text = response.content.decode()
+        self.assertIn("one approval from another holder of wallets.manage, or a super admin", text.lower())
+        self.assertIn("two approvals above the co-sign limit", text)
+        self.assertIn("cosign_threshold", text)
+
+    def test_the_resolve_door_locks_the_withdrawal_before_the_duplicate_check(self):
+        withdrawal = self.sent()
+        with provider_not_wired(), CaptureQueriesContext(connection) as queries:
+            self.assertEqual(self.propose(withdrawal).status_code, 201)
+        sql = [query["sql"] for query in queries]
+        advisory = next(i for i, text in enumerate(sql) if "pg_advisory_xact_lock" in text)
+        lock = next(i for i, text in enumerate(sql) if "FOR UPDATE" in text and "wallets_withdrawal" in text and i > advisory)
+        self.assertLess(advisory, lock)  # advisory target lock, then the row, as a decision takes them
+        self.assertFalse(any("approvals_approvalrequest" in text and "SELECT" in text for text in sql[:lock]))
+        with provider_not_wired():
+            again = self.propose(withdrawal, staff=self.yaw)
+        self.assertEqual((again.status_code, again.json()["code"]), (409, "resolution_pending"))
 
     def test_proposer_cannot_approve_own(self):
         withdrawal = self.sent()
@@ -248,3 +271,27 @@ class WithdrawalResolutionTests(TestCase):
             ask.assert_not_called()
         self.assertEqual(self.wallet(), 20000)
 
+
+    def approved_event(self, outcome, request_id="req-res-0001"):
+        withdrawal = self.sent(request_id)
+        with provider_not_wired():
+            approval_id = self.propose(withdrawal, outcome=outcome).json()["approval_id"]
+            self.assertEqual(self.approve(approval_id).status_code, 200)
+        verb = "wallets.withdrawal_paid" if outcome == "paid" else "wallets.withdrawal_failed"
+        return ActivityEvent.objects.get(verb=verb, target_id=str(withdrawal.pk))
+
+    def test_staff_paid_approval_event_carries_amount(self):
+        event = self.approved_event("paid")
+        self.assertEqual((event.after["amount"], event.after["amount_label"]), ("50.00", "GH₵ 50.00"))
+
+    def test_staff_fail_approval_event_carries_amount(self):
+        event = self.approved_event("failed")
+        self.assertEqual((event.after["amount"], event.after["amount_label"]), ("50.00", "GH₵ 50.00"))
+
+    def test_approval_events_never_contain_payout_number(self):
+        from .helpers import MOMO_NUMBER
+        for outcome, request_id in (("paid", "req-res-0011"), ("failed", "req-res-0012")):
+            event = self.approved_event(outcome, request_id)
+            blob = repr((event.summary, event.before, event.after))
+            self.assertNotIn(MOMO_NUMBER, blob)
+            self.assertNotIn(MOMO_NUMBER[-9:], blob)

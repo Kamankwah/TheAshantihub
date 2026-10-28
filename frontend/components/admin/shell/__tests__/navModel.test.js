@@ -90,7 +90,7 @@ describe('My Work group', () => {
 })
 
 // Super Admin screens that are built (no longer placeholders) but still no other role's.
-const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'money-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center']
+const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'money-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center', 'opening']
 const SA_ONLY = NAV_ITEMS.filter((i) => i.placeholder === 'super_admin').map((i) => i.id).concat('invites', SA_BUILT)
 // 'leave' is also Super Admin's (the canvas's Leave & holidays), but no other role's.
 // The Accounting canvas screens (2026-10-07): the Accountant's alone, except Commissions, Refunds and
@@ -101,7 +101,7 @@ const ACCT_SHARED = ['commissions', 'refunds', 'reconciliation']
 const SUPPORT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('support-') && !['support-team', 'support-issues'].includes(i.id)).map((i) => i.id)
 // The Marketing canvas screens are Marketing's alone.
 const MK_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('mk-')).map((i) => i.id)
-const OPS_ONLY = [...MK_ONLY, 'ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', ...SA_ONLY, ...SUPPORT_ONLY]
+const OPS_ONLY = [...MK_ONLY, 'ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', 'redelivery-fee', ...SA_ONLY, ...SUPPORT_ONLY]
 // The Delivery Manager canvas screens (2026-10-07) are the Delivery Manager's alone.
 const DM_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('dm-')).map((i) => i.id)
 // The Dispatch (rider) canvas screens are the rider's alone.
@@ -304,7 +304,8 @@ describe('Subscriptions due and Fraud cases (staff phase 2A)', () => {
     ]))
     expect(idsIn(groups, 'Businesses')).toEqual(['all-portfolios', 'at-risk', 'subscriptions-due'])
     // Messaging, Disputes and Delivery Management are not in the Operations menu; the two service screens need service_issues.view.
-    expect(idsIn(groups, 'Service')).toEqual(['fraud-cases'])
+    // Scheduled orders joined Service (Director ruling 7, 2026-10-20): it shows here because orders.manage_delivery is held.
+    expect(idsIn(groups, 'Service')).toEqual(['delivery-scheduled', 'fraud-cases'])
   })
 
   it("leaves Fraud cases and Delivery Management out of Support's Queues (the canvas has neither)", () => {
@@ -404,22 +405,36 @@ describe('Operations menu (canvas 2026-10-12)', () => {
     'kyc.approve', 'scouts.assign', 'listings.moderate', 'hero_media.approve', 'event.approve', 'reviews.moderate', 'users.view', 'users.manage',
     'orders.manage_delivery', 'site_settings.manage', 'zones.manage', 'contact_messages.manage', 'staff.invite_team', 'activity.view_team',
     'calls.log', 'businesses.register', 'portfolio.manage', 'targets.manage', 'leave.record', 'fraud.manage', 'fraud.flag', 'service_issues.view',
+    'redelivery_fee.manage',
   ]
   const auth = { user: { role: 'operations' }, hasPermission: (c) => OPS.includes(c) }
   const groups = buildNavGroups(auth)
 
+  // The canvas's groups and items, plus two Director rulings (2026-10-20) placed where the canvas would put them:
+  // Scheduled orders beside Deliveries & returns (ruling 7) and the Re-delivery fee under Settings (ruling 1).
   it('has exactly the canvas groups and items, in order', () => {
     expect(groups.map((g) => [g.label, g.items.map((i) => i.label)])).toEqual([
       ['Approvals', ['Approvals inbox']],
       ['People', ['Scouts', 'Support team', 'Invite', 'Targets', 'Leave & calendar']],
       ['Businesses', ['All portfolios', 'At risk', 'Subscriptions due']],
       ['Moderation', ['KYC queue', 'Listings', 'Hero & events', 'Reviews']],
-      ['Service', ['Support issues', 'Deliveries & returns', 'Fraud cases']],
+      ['Service', ['Support issues', 'Deliveries & returns', 'Scheduled orders', 'Fraud cases']],
       ['Activity', ['Staff activity', 'Visit map']],
       ['Reports', ['My reports', 'My team']],
       ['My work', ['Tasks', 'Call log', 'Sign-in & Security']],
-      ['Settings', ['Zones', 'Site settings', 'Contact messages']],
+      ['Settings', ['Zones', 'Site settings', 'Contact messages', 'Re-delivery fee']],
     ])
+  })
+
+  it('shows Scheduled orders with orders.manage_delivery and the Re-delivery fee with redelivery_fee.manage, to Operations only', () => {
+    const ids = (role, perms) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
+    expect(ids('operations', ['orders.manage_delivery'])).toContain('delivery-scheduled')
+    expect(ids('operations', ['kyc.approve'])).not.toContain('delivery-scheduled')
+    expect(ids('operations', ['redelivery_fee.manage'])).toContain('redelivery-fee')
+    expect(ids('operations', [])).not.toContain('redelivery-fee')
+    for (const role of ['super_admin', 'accountant', 'support', 'scout', 'marketing', 'delivery_manager', 'not-a-role']) {
+      expect(ids(role, ['redelivery_fee.manage'])).not.toContain('redelivery-fee')   // Super Admin edits it on Money rules
+    }
   })
 
   it('drops Users, Scout Assignments, Register a business, Field Verification and Delivery Management, with no More tools', () => {
@@ -454,28 +469,59 @@ describe('Operations menu (canvas 2026-10-12)', () => {
   })
 })
 
+describe('Wallets item (wallet 3F)', () => {
+  it('test_accountant_reaches_wallets_under_more_tools', () => {
+    const accountant = buildNavGroups({ user: { role: 'accountant' }, hasPermission: (c) => ['wallets.view', 'wallets.manage'].includes(c) })
+    expect(accountant.find((g) => g.label === 'More tools').items.map((i) => i.label)).toContain('Wallets')
+  })
+  it('hides Wallets without wallets.view', () => {
+    const ids = buildNavGroups({ user: { role: 'accountant' }, hasPermission: () => false }).flatMap((g) => g.items.map((i) => i.id))
+    expect(ids).not.toContain('wallets')
+  })
+})
+
+describe('Marketplace opening item', () => {
+  const ids = (role, perms) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
+  it('opening_only_in_super_admin_menu', () => {
+    expect(ids('super_admin', ['opening.manage'])).toContain('opening')
+    expect(buildNavGroups({ user: { role: 'super_admin' }, hasPermission: () => true }).find((g) => g.id === 'settings').items.map((i) => i.id)).toContain('opening')
+    for (const role of ['operations', 'marketing', 'support', 'accountant', 'scout', 'delivery_manager', 'dispatch', 'cosigner', 'not-a-role']) {
+      expect(ids(role, ['opening.manage'])).not.toContain('opening')
+    }
+    expect(ids('super_admin', [])).not.toContain('opening')
+  })
+})
+
 describe('Super Admin menu (canvases 2026-10-07)', () => {
   const auth = { user: { role: 'super_admin' }, hasPermission: () => true }
   const groups = buildNavGroups(auth)
 
+  // The canvas, plus Scheduled orders beside Orders & deliveries (Director ruling 7, 2026-10-20).
   it('has exactly the canvas groups and items, in order, with the Security settings item', () => {
     expect(groups.map((g) => [g.label, g.items.map((i) => i.label)])).toEqual([
       ['Home', ['My approvals']],
       ['People', ['Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays']],
       ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
-      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Events & tickets', 'Disputes & returns']],
-      ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation']],
+      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Scheduled orders', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
+      ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets', 'Withdrawals']],
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
       ['Security & audit', ['Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings']],
       ['Communication', ['Notification center', 'Staff announcements']],
-      ['Settings', ['Approval rules & timers', 'Money rules', 'Commission policy', 'Delivery pricing', 'Plans & prices', 'Target limits', 'Tax tables', 'Categories & zones', 'Integrations', 'System health']],
+      ['Settings', ['Approval rules & timers', 'Money rules', 'Commission policy', 'Delivery pricing', 'Plans & prices', 'Target limits', 'Tax tables', 'Categories & zones', 'Integrations', 'System health', 'Marketplace opening']],
     ])
+  })
+
+  it('shows Scheduled orders under Marketplace with orders.manage_delivery or delivery.manage', () => {
+    const marketplace = (perms) => buildNavGroups({ user: { role: 'super_admin' }, hasPermission: (c) => perms.includes(c) }).find((g) => g.id === 'marketplace')?.items.map((i) => i.id) || []
+    expect(marketplace(['orders.manage_delivery'])).toEqual(['delivery', 'delivery-scheduled'])
+    expect(marketplace(['delivery.manage'])).toEqual(['delivery-scheduled'])
+    expect(marketplace(['users.view'])).not.toContain('delivery-scheduled')
   })
 
   it('is exhaustive: no More tools, and dropped screens keep their permission', () => {
     expect(groups.some((g) => g.id === 'more')).toBe(false)
     const ids = groups.flatMap((g) => g.items.map((i) => i.id))
-    for (const gone of ['kyc', 'hero', 'reviews', 'escrow', 'credit', 'messaging', 'tasks', 'calls', 'reports', 'at-risk', 'register-business', 'scout-assignments', 'site-settings']) expect(ids).not.toContain(gone)
+    for (const gone of ['kyc', 'reviews', 'escrow', 'credit', 'messaging', 'tasks', 'calls', 'reports', 'at-risk', 'register-business', 'scout-assignments', 'site-settings']) expect(ids).not.toContain(gone)
     expect(NAV_ITEMS.find((i) => i.id === 'kyc').show(auth)).toBe(true) // the permission and panel are untouched
   })
 

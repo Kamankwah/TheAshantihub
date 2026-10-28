@@ -93,7 +93,7 @@ export default function EventCheckinPanel({ eventId }) {
 
       {checkinError && <div style={{ marginBottom: 8, color: "#ffb4b4", fontSize: "0.72rem" }}>{checkinError}</div>}
       {lastCheckedIn && (
-        <div style={{ marginBottom: 10, color: C.kente2, fontSize: "0.72rem", fontWeight: 700 }}>
+        <div style={{ marginBottom: 10, color: C.trust, fontSize: "0.72rem", fontWeight: 700 }}>
           ✓ Checked in {lastCheckedIn.purchased_by_name} — {lastCheckedIn.ticket_type_name}
         </div>
       )}
@@ -102,7 +102,7 @@ export default function EventCheckinPanel({ eventId }) {
       {isError && (
         <div style={{ color: "#ffb4b4", fontSize: "0.74rem" }}>
           Could not load tickets.{" "}
-          <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.kente1, borderRadius: 20, padding: "1px 8px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
+          <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "1px 8px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
             Retry
           </button>
         </div>
@@ -121,7 +121,7 @@ export default function EventCheckinPanel({ eventId }) {
             <div style={{ color: "rgba(255,255,255,0.55)" }}>{t.purchased_by_name} · {t.delivery_method === "digital" ? "Digital" : "Physical"}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ background: t.delivered_at ? `${C.kente2}33` : "rgba(255,255,255,0.12)", color: t.delivered_at ? C.kente2 : "rgba(255,255,255,0.6)", fontSize: "0.62rem", fontWeight: 700, padding: "2px 9px", borderRadius: 20 }}>
+            <span style={{ background: t.delivered_at ? `${C.kente2}33` : "rgba(255,255,255,0.12)", color: t.delivered_at ? C.trust : "rgba(255,255,255,0.6)", fontSize: "0.62rem", fontWeight: 700, padding: "2px 9px", borderRadius: 20 }}>
               {t.delivered_at ? "Delivered" : "Pending"}
             </span>
             {!t.delivered_at && (

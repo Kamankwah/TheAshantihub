@@ -668,3 +668,19 @@ class OwnerConsent(models.Model):
 
     def __str__(self):
         return f"Terms {self.terms_version} accepted by business owner {self.business_owner_id}"
+
+
+class BusinessHours(models.Model):
+    """One row per weekday (0 = Monday) of a business's weekly opening hours, Africa/Accra local time."""
+
+    business_owner = models.ForeignKey(BusinessOwner, on_delete=models.CASCADE, related_name="business_hours")
+    weekday = models.PositiveSmallIntegerField()
+    opens = models.TimeField(null=True, blank=True)
+    closes = models.TimeField(null=True, blank=True)
+    closed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["weekday"]
+        constraints = [
+            models.UniqueConstraint(fields=["business_owner", "weekday"], name="unique_business_hours_weekday"),
+        ]

@@ -71,6 +71,9 @@ export const NAV_ITEMS = [
   { id: "subscriptions-due", icon: "⏳", label: "Subscriptions due", show: (auth) => auth.hasPermission("portfolio.manage") },
   { id: "fraud-cases", icon: "🚩", label: "Fraud cases", show: (auth) => auth.hasPermission("fraud.manage") || auth.hasPermission("fraud.flag") },
   { id: "delivery-coordination", icon: "🚚", label: "Delivery Coordination", show: (auth) => auth.hasPermission("delivery.manage") },
+  // The Scheduled list for whoever manages deliveries without the Delivery Manager menu (orders.manage_delivery reads it
+  // and, since Director ruling 7, may Send now as well). The Delivery Manager has dm-scheduled instead.
+  { id: "delivery-scheduled", icon: "🕒", label: "Scheduled orders", show: (auth) => (auth.hasPermission("orders.manage_delivery") || auth.hasPermission("delivery.manage")) && auth.user?.role !== "delivery_manager" },
   { id: "my-deliveries", icon: "📦", label: "My Deliveries", show: (auth) => auth.hasPermission("delivery.dispatch") },
   { id: "categories-zones", icon: "🗂️", label: "Categories & Zones", show: (auth) => auth.hasPermission("categories.manage") || auth.hasPermission("zones.manage") },
   { id: "promotions", icon: "🎯", label: "Promotions", show: (auth) => auth.hasPermission("promotions.manage") },
@@ -92,6 +95,7 @@ export const NAV_ITEMS = [
   // Delivery Manager canvas screens (2026-10-07, 20 screens). Each is the manager's alone: it needs the
   // permission the server checks, so a Super Admin (who holds all) sees them too.
   { id: "dm-queue", icon: "📥", label: "Dispatch queue", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
+  { id: "dm-scheduled", icon: "🕒", label: "Scheduled", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
   { id: "dm-active", icon: "🚚", label: "Active deliveries", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
   { id: "dm-cases", icon: "⚖️", label: "Disputes & returns", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
   { id: "dm-riders", icon: "🛵", label: "Riders & drivers", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
@@ -121,6 +125,9 @@ export const NAV_ITEMS = [
   { id: "deliveries-returns", icon: "📦", label: "Deliveries & returns", show: (auth) => opsOnly(auth, "service_issues.view") },
   { id: "visit-map", icon: "🗺️", label: "Visit map", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "zones", icon: "📍", label: "Zones", show: (auth) => opsOnly(auth, "zones.manage") },
+  // The re-delivery fee (Director ruling 1, 2026-10-20): Operations proposes and decides it; a Super Admin edits it on
+  // Money rules, so this screen is Operations' alone.
+  { id: "redelivery-fee", icon: "🛵", label: "Re-delivery fee", show: (auth) => opsOnly(auth, "redelivery_fee.manage") },
   // Support canvas screens (see supportOnly).
   { id: "support-mine", icon: "📥", label: "Mine", show: (auth) => supportOnly(auth, "messaging.manage") },
   { id: "support-unassigned", icon: "🙋", label: "Unassigned", show: (auth) => supportOnly(auth, "messaging.manage") },
@@ -161,6 +168,8 @@ export const NAV_ITEMS = [
   { id: "commissions", icon: "💷", label: "Commissions", show: (auth) => saOrAcct(auth, "commission.view_all") },
   { id: "refunds", icon: "↩️", label: "Refunds", show: (auth) => saOrAcct(auth) },
   { id: "reconciliation", icon: "🧮", label: "Reconciliation", show: (auth) => saOrAcct(auth) },
+  { id: "wallets", icon: "👛", label: "Wallets", show: (auth) => auth.hasPermission("wallets.view") },
+  { id: "withdrawals", icon: "💸", label: "Withdrawals", show: (auth) => auth.hasPermission("wallets.view") },
   { id: "growth-funnel", icon: "🪜", label: "Growth funnel", show: saOnly },
   { id: "scheduled-exports", icon: "📆", label: "Scheduled exports", show: saOnly },
   { id: "sign-in-history", icon: "🕵️", label: "Sign-in history", show: saOnly },
@@ -173,6 +182,8 @@ export const NAV_ITEMS = [
   { id: "tax-tables", icon: "📑", label: "Tax tables", show: saOnly },
   { id: "integrations", icon: "🔌", label: "Integrations", show: saOnly },
   { id: "system-health", icon: "🩺", label: "System health", show: saOnly },
+  // The marketplace opening time, delay and pre-opening test accounts. Super Admin's alone (opening.manage).
+  { id: "opening", icon: "⏳", label: "Marketplace opening", show: (auth) => saOnly(auth) && auth.hasPermission("opening.manage") },
   // Accounting canvas screens (see acctOnly above).
   { id: "acct-journal", icon: "📒", label: "Journal", show: acctOnly },
   { id: "acct-chart", icon: "🗃️", label: "Chart of accounts", show: acctOnly },
@@ -198,11 +209,11 @@ export const NAV_ITEMS = [
 // any session whose role has no menu below.
 const DEFAULT_GROUPS = [
   ["moderation", "Moderation", ["kyc", "moderation", "hero", "events-moderation", "reviews", "fraud-cases"]],
-  ["finance", "Finance", ["event-pricing", "subscription-plans", "subscription-plans-approval", "commission-policy", "escrow", "disputes", "transactions", "credit"]],
+  ["finance", "Finance", ["event-pricing", "subscription-plans", "subscription-plans-approval", "commission-policy", "escrow", "disputes", "transactions", "wallets", "withdrawals", "credit"]],
   ["users-roles", "Users & Roles", ["users", "staff", "sessions"]],
   ["field-ops", "Field Operations", ["scout-assignments", "field-verification", "visits", "targets", "commission", "leaderboard", "prospects", "register-business", "delivery-coordination", "my-deliveries", "portfolio", "all-portfolios", "at-risk", "subscriptions-due"]],
   ["content", "Content", ["categories-zones", "promotions", "site-settings"]],
-  ["system", "System", ["delivery", "contact-messages", "messaging", "analytics"]],
+  ["system", "System", ["delivery", "delivery-scheduled", "contact-messages", "messaging", "analytics"]],
   ["my-work", "My Work", ["approvals", "tasks", "calls", "reports", "team-reports", "activity", "my-team", "security"]],
 ];
 
@@ -219,14 +230,16 @@ const ROLE_MENUS = {
     ["home", "Home", ["approvals"]],
     ["people", "People", ["staff", "teams-reporting", "invites", "roles-permissions", "sessions", "leave"]],
     ["teams", "Teams (step in)", ["step-in-operations", "step-in-support", "step-in-delivery", "step-in-marketing", "step-in-accounting"]],
-    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "events-moderation", "disputes"]],
-    ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation"]],
+    // Scheduled orders (paid orders held until their shops open, with Send now) sits beside Orders & deliveries:
+    // Director ruling 7 (2026-10-20) added it to the canvas menu.
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "events-moderation", "hero", "disputes"]],
+    ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation", "wallets", "withdrawals"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
     ["communication", "Communication", ["notification-center", "staff-announcements"]],
-    ["settings", "Settings", ["approval-rules", "money-rules", "commission-policy", "delivery-pricing", "subscription-plans-approval", "targets", "tax-tables", "categories-zones", "integrations", "system-health"]],
+    ["settings", "Settings", ["approval-rules", "money-rules", "commission-policy", "delivery-pricing", "subscription-plans-approval", "targets", "tax-tables", "categories-zones", "integrations", "system-health", "opening"]],
   ],
-  // Operations, exactly as the approved canvas draws it (Overview is pinned
+  // Operations, as the approved canvas draws it plus the Director's 2026-10-20 additions (Overview is pinned
   // above the groups). Users, Scout Assignments, Register a business, Field
   // Verification and Delivery Management are not in this menu (Sign-in & Security is kept
   // so a lead can still manage their own sign-in); their panels and
@@ -236,11 +249,13 @@ const ROLE_MENUS = {
     ["people", "People", ["ops-scouts", "support-team", "my-team", "targets", "leave"]],
     ["businesses", "Businesses", ["all-portfolios", "at-risk", "subscriptions-due"]],
     ["moderation", "Moderation", ["kyc", "moderation", "hero-events", "reviews"]],
-    ["service", "Service", ["support-issues", "deliveries-returns", "fraud-cases"]],
+    // Scheduled orders beside Deliveries & returns (Director ruling 7, 2026-10-20).
+    ["service", "Service", ["support-issues", "deliveries-returns", "delivery-scheduled", "fraud-cases"]],
     ["activity", "Activity", ["activity", "visit-map"]],
     ["reports", "Reports", ["reports", "team-reports"]],
     ["my-work", "My work", ["tasks", "calls", "security"]],
-    ["settings", "Settings", ["zones", "site-settings", "contact-messages"]],
+    // The re-delivery fee (Director ruling 1, 2026-10-20).
+    ["settings", "Settings", ["zones", "site-settings", "contact-messages", "redelivery-fee"]],
   ],
   // Accounting, exactly as the approved canvas draws it (Money desk is the pinned Overview).
   // Disputes, Transactions Report, Commission policy, Tasks, Activity and Sign-in & Security are
@@ -292,7 +307,7 @@ const ROLE_MENUS = {
     ["account", "Account", ["security", "activity"]],
   ],
   delivery_manager: [
-    ["live", "Live", ["dm-queue", "dm-active"]],
+    ["live", "Live", ["dm-queue", "dm-scheduled", "dm-active"]],
     ["issues", "Issues", ["dm-cases"]],
     ["fleet", "Fleet", ["dm-riders", "dm-documents", "dm-vehicles", "dm-invite", "my-team"]],
     ["planning", "Planning", ["dm-shifts", "dm-zones"]],
@@ -353,7 +368,7 @@ const ROLE_LABELS = {
   super_admin: {
     approvals: "My approvals", staff: "Staff directory", sessions: "Sessions & devices", leave: "Leave & holidays",
     "all-portfolios": "Businesses", users: "Customers", moderation: "Listings & services", delivery: "Orders & deliveries",
-    "events-moderation": "Events & tickets", disputes: "Disputes & returns", transactions: "Revenue & sales",
+    "events-moderation": "Events & tickets", hero: "Homepage slider", disputes: "Disputes & returns", transactions: "Revenue & sales",
     "team-reports": "Reports hub", activity: "Audit log", "fraud-cases": "Fraud & anomaly alerts", security: "Security settings",
     "subscription-plans-approval": "Plans & prices", targets: "Target limits", "categories-zones": "Categories & zones",
   },

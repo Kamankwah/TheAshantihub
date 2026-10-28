@@ -4,10 +4,11 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction as db_transaction
-from django.db.models import Avg, Count, Q, Sum
+from django.db.models import Avg, Count, Exists, OuterRef, Q, Sum
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import filters, generics
+from rest_framework.exceptions import APIException
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -16,6 +17,7 @@ from rest_framework.views import APIView
 from accounts.models import BusinessOwner, StaffUser
 from accounts.permissions import HasAnyRolePermission, HasRolePermission, RequiresSudo
 from accounts.views import IsCustomer
+from activity.services import record
 from billing.models import Transaction
 from listings.visibility import hidden_business_q
 from notifications.services import (
@@ -27,10 +29,12 @@ from ledger import posting, sales
 from ledger.models import BookingSale
 from ledger.money import from_pesewas
 from payments import booking_pay
+from storefront.permissions import MarketplaceOpen
 from payments.models import CheckoutSession
 from payments.services import process_payment
+from wallets.approval_kinds import mask_numbers
 
-from . import scan_notice
+from . import cancel_notice, cancellation, scan_notice
 from .models import Event, EventPricingTier, EventRSVP, EventTicketType, Ticket
 from .permissions import (
     IsCustomerOrBusinessOwner,
@@ -92,6 +96,19 @@ def _live_events_queryset():
         avg_rating=Avg("reviews__rating", filter=Q(reviews__status="published")),
         review_count=Count("reviews", filter=Q(reviews__status="published"), distinct=True),
     )
+
+
+class EventCancelledConflict(APIException):
+    """409 {"code": "event_cancelled"}: a cancelled event is final (events.cancellation)."""
+
+    status_code = 409
+
+    def __init__(self):
+        super().__init__({"detail": cancellation.DETAIL, "code": cancellation.CODE})
+
+
+def _cancelled_response():
+    return Response({"detail": cancellation.DETAIL, "code": cancellation.CODE}, status=409)
 
 
 class EventPagination(PageNumberPagination):
@@ -383,6 +400,13 @@ class EventOwnerUpdateView(generics.UpdateAPIView):
     http_method_names = ["patch"]
 
     def perform_update(self, serializer):
+        with db_transaction.atomic():
+            # Locked, so an edit never crosses a cancel: a cancelled event is never reopened (Plan 7F-C).
+            if Event.objects.select_for_update().get(pk=serializer.instance.pk).status == Event.CANCELLED:
+                raise EventCancelledConflict()
+            self._save_and_requeue(serializer)
+
+    def _save_and_requeue(self, serializer):
         event = serializer.save()
         # Any edit re-enters moderation. A rejected event being fixed, or a
         # live one being changed, both go back to pending.
@@ -413,6 +437,8 @@ class EventRenewView(APIView):
         event = generics.get_object_or_404(Event, pk=pk)
         self.check_object_permissions(request, event)
 
+        if event.status == Event.CANCELLED:
+            return _cancelled_response()
         if event.paid_at is None or event.status not in (Event.APPROVED, Event.EXPIRED):
             return Response(
                 {"detail": "Only a paid, live or expired event can be renewed."}, status=400
@@ -580,7 +606,13 @@ class EventApproveView(APIView):
         return [HasRolePermission("event.approve")]
 
     def post(self, request, pk):
-        event = generics.get_object_or_404(Event, pk=pk)
+        with db_transaction.atomic():
+            event = generics.get_object_or_404(Event.objects.select_for_update(), pk=pk)
+            if event.status == Event.CANCELLED:
+                return _cancelled_response()
+            return self._approve(request, event)
+
+    def _approve(self, request, event):
         event.status = Event.APPROVED
         event.rejection_reason = None
         event.approved_by = request.user
@@ -611,20 +643,95 @@ class EventRejectView(APIView):
         reason = (request.data.get("reason") or "").strip()
         if not reason:
             return Response({"reason": "A rejection reason is required."}, status=400)
-        event = generics.get_object_or_404(Event, pk=pk)
-        event.status = Event.REJECTED
-        event.rejection_reason = reason
-        event.reviewed_by = request.user
-        event.reviewed_at = timezone.now()
-        event.save(
-            update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"]
-        )
+        with db_transaction.atomic():
+            # Locked like EventApproveView, so a reject never crosses a cancel (Plan 7F-C).
+            event = generics.get_object_or_404(Event.objects.select_for_update(), pk=pk)
+            if event.status == Event.CANCELLED:
+                return _cancelled_response()  # a cancelled event is final (Plan 7F-C)
+            event.status = Event.REJECTED
+            event.rejection_reason = reason
+            event.reviewed_by = request.user
+            event.reviewed_at = timezone.now()
+            event.save(
+                update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"]
+            )
         _notify_event_organizer(
             event, "event_rejected", "Event not approved",
             body=f"“{event.name}” was rejected: {reason}",
             link="/events", icon="⚠️",
         )
         return Response({"id": event.id, "status": event.status})
+
+
+CANCEL_REASON_MIN, CANCEL_REASON_MAX = 5, 300
+
+
+def _cancel_reason(request):
+    """The cancel's reason, 5-300 characters once trimmed, or None."""
+    reason = str(request.data.get("reason") or "").strip()
+    return reason if CANCEL_REASON_MIN <= len(reason) <= CANCEL_REASON_MAX else None
+
+
+def _reason_required():
+    return Response(
+        {"detail": f"Say why the event is cancelled ({CANCEL_REASON_MIN}-{CANCEL_REASON_MAX} characters).", "code": "reason_required"},
+        status=400,
+    )
+
+
+def _cancel_and_notify(event, *, by, reason):
+    """Cancel `event` (events.cancellation) and queue the notices for the tickets this call refunded; the organiser's
+    summary goes only with the call that cancelled it. Returns the response body {status, tickets_refunded, tickets_left},
+    the same on a repeat."""
+    now = timezone.now()
+    refunded = []
+    result = cancellation.cancel_event(event, by=by, reason=reason, now=now, refunded=refunded)
+    first = result.event.cancelled_at == now
+    if refunded or first:
+        cancel_notice.send(result.event, cancel_notice.refunded_by_ticket(result.event, refunded), result=result if first else None)
+    return {"status": result.event.status, "tickets_refunded": result.tickets_refunded, "tickets_left": result.tickets_left}
+
+
+class EventOwnerCancelView(APIView):
+    """POST /api/events/mine/{id}/cancel/ {reason} — the organiser cancels their own event (Plan 7F-C, ruling R4): every
+    ticket is refunded in full from their side, scanned or not. A repeat answers 200 with the same body (and retries any
+    ticket still unrefunded). Refused once the event's date has passed: by then the money may be released and paid out,
+    and a cancel would put it back in the buyers' wallets at AshantiHub's risk; Operations can still cancel it."""
+
+    permission_classes = [IsAuthenticated, IsEventOwner]
+
+    def post(self, request, pk):
+        event = generics.get_object_or_404(Event, pk=pk)
+        self.check_object_permissions(request, event)
+        reason = _cancel_reason(request)
+        if reason is None:
+            return _reason_required()
+        if event.status != Event.CANCELLED and event.event_date <= timezone.now():
+            return Response(
+                {"detail": "This event has already taken place. Contact AshantiHub Support to cancel it.", "code": "event_already_held"},
+                status=409,
+            )
+        return Response(_cancel_and_notify(event, by=request.user, reason=reason))
+
+
+class EventStaffCancelView(APIView):
+    """POST /api/events/moderation/{id}/cancel/ {reason} — Operations (event.approve) cancels an event, with the password
+    again because it moves money out of the organiser's account (Plan 7F-C). Records `event.cancelled`."""
+
+    def get_permissions(self):
+        return [HasRolePermission("event.approve"), RequiresSudo()]
+
+    def post(self, request, pk):
+        event = generics.get_object_or_404(Event, pk=pk)
+        reason = _cancel_reason(request)
+        if reason is None:
+            return _reason_required()
+        body = _cancel_and_notify(event, by=request.user, reason=reason)
+        record(
+            request.user, "event.cancelled", target=event, request=request,
+            after={"reason": mask_numbers(reason), **body},
+        )
+        return Response(body)
 
 
 class EventReReviewView(APIView):
@@ -863,7 +970,7 @@ class TicketPurchaseView(APIView):
     manually releases/refunds it.
     """
 
-    permission_classes = [IsAuthenticated, IsCustomer]
+    permission_classes = [IsAuthenticated, IsCustomer, MarketplaceOpen]
 
     def post(self, request, pk):
         input_serializer = TicketPurchaseInputSerializer(data=request.data)
@@ -934,6 +1041,8 @@ class TicketPurchaseView(APIView):
                 tickets = Ticket.objects.filter(id__in=ticket_ids)
         except posting.InsufficientFunds as exc:
             return booking_pay.too_low(exc)  # the reservation rolled back with the payment
+        except cancellation.EventCancelledError:
+            return _cancelled_response()  # cancelled between the live check and the finalizer; all of it rolled back
 
         return Response(
             TicketSerializer(tickets, many=True, context={"request": request}).data, status=201
@@ -946,6 +1055,11 @@ def _checkin_serializer_for(user):
 
 
 LEDGER_RELEASES = "With the ledger on, this ticket's money is released by Support's call to the customer."
+
+
+def _in_ledger_exists():
+    """A BookingSale exists for the ticket's purchase transaction (the money is in the ledger)."""
+    return Exists(BookingSale.objects.filter(session__transaction_id=OuterRef("transaction_id")))
 
 
 def _ledger_sale(ticket):
@@ -984,13 +1098,13 @@ class EventCheckinListView(generics.ListAPIView):
 class EventCheckinView(APIView):
     """POST /api/events/{id}/tickets/checkin/ — organizer/staff scans or
     keys in a ticket's `code` to admit the holder. This is the normal,
-    non-exceptional path by which escrow is released when the ledger holds no
-    money for the ticket: a held, undelivered, non-refunded ticket with no
-    ledger sale is marked delivered and auto-released in the same write
-    (escrow_released_by_staff stays null, distinguishing an auto-release from
-    a manual EscrowReleaseView override). A ticket in a ledger sale is only
-    marked delivered (evidence) and the buyer is told once (events.scan_notice);
-    the money releases on the clock (ledger.sales.release_due), never on a scan.
+    admission path. A scan is evidence only and never changes escrow_status: it
+    records delivered_at and the scanning staff member, and a ticket in a ledger
+    sale tells the buyer once (events.scan_notice); that money releases on the
+    clock (ledger.sales.release_due). A ticket outside the ledger (bought before
+    it was on, or with it off) stays held after a scan and is released by
+    Accounting's manual door (EscrowReleaseView); find them with
+    `?state=unreleased_legacy` (Plan 7F-C, R5).
     """
 
     permission_classes = [IsAuthenticated, IsEventOwnerOrCanApproveEvents]
@@ -1017,13 +1131,8 @@ class EventCheckinView(APIView):
             ticket.delivered_by_staff = request.user if isinstance(request.user, StaffUser) else None
             update_fields = ["delivered_at", "delivered_by_staff"]
 
-            # With the ledger on, a ticket bought in a booking sale is released by the clock (ledger.sales.release_at), not by the scan.
+            # A scan never releases money (R5): a ledger sale releases on the clock, any other ticket by Accounting's hand.
             sale = _ledger_sale(ticket)
-            if ticket.escrow_status == Ticket.HELD and sale is None:
-                ticket.escrow_status = Ticket.RELEASED
-                ticket.escrow_released_at = timezone.now()
-                update_fields += ["escrow_status", "escrow_released_at"]
-
             ticket.save(update_fields=update_fields)
             scan_notice.send(ticket, sale)
         return Response(_checkin_serializer_for(request.user)(ticket).data)
@@ -1043,7 +1152,9 @@ class EscrowLedgerListView(generics.ListAPIView):
         return [HasRolePermission("escrow.view")]
 
     def get_queryset(self):
-        return Ticket.objects.select_related("ticket_type__event", "purchased_by", "escrow_released_by_staff", "refunded_by_staff").order_by("-created_at")
+        return Ticket.objects.select_related(
+            "ticket_type__event", "purchased_by", "escrow_released_by_staff", "refunded_by_staff"
+        ).annotate(in_ledger=_in_ledger_exists()).order_by("-created_at")
 
     def filter_queryset(self, queryset):
         status_param = self.request.query_params.get("status")
@@ -1063,6 +1174,9 @@ class EscrowLedgerListView(generics.ListAPIView):
                 escrow_status=Ticket.HELD, refunded_at__isnull=True, delivered_at__isnull=True,
                 ticket_type__event__event_date__lt=timezone.now(),
             )
+        elif state == "unreleased_legacy":
+            # Held and outside the ledger: only Accounting's manual release moves it (R5).
+            queryset = queryset.filter(escrow_status=Ticket.HELD, refunded_at__isnull=True, in_ledger=False)
         elif state in (Ticket.HELD, Ticket.RELEASED):
             queryset = queryset.filter(escrow_status=state, refunded_at__isnull=True)
         query = (self.request.query_params.get("q") or "").strip()[:80]
@@ -1092,6 +1206,9 @@ class EscrowSummaryView(APIView):
             late=Sum("price", filter=held & Q(delivered_at__isnull=True, ticket_type__event__event_date__lt=timezone.now())),
             late_n=Count("id", filter=held & Q(delivered_at__isnull=True, ticket_type__event__event_date__lt=timezone.now())),
         )
+        legacy = Ticket.objects.annotate(in_ledger=_in_ledger_exists()).filter(
+            escrow_status=Ticket.HELD, refunded_at__isnull=True, in_ledger=False,
+        ).aggregate(amount=Sum("price"), n=Count("id"))
         money = lambda value: f"{(value or zero):.2f}"
         return Response({
             "simulated": settings.PAYMENTS_PROVIDER == "simulated",
@@ -1099,9 +1216,10 @@ class EscrowSummaryView(APIView):
             "released": {"amount": money(totals["released"]), "count": totals["released_n"]},
             "refunded": {"amount": money(totals["refunded"]), "count": totals["refunded_n"]},
             "held_after_event": {"amount": money(totals["late"]), "count": totals["late_n"]},
+            "legacy_held": {"amount": money(legacy["amount"]), "count": legacy["n"]},
             "not_recorded": [
                 {"name": "Orders and bookings", "why": "Order and booking money is not held in escrow yet, so none is listed here."},
-                {"name": "Release timers", "why": "No release-after-delivery rule is built; a ticket is released at check-in or by staff."},
+                {"name": "Release timers", "why": "No release-after-delivery rule is built; a ticket outside the ledger is released only by Accounting; a door scan never releases."},
             ],
         })
 
@@ -1115,7 +1233,9 @@ def _required_note(value):
 class EscrowReleaseView(APIView):
     """POST /api/events/tickets/{ticket_id}/escrow/release/ — staff
     `escrow.release` manually releases a held ticket's payment before/
-    without a normal check-in (exception path — e.g. a physical-delivery
+    without a normal check-in. A door scan is evidence only and never releases,
+    so this is also the one way out for a ticket outside the ledger (Plan 7F-C,
+    R5) (exception path — e.g. a physical-delivery
     ticket where check-in doesn't apply). Body may carry an optional
     `note` recorded as escrow_override_note. A ticket in a ledger booking sale
     answers 409 {"code": "ledger_on"}: Support's call releases it.
@@ -1129,10 +1249,15 @@ class EscrowReleaseView(APIView):
         note = _required_note(request.data.get("note"))
         if note is None:
             return Response({"note": "Write a note of at least 3 characters: every release is explained."}, status=400)
-        if _ledger_sale(generics.get_object_or_404(Ticket, pk=ticket_id)) is not None:
+        ticket = generics.get_object_or_404(Ticket.objects.select_related("ticket_type__event"), pk=ticket_id)
+        if ticket.ticket_type.event.status == Event.CANCELLED:
+            return _cancelled_response()  # its tickets are being refunded, never paid out (Plan 7F-C)
+        if _ledger_sale(ticket) is not None:
             return Response({"detail": LEDGER_RELEASES, "code": "ledger_on"}, status=409)
         with db_transaction.atomic():
             ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
+            if Event.objects.filter(ticket_types__tickets=ticket, status=Event.CANCELLED).exists():
+                return _cancelled_response()
 
             if ticket.refunded_at is not None:
                 return Response({"detail": "This ticket was refunded and cannot be released."}, status=400)

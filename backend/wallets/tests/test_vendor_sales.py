@@ -71,6 +71,12 @@ class SaleRowTests(VendorBase):
         row = self.rows()[0]
         self.assertEqual((row["free_delivery_promo"], row["net"]), ("15.00", "100.00"))          # 120 - 5 fee - 15 promo
 
+    def test_an_ashantihub_funded_promo_does_not_reduce_the_business_net(self):
+        order = paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)], delivery="0.00")
+        waived(self.kofi.owner, order, "15.00", funded_by="platform")
+        row = self.rows()[0]
+        self.assertEqual((row["free_delivery_promo"], row["net"]), ("0.00", "115.00"))           # 120 - 5 fee, nothing for the promo
+
     def test_review_focus_a_partial_refund_after_release_shows_what_is_left(self):
         order = paid_order(self.buyer, [(self.kofi.listing("600.00"), 1)])                       # 1%: GH₵ 6.00
         release(order)

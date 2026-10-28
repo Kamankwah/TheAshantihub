@@ -9,6 +9,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from accounts import hours
 from accounts.models import BusinessOwner, BusinessOwnerProfile, OwnerClaimToken
 from accounts.testing import make_staff, session_of, staff_token
 from activity.models import ActivityEvent
@@ -30,6 +31,7 @@ def scout_owner(scout, *, email=None):
         gps_address="AK-112-0384", business_contact_phone="+233241234567",
         zone=Zone.objects.get_or_create(name="Asafo")[0],
     )
+    hours.set_week(owner, [{"weekday": d, "closed": d == 6, "opens": "08:00", "closes": "18:00"} for d in range(7)])
     return owner
 
 

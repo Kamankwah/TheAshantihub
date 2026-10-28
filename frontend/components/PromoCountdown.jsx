@@ -28,14 +28,14 @@ export default function PromoCountdown({ startsAt, endsAt, compact = false }) {
   const p = countdownParts(target, now);
   const label = started ? "Ends in" : "Starts in";
   const cells = [[p.days, "days"], [p.hours, "hours"], [p.minutes, "min"], [p.seconds, "sec"]];
-  if (compact) return <span role="timer" aria-label={`${label} ${countdownWord(target, now)}`} style={{ fontWeight: 800, fontSize: "0.7rem", color: C.darkBrown }}>{label} {countdownWord(target, now)}</span>;
+  if (compact) return <span role="timer" aria-label={`${label} ${countdownWord(target, now)}`} style={{ fontWeight: 800, fontSize: "0.7rem", color: C.ink }}>{label} {countdownWord(target, now)}</span>;
   return (
     <div role="timer" aria-label={`${label} ${p.days} days, ${p.hours} hours, ${p.minutes} minutes`} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <span style={{ fontSize: "0.72rem", fontWeight: 700, color: C.darkBrown }}>{label}</span>
+      <span style={{ fontSize: "0.72rem", fontWeight: 700, color: C.ink }}>{label}</span>
       {cells.map(([v, l]) => (
-        <span key={l} style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", minWidth: 44, padding: "4px 6px", borderRadius: 8, border: `1px solid ${C.darkBrown}33`, background: "#fff" }}>
-          <strong style={{ fontSize: "1.05rem", color: C.darkBrown, fontVariantNumeric: "tabular-nums" }}>{String(v).padStart(2, "0")}</strong>
-          <span style={{ fontSize: "0.58rem", color: "#6b5a4d" }}>{l}</span>
+        <span key={l} style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", minWidth: 44, padding: "4px 6px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.surface }}>
+          <strong style={{ fontSize: "1.05rem", color: C.ink, fontVariantNumeric: "tabular-nums" }}>{String(v).padStart(2, "0")}</strong>
+          <span style={{ fontSize: "0.58rem", color: C.inkDim }}>{l}</span>
         </span>
       ))}
     </div>

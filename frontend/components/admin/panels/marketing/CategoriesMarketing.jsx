@@ -100,7 +100,7 @@ export default function CategoriesMarketing({ auth }) {
                                   <button type="button" onClick={() => setEditingId(null)} style={button(D.panelBg, D.text)}>Cancel</button>
                                 </>
                               ) : <button type="button" onClick={() => { setEditingId(c.id); setDraft(c.label); }} style={button(D.panelBg, D.text)}>Rename</button>}
-                              {used ? <span style={dim}>In use</span> : <button type="button" disabled={busy} onClick={() => remove(c)} style={button(D.panelBg, "#A30000", busy)}>Delete</button>}
+                              {used ? <span style={dim}>In use</span> : <button type="button" disabled={busy} onClick={() => remove(c)} style={button(D.panelBg, D.errInk, busy)}>Delete</button>}
                             </div>
                           </td>
                         )}

@@ -10,7 +10,7 @@ import { Honest, Loading, PageHead, Section, button, chip, dim, errorStyle, figu
 // live only once Super Admin approves it (a Super Admin's own banner applies at once). Views and
 // clicks are this site's own first-party counters and began at zero.
 const STATE_WORD = { draft: "Draft", waiting: "Waiting for Super Admin", approved: "Approved", rejected: "Returned", taken_down: "Taken down" };
-const STATE_COLOR = { draft: D.textDim, waiting: D.amber, approved: D.green, rejected: "#A33A00", taken_down: D.textDim };
+const STATE_COLOR = { draft: D.textDim, waiting: D.amber, approved: D.green, rejected: D.warnInk, taken_down: D.textDim };
 const PHASE_WORD = { live: "Live", scheduled: "Scheduled", ended: "Ended" };
 
 const day = (iso) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
@@ -95,6 +95,50 @@ function BannerForm({ data, banner, onDone, onCancel }) {
   );
 }
 
+// A flash banner is a line of text (promotions, countdowns for promotions and events). Marketing publishes it
+// directly: it needs no photo and no Super Admin approval.
+function FlashForm({ onDone, onCancel }) {
+  const [form, setForm] = useState({ title: "", message: "", starts_at: "", ends_at: "", countdown_ends_at: "" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const set = (patch) => { setError(""); setForm({ ...form, ...patch }); };
+
+  async function save(event) {
+    event.preventDefault();
+    if (busy) return;
+    if (!form.title.trim() || !form.message.trim()) { setError("Give the banner a title and a message."); return; }
+    if (!form.starts_at) { setError("Choose when it starts."); return; }
+    const body = { slot: "flash", title: form.title.trim(), message: form.message.trim(), starts_at: toIso(form.starts_at) };
+    if (form.ends_at) body.ends_at = toIso(form.ends_at);
+    if (form.countdown_ends_at) body.countdown_ends_at = toIso(form.countdown_ends_at);
+    setBusy(true);
+    let created = null;
+    try {
+      created = await apiPost("/api/marketing/site-banners/", body);
+      await apiPost(`/api/marketing/site-banners/${created.id}/publish/`, {});
+      onDone("Flash banner is live: it shows from its start time.");
+    } catch (e) {
+      if (created) onDone("", `Saved as a draft, but it could not be published: ${apiErrorMessage(e, "try Publish now from the list.")}`);
+      else setError(apiErrorMessage(e, "The flash banner could not be saved."));
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <form onSubmit={save} aria-label="Flash banner" noValidate style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, alignItems: "start" }}>
+      <label style={labelStyle}>Title<input value={form.title} maxLength={140} onChange={(e) => set({ title: e.target.value })} style={inputStyle} /></label>
+      <label style={labelStyle}>Message (up to 200 characters)<input value={form.message} maxLength={200} onChange={(e) => set({ message: e.target.value })} style={inputStyle} /><span style={dim}>No phone numbers, web addresses or WhatsApp links.</span></label>
+      <label style={labelStyle}>Starts<input type="datetime-local" value={form.starts_at} onChange={(e) => set({ starts_at: e.target.value })} style={inputStyle} /></label>
+      <label style={labelStyle}>Ends (leave empty for always on)<input type="datetime-local" value={form.ends_at} onChange={(e) => set({ ends_at: e.target.value })} style={inputStyle} /></label>
+      <label style={labelStyle}>Countdown ends (optional)<input type="datetime-local" value={form.countdown_ends_at} onChange={(e) => set({ countdown_ends_at: e.target.value })} style={inputStyle} /><span style={dim}>Shows a countdown to this moment. Leave empty for a plain message.</span></label>
+      <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button type="submit" disabled={busy} style={button(D.gold, D.text, busy)}>{busy ? "Publishing…" : "Publish flash banner"}</button>
+        <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
+        {error && <span role="alert" style={errorStyle}>{error}</span>}
+      </div>
+    </form>
+  );
+}
+
 function RescheduleForm({ banner, onDone, onCancel }) {
   const [starts, setStarts] = useState(toLocalInput(banner.starts_at));
   const [ends, setEnds] = useState(toLocalInput(banner.ends_at));
@@ -137,18 +181,24 @@ export default function BannersPanel({ auth }) {
       refetch();
     } catch (e) { setActionError(apiErrorMessage(e, "That did not work.")); }
   }
-  const done = () => { setEditing(null); setRescheduling(null); refetch(); };
+  const done = (message = "", failure = "") => {
+    setEditing(null); setRescheduling(null); refetch();
+    if (typeof message === "string" && message) { setNotice(message); setActionError(""); }
+    if (failure) setActionError(failure);
+  };
   const editingBanner = typeof editing === "number" ? data.banners.find((b) => b.id === editing) : null;
 
   return (
     <div style={page}>
       <PageHead title="Banners">
+        {canManage && <button type="button" onClick={() => setEditing("flash")} style={button(D.panelBg, D.text)}>Flash banner</button>}
         {canManage && <button type="button" onClick={() => setEditing("new")} style={button(D.gold, D.text)}>New banner</button>}
       </PageHead>
       {notice && <div role="status" style={chip(D.green)}>{notice}</div>}
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
 
-      {editing && <Section id="bn-form" title={editingBanner ? "Edit banner" : "New banner"}><BannerForm data={data} banner={editingBanner} onDone={done} onCancel={() => setEditing(null)} /></Section>}
+      {editing === "flash" && <Section id="bn-flash" title="Flash banner"><FlashForm onDone={done} onCancel={() => setEditing(null)} /></Section>}
+      {editing && editing !== "flash" && <Section id="bn-form" title={editingBanner ? "Edit banner" : "New banner"}><BannerForm data={data} banner={editingBanner} onDone={done} onCancel={() => setEditing(null)} /></Section>}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="bn-map" title="Where banners go">
@@ -157,6 +207,7 @@ export default function BannersPanel({ auth }) {
             <li><strong>Home page, middle strip</strong>: between the hero and the call to action.</li>
             <li><strong>Category page, top</strong>: one per category.</li>
             <li><strong>Events page, top</strong>.</li>
+            <li><strong>Flash banner</strong>: a line of text with an optional countdown, for promotions and events. You publish it yourself.</li>
           </ul>
           <div style={dim}>Businesses' hero photos have their own approval screen. Paid featured listings have theirs.</div>
         </Section>
@@ -184,7 +235,7 @@ export default function BannersPanel({ auth }) {
                 {data.banners.map((b) => (
                   <tr key={b.id}>
                     <td style={td}>{b.slot_label}{b.category ? ` · ${b.category.label}` : ""}</td>
-                    <td style={td}><div style={{ fontWeight: 700 }}>{b.title}</div>{b.sponsored && <div style={dim}>Sponsored</div>}{b.state === "rejected" && b.return_note && <div style={{ ...dim, color: "#A33A00" }}>Returned: {b.return_note}</div>}</td>
+                    <td style={td}><div style={{ fontWeight: 700 }}>{b.title}</div>{b.message && <div style={dim}>{b.message}</div>}{b.countdown_ends_at && <div style={dim}>Countdown to {day(b.countdown_ends_at)}</div>}{b.sponsored && <div style={dim}>Sponsored</div>}{b.state === "rejected" && b.return_note && <div style={{ ...dim, color: D.warnInk }}>Returned: {b.return_note}</div>}</td>
                     <td style={td}><div>{when(b)}</div>{b.phase && <span style={chip(b.phase === "live" ? D.green : D.textDim)}>{PHASE_WORD[b.phase]}</span>}</td>
                     <td style={td}><span style={chip(STATE_COLOR[b.state])}>{STATE_WORD[b.state]}</span>{b.approved_by && <div style={dim}>{b.approved_by}</div>}</td>
                     <td style={{ ...td, ...figures }}>{b.views.toLocaleString("en-GB")}</td>
@@ -193,8 +244,9 @@ export default function BannersPanel({ auth }) {
                     <td style={td}>
                       {canManage && (
                         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                          {["draft", "rejected", "taken_down"].includes(b.state) && <button type="button" style={linkStyle} onClick={() => setEditing(b.id)}>Edit</button>}
-                          {["draft", "rejected", "taken_down"].includes(b.state) && <button type="button" style={linkStyle} onClick={() => act(b, "submit")}>Send for approval</button>}
+                          {b.slot !== "flash" && ["draft", "rejected", "taken_down"].includes(b.state) && <button type="button" style={linkStyle} onClick={() => setEditing(b.id)}>Edit</button>}
+                          {b.slot !== "flash" && ["draft", "rejected", "taken_down"].includes(b.state) && <button type="button" style={linkStyle} onClick={() => act(b, "submit")}>Send for approval</button>}
+                          {b.slot === "flash" && ["draft", "rejected", "taken_down"].includes(b.state) && <button type="button" style={linkStyle} onClick={() => act(b, "publish", "Flash banner is live: it shows from its start time.")}>Publish now</button>}
                           {b.state === "waiting" && <button type="button" style={linkStyle} onClick={() => act(b, "withdraw", "Withdrawn: it is a draft again.")}>Withdraw</button>}
                           {b.state === "approved" && b.phase !== "ended" && <button type="button" style={linkStyle} onClick={() => setRescheduling(b.id)}>Reschedule</button>}
                           {b.state === "approved" && b.phase !== "ended" && (confirmDown === b.id

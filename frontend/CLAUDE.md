@@ -27,9 +27,19 @@ monolith holding most components, with extractions living in `components/`,
 - **Styling is inline `style={{...}}` off the shared `C` palette** (`theme.js`) — no CSS
   framework, no CSS modules, no stylesheet. Reuse `C`; don't hardcode new colors. The only other
   mechanism in use is a component-local `<style>` tag for raw `@keyframes`/`@media` rules.
+- **Every page has a dark mode.** Surfaces and text use the theme tokens — `C.canvas`/`surface`/
+  `surface2`/`ink`/`inkDim`/`line`/`price`/`trust`/`okBg`… or `D.pageBg`/`panelBg`/`text`… — which
+  are `var(--ah-*)` (index.css; mirrored in `THEME_TOKENS`, checked by `__tests__/theme.test.jsx`).
+  Brand keys (`C.gold`, `C.darkBrown`, `C.cream`, `C.white`, kente) are fixed: use them only for brand
+  marks, fixed fills and the text on those fills (`D.darkBrown` on gold, `D.cream` on dark fills).
+  Never append a hex alpha to a token (`${D.green}22` is invalid CSS now) — use `tint(color, "22")`.
+  `__tests__/darkModeLiterals.test.js` fails on any hardcoded white/cream background; QR codes use
+  `C.paper` (allowlisted). `__tests__/darkModeSmoke.test.jsx` renders key pages in dark mode.
 - **Exception, new work only:** `components/ui/*.tsx` use real Tailwind + shadcn CSS-variable
-  tokens. `index.css` deliberately has **no global `body`/`html` reset** so it doesn't fight the
-  inline-styled UI — which means **every Tailwind/shadcn component's root must be wrapped in
+  tokens. `index.css` deliberately has **no global `body`/`html` reset** (no font/margin/background
+  reset) so it doesn't fight the inline-styled UI. It does carry two global `html, body` pieces: tabular
+  figures (`font-variant-numeric: tabular-nums`) and, under `:root[data-theme="dark"]`, the themed
+  canvas/ink (`--ah-canvas`/`--ah-ink`; light mode sets no background) — which means **every Tailwind/shadcn component's root must be wrapped in
   `<div className="shadcn-scope">`** or it picks up no theme tokens at all. This exception is
   additive, not a migration; existing `C`-palette surfaces stay inline-styled.
 - **Read `DESIGN.md` (repo root) before any visual or UI decision.** It is the source of truth
@@ -123,3 +133,30 @@ monolith holding most components, with extractions living in `components/`,
 - **Never read a multipart request body that holds a jsdom `File` in a test**; spy on
   `FormData.prototype.append` instead.
 - **Duplicate-match copy lives in `registrationCheckCopy.js`** - don't re-word it per screen.
+- **Step-up codes are handled in `apiClient.js`, not per screen.** A `403 step_up_required` retries
+  once with `X-Step-Up-Token`; `StepUpPrompt` (mounted in `main.jsx`) supplies the code, so a screen
+  just does a plain `apiPost`/`apiPatch`. A customer/owner `two_factor_required` goes to
+  `/api/otp/sign-in/verify/`, a staff one to the staff two-factor endpoint. The trusted-device token
+  lives in `ashantihub.deviceToken` (customers only) and survives sign-out.
+
+## Wallet screens (Plan 3F)
+
+- **The wallet components are holder-agnostic.** `components/wallet/*` take `tone` (`light` = customer, `C`;
+  `dashboard` = business and staff, `D`) and, where they call the API, `basePath` (default `/api/wallet`;
+  a rider mounts the same parts on its own path). All inline styling comes from `walletStyles(tone)`. The
+  staff panels (`WalletsPanel`, `WithdrawalsPanel`, `WalletReconciliationPanel`) are read-and-resolve only.
+- **A withdrawal's `request_id` is minted when `WithdrawForm` mounts** and reused by every submit of the same
+  destination and amount (double click, retry, the step-up retry) so the server never pays twice. It changes
+  only when the destination or amount changes, or after success. **Never remount the form between attempts**
+  (no changing `key`, no conditional unmount around the step-up prompt) or the id is lost.
+- **Step-up is `apiClient`'s.** Destination add/remove and withdrawals are forced while the ledger is on; a
+  component does a plain `apiPost` and never reads or stores the token.
+- **Money is the server's string.** Show `formatGhs(str)`; sums and comparisons use the integer-pesewas
+  helpers in `walletMoney.js` (`ghsToPesewas`, `addGhs`), never float maths. Charge, you-receive, processing
+  and refusal text come from the server (`walletMessage`); never invent a fee, limit or reason. Amounts use
+  the price token (`C.price`/`D.price`), tabular figures, never brand gold.
+- **`409 ledger_off` is one honest line, not an error screen.** `retryUnlessLedgerOff` stops the retries. The
+  MSW wallet defaults in `mocks/handlers.js` are "ledger on, empty"; override with `server.use(...)`.
+  `WalletNoInventionSweep.test.jsx` is the conformance contract for every wallet screen: add a new wallet
+  screen to its list.
+- **The vendor tab is "Money"** (`id: "money"`, one tab for payouts and the wallet), not "Payouts".

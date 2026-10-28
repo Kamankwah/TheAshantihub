@@ -5,11 +5,11 @@ import { currentFix, metresBetween, useRiderLocation } from "../../../../lib/rid
 
 // Shared pieces of the rider (Dispatch) screens: phone-first cards and big buttons, the location
 // line, the five-step bar and the countdown. Nothing is shown for a thing the server cannot say.
-export const card = { background: "#FFFFFF", border: `1px solid ${D.cardBorder}`, borderRadius: 16, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 };
+export const card = { background: D.panelBg, border: `1px solid ${D.cardBorder}`, borderRadius: 16, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 };
 export const h2 = { margin: 0, fontSize: "1rem", fontWeight: 800, color: D.text };
 export const screen = { display: "flex", flexDirection: "column", gap: 12, maxWidth: 520, margin: "0 auto", width: "100%" };
-export const bigButton = (disabled) => ({ minHeight: 56, border: "none", borderRadius: 14, background: D.gold, color: D.text, fontWeight: 800, fontSize: "1.05rem", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.55 : 1, fontFamily: "inherit", padding: "0 16px" });
-export const quietButton = (disabled) => ({ minHeight: 48, border: `1px solid ${D.cardBorder}`, borderRadius: 14, background: "#FFFFFF", color: D.text, fontWeight: 700, fontSize: "0.92rem", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.55 : 1, fontFamily: "inherit", padding: "0 14px" });
+export const bigButton = (disabled) => ({ minHeight: 56, border: "none", borderRadius: 14, background: D.gold, color: D.darkBrown, fontWeight: 800, fontSize: "1.05rem", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.55 : 1, fontFamily: "inherit", padding: "0 16px" });
+export const quietButton = (disabled) => ({ minHeight: 48, border: `1px solid ${D.cardBorder}`, borderRadius: 14, background: D.panelBg, color: D.text, fontWeight: 700, fontSize: "0.92rem", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.55 : 1, fontFamily: "inherit", padding: "0 14px" });
 export const money = (v) => (v === null || v === undefined || v === "" ? "Not recorded" : `GH₵ ${Number(v).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 export const hhmm = (iso) => (iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "");
 export const longDay = (iso) => (iso ? new Date(iso).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }) : "");
@@ -22,7 +22,7 @@ export function useTick(ms = 1000) {
 }
 
 export function Warn({ children }) {
-  return <div role="note" style={{ background: "#FFF4E5", border: "1px solid #E8621A66", borderRadius: 10, padding: "10px 12px", fontSize: "0.82rem", lineHeight: 1.45, color: "#6B2E07" }}>{children}</div>;
+  return <div role="note" style={{ background: D.warnBg, border: "1px solid #E8621A66", borderRadius: 10, padding: "10px 12px", fontSize: "0.82rem", lineHeight: 1.45, color: D.warnInk }}>{children}</div>;
 }
 export function Info({ children }) {
   return <div role="note" style={{ background: D.panelBg2, borderRadius: 10, padding: "10px 12px", fontSize: "0.8rem", lineHeight: 1.5, color: D.text }}>{children}</div>;
@@ -37,7 +37,7 @@ export function LocationLine() {
   const loc = useRiderLocation();
   if (loc.status === "sharing" && loc.fix) {
     const age = Math.max(0, Math.round((Date.now() - loc.fix.at) / 1000));
-    return <div role="status" style={{ background: "#E3F1E3", borderRadius: 10, padding: "8px 12px", fontSize: "0.8rem", color: "#00400A" }}><b>Sharing location · updated {age} s ago</b>{loc.fix.accuracy_m ? ` (±${Math.round(loc.fix.accuracy_m)} m)` : ""}. Keep this screen open: phones pause location when you leave the app.</div>;
+    return <div role="status" style={{ background: D.okBg, borderRadius: 10, padding: "8px 12px", fontSize: "0.8rem", color: D.okInk }}><b>Sharing location · updated {age} s ago</b>{loc.fix.accuracy_m ? ` (±${Math.round(loc.fix.accuracy_m)} m)` : ""}. Keep this screen open: phones pause location when you leave the app.</div>;
   }
   if (loc.status === "off") return null;
   return <Warn>{loc.error || "Waiting for your location. Allow location for this app."}</Warn>;
@@ -62,8 +62,8 @@ export function StepBar({ steps }) {
     <ol aria-label="Job steps" style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 6 }}>
       {STEP_LABELS.map((label, i) => (
         <li key={label} aria-current={i === done ? "step" : undefined} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ height: 6, borderRadius: 999, background: i < done ? D.green : i === done ? D.gold : "#EADFC6" }} />
-          <span style={{ fontSize: "0.66rem", fontWeight: i === done ? 800 : 600, color: i < done ? "#00500A" : D.text }}>{label}</span>
+          <span style={{ height: 6, borderRadius: 999, background: i < done ? D.green : i === done ? D.gold : D.panelBg3 }} />
+          <span style={{ fontSize: "0.66rem", fontWeight: i === done ? 800 : 600, color: i < done ? D.okInk : D.text }}>{label}</span>
         </li>
       ))}
     </ol>

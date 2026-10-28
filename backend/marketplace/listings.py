@@ -109,6 +109,7 @@ def item(listing):
         "reviewed_by": listing.reviewed_by.full_name if listing.reviewed_by else None,
         "reviewed_at": listing.reviewed_at,
         "rejection_reason": listing.rejection_reason,
+        "sponsored": listing.sponsored,
     }
 
 

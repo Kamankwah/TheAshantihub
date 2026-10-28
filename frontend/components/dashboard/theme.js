@@ -1,5 +1,5 @@
-// ─── Business Command Center — light "artisan" theme ──────────────────────────
-// Rebuilt from the dark "mission-control" glass theme onto a light theme
+// ─── Business Command Center — "artisan" theme (light + dark) ────────────────
+// Rebuilt from the dark "mission-control" glass theme onto a light/dark theme
 // sourced from the app's own `C` palette (frontend/theme.js) — C.cream/C.gold/
 // C.deepGold/C.darkBrown/C.orange/C.kente1/C.kente2/C.kente3 map closely onto
 // a warm cream+gold+earth-tone look, so this stays a "reuse my tokens" theme
@@ -12,55 +12,68 @@
 // hand-styled panels, kept visually in step with that scope by hand (same
 // "keep in sync by hand" caveat index.css notes for its own tokens vs `C`).
 //
-// NOTE: gold/deepGold/green/red/amber/blue/purple below are kept as PLAIN hex
-// strings (not rgba()) because many call sites append a hex alpha suffix
-// directly, e.g. `${D.green}22` for a translucent badge background — that
-// pattern only works with a bare 6-digit hex.
-import { C } from "../../theme.js";
+// Light/dark: the surface, text, border and green/red/blue status values are
+// the theme tokens from `C` (CSS variables that follow the site's light/dark
+// toggle — see frontend/theme.js), so every panel styled off `D` turns dark
+// with no per-panel change. gold/deepGold/amber/purple/kente* stay PLAIN hex
+// (readable on both themes; brand hues). Because green/red/blue are var()
+// strings, never append a hex alpha suffix to a `D` colour — use
+// `tint(color, "22")` (re-exported below), which keeps the plain-hex form for
+// hex inputs.
+import { C, tint } from "../../theme.js";
+
+export { tint };
 
 export const D = {
-  // cream page + white raised card surfaces
-  pageBg: C.cream,            // #FDF6E3
-  panelBg: "#FFFFFF",         // card fill
-  panelSolid: "#FFFFFF",      // solid fill for chart tooltips etc.
-  panelBg2: "#F5ECD8",        // recessed inner well (inputs, list rows) — a shade darker than pageBg
-  cardBorder: "rgba(212,160,23,0.35)", // C.gold, low opacity
-  cardBorderStrong: "rgba(212,160,23,0.6)",
-  divider: "rgba(44,24,16,0.12)",      // C.darkBrown, low opacity
+  // page + raised card surfaces (cream/white in light, void/dark brown in dark)
+  pageBg: C.canvas,
+  panelBg: C.surface,         // card fill
+  panelSolid: C.surface,      // solid fill for chart tooltips etc.
+  panelBg2: C.surface2,       // recessed inner well (inputs, list rows)
+  panelBg3: C.surface3,       // stronger well (disabled buttons, meter tracks)
+  cardBorder: C.border,       // C.gold, low opacity
+  cardBorderStrong: C.borderStrong,
+  divider: C.line,            // ink, low opacity
   // text
-  text: C.darkBrown,          // #2C1810
-  textDim: "rgba(44,24,16,0.62)",
-  textFaint: "rgba(44,24,16,0.42)",
-  // accents (gold primary + kente/status hues, retuned for legibility on cream)
+  text: C.ink,
+  textDim: C.inkDim,
+  textFaint: C.inkFaint,
+  price: C.price,             // darkBrown on light, lightGold on dark (DESIGN.md)
+  // accents (gold primary + kente/status hues)
   gold: C.gold,            // #D4A017
   goldSoft: "rgba(212,160,23,0.14)",
   deepGold: C.deepGold,    // #B8860B
-  green: C.kente2,   // #006400
+  green: C.trust,    // #006400 light / retuned for dark
   amber: C.orange,   // #E8621A
-  red: C.kente1,     // #CC0000
-  blue: C.kente3,    // #000080
+  red: C.danger,     // #CC0000 light / retuned for dark
+  blue: C.info,      // #000080 light / retuned for dark
   purple: "#6B4E8E", // new — no purple exists in C; used only for chart/usage-meter variety
   kente1: C.kente1, kente2: C.kente2, kente3: C.kente3,
   whatsapp: C.whatsapp,
+  // fixed text colours for a fixed fill — unlike text/pageBg they do not flip
+  // in dark mode: darkBrown on gold/amber buttons, cream on the dark sidebar
+  // and solid green/red buttons
+  darkBrown: C.darkBrown,
+  cream: C.cream,
+  // tinted status wells with their readable text colour
+  okBg: C.okBg, okInk: C.okInk,
+  errBg: C.errBg, errInk: C.errInk,
+  warnBg: C.warnBg, warnInk: C.warnInk,
   // effects
   glow: "0 0 20px rgba(212,160,23,0.25)",
-  shadow: "0 10px 28px rgba(44,24,16,0.12)",
+  shadow: C.shadow,
 };
 
-// The five recharts series colors, read straight from the .command-center CSS
-// scope so charts and the token system stay in step. Charts pass these as
-// literal fills/strokes where a CSS var can't be used (e.g. gradient stops need
-// a resolved color in some recharts versions); the values mirror index.css's
-// .command-center --chart-1..5.
+// The five recharts series colors, mirroring index.css's .command-center
+// --chart-1..5 (theme-aware: green/blue are tokens).
 export const CHART = {
   c1: D.gold, c2: D.green, c3: D.blue, c4: D.purple, c5: D.amber,
-  grid: "rgba(44,24,16,0.10)",
-  axis: "rgba(44,24,16,0.55)",
+  grid: D.divider,
+  axis: D.textDim,
 };
 
-// Reusable light card base style for panels — a bordered white card + soft
-// warm shadow instead of the old dark-glass blur (no backdropFilter needed
-// against a solid cream page background).
+// Reusable card base style for panels — a bordered surface card + soft
+// shadow (white on cream in light, dark brown on void in dark).
 export const glassCard = {
   background: D.panelBg,
   border: `1px solid ${D.cardBorder}`,
@@ -124,8 +137,8 @@ export const CREDIT_FACTOR_META = {
 // credit/migrations/0003_seed_lending_partners.py — so both the business
 // CreditPanel and the staff Credit panel share one source of truth.)
 
-// Listing / hero status → label+color, retuned for legibility on cream (draft's
-// muted warm-gray has no C equivalent — the one other new hex in this file).
+// Listing / hero status → label+color (draft's muted warm-gray has no C
+// equivalent — the one other new hex in this file; readable on both themes).
 export const LISTING_STATUS_META = {
   draft: { label: "Draft", color: "#8A7A6B" },
   pending_review: { label: "Pending Review", color: D.amber },

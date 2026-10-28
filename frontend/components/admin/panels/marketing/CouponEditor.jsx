@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiErrorMessage } from "../../../../lib/apiErrorMessage.js";
 import { useCategories } from "../../../../hooks/useCategories.js";
+import { CategoryOptions } from "../../../../lib/categoryOptions.jsx";
 import { couponAction, createCoupon, deleteCoupon, updateCoupon, useCoupon } from "../../../../hooks/useMarketingPromos.js";
 import { D } from "../../theme.js";
 import { COUPON_STATUS, valueWord } from "./CouponsPanel.jsx";
@@ -91,7 +92,7 @@ export default function CouponEditor({ id, onBack, onOpenDetail }) {
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <label style={labelStyle}>Starts<input type="date" value={form.starts_at} disabled={!editable} onChange={(e) => set({ starts_at: e.target.value })} style={inputStyle} /></label>
             <label style={labelStyle}>Expires<input type="date" value={form.expires_at} disabled={!editable} onChange={(e) => set({ expires_at: e.target.value })} style={inputStyle} /></label>
-            <label style={labelStyle}>Applies to<select value={form.category} disabled={!editable} onChange={(e) => set({ category: e.target.value })} style={inputStyle}><option value="">All categories</option>{(categories.data || []).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
+            <label style={labelStyle}>Applies to<select value={form.category} disabled={!editable} onChange={(e) => set({ category: e.target.value })} style={inputStyle}><option value="">All categories</option><CategoryOptions categories={categories.data || []} /></select></label>
           </div>
           <div style={{ border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: 10, background: D.panelBg2 }}>
             <strong style={{ fontSize: "0.78rem" }}>Always on, can't be switched off</strong>

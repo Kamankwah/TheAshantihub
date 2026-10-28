@@ -3,9 +3,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../../apiClient.js";
 import { useListingForReview, useListingHistory, useSaListingCounts, useSaListings } from "../../../hooks/useMarketplace.js";
 import { useCategories } from "../../../hooks/useCategories.js";
+import { categoryPathLabel } from "../../../lib/categoryOptions.jsx";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
 import { button, callout, dim, field } from "./panelStyles.js";
+import SponsoredToggle, { isProductListing } from "./SponsoredToggle.jsx";
 import { Chip, ExportButton, FilterBar, KpiStrip, LoadState, Pager, ScreenHeader, col, dateOnly, dateTime, showing, tableStyle, td, th } from "./marketplaceParts.jsx";
 import { card, errorStyle, h3, labelStyle, money, useDebounced } from "./portfolioParts.jsx";
 
@@ -145,6 +147,7 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
   const { data: categories } = useCategories();
   const rows = list.data?.results || [];
   const canModerate = Boolean(auth?.hasPermission?.("listings.moderate"));
+  const canSponsor = Boolean(auth?.hasPermission?.("deals.manage"));
 
   const approve = async (l) => {
     if (approvingId) return;
@@ -167,7 +170,7 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
     { key: "type", label: "Type", options: [["", "All types"], ["product", "Product"], ["service", "Service"], ["booking", "Booking"]] },
     { key: "status", label: "Status", options: [["", "Any"], ["live", "Live"], ["waiting", "Waiting"], ["hidden", "Hidden"], ["rejected", "Rejected"], ["draft", "Draft"]] },
     { key: "added_by", label: "Added by", options: [["", "Anyone"], ["owner", "Owner"], ["scout", "Scout for the owner"]] },
-    { key: "category", label: "Category", options: [["", "All"], ...(Array.isArray(categories) ? categories : []).map((c) => [String(c.id), c.label])] },
+    { key: "category", label: "Category", options: [["", "All"], ...(Array.isArray(categories) ? categories : []).map((c) => [String(c.id), categoryPathLabel(c, categories)])] },
   ];
   const monthName = new Date().toLocaleDateString("en-GH", { month: "long" });
   const tiles = counts ? [
@@ -219,6 +222,7 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" aria-label={`History of ${l.name}`} onClick={() => setHistory(l)} style={button(D.panelBg, D.text)}>History</button>
                           {canModerate && l.status === "pending_review" && <button type="button" aria-label={`View or approve ${l.name}`} onClick={() => { setNotice(null); setApproveError(null); setReviewing(l); }} style={button(D.green, "#fff")}>View / Approve</button>}
+                          {canSponsor && isProductListing(l) && l.status === "published" && <SponsoredToggle id={l.id} name={l.name} sponsored={Boolean(l.sponsored)} onChanged={() => queryClient.invalidateQueries({ queryKey: ["sa-listings"] })} />}
                           {canModerate && l.status === "published" && <button type="button" aria-label={`Take down ${l.name}`} onClick={() => { setNotice(null); setTakingDown(l); }} style={button(D.panelBg, D.red)}>Take down</button>}
                         </div>
                       </td>

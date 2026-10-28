@@ -156,6 +156,13 @@ class ReleaseTextTests(VendorBase):
             "after the GHS 5.00 platform fee. GHS 15.00 free-delivery promo was then taken from it."
         ))
 
+    def test_an_ashantihub_funded_promo_is_not_in_the_text(self):
+        order = paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)], delivery="0.00")
+        waived(self.kofi.owner, order, "15.00", funded_by="platform")
+        self.released(order)
+        self.assertNotIn("promo", senders.sms_outbox[-1].body)
+        self.assertTrue(senders.sms_outbox[-1].body.endswith("after the GHS 5.00 platform fee."))
+
     def test_review_focus_a_shared_order_texts_each_business_its_own_release(self):
         order = paid_order(self.buyer, [(self.kofi.listing("120.00"), 1), (self.esi.listing("600.00"), 1)])
         self.released(order)

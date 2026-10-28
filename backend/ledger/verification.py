@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from django.db import transaction
 from django.db.models import CharField, Exists, OuterRef, Q, Value
-from django.db.models.functions import Cast, Concat
+from django.db.models.functions import Cast, Coalesce, Concat, Greatest
 from django.utils import timezone
 
 from . import escrow, settings_store
@@ -160,6 +160,11 @@ def mark_collected(order, staff, now=None):
         return check
 
 
+def _clock_start(order):
+    """When the pickup window starts: purchase, or the vendor's opening when the order was bought while they were closed."""
+    return max(order.placed_at, order.ready_not_before) if order.ready_not_before else order.placed_at
+
+
 def pickup_queue(now=None):
     """Paid store-pickup orders not yet collected, oldest first. Deliberately carries no phone number: the desk
     hands over goods, it does not call customers."""
@@ -174,8 +179,8 @@ def pickup_queue(now=None):
     )
     return [
         {
-            "order_id": order.pk, "placed_at": order.placed_at, "collect_by": order.placed_at + window,
-            "overdue": now > order.placed_at + window, "customer_name": order.customer.full_name,
+            "order_id": order.pk, "placed_at": order.placed_at, "collect_by": _clock_start(order) + window,
+            "overdue": now > _clock_start(order) + window, "customer_name": order.customer.full_name,
             "items": [
                 {"name": item.listing.name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
                 for item in order.items.all()
@@ -202,7 +207,8 @@ def expire_uncollected(now=None):
     due = list(
         Order.objects.annotate(pay_key=Concat(Value("order-pay-"), Cast("pk", CharField())))
         .filter(Exists(Journal.objects.filter(key=OuterRef("pay_key"))))
-        .filter(status=Order.PAID, delivery_method=Order.STORE_PICKUP, placed_at__lt=now - timedelta(hours=hours))
+        .annotate(window_start=Greatest("placed_at", Coalesce("ready_not_before", "placed_at")))
+        .filter(status=Order.PAID, delivery_method=Order.STORE_PICKUP, window_start__lt=now - timedelta(hours=hours))
         .exclude(fulfilment_check__collected_at__isnull=False).order_by("placed_at", "id").values_list("pk", flat=True)
     )
     done = 0

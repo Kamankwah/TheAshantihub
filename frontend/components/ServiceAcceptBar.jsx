@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { D } from "./dashboard/theme.js";
+import { D, tint } from "./dashboard/theme.js";
 import { apiPost } from "../apiClient.js";
 import { apiErrorMessage } from "../lib/apiErrorMessage.js";
 
@@ -46,7 +46,7 @@ export default function ServiceAcceptBar({ request, onChanged }) {
       {!reporting && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" disabled={busy} onClick={() => run("accept", {})} style={pill(D.green, "#fff")}>Accept service</button>
-          <button type="button" disabled={busy} onClick={() => setReporting(true)} style={pill(`${D.red}22`, D.red)}>Report a problem</button>
+          <button type="button" disabled={busy} onClick={() => setReporting(true)} style={pill(tint(D.red, "22"), D.red)}>Report a problem</button>
         </div>
       )}
       {reporting && (
