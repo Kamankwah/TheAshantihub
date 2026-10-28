@@ -594,6 +594,9 @@ export const handlers = [
   http.get('http://localhost:8000/api/delivery/rider/wallet/*', () => HttpResponse.json({ detail: "Wallets aren't switched on yet.", code: 'ledger_off' }, { status: 409 })),
   http.post('http://localhost:8000/api/delivery/rider/wallet/*', () => HttpResponse.json({ detail: "Wallets aren't switched on yet.", code: 'ledger_off' }, { status: 409 })),
   http.get('http://localhost:8000/api/wallet/staff/wallets/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  // Staff rider money (Plan 5F): no commission posted, and a rider with no wallet.
+  http.get('http://localhost:8000/api/delivery/rider-commission/', () => HttpResponse.json({ day: '2026-10-19', results: [], totals: { deliveries: 0, gross: '0.00', commission: '0.00', net: '0.00', given_back: '0.00' } })),
+  http.get('http://localhost:8000/api/delivery/riders/:id/wallet/', () => HttpResponse.json({ detail: 'This rider is paid through payroll.', code: 'wallet_disabled' }, { status: 409 })),
   http.get('http://localhost:8000/api/wallet/staff/withdrawals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/wallet/staff/reconciliation/', () => HttpResponse.json({ results: [] })),
   // The staff wallet's fail-a-withdrawal door answers 201 {approval_id, status:'pending'}: a second person approves.

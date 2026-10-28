@@ -5,6 +5,7 @@ import { walletMessage } from "../../wallet/walletErrors.js";
 import { formatGhs } from "../../wallet/walletMoney.js";
 import { walletStyles } from "../../wallet/walletStyles.js";
 import { usePagedRows } from "../../wallet/usePagedRows.js";
+import RiderMoneyPanel from "./RiderMoneyPanel.jsx";
 import { D, glassCard } from "../theme.js";
 import { button, chip, dim, pill } from "./panelStyles.js";
 import { Title, page } from "./insightsParts.jsx";
@@ -58,7 +59,7 @@ function Row({ kind, row }) {
 
 function WalletList({ kind }) {
   const s = walletStyles("dashboard");
-  const { query, loaded, rows, hasMore, loadMore, loadError } = usePagedRows((pageNo) => useStaffWallets({ kind, page: pageNo }));
+  const { query, loaded, rows, hasMore, loadMore, loadError } = usePagedRows((pageNo) => useStaffWallets({ kind, page: pageNo }), { rowKey: (r) => r.holder_id });
   const failure = query.error ? walletMessage(query.error) : null;
   if (failure?.kind === "off" && !loaded.length) return <div role="status" style={dim}>{failure.text}</div>;
   if (failure && !loaded.length) return <div role="alert" style={s.error}>{failure.text}</div>;
@@ -73,7 +74,7 @@ function WalletList({ kind }) {
   );
 }
 
-export default function WalletsPanel() {
+export default function WalletsPanel({ auth }) {
   const queryClient = useQueryClient();
   const [kind, setKind] = useState("customer");
   const [round, setRound] = useState(0);
@@ -90,7 +91,7 @@ export default function WalletsPanel() {
         ))}
       </div>
       <section aria-label="Wallets list" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-        <WalletList key={`${kind}-${round}`} kind={kind} />
+        {kind === "rider" ? <RiderMoneyPanel key={round} auth={auth} embedded /> : <WalletList key={`${kind}-${round}`} kind={kind} />}
       </section>
     </div>
   );

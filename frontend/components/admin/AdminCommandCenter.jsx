@@ -57,6 +57,7 @@ import SaSessionsPanel from "./panels/SaSessionsPanel.jsx";
 import { startViewAs } from "../../hooks/useViewAs.js";
 import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
 import WalletsPanel from "./panels/WalletsPanel.jsx";
+import RiderMoneyPanel from "./panels/RiderMoneyPanel.jsx";
 import WithdrawalsPanel from "./panels/WithdrawalsPanel.jsx";
 import WalletReconciliationPanel from "./panels/WalletReconciliationPanel.jsx";
 import DisputesPanel from "./panels/DisputesPanel.jsx";
@@ -578,7 +579,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} showTaxRuling={role === "super_admin" || auth.hasPermission("commission.tax_ruling")} onOpenApproval={role === "super_admin" ? openApproval : undefined} />}
           {activeTab === "payouts-payroll" && <PayoutsPayrollPanel onNavigate={selectTab} />}
           {activeTab === "reconciliation" && <WalletReconciliationPanel fallback={<ReconciliationPanel />} onNavigate={auth.hasPermission("fraud.manage") || auth.hasPermission("fraud.flag") ? selectTab : undefined} />}
-          {activeTab === "wallets" && <WalletsPanel />}
+          {activeTab === "wallets" && <WalletsPanel auth={auth} />}
           {activeTab === "withdrawals" && <WithdrawalsPanel auth={auth} />}
           {activeTab === "delivery-pricing" && <DeliveryPricingPanel auth={auth} />}
           {activeTab === "tax-tables" && <TaxTablesPanel onNavigate={selectTab} />}
@@ -590,7 +591,8 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "team-reports" && (role === "super_admin" ? <ReportsHubPanel /> : <TeamReportsPanel auth={auth} />)}
           {activeTab === "commissions" && <CommissionsPanel onNavigate={selectTab} />}
           {activeTab === "refunds" && <RefundsPanel onNavigate={role === "accountant" ? selectTab : undefined} />}
-          {Object.hasOwn(ACCOUNTING_SHELLS, activeTab) && <AccountingShellPanel id={activeTab} />}
+          {activeTab === "acct-rider-payouts" && <RiderMoneyPanel auth={auth} fallback={<AccountingShellPanel id="acct-rider-payouts" />} />}
+          {activeTab !== "acct-rider-payouts" && Object.hasOwn(ACCOUNTING_SHELLS, activeTab) && <AccountingShellPanel id={activeTab} />}
           {activeTab === "acct-collections" && <CollectionsPanel />}
           {activeTab === "acct-audit-chain" && <AuditChainPanel />}
           {activeTab === "acct-alerts" && <MoneyAlertsPanel />}

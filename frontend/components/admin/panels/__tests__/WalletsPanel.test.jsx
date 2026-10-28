@@ -39,21 +39,21 @@ describe('Staff wallets list', () => {
     expect(within(bad).getByText('Below zero')).toBeInTheDocument()
   })
 
-  it('test_riders_tab_passes_through_the_servers_fields_only', async () => {
+  // Intentional edit: the old assertions passed the server's rider fields through as list rows;
+  // replaced by wallet 5F's rider money panel.
+  it('the Riders pill shows the rider money panel', async () => {
     server.use(byKind({
       customer: () => envelope([]),
       rider: () => envelope([{ holder_id: 7, rider_id: 3, name: 'Kwesi Rider', company_name: 'Swift Co', employment: 'third_party', balance: '12.00', reserve: '3.00' }]),
     }))
-    wrap(<WalletsPanel />)
+    wrap(<WalletsPanel auth={{ hasPermission: () => true }} />)
     fireEvent.click(await screen.findByRole('button', { name: 'Riders' }))
-    const row = (await screen.findByText('Kwesi Rider')).closest('li')
+    const row = (await screen.findByText('Kwesi Rider')).closest('tr')
     expect(row).toHaveTextContent('Swift Co')
-    expect(row).toHaveTextContent('Balance')
+    expect(row).toHaveTextContent('Third-party')
     expect(row).toHaveTextContent('GH₵ 12.00')
-    expect(row).toHaveTextContent('Reserve')
     expect(row).toHaveTextContent('GH₵ 3.00')
-    expect(row).not.toHaveTextContent('Pending')
-    expect(row).not.toHaveTextContent('Available')
+    expect(screen.getByRole('button', { name: 'Daily commission' })).toBeInTheDocument()
   })
 
   it('test_load_more_follows_next', async () => {
