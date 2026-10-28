@@ -1,12 +1,15 @@
 import { useState } from "react";
 import CancellationPolicyField from "../../CancellationPolicyField.jsx";
 import { apiPost, apiPatch, apiPostForm } from "../../../apiClient.js";
-import { useMyListings } from "../../../hooks/useMyListings.js";
+import { useMyListings, DEFAULT_LISTINGS_PATH } from "../../../hooks/useMyListings.js";
 import { useMyHeroSubmission } from "../../../hooks/useMyHeroSubmission.js";
 import HeroSlideForm from "../HeroSlideForm.jsx";
 import { useCategories } from "../../../hooks/useCategories.js";
 import { CategoryOptions } from "../../../lib/categoryOptions.jsx";
 import { useZones } from "../../../hooks/useZones.js";
+import VariantEditor from "./VariantEditor.jsx";
+import MediaManager, { postPendingMedia } from "./MediaManager.jsx";
+import { canHaveVariants } from "./listingEditorShared.jsx";
 import { D, glassCard, LISTING_STATUS_META, HERO_STATUS_META, tint } from "../theme.js";
 
 // Listings & Prices panel — ported from App.jsx's BusinessDashboard "listings"
@@ -235,7 +238,7 @@ function DecisionFields({ kind, isAccommodation, form, update }) {
   return null;
 }
 
-export default function ListingsPanel({ user, PaymentComponent, showToast, businessKind }) {
+export default function ListingsPanel({ user, PaymentComponent, showToast, businessKind, basePath = DEFAULT_LISTINGS_PATH }) {
   // A business owner registers as a "product" or "service" business
   // (BusinessOwnerProfile.business_kind). When set, the create form is locked to
   // that kind: only matching categories are selectable and only that kind's
@@ -253,6 +256,8 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [createPhoto, setCreatePhoto] = useState(null);
+  const [createVariants, setCreateVariants] = useState([]);
+  const [createMedia, setCreateMedia] = useState([]);
   const [createError, setCreateError] = useState(null);
   const [creating, setCreating] = useState(false);
   const [showSlides, setShowSlides] = useState(false);
@@ -269,7 +274,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   const [promoteResult, setPromoteResult] = useState(null);
   const [showPromotePay, setShowPromotePay] = useState(false);
 
-  const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings();
+  const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings(true, basePath);
   const { data: heroSubmission, refetch: refetchHeroSubmission } = useMyHeroSubmission();
   const { data: categories } = useCategories();
   const { data: zones } = useZones();
@@ -289,6 +294,8 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
 
   const updateCreate = (field, value) => setCreateForm(f => ({ ...f, [field]: value }));
   const createKind = categoryKindById(createForm.category);
+  const categoryById = (id) => (categories || []).find(c => c.id === Number(id));
+  const createCanHaveVariants = canHaveVariants(categoryById(createForm.category));
   const createIsAccommodation = categoryIsAccommodationById(createForm.category);
   // Client-side mirror of OwnerListingSerializer.validate()'s product rules,
   // so the button stays disabled until the owner has consciously answered.
@@ -308,7 +315,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
     if (!canSubmitCreate || creating) return;
     setCreateError(null); setCreating(true);
     try {
-      const created = await apiPost("/api/listings/mine/", {
+      const created = await apiPost(`${basePath}/`, {
         category: Number(createForm.category), zone: Number(createForm.zone),
         name: createForm.name.trim(), description: createForm.description.trim(),
         price_amount: createForm.price_amount === "" ? null : createForm.price_amount,
@@ -326,12 +333,28 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
           const fd = new FormData();
           fd.append("image", createPhoto);
           fd.append("order", "0");
-          await apiPostForm(`/api/listings/mine/${created.id}/photos/`, fd);
+          await apiPostForm(`${basePath}/${created.id}/photos/`, fd);
         } catch {
           setActionError("Your listing was created, but the photo failed to upload — you can add it again later.");
         }
       }
-      setShowCreate(false); setCreateForm(emptyCreateForm()); setCreatePhoto(null);
+      // Variants and extra media follow the same "create, then add" two steps; a refusal is
+      // shown in the server's words and never rolls the created listing back.
+      if (createCanHaveVariants && createVariants.length > 0) {
+        for (const row of createVariants) {
+          try {
+            await apiPost(`${basePath}/${created.id}/variants/`, { attributes: row.attributes, price_amount: row.price_amount, stock_quantity: row.stock_quantity });
+          } catch (err) {
+            setActionError(`Your listing was created, but a variant was not added: ${formatApiError(err, "please add it again from the listing.")}`);
+            break;
+          }
+        }
+      }
+      if (createMedia.length > 0) {
+        const refused = await postPendingMedia(basePath, created.id, createMedia, createPhoto ? 1 : 0);
+        if (refused) setActionError(`Your listing was created, but some media was not added: ${refused}`);
+      }
+      setShowCreate(false); setCreateForm(emptyCreateForm()); setCreatePhoto(null); setCreateVariants([]); setCreateMedia([]);
       toast(); refetchListings();
     } catch (err) {
       setCreateError(formatApiError(err, "Could not create this listing. Please check the fields and try again."));
@@ -343,7 +366,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   const saveEdit = async (id) => {
     setActionError(null);
     try {
-      await apiPatch(`/api/listings/mine/${id}/`, {
+      await apiPatch(`${basePath}/${id}/`, {
         name: editForm.name, price_amount: editForm.price_amount, price_unit: editForm.price_unit,
         specs: editForm.specs,
         ...decisionFieldsBody(editForm),
@@ -357,7 +380,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
 
   const submitForReview = async (id) => {
     setActionError(null);
-    try { await apiPost(`/api/listings/mine/${id}/submit/`, {}); toast(); refetchListings(); }
+    try { await apiPost(`${basePath}/${id}/submit/`, {}); toast(); refetchListings(); }
     catch (err) { setActionError("Could not submit this listing for review."); }
   };
 
@@ -499,8 +522,10 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
             <label style={labelStyle}>Photo (optional)</label>
             <input type="file" accept="image/jpeg,image/png" onChange={e => setCreatePhoto(e.target.files?.[0] || null)} style={{ ...inputStyle, padding: "6px" }} />
           </div>
-          {createError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{createError}</div>}
-          <div style={{ display: "flex", gap: 6 }}>
+          {createCanHaveVariants && <VariantEditor rows={createVariants} onRowsChange={setCreateVariants} basePath={basePath} />}
+          <MediaManager pending={createMedia} onPendingChange={setCreateMedia} baseImageCount={createPhoto ? 1 : 0} basePath={basePath} />
+          {createError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8, marginTop: 8 }}>{createError}</div>}
+          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
             <button onClick={() => { setShowCreate(false); setCreateError(null); }} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
             <button onClick={submitCreate} disabled={!canSubmitCreate || creating} style={{ flex: 2, background: canSubmitCreate && !creating ? D.gold : D.panelBg2, color: canSubmitCreate && !creating ? "#1a1205" : D.textFaint, border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: canSubmitCreate && !creating ? "pointer" : "default", fontFamily: "inherit" }}>{creating ? "Creating…" : "✓ Create Listing"}</button>
           </div>
@@ -603,7 +628,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {listingList.map(item => {
           const statusMeta = LISTING_STATUS_META[item.status] || { label: item.status, color: D.textDim };
-          const canEdit = item.status !== "published";
+          const canEdit = !["published", "dropped", "discontinued"].includes(item.status);
           return (
             <div key={item.id} style={{ ...glassCard, padding: "14px 16px", border: editingId === item.id ? `2px solid ${D.cardBorderStrong}` : `1px solid ${D.cardBorder}` }}>
               {editingId === item.id ? (
@@ -629,7 +654,9 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                       always-show-service_duration behavior. */}
                   <DecisionFields kind={categoryKindById(item.category) || "service"} isAccommodation={categoryIsAccommodationById(item.category)} form={editForm} update={(field, value) => setEditForm(f => ({ ...f, [field]: value }))} />
                   <SpecsEditor specs={editForm.specs} onChange={specs => setEditForm(f => ({ ...f, specs }))} />
-                  <div style={{ display: "flex", gap: 6 }}>
+                  {canHaveVariants(categoryById(item.category)) && <VariantEditor listing={item} basePath={basePath} onChanged={refetchListings} />}
+                  <MediaManager listing={item} basePath={basePath} onChanged={refetchListings} />
+                  <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                     <button onClick={() => setEditingId(null)} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
                     <button onClick={() => saveEdit(item.id)} style={{ flex: 2, background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>✓ Save</button>
                   </div>

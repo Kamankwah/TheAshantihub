@@ -767,4 +767,9 @@ export const handlers = [
     mode: 'immediate', payment_method: 'wallet', payment_processing: '0.00',
     redelivery: { id: 1, order: 7, attempt: 1, status: 'paid', status_label: 'Paid, waiting for a rider', fee: '15.00', fee_pesewas: 1500 },
   })),
+  // Listing editor (marketplace Plan 2): no open edit by default (the server answers 404), and the owner's
+  // Ashanti Direct tree answers the same shapes as the business one.
+  http.get('http://localhost:8000/api/listings/mine/:id/revision/', () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })),
+  http.get('http://localhost:8000/api/direct/listings/:id/revision/', () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })),
+  http.get('http://localhost:8000/api/direct/listings/', () => HttpResponse.json([])),
 ]
