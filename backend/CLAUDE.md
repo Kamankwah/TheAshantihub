@@ -374,8 +374,12 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   page marks all three categories `charged`), but the sale rows, `awaiting_call`, the statement and the texts come from
   `OrderFeeSnapshot` only, and `booking_*` journal lines land in the daily summary's `other` column. A follow-up (Plan
   4F or 4b) must add `BookingSale` rows, `FOLD` kinds and texts before the ledger is turned on (spec §13 (lxxxiii)).
-  *Update, 4F Tasks 1-2: the booking rows (`vendor/bookings/`), the overview and `awaiting_call`, the daily summary's
-  `FOLD` kinds and the statement's "Booking" rows are done; only the booking texts remain, arriving with Task 4.*
+  *Update, 4F Tasks 1-2 and 4: the booking rows (`vendor/bookings/`), the overview and `awaiting_call`, the daily summary's
+  `FOLD` kinds, the statement's "Booking" rows and the texts are done. Booking sales are texted:
+  `vendor_texts.booking_paid` / `booking_released` / `booking_on_hold` (kinds `booking_paid` / `booking_released` /
+  `booking_on_hold`, keys `booking-paid-<sale>` etc.) are called from `ledger.sales.record_payment`, `release` and
+  `report_problem` (a local import: `wallets.vendor` imports `sales`), never raise, and carry the booking reference and
+  amounts only, never the customer's name, phone or what they wrote. A suspended business keeps the in-app copy, no text.*
 
 ## Test-fixture gotcha
 

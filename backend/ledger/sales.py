@@ -39,6 +39,14 @@ CATEGORY = {BookingSale.SERVICE: FeeRuleSet.SERVICE, BookingSale.STAY: FeeRuleSe
 SUBJECT = {BookingSale.SERVICE: "service_request", BookingSale.STAY: "booking", BookingSale.TICKETS: "event"}
 
 
+def _text(which, sale, *args):
+    """The business's text for this step (wallets.vendor_texts: never raises, nothing while the ledger is off). Imported
+    here because wallets.vendor imports this module."""
+    from wallets import vendor_texts
+
+    getattr(vendor_texts, which)(sale, *args)
+
+
 def pay_key(session):
     return f"booking-pay-{session.reference}"
 
@@ -116,6 +124,7 @@ def record_payment(session, kind, subject, business_owner, *, at=None):
             key=pay_key(session), kind="booking_payment", lines=[posting.debit(source, base), posting.credit(pending, base)],
             reference_type="ledger.bookingsale", reference_id=str(sale.pk), memo=f"Payment for {sale.label()}",
         )
+        _text("booking_paid", sale)
         return sale
 
 
@@ -312,6 +321,7 @@ def report_problem(sale, customer, reason, now=None):
             description=f"{sale.label().capitalize()}: {reason}", answer_due_at=answer_due,
         )
         sale.save(update_fields=["dispute"])
+        _text("booking_on_hold", sale)
     return sale
 
 
@@ -383,6 +393,7 @@ def release(sale, now=None):
     tickets_of(sale).filter(refunded_at__isnull=True, escrow_status=Ticket.HELD).update(
         escrow_status=Ticket.RELEASED, escrow_released_at=now,
     )
+    _text("booking_released", sale, journal)
     return journal
 
 

@@ -133,9 +133,11 @@ class VendorText(models.Model):
 
     ORDER_PAID, ORDER_RELEASED, DAILY_DIGEST = "order_paid", "order_released", "daily_digest"
     REFUND, WITHDRAWAL, BALANCE_NEGATIVE, BALANCE_LOW = "refund", "withdrawal", "balance_negative", "balance_low"
+    BOOKING_PAID, BOOKING_RELEASED, BOOKING_ON_HOLD = "booking_paid", "booking_released", "booking_on_hold"
     KIND_CHOICES = [
         (ORDER_PAID, "Order paid"), (ORDER_RELEASED, "Order released"), (DAILY_DIGEST, "Daily digest"), (REFUND, "Refund"),
         (WITHDRAWAL, "Withdrawal"), (BALANCE_NEGATIVE, "Balance below zero"), (BALANCE_LOW, "Balance low"),
+        (BOOKING_PAID, "Booking paid"), (BOOKING_RELEASED, "Booking released"), (BOOKING_ON_HOLD, "Booking on hold"),
     ]
     QUEUED, SENT, FAILED, NO_PHONE = "queued", "sent", "failed", "no_phone"
     STATUS_CHOICES = [(QUEUED, "Waiting to send"), (SENT, "Sent"), (FAILED, "Could not be sent"), (NO_PHONE, "No number to text")]
