@@ -409,6 +409,10 @@ class OwnerOrderListView(generics.ListAPIView):
 
 
 # ── Owner sales report (business item 4 / Wave I) ──────────────────────────
+def _owner_report_shows_customers():
+    return not escrow.enabled()
+
+
 class _OwnerSalesReportBase(APIView):
     """Shared query for the owner's sales report: their own OrderItems in PAID
     orders, with date-range and product/service-kind filters. The owner sees
@@ -437,18 +441,23 @@ class _OwnerSalesReportBase(APIView):
         kind = request.query_params.get("kind")
         if kind in ("product", "service"):
             qs = qs.filter(listing__category__kind=kind)
-        return [
-            {
+        # G8 / V5: once the ledger is on the owner's sales report carries no
+        # customer name; with it off the rows are as they always were.
+        names = _owner_report_shows_customers()
+        rows = []
+        for item in qs:
+            row = {
                 "order_id": item.order_id,
                 "date": item.order.placed_at.isoformat(),
-                "customer": item.order.customer.full_name,
                 "item": item.listing.name,
                 "kind": item.listing.category.kind if item.listing.category else "",
                 "quantity": item.quantity,
                 "line_total": str(item.line_total),
             }
-            for item in qs
-        ]
+            if names:
+                row["customer"] = item.order.customer.full_name
+            rows.append(row)
+        return rows
 
 
 class OwnerSalesReportView(_OwnerSalesReportBase):
@@ -472,6 +481,7 @@ class OwnerSalesReportView(_OwnerSalesReportBase):
             "series": [{"month": m, "amount": str(a)} for m, a in sorted(series.items())],
             # The table shows a capped preview; the CSV export carries every row.
             "rows": rows[:200],
+            "customer_names": _owner_report_shows_customers(),
         })
 
 
@@ -488,9 +498,16 @@ class OwnerSalesReportExportView(_OwnerSalesReportBase):
         response = HttpResponse(content_type="text/csv")
         response["Content-Disposition"] = 'attachment; filename="ashantihub-sales.csv"'
         writer = csv.writer(response)
-        writer.writerow(["Order", "Date", "Customer", "Item", "Kind", "Quantity", "Line total (GHS)"])
+        names = _owner_report_shows_customers()
+        writer.writerow(
+            ["Order", "Date"] + (["Customer"] if names else [])
+            + ["Item", "Kind", "Quantity", "Line total (GHS)"]
+        )
         for r in self._rows(request):
-            writer.writerow([r["order_id"], r["date"][:10], r["customer"], r["item"], r["kind"], r["quantity"], r["line_total"]])
+            writer.writerow(
+                [r["order_id"], r["date"][:10]] + ([r["customer"]] if names else [])
+                + [r["item"], r["kind"], r["quantity"], r["line_total"]]
+            )
         return response
 
 

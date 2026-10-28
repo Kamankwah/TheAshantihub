@@ -44,3 +44,43 @@ describe('PaymentsPanel subscription reminder', () => {
     expect(screen.getByText('Renew from the plans below to keep your listings live.')).toBeInTheDocument()
   })
 })
+
+describe('PaymentsPanel sales overview customer column', () => {
+  const report = (extra) => ({
+    summary: { total_sales: '100.00', order_count: 1, item_count: 1 },
+    series: [],
+    rows: [{ order_id: 1, date: '2026-10-01T10:00:00Z', customer: 'Yaa Buyer', item: 'Kente Cloth', kind: 'product', quantity: 1, line_total: '100.00' }],
+    ...extra,
+  })
+  async function openOverview(body) {
+    server.use(
+      http.get(`${API}/api/orders/owner/report/`, () => HttpResponse.json(body)),
+      http.get(`${API}/api/events/mine/`, () => HttpResponse.json([])),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PaymentsPanel user={{ fullName: 'Abena' }} PaymentComponent={() => null} businessKind="product" />
+      </QueryClientProvider>,
+    )
+    await screen.findByText(/Kente Cloth/)
+  }
+
+  it('hides the customer column when the report says customer_names false', async () => {
+    await openOverview(report({ customer_names: false, rows: report().rows.map(({ customer, ...r }) => r) }))
+    expect(screen.queryByText('Customer')).not.toBeInTheDocument()
+    expect(screen.queryByText('Yaa Buyer')).not.toBeInTheDocument()
+    expect(screen.getByText('Qty')).toBeInTheDocument()
+  })
+
+  it('keeps the customer column when the flag is absent or true', async () => {
+    await openOverview(report({ customer_names: true }))
+    expect(screen.getByText('Customer')).toBeInTheDocument()
+    expect(screen.getByText('Yaa Buyer')).toBeInTheDocument()
+  })
+
+  it('keeps the customer column when the flag is absent', async () => {
+    await openOverview(report())
+    expect(screen.getByText('Customer')).toBeInTheDocument()
+  })
+})

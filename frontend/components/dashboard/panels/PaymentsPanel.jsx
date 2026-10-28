@@ -194,7 +194,8 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
                   columns={[
                     { key: "date", label: "Date" },
                     { key: "item", label: "Item" },
-                    { key: "customer", label: "Customer" },
+                    // The server drops customer names once the ledger is on.
+                    ...(report.data?.customer_names !== false ? [{ key: "customer", label: "Customer" }] : []),
                     { key: "quantity", label: "Qty", align: "right" },
                     { key: "line_total", label: "Amount", align: "right" },
                   ]}
