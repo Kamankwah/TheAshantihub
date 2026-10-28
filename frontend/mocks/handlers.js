@@ -580,8 +580,34 @@ export const handlers = [
   // Wallets (Plan 3F): ledger ON and empty by default; a test needing the "off" state overrides with a 409 {code:'ledger_off'}.
   http.get('http://localhost:8000/api/wallet/', () => HttpResponse.json({ kind: 'customer', balance: '0.00' })),
   http.get('http://localhost:8000/api/wallet/vendor/', () => HttpResponse.json({
-    pending: '0.00', available: '0.00', withdrawable: '0.00', negative: false, awaiting_call: false, fee_cap: '0.00',
+    pending: '0.00', available: '0.00', withdrawable: '0.00', negative: false, awaiting_call: 0,
+    fee_cap: { limit: null, used: '0.00', remaining: null }, withdrawing: '0.00',
   })),
+  // The business's own money screens (Plan 4F): ledger ON and empty.
+  http.get('http://localhost:8000/api/wallet/vendor/sales/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/wallet/vendor/bookings/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/wallet/vendor/daily/', () => HttpResponse.json({
+    from: '2026-09-21', to: '2026-10-20', days: [],
+    totals: { orders: 0, sold: '0.00', fees: '0.00', released: '0.00', refunded: '0.00', free_delivery_promo: '0.00', withdrawn: '0.00', other: '0.00', net_change: '0.00' },
+  })),
+  http.get('http://localhost:8000/api/wallet/vendor/fees/', () => {
+    const band = [{ from: '0.00', to: null, percent: '1', flat: null, fee: '1%' }]
+    const category = (key, label, applies_to) => ({ category: key, label, applies_to, charged: true, in_force_from: null, bands: band, next: null })
+    return HttpResponse.json({
+      categories: [category('product', 'Products', 'Product orders'), category('service', 'Services', 'Services and stays'), category('event', 'Events', 'Event tickets')],
+      fee_base: 'Worked out per order or booking on your items\' total after your own sale prices, never on delivery. It is taken when the money is released to you.',
+      fee_cap: { limit: null, used: '0.00', remaining: null },
+    })
+  }),
+  http.get('http://localhost:8000/api/wallet/vendor/texts/', () => HttpResponse.json({
+    order_texts: true, daily_digest: false, phone: null,
+    note: 'Money texts go only to a Ghana mobile number you have confirmed with a code. Yours is not confirmed, so your money notices stay in the app.',
+    recent: [],
+  })),
+  http.patch('http://localhost:8000/api/wallet/vendor/texts/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json({ order_texts: true, daily_digest: body.daily_digest, phone: null, note: null, recent: [] })
+  }),
   http.get('http://localhost:8000/api/wallet/transactions/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/wallet/destinations/', () => HttpResponse.json({ results: [], cooling_hours: 24 })),
   http.get('http://localhost:8000/api/wallet/withdrawals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
