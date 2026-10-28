@@ -5,12 +5,12 @@ import { walletStyles } from '../../wallet/walletStyles.js'
 import VendorPayouts from '../../wallet/VendorPayouts.jsx'
 import { D } from '../theme.js'
 import MoneyOverview from './MoneyOverview.jsx'
+import SalesList from './SalesList.jsx'
 
 // The business dashboard's one Money tab (Director: Money and Payouts in one
 // tab). Only the selected sub-tab is mounted, so no other request fires.
 // Owner-only: it shows platform fees.
-// businessKind is carried for the sub-tabs added later; unused here.
-export default function VendorMoney() {
+export default function VendorMoney({ businessKind }) {
   const s = walletStyles('dashboard')
   const [sub, setSub] = useState('overview')
   const { error, isLoading } = useVendorWalletOverview()
@@ -24,6 +24,7 @@ export default function VendorMoney() {
   const SUB_TABS = [
     { id: 'overview', label: 'Overview', render: () => <MoneyOverview onOpenPayouts={() => setSub('payouts')} /> },
     { id: 'payouts', label: 'Payouts', render: () => <VendorPayouts /> },
+    { id: 'sales', label: 'Sales', render: () => <SalesList businessKind={businessKind} /> },
   ]
   const current = SUB_TABS.find((t) => t.id === sub) || SUB_TABS[0]
 
