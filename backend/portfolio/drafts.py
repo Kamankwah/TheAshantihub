@@ -31,7 +31,7 @@ from .models import ListingDraft, OwnerConfirmation
 
 LISTING_KINDS = (ListingDraft.PRODUCT, ListingDraft.SERVICE, ListingDraft.STAY)
 EVENT_FIELDS = tuple(EventSubmitSerializer.Meta.fields)
-EDITABLE = (ListingDraft.DRAFT, ListingDraft.AWAITING_OWNER)
+EDITABLE = (ListingDraft.DRAFT, ListingDraft.AWAITING_OWNER, ListingDraft.OWNER_CONFIRMED)
 
 BAD_KIND = "Choose what the draft is: product, service, stay or event."
 WRONG_CATEGORY = {
@@ -42,6 +42,7 @@ WRONG_CATEGORY = {
 PRICE_BAD = "Enter a price above zero."
 UNITS_BAD = "Say how many rooms or units there are (at least 1)."
 NO_IDS = "Choose at least one draft to send."
+NOT_YOUR_DRAFT = "Only the person who made this draft can change what it says."
 
 
 def _errors(**fields):
@@ -191,8 +192,11 @@ def create_draft(staff, owner, data, *, request=None):
 
 
 def update_draft(staff, owner, draft, data, *, request=None):
-    """Edit a draft that is a draft, awaiting the owner or lapsed. Editing detaches it from its link, so the owner
-    confirms what they actually saw: the link is revoked once it covers nothing else."""
+    """Edit a draft that is a draft, awaiting the owner, lapsed or confirmed but not yet submitted. Only its maker may:
+    the maker is who submits it and who cannot approve it. Editing detaches it from its link, so the owner confirms
+    what they actually saw: the link is revoked once it covers nothing else."""
+    if staff.pk != draft.created_by_id:
+        raise ClaimError(NOT_YOUR_DRAFT, code="not_your_draft", status_code=403)
     if draft.status not in EDITABLE:
         raise ClaimError(confirmations.NOT_EDITABLE, code="not_editable", status_code=409)
     if not isinstance(data, dict):
@@ -207,7 +211,7 @@ def update_draft(staff, owner, draft, data, *, request=None):
         record(
             staff, "listing_draft.updated", target=draft,
             summary=f"Edited {draft.kind} draft “{_label(draft)}”"
-            + ("; the owner must confirm it again" if was == ListingDraft.AWAITING_OWNER else ""),
+            + ("; the owner must confirm it again" if was in (ListingDraft.AWAITING_OWNER, ListingDraft.OWNER_CONFIRMED) else ""),
             after={"kind": draft.kind, "name": _label(draft), "status": draft.status, "was": was}, request=request,
         )
     return draft

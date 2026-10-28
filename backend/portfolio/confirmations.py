@@ -314,7 +314,8 @@ NOT_EDITABLE = "This draft can no longer be changed: the owner has answered it o
 
 def detach(draft, staff, *, withdraw=False, payload=None):
     """Take a draft off its link so it can be edited (back to `draft`, optionally with a new payload) or withdrawn.
-    Only a `draft` or `awaiting_owner` (live or lapsed) draft can be detached. The owner confirms what they saw, so
+    Only a `draft`, `awaiting_owner` (live or lapsed) or `owner_confirmed` (waiting to be submitted) draft can be
+    detached; a submitted one is locked. The owner confirms what they saw, so
     the old link is revoked once it covers nothing: no draft left on it and not a registration link. A link that
     still covers another draft or the registration stays live. `payload` is the new payload, or a function of the
     payload read under the lock. Returns the locked, refreshed draft. Lock order as
@@ -327,7 +328,7 @@ def detach(draft, staff, *, withdraw=False, payload=None):
             ).order_by("pk")  # 2. the links not yet answered
         }
         locked = ListingDraft.objects.select_for_update().get(pk=draft.pk)  # 3. the draft
-        if locked.status not in (ListingDraft.DRAFT, ListingDraft.AWAITING_OWNER):
+        if locked.status not in (ListingDraft.DRAFT, ListingDraft.AWAITING_OWNER, ListingDraft.OWNER_CONFIRMED):
             raise ClaimError(NOT_EDITABLE, code="not_editable", status_code=409)
         link = links.get(locked.confirmation_id)
         locked.confirmation = None

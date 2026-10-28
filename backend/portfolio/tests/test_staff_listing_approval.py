@@ -6,6 +6,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 from accounts import kyc
+from accounts.claims import ClaimError
 from accounts.models import BusinessOwner
 from accounts.testing import make_staff
 from approvals import services as approvals
@@ -18,6 +19,10 @@ from portfolio.models import ListingDraft, OwnerConfirmation, StagedPhoto
 from portfolio.tests.test_staff_drafts import DraftBase
 from staff_tasks.models import Task
 from targets import services as targets
+
+
+def approvals_diff(approval):
+    return staff_listing_kind.render_diff(approval)
 
 
 class Base(DraftBase):
@@ -55,7 +60,7 @@ class SubmitAtConfirmTests(Base):
         approval = self.approval_of(draft)
         self.assertEqual(draft.status, "submitted")
         self.assertEqual((approval.kind, approval.status, approval.maker), ("listing.staff_create", "pending", self.scout))
-        self.assertEqual(approval.payload, {"draft_id": draft.pk})
+        self.assertEqual((approval.payload["draft_id"], approval.payload["kind"]), (draft.pk, "product"))
         self.assertFalse(Listing.objects.filter(business_owner=self.owner).exists())
 
     def test_operations_approves_scout_listing_publishes_with_created_by_staff(self):
@@ -105,10 +110,13 @@ class SubmitAtConfirmTests(Base):
         self.as_staff(self.scout)
         draft = self.make_draft()
         self.send([draft])
+        raw = self.raw()
         OwnerConfirmation.objects.update(expires_at=timezone.now() - timedelta(minutes=1))
+        with self.assertRaises(ClaimError) as caught:
+            confirmations.confirm(raw)
+        self.assertEqual(caught.exception.code, "expired")
         draft.refresh_from_db()
-        with self.assertRaises(ApprovalError):
-            staff_listing_kind.submit_draft(draft)
+        self.assertEqual((draft.status, draft.approval), ("awaiting_owner", None))
         self.assertFalse(ApprovalRequest.objects.filter(kind="listing.staff_create").exists())
 
     def test_event_draft_apply_creates_approved_unpaid_event(self):
@@ -176,13 +184,83 @@ class SubmitAtConfirmTests(Base):
         draft = self.confirmed()
         approval = self.approval_of(draft)
         rows = {row["field"]: row["after"] for row in staff_listing_kind.render_diff(approval)}
-        self.assertRegex(rows["Text sent to"], r"^\d{3} \*\*\* \d{4}$")
+        self.assertRegex(rows["Text sent to"], r"^\d{3} \*\*\* \d{4}")
         self.assertEqual(rows["Owner confirmed"], f"{timezone.localtime(timezone.now()):%-d %b %Y}")
         self.assertEqual(rows["Listed by"], "Kwame (Scout)")
         self.assertEqual(staff_listing_kind.consequences(approval)[-1], "It counts toward Kwame's listings today.")
         blob = json.dumps([rows, approval.payload, staff_listing_kind.consequences(approval)], default=str)
         for needle in ("token", "http", "0244100200", "233244100200"):
             self.assertNotIn(needle, blob)
+
+
+class DecidedApprovalKeepsItsFactsTests(Base):
+    def test_a_returned_approval_still_shows_what_was_confirmed_after_the_draft_is_edited_and_resent(self):
+        draft = self.confirmed()
+        approval = self.approval_of(draft)
+        before = approvals_diff(approval)
+        self.assertNotIn("no owner text was needed", json.dumps(before))
+        approvals.reject(approval.pk, self.lead, "Wrong price")
+        approval.refresh_from_db()
+        self.assertEqual(approvals_diff(approval), before)
+        rows = {row["field"]: row["after"] for row in before}
+        self.assertEqual(rows["Owner confirmed"], f"{timezone.localtime(timezone.now()):%-d %b %Y}")
+        self.assertRegex(rows["Text sent to"], r"^\d{3} \*\*\* \d{4}")
+        # the maker edits and sends it again: the old approval does not change
+        self.as_staff(self.scout)
+        response = self.call("patch", self.url(tail=f"{draft.pk}/"), {"name": "New name", "price_amount": "999.00"})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.send([draft])
+        confirmations.confirm(self.raw())
+        approval.refresh_from_db()
+        self.assertEqual(approvals_diff(approval), before)
+        self.assertNotEqual(self.approval_of(draft).pk, approval.pk)
+
+    def test_the_snapshot_holds_no_whole_phone_token_or_link(self):
+        draft = self.confirmed(contact_phone="024 555 0101")
+        blob = json.dumps(self.approval_of(draft).payload, default=str)
+        for needle in ("token", "http", "0245550101", "233245550101", "0244100200"):
+            self.assertNotIn(needle, blob)
+        self.assertIn("024 *** 0101", blob)
+
+
+class EditAndWithdrawTests(Base):
+    def test_a_confirmed_draft_that_cannot_submit_can_be_edited_and_needs_a_new_confirmation(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(kyc_status=BusinessOwner.PENDING)
+        draft = self.confirmed()
+        self.assertEqual(draft.status, "owner_confirmed")
+        self.as_staff(self.scout)
+        response = self.call("patch", self.url(tail=f"{draft.pk}/"), {"name": "Better name"})
+        self.assertEqual(response.status_code, 200, response.content)
+        draft.refresh_from_db()
+        self.assertEqual((draft.status, draft.confirmation, draft.payload["name"]), ("draft", None, "Better name"))
+
+    def test_a_confirmed_draft_can_be_withdrawn(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(kyc_status=BusinessOwner.PENDING)
+        draft = self.confirmed()
+        self.as_staff(self.lead)  # withdrawing authors nothing: anyone in scope may
+        response = self.call("delete", self.url(tail=f"{draft.pk}/"))
+        self.assertEqual(response.status_code, 200, response.content)
+        draft.refresh_from_db()
+        self.assertEqual(draft.status, "withdrawn")
+
+    def test_a_submitted_draft_stays_locked(self):
+        draft = self.confirmed()
+        self.as_staff(self.scout)
+        self.assertEqual(self.call("patch", self.url(tail=f"{draft.pk}/"), {"name": "x"}).status_code, 409)
+        self.assertEqual(self.call("delete", self.url(tail=f"{draft.pk}/")).status_code, 409)
+
+    def test_only_the_maker_edits_a_draft(self):
+        self.as_staff(self.scout)
+        draft = self.make_draft()
+        for other in (self.lead, self.admin):
+            self.as_staff(other)
+            response = self.call("patch", self.url(tail=f"{draft.pk}/"), {"name": "Rewritten"})
+            self.assertEqual((response.status_code, response.json()["code"]), (403, "not_your_draft"))
+        draft.refresh_from_db()
+        self.assertEqual(draft.payload["name"], "Kente stole")
+        # withdraw, send and resend stay open to anyone in scope
+        self.as_staff(self.lead)
+        self.assertEqual(self.call("post", self.url(tail="send/"), {"draft_ids": [draft.pk]}).status_code, 200)
 
 
 class WaitForKycTests(Base):

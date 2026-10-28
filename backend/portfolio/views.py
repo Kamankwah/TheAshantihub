@@ -952,8 +952,8 @@ HTTP_409_CODES_400 = {"too_long", "mixed_owners", "invalid"}
 
 def _claim_error(exc):
     """A confirmation refusal as {detail, code}: the rate limit is 429, a malformed ask 400, a state conflict 409."""
-    if exc.status_code == 429:
-        code = 429
+    if exc.status_code in (403, 429):
+        code = exc.status_code
     elif exc.code in HTTP_409_CODES_400:
         code = 400
     else:

@@ -277,7 +277,7 @@ class SendAndEditTests(DraftBase):
         self.assertIsNone(link.revoked_at)
 
     def test_edit_and_withdraw_are_refused_once_answered_or_submitted(self):
-        for status in ("owner_confirmed", "owner_declined", "submitted", "withdrawn"):
+        for status in ("owner_declined", "submitted", "withdrawn"):  # owner_confirmed may be edited or withdrawn (Task 7)
             draft = self.make_draft()
             ListingDraft.objects.filter(pk=draft.pk).update(status=status)
             self.assertEqual(self.call("patch", self.url(tail=f"{draft.pk}/"), {"name": "x"}).status_code, 409, status)

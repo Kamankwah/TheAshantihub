@@ -13,6 +13,7 @@ import logging
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from accounts.models import BusinessOwner
 from accounts.phones import mask_phone
@@ -21,8 +22,8 @@ from events.models import Event
 from events.serializers import EventSubmitSerializer
 from notifications.services import notify_business_owner
 
-from . import proposals
-from .models import ListingDraft
+from . import confirmations, proposals
+from .models import ListingDraft, OwnerConfirmation
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,23 @@ def check(draft, *, submitting):
         raise ApprovalError(proposals.first_message(errors))
 
 
+def _snapshot(draft):
+    """The decision facts as they are at submit, kept on the approval so its diff never changes afterwards (the draft is
+    reopened, edited and re-sent after a return). Masked phones only: no token, link, hash or whole number."""
+    link = draft.confirmation
+    payload = dict(draft.payload or {})
+    if payload.get("contact_phone"):
+        payload["contact_phone"] = mask_phone(payload["contact_phone"])
+    return {
+        "draft_id": draft.pk, "kind": draft.kind, "business": draft.business_owner.display_name, "fields": payload,
+        "listed_by": _who(draft.created_by),
+        "text_needed": link is not None,
+        "confirmed_at": link.confirmed_at if link is not None else None,
+        "sent_to_masked": mask_phone(link.sent_to) if link is not None and link.sent_to else "",
+        "send_state": link.send_state if link is not None else "",
+    }
+
+
 def submit_draft(draft):
     """Send an owner-confirmed draft to the approvals queue. The caller holds the owner and draft row locks. Raises
     ApprovalError (and writes nothing) when it cannot go yet."""
@@ -102,7 +120,7 @@ def submit_draft(draft):
     name = str((draft.payload or {}).get("name") or draft.kind)[:150]
     approval = submit(
         draft.created_by, KEY, title=f"New {KIND_WORDS[draft.kind]} for a client: {name} — {owner.display_name}",
-        payload={"draft_id": draft.pk}, target_type=TARGET_TYPE, target_id=str(draft.pk),
+        payload=_snapshot(draft), target_type=TARGET_TYPE, target_id=str(draft.pk),
         target_label=f"{name} — {owner.display_name}",
     )
     draft.status, draft.approval = ListingDraft.SUBMITTED, approval
@@ -215,31 +233,33 @@ def _day(moment):
 
 
 def render_diff(approval):
-    try:
-        draft = _draft_of(approval)
-    except ObjectDoesNotExist:
+    """From the snapshot taken at submit, never the live draft: a returned approval keeps showing what was decided."""
+    snap = approval.payload
+    if "fields" not in snap:
         return [{"field": "Draft", "before": None, "after": approval.target_label}]
-    payload = draft.payload or {}
-    owner, link = draft.business_owner, draft.confirmation
-    if link is not None and link.confirmed_at is not None:
-        confirmed = _day(link.confirmed_at)
-    else:
+    fields = snap["fields"]
+    if not snap["text_needed"]:
         confirmed = "no owner text was needed"
+    elif snap.get("confirmed_at"):
+        confirmed = _day(parse_datetime(snap["confirmed_at"]))
+    else:
+        confirmed = "Confirmed"
     rows = [
-        {"field": "Business", "before": None, "after": owner.display_name},
+        {"field": "Business", "before": None, "after": snap["business"]},
         {"field": "Owner confirmed", "before": None, "after": confirmed},
     ]
-    if link is not None and link.sent_to:
+    if snap.get("sent_to_masked"):
         # Masked, like every phone; the full number is behind the KYC review's "Show full phone number".
-        rows.append({"field": "Text sent to", "before": None, "after": mask_phone(link.sent_to)})
-    rows.append({"field": "Listed by", "before": None, "after": _who(draft.created_by)})
-    if draft.kind == ListingDraft.EVENT:
+        note = "" if snap["send_state"] == OwnerConfirmation.SENT else f" ({confirmations.SEND_NOTES[snap['send_state']]})"
+        rows.append({"field": "Text sent to", "before": None, "after": snap["sent_to_masked"] + note})
+    rows.append({"field": "Listed by", "before": None, "after": snap["listed_by"]})
+    if snap["kind"] == ListingDraft.EVENT:
         rows += [
-            {"field": label, "before": None, "after": proposals._listing_shown(key, payload[key])}
-            for key, label in EVENT_LABELS if key in payload
+            {"field": label, "before": None, "after": proposals._listing_shown(key, fields[key])}
+            for key, label in EVENT_LABELS if key in fields
         ]
     else:
-        rows += proposals.listing_rows(_listing_fields(payload), *_photos(payload))
+        rows += proposals.listing_rows(_listing_fields(fields), *_photos(fields))
     return rows
 
 
