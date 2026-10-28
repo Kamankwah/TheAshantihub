@@ -1394,7 +1394,23 @@ class MyTicketsListView(generics.ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        return Ticket.objects.filter(purchased_by=self.request.user).order_by("-created_at")
+        return (
+            Ticket.objects.filter(purchased_by=self.request.user)
+            .select_related("ticket_type__event").order_by("-created_at")
+        )
+
+    def get_serializer_context(self):
+        """`money_by_transaction`: one `money` block per ticket purchase, from one BookingSale query, keyed by the
+        checkout transaction the purchase's tickets share."""
+        from ledger.customer_money import money_block
+        from ledger.models import BookingSale
+
+        context = super().get_serializer_context()
+        sale_rows = BookingSale.objects.filter(customer=self.request.user, kind=BookingSale.TICKETS).select_related(
+            "session", "event", "dispute"
+        )
+        context["money_by_transaction"] = {sale.session.transaction_id: money_block(sale) for sale in sale_rows}
+        return context
 
 
 class TicketPurchaseCancelView(APIView):

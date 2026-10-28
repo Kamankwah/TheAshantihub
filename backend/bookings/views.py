@@ -20,7 +20,7 @@ from storefront.permissions import MarketplaceOpen
 
 from .availability import is_available, min_units_free
 from .models import Booking
-from .serializers import BookingCreateSerializer, BookingSerializer
+from .serializers import BookingCreateSerializer, BookingSerializer, CustomerBookingSerializer
 
 
 class BookingAvailabilityView(APIView):
@@ -127,11 +127,11 @@ class BookingCreateView(APIView):
 class MyBookingsView(generics.ListAPIView):
     """GET /api/bookings/mine/ — the customer's own bookings."""
 
-    serializer_class = BookingSerializer
+    serializer_class = CustomerBookingSerializer
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def get_queryset(self):
-        return Booking.objects.filter(customer=self.request.user).select_related("listing")
+        return Booking.objects.filter(customer=self.request.user).select_related("listing", "sale", "sale__dispute")
 
 
 class IncomingBookingsView(generics.ListAPIView):
@@ -178,7 +178,8 @@ class BookingCancelView(APIView):
             body=f"A booking for “{booking.listing.name}” was cancelled.",
             link="/business-dashboard", icon="⚠️",
         )
-        body = BookingSerializer(booking).data
+        booking = Booking.objects.select_related("listing", "sale", "sale__dispute").get(pk=booking.pk)  # fresh, so `money` reflects the cancel
+        body = CustomerBookingSerializer(booking).data
         if refund is not None:
             back = from_pesewas(refund.amount_pesewas)
             notify_customer(
