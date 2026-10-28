@@ -50,6 +50,22 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         return bool(sale and sales.has_open_dispute(sale))
 
 
+class CustomerServiceRequestSerializer(ServiceRequestSerializer):
+    """The customer's own view of a request: ServiceRequestSerializer plus the read-only `money` block. The owner's
+    queue keeps ServiceRequestSerializer and carries no `money` key."""
+
+    money = serializers.SerializerMethodField()
+
+    class Meta(ServiceRequestSerializer.Meta):
+        fields = ServiceRequestSerializer.Meta.fields + ["money"]
+        read_only_fields = fields
+
+    def get_money(self, obj):
+        from ledger.customer_money import money_block
+
+        return money_block(self._sale(obj))
+
+
 class ServiceRequestCreateSerializer(serializers.ModelSerializer):
     """Input shape for a customer opening a request. customer/business_owner/
     status are set by the view, never trusted from the body.

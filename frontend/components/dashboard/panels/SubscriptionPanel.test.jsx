@@ -155,3 +155,39 @@ describe('SubscriptionPanel pay flow posts the new {plan, cycle_months} shape', 
     await waitFor(() => expect(subscribeBody).toEqual({ plan: 'growth', cycle_months: 3 }))
   })
 })
+
+describe('SubscriptionPanel when no plans are offered', () => {
+  const HELD = {
+    id: 5, plan: PLAN, cycle_months: 3, is_trial: false, status: 'active',
+    current_period_start: '2026-01-01T00:00:00Z', current_period_end: '2026-04-01T00:00:00Z',
+  }
+
+  it('says plans are not offered and shows the plan end date', async () => {
+    renderPanel({ plans: [], subscription: HELD })
+    expect(await screen.findByText(/Growth Plan/)).toBeInTheDocument()
+    expect(await screen.findByText('Subscriptions are not being offered right now, so nothing can be renewed or bought. Your current plan runs until 2026-04-01.')).toBeInTheDocument()
+  })
+
+  it('says only that plans are not offered when no plan is held', async () => {
+    renderPanel({ plans: [], subscription: {} })
+    expect(await screen.findByText('Subscriptions are not being offered right now.')).toBeInTheDocument()
+    expect(screen.queryByText(/Choose a plan below/)).not.toBeInTheDocument()
+  })
+
+  it('no plan grid or renew button when none are offered', async () => {
+    renderPanel({ plans: [], subscription: HELD })
+    await screen.findByText(/Subscriptions are not being offered right now/)
+    expect(screen.queryByText('Renew Now')).not.toBeInTheDocument()
+    expect(screen.queryByText('Your subscription has expired')).not.toBeInTheDocument()
+    expect(screen.queryByText('3 months')).not.toBeInTheDocument()
+    expect(screen.queryByText('💰 Pay with MoMo')).not.toBeInTheDocument()
+  })
+
+  it('keeps today\'s screen while the plans are still loading', async () => {
+    server.use(http.get('http://localhost:8000/api/billing/plans/', () => new Promise(() => {})))
+    mockSubscription({})
+    renderWithQueryClient(<SubscriptionPanel user={{ fullName: 'Abena' }} PaymentComponent={MoMoPayment} showToast={vi.fn()} />)
+    expect(await screen.findByText('🎁 No Active Subscription')).toBeInTheDocument()
+    expect(screen.queryByText(/not being offered/)).not.toBeInTheDocument()
+  })
+})

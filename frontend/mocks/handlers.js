@@ -97,7 +97,7 @@ export const handlers = [
       facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
       tiktok_url: 'https://tiktok.com/@ashantihub', youtube_url: 'https://youtube.com/@ashantihub',
       whatsapp_number: '233244000000', support_hours: 'Mon–Sat, 8:00am – 8:00pm GMT',
-      warranty_returns_policy: '', service_dispute_policy: '',
+      warranty_returns_policy: '', service_dispute_policy: '', pickup_office_address: '',
     })
   }),
   http.patch('http://localhost:8000/api/core/site-settings/', async ({ request }) => {
@@ -481,6 +481,15 @@ export const handlers = [
   // Bookings (bookings app, business item 2 / Wave H3) — default handlers.
   http.get('http://localhost:8000/api/bookings/mine/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/bookings/incoming/', () => HttpResponse.json([])),
+  // The stay quote: 100.00 a night, 5 units free; the server prices nights x units.
+  http.get('http://localhost:8000/api/bookings/availability/', ({ request }) => {
+    const q = new URL(request.url).searchParams
+    const nights = Math.round((Date.parse(q.get('check_out')) - Date.parse(q.get('check_in'))) / 86400000)
+    const units = Number(q.get('units') || 1)
+    return HttpResponse.json({
+      units_free: 5, available: true, nights, nightly_rate: '100.00', units, total_price: (100 * nights * units).toFixed(2),
+    })
+  }),
   http.post('http://localhost:8000/api/bookings/', () => HttpResponse.json({ id: 1, status: 'confirmed', check_in: '2026-08-01', check_out: '2026-08-03', total_price: '400.00' }, { status: 201 })),
   http.post('http://localhost:8000/api/bookings/:id/cancel/', () => HttpResponse.json({ id: 1, status: 'cancelled' })),
   http.post('http://localhost:8000/api/bookings/:id/check-in/', () => HttpResponse.json({ id: 1, status: 'checked_in' })),
@@ -619,6 +628,11 @@ export const handlers = [
   // The third-party rider's wallet (Plan 5F): off by default, so an unexpected mount shows the payroll screen; tests override.
   http.get('http://localhost:8000/api/delivery/rider/wallet/*', () => HttpResponse.json({ detail: "Wallets aren't switched on yet.", code: 'ledger_off' }, { status: 409 })),
   http.post('http://localhost:8000/api/delivery/rider/wallet/*', () => HttpResponse.json({ detail: "Wallets aren't switched on yet.", code: 'ledger_off' }, { status: 409 })),
+  http.get('http://localhost:8000/api/ledger/pickup/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/ledger/orders/awaiting-verification/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/ledger/bookings/', () => HttpResponse.json({ results: [] })),
+  http.get('http://localhost:8000/api/ledger/bookings/awaiting-verification/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.patch('http://localhost:8000/api/core/site-settings/pickup-address/', async ({ request }) => HttpResponse.json(await request.json())),
   http.get('http://localhost:8000/api/wallet/staff/wallets/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   // Staff rider money (Plan 5F): no commission posted, and a rider with no wallet.
   http.get('http://localhost:8000/api/delivery/rider-commission/', () => HttpResponse.json({ day: '2026-10-19', results: [], totals: { deliveries: 0, gross: '0.00', commission: '0.00', net: '0.00', given_back: '0.00' } })),

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { UserPanel } from './App.jsx'
@@ -305,6 +305,37 @@ describe('UserPanel', () => {
     })
   })
 
+  describe('Orders & Delivery tab — store pickup', () => {
+    it('a paid store-pickup order shows its collection code and the office line', async () => {
+      server.use(
+        http.get('http://localhost:8000/api/core/site-settings/', () => HttpResponse.json({ pickup_office_address: '12 Adum Road, Kumasi' })),
+        http.get('http://localhost:8000/api/orders/', () => HttpResponse.json([{
+          id: 9, status: 'paid', placed_at: '2026-10-20T10:00:00Z', total_amount: '90.00', delivery_method: 'store_pickup',
+          collection_code: '482913', collect_by: '2026-10-25T17:30:00Z',
+          items: [{ id: 1, listing_name: 'Shea butter', quantity: 1, line_total: '90.00' }],
+        }])),
+      )
+      renderPanel()
+      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      expect(await screen.findByLabelText('Collection code')).toHaveTextContent('482913')
+      expect(await screen.findByText('Collect it at the AshantiHub pickup office: 12 Adum Road, Kumasi.')).toBeInTheDocument()
+      expect(screen.getByText('Collect by Sun 25 Oct, 17:30.')).toBeInTheDocument()
+    })
+
+    it('a store-pickup order with no collection code shows no pickup note and no "once you have paid" line', async () => {
+      server.use(http.get('http://localhost:8000/api/orders/', () => HttpResponse.json([{
+        id: 10, status: 'cancelled', placed_at: '2026-10-20T10:00:00Z', total_amount: '90.00', delivery_method: 'store_pickup',
+        collection_code: null, collect_by: null,
+        items: [{ id: 1, listing_name: 'Shea butter', quantity: 1, line_total: '90.00' }],
+      }])))
+      renderPanel()
+      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      await screen.findByText('Shea butter × 1')
+      expect(screen.queryByTestId('pickup-collection-note')).not.toBeInTheDocument()
+      expect(screen.queryByText(/once you have paid/)).not.toBeInTheDocument()
+    })
+  })
+
   describe('Orders & Delivery tab — scheduled start', () => {
     const order = (extra) => ({
       id: 7, status: 'paid', placed_at: '2026-10-19T22:00:00Z', total_amount: '90.00', delivery_method: 'door_to_door', delivery_status: 'processing',
@@ -354,5 +385,126 @@ describe('UserPanel', () => {
       expect(await screen.findByText(/any time before the business marks the job done/)).toBeInTheDocument()
       expect(screen.getByText(/accepted automatically 48 hours after the business marks it done/)).toBeInTheDocument()
     })
+  })
+})
+
+describe('Account bookings and tickets — 7G', () => {
+  const API = 'http://localhost:8000'
+  const money = (extra = {}) => ({
+    sale: 12, release_at: '2099-10-12T14:00:00Z', released_at: null, accepted_at: null, refunded: null, refunded_whole: false, problem: null,
+    policy: { policy: 'moderate', tiers: [[120, 10000], [24, 5000]], text: 'Full refund until 5 days before the start, half until 24 hours before.' },
+    start: '2099-10-10T14:00:00Z', can_cancel: true, can_report: true, ...extra,
+  })
+  const stay = (extra = {}) => ({
+    id: 5, listing_name: 'Ashanti Lodge', status: 'confirmed', check_in: '2099-10-10', check_out: '2099-10-12', nights: 2, units: 1, total_price: '300.00',
+    paid_at: '2026-10-01T10:00:00Z', money: money(), ...extra,
+  })
+  const ticket = (id, sale, eventName, extra = {}) => ({
+    id, code: `TKT${id}`, price: '50.00', refunded_at: null, delivered_at: null, escrow_status: 'held',
+    event: { id: 1, name: eventName, event_date: '2099-12-01' }, ticket_type: { name: 'Regular' },
+    money: sale == null ? null : money({ sale, policy: { policy: 'organiser', tiers: [], text: 'The organiser sets the refund rules.' } }), ...extra,
+  })
+  const openBookings = async (rows) => {
+    server.use(http.get(`${API}/api/bookings/mine/`, () => HttpResponse.json(rows)))
+    renderPanel()
+    fireEvent.click(screen.getAllByText('My Bookings')[0])
+  }
+  const openTickets = (rows) => {
+    server.use(http.get(`${API}/api/events/tickets/mine/`, () => HttpResponse.json(rows)))
+    renderPanel()
+    fireEvent.click(screen.getAllByText('My Tickets')[0])
+  }
+
+  it('shows the stay policy, release time, Cancel and Report from the money block', async () => {
+    await openBookings([stay()])
+    expect(await screen.findByText('Moderate: Full refund until 5 days before the start, half until 24 hours before.')).toBeInTheDocument()
+    expect(screen.getByText(/The host is paid on .* unless you report a problem before then\./)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel booking' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Report a problem' })).toBeInTheDocument()
+  })
+
+  it('cancels a stay with the server quote and shows the returned amount', async () => {
+    let cancelled = 0
+    server.use(
+      http.get(`${API}/api/ledger/bookings/12/cancel-quote/`, () => HttpResponse.json({ refund: '150.00', whole: false })),
+      http.post(`${API}/api/bookings/5/cancel/`, () => { cancelled += 1; return HttpResponse.json({ id: 5, wallet_refund: '140.00' }) }),
+    )
+    await openBookings([stay()])
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel booking' }))
+    expect(await screen.findByText(/150\.00/)).toBeInTheDocument()
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Cancel this booking' })).getByRole('button', { name: 'Cancel booking' }))
+    expect(await screen.findByText('Cancelled. GH₵ 140.00 went back to your AshantiHub wallet.')).toBeInTheDocument()
+    expect(cancelled).toBe(1)
+  })
+
+  it('asks before cancelling with the ledger off and says no refund is made in the app', async () => {
+    let cancelled = 0
+    server.use(http.post(`${API}/api/bookings/5/cancel/`, () => { cancelled += 1; return HttpResponse.json({ id: 5 }) }))
+    await openBookings([stay({ money: null })])
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel booking' }))
+    expect(cancelled).toBe(0)
+    const dialog = screen.getByRole('dialog', { name: 'Cancel this booking' })
+    expect(within(dialog).getByText('No refund is made in the app. Contact AshantiHub Support about your payment.')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel booking' }))
+    await waitFor(() => expect(cancelled).toBe(1))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Cancel this booking' })).toBeNull())
+  })
+
+  it('shows the server refusal instead of a generic error', async () => {
+    server.use(http.post(`${API}/api/bookings/5/cancel/`, () => HttpResponse.json({ detail: 'This booking can no longer be cancelled.' }, { status: 409 })))
+    await openBookings([stay({ money: null, paid_at: null })])
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel booking' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Cancel this booking' })).getByRole('button', { name: 'Cancel booking' }))
+    expect(await screen.findByText('This booking can no longer be cancelled.')).toBeInTheDocument()
+    expect(screen.queryByText('Could not cancel this booking.')).toBeNull()
+  })
+
+  it('gives the tickets of one purchase one bar', async () => {
+    server.use(http.get(`${API}/api/ledger/bookings/30/cancel-quote/`, () => HttpResponse.json({ refund: '100.00', whole: true })))
+    openTickets([ticket(1, 30, 'Kente Night'), ticket(2, 30, 'Kente Night'), ticket(3, 31, 'Jazz Evening')])
+    expect(await screen.findAllByRole('button', { name: 'Cancel tickets' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Report a problem' })).toHaveLength(2)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Cancel tickets' })[0])
+    expect(await screen.findByText('Cancel all 2 tickets in this purchase?')).toBeInTheDocument()
+  })
+
+  it('keeps a purchase together when searching', async () => {
+    openTickets([ticket(1, 30, 'Kente Night'), ticket(2, 30, 'Kente Night', { code: 'ZZZ-SPECIAL' }), ticket(3, 31, 'Jazz Evening')])
+    await screen.findAllByRole('button', { name: 'Cancel tickets' })
+    fireEvent.change(screen.getByPlaceholderText('Search tickets…'), { target: { value: 'zzz-special' } })
+    expect(screen.getByText('TKT1')).toBeInTheDocument()
+    expect(screen.getByText('ZZZ-SPECIAL')).toBeInTheDocument()
+    expect(screen.queryByText('TKT3')).toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Cancel tickets' })).toHaveLength(1)
+  })
+
+  it('shows no bar for a ticket without money', async () => {
+    openTickets([ticket(1, null, 'Kente Night')])
+    expect(await screen.findByText('TKT1')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cancel tickets' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Report a problem' })).toBeNull()
+  })
+
+  it('opens Messages about the listing from Contact AshantiHub Support', async () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    await openBookings([stay({ money: money({ policy: null, can_cancel: false, can_report: false }) })])
+    fireEvent.click(await screen.findByRole('button', { name: 'Contact AshantiHub Support' }))
+    expect(await screen.findByText(/start a new conversation about Ashanti Lodge/)).toBeInTheDocument()
+  })
+
+  it('opens a new conversation, not an unrelated one, when none is about the listing', async () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    server.use(http.get(`${API}/api/messaging/conversations/`, () => HttpResponse.json([
+      {
+        id: 1, customer: 1, business_owner: null, starter_name: 'Ama Boateng', subject: 'Royal Kente Hall', status: 'open',
+        messages: [{ id: 1, conversation: 1, sender_type: 'staff', body: 'About your other order.', created_at: '2026-07-01T10:00:00Z' }],
+        created_at: '2026-07-01T09:00:00Z', updated_at: '2026-07-01T10:00:00Z',
+      },
+    ])))
+    await openBookings([stay({ money: money({ policy: null, can_cancel: false, can_report: false }) })])
+    fireEvent.click(await screen.findByRole('button', { name: 'Contact AshantiHub Support' }))
+    // Wait for the list to load so the auto-select has run before asserting.
+    expect((await screen.findAllByText('Re: Royal Kente Hall')).length).toBeGreaterThan(0)
+    expect(screen.getByText(/start a new conversation about Ashanti Lodge/)).toBeInTheDocument()
   })
 })

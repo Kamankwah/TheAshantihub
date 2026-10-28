@@ -17,7 +17,7 @@ from storefront.permissions import MarketplaceOpen
 from payments.models import CheckoutSession
 
 from .models import ServiceRequest
-from .serializers import ServiceRequestCreateSerializer, ServiceRequestSerializer
+from .serializers import CustomerServiceRequestSerializer, ServiceRequestCreateSerializer, ServiceRequestSerializer
 
 PRICE_PATTERN = re.compile(r"[0-9]{1,8}(\.[0-9]{1,2})?", re.ASCII)
 PRICE_HINT = "Enter a price in GH₵ above 0.00, like 150.00."
@@ -65,12 +65,12 @@ class ServiceRequestCreateView(generics.CreateAPIView):
 class MyServiceRequestsView(generics.ListAPIView):
     """GET /api/services/requests/mine/ — the customer's own requests."""
 
-    serializer_class = ServiceRequestSerializer
+    serializer_class = CustomerServiceRequestSerializer
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def get_queryset(self):
         return ServiceRequest.objects.filter(customer=self.request.user).select_related(
-            "listing", "business_owner"
+            "listing", "business_owner", "sale", "sale__dispute"
         )
 
 

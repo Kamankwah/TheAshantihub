@@ -190,7 +190,7 @@ class RiderRefundPayTests(RefundBase):
         from ledger import escrow
         from ledger.models import FulfilmentCheck
 
-        FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        FulfilmentCheck.objects.update_or_create(order=order, defaults=dict(outcome=FulfilmentCheck.MATCHES))
         escrow.release_verified(order)
         self.assertEqual(self.rider_balances(), (1350, 150))
         self.assertEqual(RiderEarning.objects.filter(order=order).count(), 1)

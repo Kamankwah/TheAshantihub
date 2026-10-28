@@ -90,7 +90,7 @@ class BookingRefundWiringTests(BookingBase):
         response = self.support_cancel(sale, "Changed mind")
         self.assertEqual(
             (response.status_code, response.json()["detail"]),
-            (409, "The business has already marked this service done. Open a dispute instead."),
+            (409, "The business has already marked this service done. Report a problem instead."),
         )
         self.assertEqual(self.support_cancel(sale, "x").status_code, 400)
         self.assertEqual(self.wallet(), 0)
@@ -118,7 +118,7 @@ class BookingRefundWiringTests(BookingBase):
         BookingSale.objects.filter(pk=released.pk).update(released_at=timezone.now())
         self.as_staff(self.support)
         response = self.support_cancel(released, "Because")
-        self.assertEqual((response.status_code, response.json()["detail"]), (409, "This booking's money was already released to the business. Open a dispute instead."))
+        self.assertEqual((response.status_code, response.json()["detail"]), (409, "This booking's money was already released to the business. If something is wrong, contact AshantiHub Support."))
         self.assertEqual(self.support_cancel(refunded, "Because").status_code, 200)
         again = self.support_cancel(refunded, "Because")
         self.assertEqual((again.status_code, again.json()["detail"]), (409, "This booking was already refunded in full."))

@@ -56,7 +56,7 @@ class ReleaseAfterRefundTests(RefundBase):
         kofi = self.owner("Kofi")
         order = self.paid([(self.listing(kofi, "60.00"), 1)])
         Order.objects.filter(pk=order.pk).update(status=Order.CANCELLED)
-        FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        FulfilmentCheck.objects.update_or_create(order=order, defaults=dict(outcome=FulfilmentCheck.MATCHES))
         self.assertIsNone(escrow.release_verified(order))
         self.assertFalse(Journal.objects.filter(key=f"order-release-{order.pk}").exists())
         self.assertEqual(self.balance(Account.VENDOR_PENDING, kofi), 6000)
@@ -125,7 +125,7 @@ class ReleaseAfterRefundTests(RefundBase):
         kofi = self.owner("Kofi")
         order = self.paid([(self.listing(kofi, "60.00"), 1)], delivery="10.00")
         refunds.refund_order(order, source="cancel")
-        FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        FulfilmentCheck.objects.update_or_create(order=order, defaults=dict(outcome=FulfilmentCheck.MATCHES))
         self.assertIsNone(escrow.release_verified(order))
         self.assertFalse(Journal.objects.filter(key=f"order-release-{order.pk}").exists())
 
@@ -136,7 +136,7 @@ class ReleaseAfterRefundTests(RefundBase):
         kofi = self.owner("Kofi")
         order = self.paid([(self.listing(kofi, "60.00"), 1)])
         dispute = Dispute.objects.create(order=order, raised_by=order.customer, reason=Dispute.ORDER_ISSUE, status=Dispute.FINAL_STATUSES[0])
-        FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        FulfilmentCheck.objects.update_or_create(order=order, defaults=dict(outcome=FulfilmentCheck.MATCHES))
         maker = self.staff()
         pending = ApprovalRequest.objects.create(
             maker=maker, due_at=timezone.now() + timedelta(days=1), kind="delivery.refund_request", status=ApprovalRequest.PENDING, target_type="disputes.dispute", target_id=str(dispute.pk),

@@ -210,6 +210,10 @@ class FulfilmentCheck(models.Model):
     order = models.OneToOneField("orders.Order", on_delete=models.PROTECT, related_name="fulfilment_check")
     collected_at = models.DateTimeField(null=True, blank=True)
     collected_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    # A store-pickup order's one-time six-digit hand-over code (only the customer's own order shows it) and the wrong
+    # tries so far; at five the desk is locked out and Support is told.
+    collection_code = models.CharField(max_length=6, blank=True, default="")
+    code_attempts = models.PositiveSmallIntegerField(default=0)
     phone_confirmed_at = models.DateTimeField(null=True, blank=True)
     outcome = models.CharField(max_length=14, choices=OUTCOME_CHOICES, blank=True, default="")
     outcome_note = models.CharField(max_length=500, blank=True, default="")

@@ -284,7 +284,7 @@ class SaleRowEdgeTests(VendorBase):
             self.kofi.get(SALES)
         pickup = paid_order(self.buyer, [(self.kofi.listing("50.00"), 1)])
         Order.objects.filter(pk=pickup.pk).update(delivery_method=Order.STORE_PICKUP)
-        FulfilmentCheck.objects.create(order=pickup, collected_at=timezone.now())
+        FulfilmentCheck.objects.update_or_create(order=pickup, defaults=dict(collected_at=timezone.now()))
         promo = paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)], delivery="0.00")
         waived(self.kofi.owner, promo, "15.00")
         paid_order(self.buyer, [(self.kofi.listing("70.00"), 1), (self.esi.listing("80.00"), 1)])

@@ -29,6 +29,7 @@ from .moderation_checks import (
     open_fraud_flag,
     open_fraud_flags,
 )
+from . import hero_rules
 from .category_tree import build_tree
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
 from .permissions import IsHeroMediaOwner, IsListingOwner, IsListingPhotoOwner
@@ -854,16 +855,15 @@ class ModerationReReviewView(APIView):
 
 
 def _hero_days_for(business_owner):
-    """The business's current plan's hero_days entitlement, i.e. the visibility
-    window an approved hero-media submission gets. 0 if the business has no
-    active subscription — mirrors how Subscription is an optional OneToOne on
-    BusinessOwner (see billing.SubscriptionMeView's "no subscription yet"
-    handling).
+    """The visibility window an approved hero-media submission gets: the current
+    plan's hero_days, or hero_rules.HERO_DAYS_WITHOUT_PLAN when the business has
+    no subscription (Subscription is an optional OneToOne on BusinessOwner, see
+    billing.SubscriptionMeView's "no subscription yet" handling). Never more than
+    hero_rules.MAX_DAYS.
     """
     subscription = getattr(business_owner, "subscription", None)
-    if subscription is None:
-        return 0
-    return subscription.plan.hero_days
+    days = hero_rules.HERO_DAYS_WITHOUT_PLAN if subscription is None else subscription.plan.hero_days
+    return min(days, hero_rules.MAX_DAYS)
 
 
 def _hero_slots_for(business_owner):
