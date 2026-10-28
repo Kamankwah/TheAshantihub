@@ -76,7 +76,8 @@ describe('RenewBanner in the business dashboard', () => {
     server.use(
       http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json({ business_kind: null })),
       http.get('http://localhost:8000/api/orders/owner/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
-      http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+      // Subscriptions are on: the banner is hidden once the plans list answers [] (NoPlansOffered.test.jsx).
+      http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([{ id: 1, tier: 'growth', name: 'Growth', kind: 'product', monthly_price: '120.00', features: [] }])),
       http.get('http://localhost:8000/api/billing/subscriptions/me/', () => { seen.subscription = true; return HttpResponse.json(sub) }),
     )
     return seen
