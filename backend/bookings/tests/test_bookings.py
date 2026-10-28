@@ -128,6 +128,40 @@ class BookingFlowTests(BookingTestsBase):
         self.assertEqual(response.json()["units_free"], 1)
         self.assertTrue(response.json()["available"])
 
+    def _availability(self, extra=""):
+        self._auth(self.customer, "customer")
+        return self.client.get(
+            f"/api/bookings/availability/?listing={self.listing.id}&check_in={self._d(1)}&check_out={self._d(4)}{extra}"
+        )
+
+    def test_availability_quotes_the_total_for_the_units(self):
+        response = self._availability("&units=2")  # 200.00 x 3 nights x 2
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertEqual(body["units"], 2)
+        self.assertEqual(body["total_price"], "1200.00")
+        self.assertEqual(body["nights"], 3)
+        self.assertEqual(body["nightly_rate"], "200.00")
+        # Units default to 1, and the total matches what booking would charge.
+        default = self._availability().json()
+        self.assertEqual(default["units"], 1)
+        self.assertEqual(default["total_price"], "600.00")
+        booked = self._book(self.customer, self._d(1), self._d(4), units=1)
+        self.assertEqual(booked.json()["total_price"], default["total_price"])
+
+    def test_availability_total_is_null_without_a_nightly_rate(self):
+        Listing.objects.filter(pk=self.listing.pk).update(price_amount=None)
+        body = self._availability("&units=2").json()
+        self.assertIsNone(body["total_price"])
+        self.assertIsNone(body["nightly_rate"])
+        self.assertEqual(body["units"], 2)
+
+    def test_availability_refuses_a_bad_units_value(self):
+        for bad in ("0", "-1", "abc", "1.5", ""):
+            response = self._availability(f"&units={bad}")
+            self.assertEqual(response.status_code, 400, bad)
+            self.assertEqual(response.json(), {"units": "Enter a whole number of units, 1 or more."}, bad)
+
 
 class BookingLifecycleTests(BookingTestsBase):
     def _confirmed(self):

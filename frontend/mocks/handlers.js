@@ -481,6 +481,15 @@ export const handlers = [
   // Bookings (bookings app, business item 2 / Wave H3) — default handlers.
   http.get('http://localhost:8000/api/bookings/mine/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/bookings/incoming/', () => HttpResponse.json([])),
+  // The stay quote: 100.00 a night, 5 units free; the server prices nights x units.
+  http.get('http://localhost:8000/api/bookings/availability/', ({ request }) => {
+    const q = new URL(request.url).searchParams
+    const nights = Math.round((Date.parse(q.get('check_out')) - Date.parse(q.get('check_in'))) / 86400000)
+    const units = Number(q.get('units') || 1)
+    return HttpResponse.json({
+      units_free: 5, available: true, nights, nightly_rate: '100.00', units, total_price: (100 * nights * units).toFixed(2),
+    })
+  }),
   http.post('http://localhost:8000/api/bookings/', () => HttpResponse.json({ id: 1, status: 'confirmed', check_in: '2026-08-01', check_out: '2026-08-03', total_price: '400.00' }, { status: 201 })),
   http.post('http://localhost:8000/api/bookings/:id/cancel/', () => HttpResponse.json({ id: 1, status: 'cancelled' })),
   http.post('http://localhost:8000/api/bookings/:id/check-in/', () => HttpResponse.json({ id: 1, status: 'checked_in' })),

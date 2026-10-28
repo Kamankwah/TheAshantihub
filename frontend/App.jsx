@@ -3334,6 +3334,7 @@ export default function AshantiHub() {
               onOpenListing={(otherId)=>setSelectedListingId(otherId)}
               onAddToCart={handleAddToCart}
               CardComponent={Card}
+              PaymentComponent={MoMoPayment}
             />
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>

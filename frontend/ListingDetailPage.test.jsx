@@ -710,3 +710,141 @@ describe('ListingDetailPage price', () => {
     expect(container.querySelector('s')).toBeNull()
   })
 })
+
+describe('ListingDetailPage — booking a stay with the wallet ledger (plan 1F)', () => {
+  const API = 'http://localhost:8000'
+  const CUSTOMER = { id: 5, fullName: 'Kofi', accountType: 'customer' }
+  const STAY = { ...LISTING, id: 3, category: { ...LISTING.category, kind: 'service', is_accommodation: true } }
+  let posts
+  let quotes
+
+  const setup = ({ ledgerOff = false, balance = '900.00', post } = {}) => {
+    posts = []
+    quotes = 0
+    server.use(
+      http.get(`${API}/api/listings/3/`, () => HttpResponse.json(STAY)),
+      http.get(`${API}/api/wallet/`, () => (ledgerOff
+        ? HttpResponse.json({ code: 'ledger_off', detail: 'Wallets are not switched on.' }, { status: 409 })
+        : HttpResponse.json({ kind: 'customer', balance }))),
+      http.get(`${API}/api/wallet/processing/`, ({ request }) => {
+        const amount = new URL(request.url).searchParams.get('amount')
+        return HttpResponse.json({ amount, payment_processing: '3.00', you_pay: '303.00', provider: 'simulated' })
+      }),
+      http.get(`${API}/api/bookings/availability/`, ({ request }) => {
+        quotes += 1
+        const q = new URL(request.url).searchParams
+        return HttpResponse.json({
+          units_free: 5, available: true, nights: 3, nightly_rate: '100.00', units: Number(q.get('units')), total_price: (300 * Number(q.get('units'))).toFixed(2),
+        })
+      }),
+      http.post(`${API}/api/bookings/`, async ({ request }) => {
+        posts.push(await request.json())
+        return post ? post() : HttpResponse.json({ id: 1, status: 'confirmed', check_in: '2030-06-10', check_out: '2030-06-13', total_price: '300.00', payment_processing: '3.00' }, { status: 201 })
+      }),
+    )
+  }
+  const pickDates = async (PaymentComponent) => {
+    renderPage({ id: 3, user: CUSTOMER, PaymentComponent })
+    await screen.findByText('Book your stay')
+    fireEvent.change(screen.getByLabelText('Check-in'), { target: { value: '2030-06-10' } })
+    fireEvent.change(screen.getByLabelText('Check-out'), { target: { value: '2030-06-13' } })
+  }
+
+  it("with the ledger on the stay shows the server's total and processing before booking", async () => {
+    setup()
+    await pickDates()
+    expect(await screen.findByTestId('stay-total')).toHaveTextContent('3 nights × 1: GH₵ 300.00')
+    expect(await screen.findByTestId('processing-line')).toHaveTextContent('GH₵ 3.00')
+    expect(screen.getByLabelText(/AshantiHub wallet/)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Book and pay' })).not.toBeDisabled())
+    expect(posts).toHaveLength(0)
+  })
+
+  it('book posts payment_method and follows a redirect', async () => {
+    setup({ post: () => HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.example/c/9' }) })
+    const PaymentComponent = vi.fn(({ onSuccess }) => <button onClick={onSuccess}>confirm momo</button>)
+    const original = window.location
+    Object.defineProperty(window, 'location', { configurable: true, value: { href: 'http://localhost/' } })
+    try {
+      await pickDates(PaymentComponent)
+      await screen.findByTestId('processing-line')
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Book and pay' })).not.toBeDisabled())
+      fireEvent.click(screen.getByRole('button', { name: 'Book and pay' }))
+      fireEvent.click(await screen.findByText('confirm momo'))
+      await waitFor(() => expect(window.location.href).toBe('https://pay.example/c/9'))
+      expect(posts).toEqual([{ listing: 3, check_in: '2030-06-10', check_out: '2030-06-13', units: 1, payment_method: 'momo' }])
+      expect(PaymentComponent.mock.calls[0][0].processing).toBe('3.00')
+      expect(screen.queryByText(/Booked!/)).not.toBeInTheDocument()
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: original })
+    }
+  })
+
+  it('a wallet booking posts once', async () => {
+    setup()
+    const PaymentComponent = vi.fn(() => null)
+    await pickDates(PaymentComponent)
+    fireEvent.click(await screen.findByLabelText(/AshantiHub wallet/))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Book and pay' })).not.toBeDisabled())
+    const book = screen.getByRole('button', { name: 'Book and pay' })
+    fireEvent.click(book)
+    fireEvent.click(book)
+    expect(await screen.findByText(/Booked!/)).toHaveTextContent('Payment processing GH₵ 3.00')
+    expect(posts).toEqual([{ listing: 3, check_in: '2030-06-10', check_out: '2030-06-13', units: 1, payment_method: 'wallet' }])
+    expect(PaymentComponent).not.toHaveBeenCalled()
+  })
+
+  it('a 409 with a code shows the server text, not the dates message', async () => {
+    setup({ post: () => HttpResponse.json({ code: 'insufficient_funds', detail: 'Your wallet balance is too low for this stay.' }, { status: 409 }) })
+    await pickDates(() => null)
+    fireEvent.click(await screen.findByLabelText(/AshantiHub wallet/))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Book and pay' })).not.toBeDisabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Book and pay' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your wallet balance is too low for this stay.')
+    expect(screen.queryByText(/Those dates aren't available/)).not.toBeInTheDocument()
+  })
+
+  it('a 409 without a code keeps the dates message', async () => {
+    setup({ post: () => HttpResponse.json({ detail: 'Those dates aren\'t available for the number of units requested.' }, { status: 409 }) })
+    await pickDates(() => null)
+    fireEvent.click(await screen.findByLabelText(/AshantiHub wallet/))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Book and pay' })).not.toBeDisabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Book and pay' }))
+    expect(await screen.findByText("Those dates aren't available — try different dates.")).toBeInTheDocument()
+  })
+
+  it('an unknown wallet answer blocks booking', async () => {
+    setup()
+    server.use(http.get(`${API}/api/wallet/`, () => HttpResponse.json({ detail: 'boom' }, { status: 500 })))
+    await pickDates()
+    await new Promise((r) => setTimeout(r, 120))
+    expect(screen.queryByRole('button', { name: 'Book and pay' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Book/ })).toBeDisabled()
+    expect(quotes).toBe(0)
+    expect(posts).toHaveLength(0)
+  })
+
+  it('ledger off keeps the old stay flow and asks for no quote', async () => {
+    setup({ ledgerOff: true })
+    await pickDates()
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Book · GHS 450.00\/night/ })).not.toBeDisabled())
+    await new Promise((r) => setTimeout(r, 80))
+    expect(quotes).toBe(0)
+    expect(screen.queryByTestId('stay-total')).not.toBeInTheDocument()
+    expect(screen.queryByText('Pay with')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^Book/ }))
+    expect(await screen.findByText(/Booked!/)).toBeInTheDocument()
+    expect(posts).toEqual([{ listing: 3, check_in: '2030-06-10', check_out: '2030-06-13', units: 1 }])
+  })
+
+  it('warns when fewer units are free than asked for', async () => {
+    setup()
+    server.use(http.get(`${API}/api/bookings/availability/`, () => HttpResponse.json({
+      units_free: 1, available: true, nights: 3, nightly_rate: '100.00', units: 2, total_price: '600.00',
+    })))
+    await pickDates()
+    fireEvent.change(screen.getByLabelText('Units / rooms'), { target: { value: '2' } })
+    expect(await screen.findByText('Only 1 free for those dates.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Book and pay' })).toBeDisabled()
+  })
+})
