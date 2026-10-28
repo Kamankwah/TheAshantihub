@@ -75,6 +75,47 @@ describe('RiderDeliveries', () => {
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
   })
 
+  it('a failed page 2 is retried by Load more, not skipped', async () => {
+    const asked = []
+    let fail = true
+    server.use(http.get(`${B}/earnings/`, ({ request }) => {
+      const p = new URL(request.url).searchParams.get('page')
+      asked.push(p)
+      if (p === '2' && fail) return HttpResponse.json({ detail: 'Try again.' }, { status: 500 })
+      return p === '2'
+        ? HttpResponse.json({ count: 3, next: `${B}/earnings/?page=3`, previous: 'x', results: [earning({ id: 2, order: 502 })] })
+        : HttpResponse.json({ count: 3, next: `${B}/earnings/?page=2`, previous: null, results: [earning({ id: 1, order: 501 })] })
+    }))
+    mount(<RiderDeliveries />)
+    await screen.findByText('Order #501')
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    await waitFor(() => expect(asked).toContain('2'))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeNull())
+    fail = false
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    expect(await screen.findByText('Order #502')).toBeInTheDocument()
+    expect(asked).not.toContain('3')
+  })
+
+  it('a day change after Load more starts again from page 1 of that day', async () => {
+    server.use(http.get(`${B}/earnings/`, ({ request }) => {
+      const u = new URL(request.url)
+      const d = u.searchParams.get('day')
+      if (d) return HttpResponse.json({ count: 1, next: null, previous: null, results: [earning({ id: 50, order: 950 })] })
+      return u.searchParams.get('page') === '2'
+        ? HttpResponse.json({ count: 2, next: null, previous: 'x', results: [earning({ id: 2, order: 502 })] })
+        : HttpResponse.json({ count: 2, next: `${B}/earnings/?page=2`, previous: null, results: [earning({ id: 1, order: 501 })] })
+    }))
+    mount(<RiderDeliveries />)
+    await screen.findByText('Order #501')
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    await screen.findByText('Order #502')
+    fireEvent.change(screen.getByLabelText(/show one day/i), { target: { value: '2026-10-19' } })
+    expect(await screen.findByText('Order #950')).toBeInTheDocument()
+    expect(screen.queryByText('Order #501')).toBeNull()
+    expect(screen.queryByText('Order #502')).toBeNull()
+  })
+
   it('empty deliveries text', async () => {
     earnings([])
     mount(<RiderDeliveries />)
