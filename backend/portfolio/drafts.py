@@ -137,7 +137,7 @@ def draft_item(draft):
         payload["contact_phone"] = mask_phone(payload["contact_phone"])  # phones leave the server masked
     return {
         "id": draft.pk, "kind": draft.kind, "name": str(payload.get("name") or "")[:150], "payload": payload,
-        "status": state["state"], "created_by_name": draft.created_by.full_name,
+        "status": state["state"], "created_by_id": draft.created_by_id, "created_by_name": draft.created_by.full_name,
         "created_at": draft.created_at, "updated_at": draft.updated_at, "confirmation": state,
     }
 

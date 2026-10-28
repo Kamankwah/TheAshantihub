@@ -125,6 +125,7 @@ import CommissionPanel from "./panels/CommissionPanel.jsx";
 import LeaderboardPanel from "./panels/LeaderboardPanel.jsx";
 import CommissionPolicyPanel from "./panels/CommissionPolicyPanel.jsx";
 import VisitsPanel from "./panels/VisitsPanel.jsx";
+import ClientListingsPanel from "./panels/ClientListingsPanel.jsx";
 import ProspectsPanel from "./panels/ProspectsPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
 import InvitePanel from "./panels/InvitePanel.jsx";
@@ -610,6 +611,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "subscriptions-due" && <SubscriptionsDuePanel auth={auth} onOpenBusiness={openBusiness} />}
           {activeTab === "fraud-cases" && (role === "super_admin" ? <FraudAlertsPanel auth={auth} onOpenBusiness={openBusiness} /> : <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />)}
           {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "client-listings" && <ClientListingsPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
         </main>
       </div>
 

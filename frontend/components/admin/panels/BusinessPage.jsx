@@ -6,8 +6,8 @@ import { maskPhone } from "../../../lib/maskPhone.js";
 import { describeWait, timeAgo } from "../../../lib/timeAgo.js";
 import { D } from "../theme.js";
 import { button, callout, chip, dim } from "./panelStyles.js";
-import AddListingForm from "./AddListingForm.jsx";
 import AddPhotosForm from "./AddPhotosForm.jsx";
+import ClientListingsPanel from "./ClientListingsPanel.jsx";
 import KycResendForm from "./KycResendForm.jsx";
 import LogCallSheet from "./LogCallSheet.jsx";
 import OrdersSection, { FlagForm } from "./OrdersSection.jsx";
@@ -35,7 +35,7 @@ const figures = { fontVariantNumeric: "tabular-nums" }; // DESIGN.md: numbers li
 export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
   const { data: b, isLoading, isError, error, refetch } = usePortfolioBusiness(businessId);
   const queryClient = useQueryClient();
-  const [view, setView] = useState(null); // null | "propose" | "add" | "photos"
+  const [view, setView] = useState(null); // null | "propose" | "list" | "photos"
   const [panel, setPanel] = useState(null); // null | "call" | "reassign" | "follow-up" | "kyc"
   const [handover, setHandover] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -70,16 +70,13 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
 
   const backToPage = () => setView(null);
   if (view === "propose") return <ProposeChangeForm businessId={b.id} onBack={backToPage} onSent={refreshAll} leadName={leadName} maskPhones={isScout} />;
-  if (view === "add") return <AddListingForm businessId={b.id} onBack={backToPage} onSent={refreshAll} leadName={leadName} />;
+  if (view === "list") return <ClientListingsPanel businessId={b.id} auth={auth} onBack={() => { backToPage(); refreshAll(); }} />;
   if (view === "photos") return <AddPhotosForm businessId={b.id} onBack={backToPage} onSent={refreshAll} leadName={leadName} />;
 
   const owner = firstName(b.owner_name);
-  const verified = b.kyc_status === "verified";
-  // The server (portfolio.proposals.check_listing, then the owner's own
-  // listing rules) takes a new listing only with KYC approved and a current
-  // active or trial subscription; an overdue, paused or absent one is refused.
-  const subscribed = ["active", "trial"].includes(b.subscription?.state);
-  const canAddProduct = verified && subscribed;
+  // Listings for a client are drafts (portfolio.drafts): they need no KYC or subscription to write, and nothing goes
+  // live until the owner confirms by text and a second person approves. The server's scope is can_stage_for.
+  const canListForClient = Boolean(auth?.hasPermission?.("listings.stage")) && (b.can_manage || isOps);
   const canHandOver = b.can_manage || isOps;
   // A returned KYC request is otherwise a dead end: the account manager of a
   // scout-registered business sends a fresh one (the server refuses anyone
@@ -188,7 +185,7 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
           {b.can_manage && onCheckIn && actionButton("📍 Check in", () => onCheckIn(b.id), { primary: true })}
           {canCall && actionButton("Log a call", () => toggle("call"), { primary: !(b.can_manage && onCheckIn) })}
           {b.can_manage && actionButton("Propose a change", () => setView("propose"))}
-          {b.can_manage && actionButton("Add a product", () => setView("add"), { disabled: !canAddProduct })}
+          {canListForClient && actionButton("List for this business", () => setView("list"))}
           {b.can_manage && actionButton("Add photos", () => setView("photos"))}
           {b.can_manage && actionButton("Flag a delivery problem", () => toggle("delivery"))}
           {canResendKyc && actionButton("Send KYC again", () => toggle("kyc"))}
@@ -200,8 +197,6 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
         </div>
         {kycSent && b.kyc_status === "pending" && <div role="status" style={callout(D.green)}>{kycSent}</div>}
         {canResendKyc && <div style={dim}>{`No KYC request is waiting for ${b.business_name}. If Operations returned it, retake what they asked for and send it again.`}</div>}
-        {b.can_manage && !verified && <div style={dim}>Products can be added once KYC is approved.</div>}
-        {b.can_manage && verified && !subscribed && <div style={dim}>{`Products can be added once ${owner} has an active subscription.`}</div>}
         {b.needs_claim && canHandOver && <div style={dim}>The claim link goes to the owner's email and works for 7 days; sending a new one replaces it. Text messages (SMS): not connected yet.</div>}
         {b.needs_claim && canHandOver && !b.email && (
           <div style={dim}>{`There is no email on file for ${owner}, so a claim link can't be sent yet. ${b.can_manage ? "Add one with Propose a change (possible until the owner has set a login), or hand the phone over." : "The account manager can add one with Propose a change, or hand the phone over."}`}</div>

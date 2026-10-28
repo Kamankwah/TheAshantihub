@@ -152,7 +152,7 @@ describe('per-role menus', () => {
       expect(new Set(ids).size).toBe(ids.length)
       // The Operations canvas screens appear for no other role.
       const accountant = role === 'accountant'
-      const expected = NAV_ITEMS.filter((i) => !ACCT_ONLY.includes(i.id) && !DM_ONLY.includes(i.id) && !DR_ONLY.includes(i.id) && !(OPS_ONLY.includes(i.id) && !(accountant && ACCT_SHARED.includes(i.id)))).map((i) => i.id)
+      const expected = NAV_ITEMS.filter((i) => !(accountant && i.id === 'client-listings') && !ACCT_ONLY.includes(i.id) && !DM_ONLY.includes(i.id) && !DR_ONLY.includes(i.id) && !(OPS_ONLY.includes(i.id) && !(accountant && ACCT_SHARED.includes(i.id)))).map((i) => i.id)
       expect([...ids].sort()).toEqual((accountant ? expected.concat(ACCT_ONLY) : expected).sort())
       expect(groups.every((g) => g.items.length > 0)).toBe(true)
     }
@@ -190,13 +190,14 @@ describe('Register a business (staff phase 2A)', () => {
     expect(groupOf(groups, 'field-verification')).toBe('Activity')
   })
 
-  it("is not in Operations' menu (the 2026-10-12 canvas leaves it out; the permission stays)", () => {
+  // Marketplace M3 (intentional change): Operations and Super Admin make listings for clients, so they register businesses too.
+  it("is in Operations' menu, under Listing for clients", () => {
     const groups = buildNavGroups(authAs('operations', ['businesses.register', 'staff.invite_team']))
-    expect(allIds(groups)).not.toContain('register-business')
+    expect(groupOf(groups, 'register-business')).toBe('Listing for clients')
   })
 
-  it("is not in Super Admin's menu either (the 2026-10-07 canvas has no such item; the permission stays)", () => {
-    expect(allIds(buildNavGroups(authAs('super_admin', ['businesses.register'])))).not.toContain('register-business')
+  it("is in Super Admin's menu, under Listing for clients", () => {
+    expect(groupOf(buildNavGroups(authAs('super_admin', ['businesses.register'])), 'register-business')).toBe('Listing for clients')
   })
 
   it('sits with the field tools for a session without a known role', () => {
@@ -354,9 +355,11 @@ describe('Visits (staff WP1)', () => {
 describe('Prospects menu item', () => {
   const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
   const idsOf = (auth) => buildNavGroups(auth).flatMap((g) => g.items.map((i) => i.id))
-  it('is scout-only: it needs both registering and managing a portfolio', () => {
+  // Marketplace M3 (intentional change): Operations and Super Admin gain Prospects, so it needs registering only.
+  it('needs the permission to register a business', () => {
     expect(idsOf(authAs('scout', ['businesses.register', 'businesses.manage_portfolio']))).toContain('prospects')
-    expect(idsOf(authAs('scout', ['businesses.register']))).not.toContain('prospects')
+    expect(idsOf(authAs('operations', ['businesses.register']))).toContain('prospects')
+    expect(idsOf(authAs('super_admin', ['businesses.register']))).toContain('prospects')
     expect(idsOf(authAs('operations', ['businesses.manage_portfolio']))).not.toContain('prospects')
     expect(idsOf(authAs('scout', ['calls.log']))).not.toContain('prospects')
   })
@@ -403,7 +406,7 @@ describe('Operations menu (canvas 2026-10-12)', () => {
   const OPS = [
     'kyc.approve', 'scouts.assign', 'listings.moderate', 'hero_media.approve', 'event.approve', 'reviews.moderate', 'users.view', 'users.manage',
     'orders.manage_delivery', 'site_settings.manage', 'zones.manage', 'contact_messages.manage', 'staff.invite_team', 'activity.view_team',
-    'calls.log', 'businesses.register', 'portfolio.manage', 'targets.manage', 'leave.record', 'fraud.manage', 'fraud.flag', 'service_issues.view',
+    'calls.log', 'businesses.register', 'listings.stage', 'portfolio.manage', 'targets.manage', 'leave.record', 'fraud.manage', 'fraud.flag', 'service_issues.view',
   ]
   const auth = { user: { role: 'operations' }, hasPermission: (c) => OPS.includes(c) }
   const groups = buildNavGroups(auth)
@@ -413,6 +416,7 @@ describe('Operations menu (canvas 2026-10-12)', () => {
       ['Approvals', ['Approvals inbox']],
       ['People', ['Scouts', 'Support team', 'Invite', 'Targets', 'Leave & calendar']],
       ['Businesses', ['All portfolios', 'At risk', 'Subscriptions due']],
+      ['Listing for clients', ['Prospects', 'Register a business', 'Client listings']],
       ['Moderation', ['KYC queue', 'Listings', 'Hero & events', 'Reviews']],
       ['Service', ['Support issues', 'Deliveries & returns', 'Fraud cases']],
       ['Activity', ['Staff activity', 'Visit map']],
@@ -422,9 +426,9 @@ describe('Operations menu (canvas 2026-10-12)', () => {
     ])
   })
 
-  it('drops Users, Scout Assignments, Register a business, Field Verification and Delivery Management, with no More tools', () => {
+  it('drops Users, Scout Assignments, Field Verification and Delivery Management, with no More tools', () => {
     const ids = groups.flatMap((g) => g.items.map((i) => i.id))
-    for (const gone of ['users', 'scout-assignments', 'register-business', 'field-verification', 'delivery']) expect(ids).not.toContain(gone)
+    for (const gone of ['users', 'scout-assignments', 'field-verification', 'delivery']) expect(ids).not.toContain(gone)
     expect(groups.some((g) => g.id === 'more')).toBe(false)
   })
 
@@ -476,6 +480,7 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
       ['People', ['Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays']],
       ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
       ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
+      ['Listing for clients', ['Prospects', 'Register a business', 'Client listings']],
       ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation']],
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
       ['Security & audit', ['Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings']],
@@ -487,7 +492,7 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
   it('is exhaustive: no More tools, and dropped screens keep their permission', () => {
     expect(groups.some((g) => g.id === 'more')).toBe(false)
     const ids = groups.flatMap((g) => g.items.map((i) => i.id))
-    for (const gone of ['kyc', 'reviews', 'escrow', 'credit', 'messaging', 'tasks', 'calls', 'reports', 'at-risk', 'register-business', 'scout-assignments', 'site-settings']) expect(ids).not.toContain(gone)
+    for (const gone of ['kyc', 'reviews', 'escrow', 'credit', 'messaging', 'tasks', 'calls', 'reports', 'at-risk', 'scout-assignments', 'site-settings']) expect(ids).not.toContain(gone)
     expect(NAV_ITEMS.find((i) => i.id === 'kyc').show(auth)).toBe(true) // the permission and panel are untouched
   })
 
@@ -642,5 +647,41 @@ describe('General Manager menu (marketplace M3, Task 0)', () => {
 
   it('has no placeholder screens', () => {
     expect(PLACEHOLDER_TABS.general_manager.size).toBe(0)
+  })
+})
+
+describe('listing for clients (marketplace M3)', () => {
+  const as = (role) => ({ user: { role }, hasPermission: () => true })
+  const idsFor = (role) => buildNavGroups(as(role)).flatMap((g) => g.items.map((i) => i.id))
+
+  it('gives the makers Client listings: scout, Operations and Super Admin', () => {
+    for (const role of ['scout', 'operations', 'super_admin']) expect(idsFor(role)).toContain('client-listings')
+  })
+
+  it('gives Operations and Super Admin Register and Prospects, and the scout keeps both', () => {
+    for (const role of ['scout', 'operations', 'super_admin']) {
+      expect(idsFor(role)).toEqual(expect.arrayContaining(['register-business', 'prospects']))
+    }
+  })
+
+  it('keeps the General Manager a checker: no Register, Prospects or Client listings', () => {
+    const gm = idsFor('general_manager')
+    for (const id of ['register-business', 'prospects', 'client-listings']) expect(gm).not.toContain(id)
+  })
+
+  it('does not put Client listings in any other role menu', () => {
+    for (const role of ['support', 'accountant', 'marketing', 'delivery_manager', 'dispatch', 'cosigner']) {
+      expect(idsFor(role)).not.toContain('client-listings')
+    }
+  })
+
+  it('needs the listings.stage permission', () => {
+    const noStage = { user: { role: 'operations' }, hasPermission: (code) => code !== 'listings.stage' }
+    expect(buildNavGroups(noStage).flatMap((g) => g.items.map((i) => i.id))).not.toContain('client-listings')
+  })
+
+  it('leaves the scout menu as it was apart from the new item', () => {
+    const pipeline = buildNavGroups(as('scout')).find((g) => g.id === 'pipeline')
+    expect(pipeline.items.map((i) => i.id)).toEqual(['prospects', 'register-business', 'client-listings'])
   })
 })

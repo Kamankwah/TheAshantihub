@@ -80,6 +80,17 @@ function takePhotos() {
   fireEvent.click(screen.getByRole('button', { name: 'Next: Review' }))
 }
 
+async function submitRegistrationIn({ email = '' } = {}) {
+  const view = renderPanel()
+  await fillOwnerAndBusiness({ email })
+  await fillLocation()
+  takePhotos()
+  await screen.findByText(/No exact match/)
+  fireEvent.click(screen.getByRole('button', { name: 'Submit for KYC' }))
+  await screen.findByText('Sent to Ama Boateng for KYC')
+  return view
+}
+
 async function submitRegistration({ email = '' } = {}) {
   renderPanel()
   await fillOwnerAndBusiness({ email })
@@ -393,5 +404,19 @@ describe('RegisterBusinessPanel — the owner login', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel — hand back to Kwame' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Owner not here? Send a link' })).toBeInTheDocument()
+  })
+
+  it('says honestly whether the owner confirmation text went out, and shows no link', async () => {
+    mockRegistration({ register: () => HttpResponse.json({ ...REGISTERED, confirmation: { state: 'awaiting_owner', sent_to_masked: '020 *** 4761', expires_at: '2026-10-26T10:00:00Z', send_note: 'Text sent' } }, { status: 201 }) })
+    const { container } = await submitRegistrationIn()
+    expect(screen.getByText('Owner confirmation: Text sent to 020 *** 4761, expires 26 Oct')).toBeInTheDocument()
+    expect(container.textContent).not.toMatch(/token|http/i)
+  })
+
+  it('never claims a text was sent while texts are simulated', async () => {
+    mockRegistration({ register: () => HttpResponse.json({ ...REGISTERED, confirmation: { state: 'awaiting_owner', sent_to_masked: '020 *** 4761', expires_at: '2026-10-26T10:00:00Z', send_note: 'Not sent: texts are simulated' } }, { status: 201 }) })
+    await submitRegistrationIn()
+    expect(screen.getByText(/Not sent: texts are simulated/)).toBeInTheDocument()
+    expect(screen.queryByText(/Text sent to/)).not.toBeInTheDocument()
   })
 })

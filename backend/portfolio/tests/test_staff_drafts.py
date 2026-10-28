@@ -188,6 +188,7 @@ class KindTests(DraftBase):
         item = response.json()[0]
         self.assertEqual(item["confirmation"]["state"], "draft")
         self.assertEqual(item["created_by_name"], self.lead.full_name)
+        self.assertEqual(item["created_by_id"], self.lead.pk)  # the panel shows Edit only on the viewer's own drafts
         self.assertNotIn("0241119999", json.dumps(response.json()))
         self.assertNotIn("241119999", json.dumps(response.json()))
 

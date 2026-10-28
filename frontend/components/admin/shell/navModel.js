@@ -67,8 +67,11 @@ export const NAV_ITEMS = [
   { id: "commission", icon: "💷", label: "Commission", show: (auth) => auth.hasPermission("commission.view_own") },
   { id: "leaderboard", icon: "🏆", label: "Leaderboard", show: (auth) => auth.hasPermission("businesses.manage_portfolio") },
   { id: "commission-policy", icon: "🧾", label: "Commission policy", show: (auth) => auth.hasPermission("commission.policy") || auth.hasPermission("commission.view_all") },
-  { id: "prospects", icon: "🌱", label: "Prospects", show: (auth) => auth.hasPermission("businesses.register") && auth.hasPermission("businesses.manage_portfolio") },
+  { id: "prospects", icon: "🌱", label: "Prospects", show: (auth) => auth.hasPermission("businesses.register") },
   { id: "register-business", icon: "➕", label: "Register a business", show: (auth) => auth.hasPermission("businesses.register") },
+  // Drafts a product, service, event or stay for a client business, to be confirmed by the owner's text. The makers only
+  // (scout, Operations, Super Admin): the General Manager is a checker and never holds listings.stage.
+  { id: "client-listings", icon: "🛍️", label: "Client listings", show: (auth) => ["scout", "operations", "super_admin"].includes(auth.user?.role) && auth.hasPermission("listings.stage") },
   { id: "portfolio", icon: "🏪", label: "Portfolio", show: (auth) => auth.hasPermission("businesses.manage_portfolio") },
   { id: "all-portfolios", icon: "🗂️", label: "All portfolios", show: (auth) => auth.hasPermission("portfolio.manage") },
   { id: "at-risk", icon: "⚠️", label: "At risk", show: (auth) => auth.hasPermission("portfolio.manage") },
@@ -230,6 +233,7 @@ const ROLE_MENUS = {
     ["people", "People", ["staff", "teams-reporting", "invites", "roles-permissions", "sessions", "leave"]],
     ["teams", "Teams (step in)", ["step-in-operations", "step-in-support", "step-in-delivery", "step-in-marketing", "step-in-accounting"]],
     ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "events-moderation", "hero", "disputes"]],
+    ["listing-for-clients", "Listing for clients", ["prospects", "register-business", "client-listings"]],
     ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
@@ -252,7 +256,8 @@ const ROLE_MENUS = {
     ["settings", "Settings", ["commission-policy"]],
   ],
   // Operations, exactly as the approved canvas draws it (Overview is pinned
-  // above the groups). Users, Scout Assignments, Register a business, Field
+  // above the groups). Operations also makes listings for clients (Prospects, Register a business, Client
+  // listings: marketplace plan M3). Users, Scout Assignments, Field
   // Verification and Delivery Management are not in this menu (Sign-in & Security is kept
   // so a lead can still manage their own sign-in); their panels and
   // permissions are untouched (see EXHAUSTIVE_MENU_ROLES).
@@ -260,6 +265,7 @@ const ROLE_MENUS = {
     ["approvals", "Approvals", ["approvals"]],
     ["people", "People", ["ops-scouts", "support-team", "my-team", "targets", "leave"]],
     ["businesses", "Businesses", ["all-portfolios", "at-risk", "subscriptions-due"]],
+    ["listing-for-clients", "Listing for clients", ["prospects", "register-business", "client-listings"]],
     ["moderation", "Moderation", ["kyc", "moderation", "hero-events", "reviews"]],
     ["service", "Service", ["support-issues", "deliveries-returns", "fraud-cases"]],
     ["activity", "Activity", ["activity", "visit-map"]],
@@ -309,7 +315,7 @@ const ROLE_MENUS = {
     ["reports", "Reports", ["reports"]],
   ],
   scout: [
-    ["pipeline", "Pipeline", ["prospects", "register-business"]],
+    ["pipeline", "Pipeline", ["prospects", "register-business", "client-listings"]],
     ["my-businesses", "My businesses", ["portfolio", "tasks", "approvals"]],
     ["activity", "Activity", ["calls", "visits", "field-verification"]],
     ["performance", "Performance", ["targets", "commission", "leaderboard"]],
