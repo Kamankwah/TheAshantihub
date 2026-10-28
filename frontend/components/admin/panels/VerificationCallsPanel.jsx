@@ -69,7 +69,7 @@ function BookingRow({ sale, open, onToggle, onDone }) {
           <span style={chip(D.textDim)}>{KIND_WORDS[sale.kind] || sale.kind}</span>
           <span style={{ color: D.text, fontWeight: 800 }}>{sale.what}</span>
         </div>
-        <span style={{ color: D.text, fontWeight: 800, ...figures }}>GH₵{sale.amount}</span>
+        <span data-amount style={{ color: D.text, fontWeight: 800, ...figures }}>GH₵{sale.amount}</span>
       </div>
       <div style={{ color: D.text, fontSize: "0.85rem" }}>{sale.business}</div>
       <CustomerLine name={sale.customer_name} phone={sale.customer_phone} />

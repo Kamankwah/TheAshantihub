@@ -159,4 +159,11 @@ monolith holding most components, with extractions living in `components/`,
   MSW wallet defaults in `mocks/handlers.js` are "ledger on, empty"; override with `server.use(...)`.
   `WalletNoInventionSweep.test.jsx` is the conformance contract for every wallet screen: add a new wallet
   screen to its list.
+- **Verification and pickup screens (Plan 1F).** The Pickup Desk's overview is the desk (`PickupDeskPanel`, also the
+  Super Admin's `pickup-desk` item); Support's queues are `VerificationCallsPanel`. Query-key roots are
+  `ledger-verification` and `ledger-pickup`. The collection code is shown only on the customer's own order
+  (`PickupCollectionNote`); the desk asks for it and no staff payload carries it. The pickup office address comes
+  only from site settings (`pickup_office_address`) and reads "address to be confirmed" while blank. Customer pay
+  screens (service, tickets, stay) go through `useBookingPayment` and never compute a charge. Amount elements in
+  these panels carry `data-amount` (tabular figures, never gold); `LedgerScreensSweep.test.jsx` is their contract.
 - **The vendor tab is "Money"** (`id: "money"`, one tab for payouts and the wallet), not "Payouts".
