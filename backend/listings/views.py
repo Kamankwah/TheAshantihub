@@ -488,7 +488,7 @@ class OwnerListingCreateListView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated, IsBusinessOwner]
 
     def get_queryset(self):
-        return Listing.objects.filter(business_owner=self.request.user).prefetch_related("variants", "listing_revisions")
+        return Listing.objects.filter(business_owner=self.request.user).prefetch_related("variants", "listing_revisions", "photos", "videos")
 
 
 class OwnerListingUpdateView(generics.UpdateAPIView):
@@ -712,6 +712,10 @@ class ListingSubmitView(APIView):
             return Response(
                 {"status": "Only draft or rejected listings can be submitted for review."}, status=400
             )
+        from . import media
+
+        if media.waiting_for_video(listing):
+            return Response({"detail": revisions.WAIT_FOR_VIDEO_MESSAGE}, status=400)
         listing.status = Listing.PENDING_REVIEW
         listing.save(update_fields=["status"])
         notify_staff_role(

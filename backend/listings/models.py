@@ -4,6 +4,8 @@ from django.utils import timezone
 from accounts.models import BusinessOwner
 from accounts.validators import validate_image_content_type
 
+from .validators import validate_image_size
+
 
 class Category(models.Model):
     PRODUCT = "product"
@@ -109,7 +111,7 @@ class Listing(models.Model):
     lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     main_photo = models.ImageField(
         upload_to="listing_photos/main/", null=True, blank=True,
-        validators=[validate_image_content_type],
+        validators=[validate_image_content_type, validate_image_size],
     )
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
@@ -308,7 +310,8 @@ class ListingRevision(models.Model):
     remove_photo_ids = models.JSONField(default=list, blank=True)
     remove_video_ids = models.JSONField(default=list, blank=True)
     new_main_photo = models.ImageField(
-        upload_to="listing_photos/main/", null=True, blank=True, validators=[validate_image_content_type],
+        upload_to="listing_photos/main/", null=True, blank=True,
+        validators=[validate_image_content_type, validate_image_size],
     )
     created_by = models.ForeignKey(
         BusinessOwner, on_delete=models.SET_NULL, null=True, blank=True, related_name="listing_revisions",
@@ -386,6 +389,11 @@ class ListingVideo(models.Model):
 
     class Meta:
         ordering = ["position", "id"]
+
+    @property
+    def owner_status(self):
+        """`converting` is our own claim marker; to owners and staff it is still processing."""
+        return self.PROCESSING if self.status == self.CONVERTING else self.status
 
     def __str__(self):
         return f"Video {self.pk} ({self.kind}, {self.status}) for {self.listing.name}"

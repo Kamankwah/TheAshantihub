@@ -6,6 +6,7 @@ if there is none (and refused while an edit is waiting for review, as `revisions
 hold the listing row lock through `locked_listing()`, so two uploads cannot both take the last slot."""
 import logging
 import os
+import re
 import tempfile
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -58,6 +59,24 @@ def video_count(listing):
     return rows.count() - queued
 
 
+def check_limits(listing):
+    """The whole listing, not one upload: at most 9 images and 2 videos as it would stand. MediaError otherwise."""
+    if image_count(listing) > MAX_IMAGES:
+        raise MediaError(f"A listing can have at most {MAX_IMAGES} images, the main photo included.")
+    if video_count(listing) > MAX_VIDEOS:
+        raise MediaError(f"A listing can have at most {MAX_VIDEOS} videos, uploads and YouTube links together.")
+
+
+def waiting_for_video(listing, revision=None):
+    """True when an upload that would go public with the coming decision is still converting: the live uploads of a
+    draft or rejected listing (revision None), or the revision's staged uploads. Staff must be able to watch it."""
+    rows = ListingVideo.objects.filter(
+        listing=listing, kind=ListingVideo.UPLOAD, status__in=(ListingVideo.PROCESSING, ListingVideo.CONVERTING),
+    )
+    rows = rows.filter(revision=revision) if revision is not None else rows.filter(revision__isnull=True)
+    return rows.exists()
+
+
 # ── checks ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -75,7 +94,7 @@ def check_image(file):
 def parse_youtube(url):
     """The 11-character video id of a YouTube link (watch?v=, youtu.be/, /shorts/, /embed/); MediaError otherwise."""
     video_id = hero_rules.youtube_id(url) if isinstance(url, str) else None
-    if video_id is None:
+    if video_id is None or not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):  # `$` would let a trailing newline in
         raise MediaError("Paste a YouTube link, like https://www.youtube.com/watch?v=… or https://youtu.be/…")
     return video_id
 
@@ -136,16 +155,21 @@ def add_youtube(listing, owner, url, staff=None):
 
 def _probe_upload(file):
     """Seconds of video in the upload; MediaError (fixed words) when the tool cannot read it."""
-    handle, path = tempfile.mkstemp(suffix=".upload")
+    spooled = file.temporary_file_path() if hasattr(file, "temporary_file_path") else None
+    path = spooled
+    if path is None:
+        handle, path = tempfile.mkstemp(suffix=".upload")
     try:
-        with os.fdopen(handle, "wb") as out:
-            for chunk in file.chunks():
-                out.write(chunk)
+        if spooled is None:
+            with os.fdopen(handle, "wb") as out:
+                for chunk in file.chunks():
+                    out.write(chunk)
         return float(core_video.probe(path)["duration"])
     except core_video.VideoError:
         raise MediaError(core_video.UNREADABLE) from None
     finally:
-        os.unlink(path)
+        if spooled is None:
+            os.unlink(path)
 
 
 def add_video_upload(listing, owner, file, staff=None):
@@ -170,19 +194,22 @@ def add_video_upload(listing, owner, file, staff=None):
             listing=row, revision=revision, kind=ListingVideo.UPLOAD, source=file, status=ListingVideo.PROCESSING,
             duration_seconds=round(seconds, 2), position=_next_position(row),
         )
-        from . import tasks
-
-        transaction.on_commit(lambda: tasks.convert_listing_video.delay(video.pk))
+        transaction.on_commit(lambda: _queue_conversion(video.pk), robust=True)
     return video
 
 
+def _queue_conversion(video_id):
+    """Runs after the row commits. A broker that is down must not leave the row processing for half an hour."""
+    from . import tasks
+
+    try:
+        tasks.convert_listing_video.delay(video_id)
+    except Exception:
+        logger.exception("Could not queue the conversion of listing video %s", video_id)
+        tasks._fail(video_id, ListingVideo.PROCESSING)
+
+
 # ── removing ────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-
-def delete_files(*fields):
-    for field in fields:
-        if field:
-            field.delete(save=False)
 
 
 def remove_photo(listing, photo, owner, staff=None):
@@ -190,26 +217,29 @@ def remove_photo(listing, photo, owner, staff=None):
     with transaction.atomic():
         row = locked_listing(listing)
         photo = ListingPhoto.objects.select_for_update().get(pk=photo.pk)
-        return _remove(row, photo, photo.image, "remove_photo_ids", owner, staff)
+        return _remove(row, photo, (photo.image,), "remove_photo_ids", owner, staff, seen_by_public=True)
 
 
 def remove_video(listing, video, owner, staff=None):
     with transaction.atomic():
         row = locked_listing(listing)
         video = ListingVideo.objects.select_for_update().get(pk=video.pk)
-        return _remove(row, video, (video.source, video.web_file, video.poster), "remove_video_ids", owner, staff)
+        files = (video.source, video.web_file, video.poster)
+        # A video that is not ready was never public, so there is nothing for staff to approve.
+        return _remove(
+            row, video, files, "remove_video_ids", owner, staff, seen_by_public=video.status == ListingVideo.READY,
+        )
 
 
-def _remove(row, item, files, queue_field, owner, staff):
-    files = files if isinstance(files, tuple) else (files,)
+def _remove(row, item, files, queue_field, owner, staff, seen_by_public):
     if item.revision_id is not None:  # staged: deleted at once, unless the edit is already with staff
         if item.revision.status == ListingRevision.PENDING:
             raise MediaError(revisions.OPEN_MESSAGE)
-        delete_files(*files)
+        revisions.delete_on_commit(*files)
         item.delete()
         return True
-    if row.status in LIVE_STATUSES:
-        delete_files(*files)
+    if row.status in LIVE_STATUSES or not seen_by_public:
+        revisions.delete_on_commit(*files)
         item.delete()
         return True
     revision = target_revision(row, owner, staff)

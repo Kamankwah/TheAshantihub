@@ -22,7 +22,8 @@ server {
 
 	include %home%/%user%/conf/web/%domain%/nginx.hsts.conf*;
 
-	client_max_body_size 25m;
+	# The app enforces the real limits: 100 MB per video, 5 MB per image.
+	client_max_body_size 110m;
 
 	# See the note in ashantihub-api.tpl.in: Hestia's ACME challenge is a
 	# regex location injected via the nginx.ssl.conf_* include below, and a

@@ -47,6 +47,7 @@ NOT_REVISABLE_MESSAGE = "This field cannot be changed here."
 WRONG_STATUS_MESSAGE = "Only a published or dropped listing is edited this way. Edit other listings directly."
 OPEN_MESSAGE = "This edit is waiting for review."
 NOTHING_MESSAGE = "There is nothing to send. Make a change first."
+WAIT_FOR_VIDEO_MESSAGE = "Wait for your video to finish converting, then send it."
 NO_VARIANTS_MESSAGE = "Only products and food can have variants."
 VARIANT_OP_KEYS = {
     "add": {"op", "label", "attributes", "price_amount", "stock_quantity"},
@@ -268,7 +269,10 @@ def save_draft(listing, owner, data, *, new_main_photo=None, clear_main_photo=Fa
         if new_main_photo is not None:
             from accounts.validators import validate_image_content_type
 
+            from .validators import validate_image_size
+
             try:
+                validate_image_size(new_main_photo)
                 validate_image_content_type(new_main_photo)
             except DjangoValidationError as exc:
                 raise RevisionError(" ".join(exc.messages), "new_main_photo") from None
@@ -279,7 +283,18 @@ def save_draft(listing, owner, data, *, new_main_photo=None, clear_main_photo=Fa
         if revision.status == ListingRevision.REJECTED:
             revision.status = ListingRevision.DRAFT
         revision.save()
+        if {"remove_photo_ids", "remove_video_ids"} & set(data) or new_main_photo is not None:
+            _check_media_limits(row)  # un-queuing a removal or adding a main photo must not pass 9 images / 2 videos
     return revision
+
+
+def _check_media_limits(row):
+    from . import media
+
+    try:
+        media.check_limits(row)
+    except media.MediaError as exc:
+        raise RevisionError(str(exc), "detail") from None
 
 
 def ensure_draft(row, owner, staff=None):
@@ -325,6 +340,8 @@ def submit(revision):
             raise RevisionError("Change the edit first, then send it again.", "status")
         if is_empty(revision):
             raise RevisionError(NOTHING_MESSAGE)
+        if revision.staged_videos.filter(status__in=(ListingVideo.PROCESSING, ListingVideo.CONVERTING)).exists():
+            raise RevisionError(WAIT_FOR_VIDEO_MESSAGE)
         revision.changes, revision.variants = _validate(row, row.business_owner, revision.changes, revision.variants)
         revision.status = ListingRevision.PENDING
         revision.submitted_at = timezone.now()
@@ -357,18 +374,28 @@ def delete_open(listing):
 
 
 def _delete_staged(revision):
-    """The files a revision holds: the staged main photo, gallery photos and videos (the rows go with the revision)."""
+    """The files a revision holds: the staged main photo, gallery photos and videos (the rows go with the revision).
+    Gallery and video files are removed once the transaction commits, so a rollback never strands a live row."""
     _drop_staged_main_photo(revision)
     for photo in revision.staged_photos.all():
-        photo.image.delete(save=False)
+        delete_on_commit(photo.image)
     for video in revision.staged_videos.all():
         _delete_video_files(video)
 
 
+def delete_on_commit(*fields):
+    """Remove these stored files after the surrounding transaction commits (at once when there is none)."""
+    pairs = [(field.storage, field.name) for field in fields if field]
+
+    def run():
+        for storage, name in pairs:
+            storage.delete(name)
+
+    transaction.on_commit(run)
+
+
 def _delete_video_files(video):
-    for field in (video.source, video.web_file, video.poster):
-        if field:
-            field.delete(save=False)
+    delete_on_commit(video.source, video.web_file, video.poster)
 
 
 # ── staff decisions ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -392,9 +419,15 @@ def apply_revision(revision, staff):
             revision.changes, ops = _validate(listing, listing.business_owner, revision.changes, revision.variants)
         except ObjectDoesNotExist:
             raise RevisionError("Part of this edit no longer exists. Ask the owner to edit and send it again.") from None
+        touches_media = bool(
+            revision.new_main_photo or revision.remove_photo_ids or revision.remove_video_ids
+            or revision.staged_photos.exists() or revision.staged_videos.exists()
+        )
         _apply_changes(listing, revision)
         _apply_photos(listing, revision)
         _apply_videos(listing, revision)
+        if touches_media:  # a backstop: the limits also hold when the edit was saved under older rules
+            _check_media_limits(listing)
         _apply_variants(listing, ops)
         revision.status = ListingRevision.APPROVED
         revision.reviewed_by = staff
@@ -435,8 +468,9 @@ def _apply_changes(listing, revision):
 
 
 def _apply_photos(listing, revision):
-    if revision.remove_photo_ids:
-        ListingPhoto.objects.filter(listing=listing, pk__in=revision.remove_photo_ids, revision__isnull=True).delete()
+    for photo in ListingPhoto.objects.filter(listing=listing, pk__in=revision.remove_photo_ids, revision__isnull=True):
+        delete_on_commit(photo.image)
+        photo.delete()
     revision.staged_photos.update(revision=None)
 
 
@@ -526,7 +560,8 @@ def _url(request, file):
 
 def _video_line(request, video):
     return {
-        "id": video.pk, "kind": video.kind, "status": video.status, "youtube_id": video.youtube_id or None,
+        "id": video.pk, "kind": video.kind, "status": video.owner_status, "youtube_id": video.youtube_id or None,
+        "url": _url(request, video.web_file) if video.status == ListingVideo.READY else None,
         "poster": _url(request, video.poster),
     }
 

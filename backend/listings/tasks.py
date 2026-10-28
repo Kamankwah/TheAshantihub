@@ -27,8 +27,20 @@ def _claim(video_id):
     ) == 1
 
 
-def _fail(video_id):
-    ListingVideo.objects.filter(pk=video_id, status=ListingVideo.CONVERTING).update(status=ListingVideo.FAILED)
+def fail_videos(rows):
+    """End `rows` as failed and delete their uploaded source files (nothing will convert them now)."""
+    count = 0
+    for row in rows:
+        source = row.source
+        ListingVideo.objects.filter(pk=row.pk).update(status=ListingVideo.FAILED, source=None)
+        if source:
+            source.delete(save=False)
+        count += 1
+    return count
+
+
+def _fail(video_id, status=ListingVideo.CONVERTING):
+    return fail_videos(ListingVideo.objects.filter(pk=video_id, status=status))
 
 
 def _convert(video, workdir):
@@ -39,14 +51,18 @@ def _convert(video, workdir):
             out.write(chunk)
     web, poster = os.path.join(workdir, "web.mp4"), os.path.join(workdir, "poster.jpg")
     core_video.convert_to_web_mp4(src, web)
+    seconds = float(core_video.probe(web)["duration"])
+    if seconds > core_video.MAX_SECONDS + 1:  # the input's own length claim was wrong
+        raise core_video.VideoError(detail=f"converted video is {seconds} s")
     core_video.poster_frame(web, poster)
-    return web, poster, float(core_video.probe(web)["duration"])
+    return web, poster, seconds
 
 
 @shared_task
 def convert_listing_video(video_id):
     if not _claim(video_id):
         return "skipped"
+    video = None
     try:
         video = ListingVideo.objects.get(pk=video_id)
         with tempfile.TemporaryDirectory() as workdir:
@@ -56,6 +72,8 @@ def convert_listing_video(video_id):
                 video.poster.save(f"{video.pk}.jpg", File(poster_handle), save=False)
     except Exception as exc:  # any failure ends the same way for the owner
         logger.warning("Listing video %s could not be converted: %s", video_id, getattr(exc, "detail", "") or exc)
+        if video is not None and video.web_file:
+            video.web_file.delete(save=False)  # saved before the poster failed
         _fail(video_id)
         return "failed"
     with transaction.atomic():
@@ -64,10 +82,15 @@ def convert_listing_video(video_id):
             video.web_file.delete(save=False)
             video.poster.delete(save=False)
             return "gone"
+        source = row.source
         row.web_file, row.poster = video.web_file.name, video.poster.name
         row.duration_seconds = round(seconds, 2)
         row.status = ListingVideo.READY
-        row.save(update_fields=["web_file", "poster", "duration_seconds", "status"])
+        row.source = None
+        row.save(update_fields=["web_file", "poster", "duration_seconds", "status", "source"])
+        if source:
+            storage, name = source.storage, source.name
+            transaction.on_commit(lambda: storage.delete(name))
     return "ready"
 
 
@@ -76,6 +99,8 @@ def reap_stuck_videos():
     """A worker that died mid-conversion leaves a row in processing or converting for ever; fail those older than
     30 minutes so the owner can try again."""
     cutoff = timezone.now() - STUCK_AFTER
-    return ListingVideo.objects.filter(
-        Q(status=ListingVideo.PROCESSING, created_at__lt=cutoff) | Q(status=ListingVideo.CONVERTING, claimed_at__lt=cutoff)
-    ).update(status=ListingVideo.FAILED)
+    return fail_videos(
+        ListingVideo.objects.filter(
+            Q(status=ListingVideo.PROCESSING, created_at__lt=cutoff) | Q(status=ListingVideo.CONVERTING, claimed_at__lt=cutoff)
+        )
+    )

@@ -89,8 +89,7 @@ class OwnerVideoSerializer(serializers.ModelSerializer):
         return obj.revision_id is not None
 
     def get_status(self, obj):
-        # `converting` is our own claim marker; to the owner it is still processing.
-        return ListingVideo.PROCESSING if obj.status == ListingVideo.CONVERTING else obj.status
+        return obj.owner_status
 
     def get_error(self, obj):
         from .media import FAILED_TEXT
@@ -606,6 +605,13 @@ class OwnerListingSerializer(serializers.ModelSerializer):
         if data.get("barcode"):
             clean_listing_barcode(data["barcode"], self.instance, data.get("category"))
         validate_sale_price(data, self.instance)
+        if data.get("main_photo") and self.instance is not None and not self.instance.main_photo:
+            from . import media
+
+            if media.image_count(self.instance) >= media.MAX_IMAGES:
+                raise serializers.ValidationError(
+                    {"main_photo": f"A listing can have at most {media.MAX_IMAGES} images, the main photo included."}
+                )
         # The owner is the signed-in business unless the caller names one (a company-run listing, Plan 2 Task 11).
         owner = self.context.get("owner") or self.context["request"].user
         return validate_listing_for_owner(
@@ -625,6 +631,8 @@ class ModerationListingSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     zone = ZoneSerializer(read_only=True)
     photos = serializers.SerializerMethodField()
+    # Every video row with its status and playable url, so staff watch them before the listing goes public.
+    videos = OwnerVideoSerializer(many=True, read_only=True)
     # business_owner_name (staff moderation-queue restructuring, item 2) lets
     # the panel group/identify listings by their owning business without a
     # second lookup. reviewed_by_name/reviewed_at (approver attribution) back
@@ -641,7 +649,7 @@ class ModerationListingSerializer(serializers.ModelSerializer):
         fields = [
             "id", "business_owner", "business_owner_name", "name", "description", "category",
             "zone", "price_amount", "price_unit", "tag", "contact_phone", "lat", "lng",
-            "main_photo", "photos", "specs", "service_duration", *LISTING_DECISION_FIELDS,
+            "main_photo", "photos", "videos", "specs", "service_duration", *LISTING_DECISION_FIELDS,
             "status", "rejection_reason", "created_at",
             "reviewed_by_name", "reviewed_at", "open_fraud_cases", "subscription_overdue", "sponsored",
         ]
