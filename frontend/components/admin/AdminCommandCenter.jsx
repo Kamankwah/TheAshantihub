@@ -608,7 +608,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "my-team" && (role === "operations" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "approval-rules" && <ApprovalRulesPanel onNavigate={selectTab} />}
-          {activeTab === "money-rules" && <MoneyRulesPanel />}
+          {activeTab === "money-rules" && <MoneyRulesPanel canPropose={auth.hasPermission("fees.manage")} superAdmin={role === "super_admin"} />}
           {activeTab === "redelivery-fee" && <RedeliveryFeePanel />}
           {/* The external co-signer has one screen: the requests waiting for their second approval. */}
           {activeTab === "overview" && role === "cosigner" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}

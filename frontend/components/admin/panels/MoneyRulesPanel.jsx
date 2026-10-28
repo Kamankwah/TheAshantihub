@@ -18,7 +18,7 @@ const when = (value) => new Date(value).toLocaleString("en-GH", { dateStyle: "me
 
 // One governed setting with its value in force, what is waiting or scheduled, and a Save that proposes a change
 // (also used by the Operations re-delivery fee screen, RedeliveryFeePanel).
-export function SettingRow({ setting, pending, onSaved }) {
+export function SettingRow({ setting, pending, onSaved, canPropose = true, superAdmin = true }) {
   const stored = toInput(setting.key, setting.value);
   const [text, setText] = useState(stored);
   const [busy, setBusy] = useState(false);
@@ -62,21 +62,23 @@ export function SettingRow({ setting, pending, onSaved }) {
       {setting.scheduled.map((s) => (
         <div key={s.effective_from} style={{ ...dim, fontWeight: 700 }}>{`Scheduled: ${showValue(setting.key, s.value)} from ${when(s.effective_from)}`}</div>
       ))}
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <input
-          inputMode="decimal" aria-label={plainLabel(setting.label)} value={text} placeholder={setting.nullable ? "No limit" : ""}
-          onChange={(e) => { setText(e.target.value); setNotice(""); }} style={{ ...field, width: 150 }}
-        />
-        {UNIT_WORDS[unit] && <span style={dim}>{UNIT_WORDS[unit]}</span>}
-        <button type="button" onClick={save} disabled={busy || text === stored} style={button(D.gold, D.text, busy || text === stored)}>Save</button>
-        {notice && <span role="status" style={{ color: D.green, fontWeight: 700, fontSize: "0.8rem" }}>{notice}</span>}
-      </div>
+      {canPropose && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            inputMode="decimal" aria-label={plainLabel(setting.label)} value={text} placeholder={setting.nullable ? "No limit" : ""}
+            onChange={(e) => { setText(e.target.value); setNotice(""); }} style={{ ...field, width: 150 }}
+          />
+          {UNIT_WORDS[unit] && <span style={dim}>{UNIT_WORDS[unit]}</span>}
+          <button type="button" onClick={save} disabled={busy || text === stored} style={button(D.gold, D.text, busy || text === stored)}>{superAdmin ? "Save" : "Propose"}</button>
+          {notice && <span role="status" style={{ color: D.green, fontWeight: 700, fontSize: "0.8rem" }}>{notice}</span>}
+        </div>
+      )}
       {error && <div role="alert" style={errorStyle}>{error}</div>}
     </div>
   );
 }
 
-export default function MoneyRulesPanel() {
+export default function MoneyRulesPanel({ canPropose = true, superAdmin = true }) {
   const queryClient = useQueryClient();
   const settings = useMoneySettings();
   const fees = useFeeRules();
@@ -93,7 +95,9 @@ export default function MoneyRulesPanel() {
       <div style={card}>
         <h2 style={h2}>Money rules</h2>
         <div role="note" style={{ ...callout(D.panelBg2), fontWeight: 500, lineHeight: 1.5 }}>
-          These numbers decide what AshantiHub charges, when money is released and how much can be withdrawn. A change you make as Super Admin applies at once to new activity and is recorded in the audit log; anyone else's change waits for you in Approvals. Saving asks for your password.
+          {superAdmin
+            ? "These numbers decide what AshantiHub charges, when money is released and how much can be withdrawn. A change you make as Super Admin applies at once to new activity and is recorded in the audit log; anyone else's change waits for you in Approvals. Saving asks for your password."
+            : "These numbers decide what AshantiHub charges, when money is released and how much can be withdrawn. A change you propose goes to a Super Admin, who approves it in Approvals. Nothing changes until then."}
         </div>
       </div>
 
@@ -101,7 +105,7 @@ export default function MoneyRulesPanel() {
         <section key={title} aria-label={title} style={card}>
           <h3 style={h3}>{title}</h3>
           <div>
-            {rows.map((s) => <SettingRow key={`${s.key}:${s.value}`} setting={s} pending={pendingFor(s.key)} onSaved={refresh} />)}
+            {rows.map((s) => <SettingRow key={`${s.key}:${s.value}`} setting={s} pending={pendingFor(s.key)} onSaved={refresh} canPropose={canPropose} superAdmin={superAdmin} />)}
           </div>
         </section>
       ))}
@@ -111,7 +115,7 @@ export default function MoneyRulesPanel() {
           <h3 style={h3}>Platform-fee tiers</h3>
           <div style={dim}>What AshantiHub keeps from a sale, by size. Delivery prices are set on the Delivery pricing screen.</div>
         </div>
-        {fees.data.current.map((c) => <MoneyRulesFees key={`${c.category}:${c.effective_from}`} category={c} pending={pendingFeesFor(c.category)} onSaved={refresh} />)}
+        {fees.data.current.map((c) => <MoneyRulesFees key={`${c.category}:${c.effective_from}`} category={c} pending={pendingFeesFor(c.category)} onSaved={refresh} canPropose={canPropose} />)}
       </section>
     </div>
   );

@@ -96,7 +96,8 @@ const SA_ONLY = NAV_ITEMS.filter((i) => i.placeholder === 'super_admin').map((i)
 // The Accounting canvas screens (2026-10-07): the Accountant's alone, except Commissions, Refunds and
 // Reconciliation, which are Super Admin's panels opened to the Accountant as well.
 const ACCT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('acct-')).map((i) => i.id)
-const ACCT_SHARED = ['commissions', 'refunds', 'reconciliation']
+// 1F opens Money rules to the Accountant, who proposes fee and setting changes
+const ACCT_SHARED = ['commissions', 'refunds', 'reconciliation', 'money-rules']
 // The Support canvas screens (placeholder or built) appear for no other role.
 const SUPPORT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('support-') && !['support-team', 'support-issues'].includes(i.id)).map((i) => i.id)
 // The Marketing canvas screens are Marketing's alone.
@@ -168,6 +169,17 @@ describe('per-role menus', () => {
   it('keeps the original grouping for a session without a known role', () => {
     const groups = buildNavGroups({ user: { role: 'not-a-role' }, hasPermission: () => true })
     expect(groups.map((g) => g.id)).toEqual(['moderation', 'finance', 'users-roles', 'field-ops', 'content', 'system', 'my-work'])
+  })
+})
+
+describe('Money rules for the Accountant (1F)', () => {
+  it('the Accountant reaches Money rules under More tools', () => {
+    for (const perm of ['fees.view', 'fees.manage']) {
+      const accountant = buildNavGroups({ user: { role: 'accountant' }, hasPermission: (c) => c === perm })
+      expect(accountant.find((g) => g.label === 'More tools').items.map((i) => i.id)).toContain('money-rules')
+    }
+    const none = buildNavGroups({ user: { role: 'accountant' }, hasPermission: () => false }).flatMap((g) => g.items.map((i) => i.id))
+    expect(none).not.toContain('money-rules')
   })
 })
 

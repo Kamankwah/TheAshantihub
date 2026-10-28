@@ -181,7 +181,7 @@ export const NAV_ITEMS = [
   { id: "notification-center", icon: "🔔", label: "Notification center", show: saOnly },
   { id: "staff-announcements", icon: "📣", label: "Staff announcements", show: saOnly },
   { id: "approval-rules", icon: "⏱️", label: "Approval rules & timers", show: saOnly },
-  { id: "money-rules", icon: "💰", label: "Money rules", show: saOnly },
+  { id: "money-rules", icon: "💰", label: "Money rules", show: (auth) => saOnly(auth) || acctOnly(auth, "fees.view") || acctOnly(auth, "fees.manage") },
   { id: "delivery-pricing", icon: "🛵", label: "Delivery pricing", show: saOnly },
   { id: "tax-tables", icon: "📑", label: "Tax tables", show: saOnly },
   { id: "integrations", icon: "🔌", label: "Integrations", show: saOnly },
