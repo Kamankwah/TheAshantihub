@@ -11,6 +11,9 @@ from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
 EXTRA_DENYLIST = [
     "password_confirm", "raw", "token", "claim_link",
+    # Owner confirmation links (portfolio.confirmations): frame locals that hold the texted link (`confirm_url`, and
+    # `tail` of the text body, which ends with it). The raw token is `raw` and the body is `body`, both listed.
+    "confirm_url", "tail",
     # One-time codes (otp app): request bodies and the step-up header.
     "code", "mfa_token", "recovery_code", "device_token", "step_up_token", "otpauth_uri",
     "x-step-up-token", "x_step_up_token",
@@ -39,7 +42,7 @@ def event_scrubber():
     return EventScrubber(denylist=denylist, recursive=True)
 
 
-_TOKEN_PARAM = re.compile(r"((?:^|[?&])token=)[^&#\s'\"<>]*")
+_TOKEN_PARAM = re.compile(r"((?:^|[?&#])token=)[^&#\s'\"<>]*")
 _MAX_VAR_DEPTH = 6
 
 

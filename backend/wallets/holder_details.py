@@ -266,6 +266,6 @@ def chain(request):
 HOLDER_DETAILS_EDIT = ApprovalKind(
     key=KEY, label="Change a holder's payout name or contact", pool_permission=MANAGE, current_state=current_state,
     apply=apply, response_hours=24, resolve_approver=chain, render_diff=render_diff, validate=validate,
-    consequences=consequences, public_payload=public_payload, requires_sudo=True, two_people=True,
-    chain_note="One approval from another holder of users.manage, or a Super Admin (it moves to a Super Admin if unanswered); never the person who asked",
+    consequences=consequences, public_payload=public_payload, requires_sudo=True, money=True, two_people=True,
+    chain_note="One approval from another holder of users.manage (not a General Manager), or a Super Admin (it moves to a Super Admin if unanswered); never the person who asked",
 )

@@ -23,9 +23,8 @@ from approvals.models import ApprovalRequest
 from approvals.services import submit
 from fraud.models import FraudFlag
 from fraud.services import raise_flag
-from notifications.services import notify_staff_role
 
-from . import checks
+from . import checks, confirmations
 from .serializers import KycResubmitSerializer, ScoutRegistrationSerializer
 from .services import assign_account_manager
 
@@ -141,13 +140,17 @@ def register_business(scout, data, files, *, http_request=None):
             assign_account_manager(owner, scout, by=scout, reason="Registered the business")
         flags = _raise_flags(scout, owner, values)
         approval = _submit_kyc(scout, owner, name, maker_note=values.get("maker_note", ""), http_request=http_request)
+        # R3: a staff-registered owner always has a registration confirmation, made in this same transaction. The text
+        # goes out after commit; a refusal here rolls the whole registration back.
+        confirmation = confirmations.request_confirmation(owner, scout, registration=True)
         record(
             scout, "business.registered", target_type=OWNER_TARGET_TYPE, target_id=str(owner.pk), target_label=name,
             after={"business_name": name, "flags": [flag.pk for flag in flags],
                    **({"prospect_id": prospect.pk} if prospect is not None else {})},
             request=http_request,
+            on_behalf_of=prospect.scout if prospect is not None and prospect.scout_id != scout.pk else None,
         )
-    return {"business_owner": owner, "approval": approval, "flags": flags}
+    return {"business_owner": owner, "approval": approval, "flags": flags, "confirmation": confirmation}
 
 
 def _create_business(registrar, values, identity):
@@ -243,16 +246,6 @@ def _raise_flags(registrar, owner, values):
 
 
 def _submit_kyc(maker, owner, business_name, *, maker_note, http_request, resubmitted=False):
-    if maker.role.name == Role.SUPER_ADMIN:
-        # Decision 14: a Super Admin's own request applies at once, which
-        # would skip the KYC check — the business waits in the KYC queue.
-        what = f"sent {business_name} again" if resubmitted else f"registered {business_name}"
-        notify_staff_role(
-            "kyc.approve", "kyc_needs_approval", "New KYC submission",
-            body=f"{maker.full_name} {what}. It needs KYC review.",
-            link="kyc", icon="🪪",
-        )
-        return None
     title = f"New business: {business_name}" + (" (sent again)" if resubmitted else "")
     return submit(
         maker, KYC_KIND, title=title,

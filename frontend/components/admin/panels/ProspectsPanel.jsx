@@ -1,10 +1,11 @@
 import { useState } from "react";
+import { useReassignableScouts } from "../../../hooks/usePortfolio.js";
 import { useProspects } from "../../../hooks/useProspects.js";
 import { isBeforeToday, shortDay } from "../../../lib/followUp.js";
 import { D, glassCard, tint } from "../theme.js";
 import LogCallSheet from "./LogCallSheet.jsx";
 import ProspectSheet from "./ProspectSheet.jsx";
-import { button, dim, pill } from "./panelStyles.js";
+import { button, dim, field, pill } from "./panelStyles.js";
 import { errorStyle, eyebrow } from "./portfolioParts.jsx";
 
 // ─── 14 Prospects ────────────────────────────────────────────────────────────
@@ -23,30 +24,97 @@ export function nextLine(prospect, now = new Date()) {
   return { text: `Next: ${shortDay(prospect.next_follow_up_at)}`, overdue: false };
 }
 
-export default function ProspectsPanel({ onRegister }) {
+// The five steps a business passes on its way to selling. "Owner confirmed" reads `pipeline.registration` (the owner's
+// answer to the registration text), never the stage: a draft moves the stage to `listing` while the one link is still
+// open, and that must not read as confirmed. Registered is done once a registration exists; Listings and Live come from
+// the stage (the furthest reached). A prospect the server sent without a pipeline shows no step row.
+const STAGE_RANK = { prospect: 0, registered: 1, awaiting_owner: 1, confirmed: 1, listing: 2, live: 3 };
+const COUNT_WORDS = [
+  ["drafts", "draft", "drafts"], ["awaiting_owner", "waiting for the owner", "waiting for the owner"], ["lapsed", "lapsed", "lapsed"],
+  ["pending_approval", "waiting for approval", "waiting for approval"], ["live", "live", "live"],
+];
+
+export function stepStates(pipeline) {
+  const rank = STAGE_RANK[pipeline?.stage] ?? 0;
+  const registration = pipeline?.registration;
+  const registered = registration ? registration !== "none" : rank >= 1;
+  const owner = registration === "confirmed" ? "done" : registration === "waiting" ? "waiting" : "not yet";
+  return [
+    ["Prospect", "done"],
+    ["Registered", registered ? "done" : "not yet"],
+    ["Owner confirmed", registered ? owner : "not yet"],
+    ["Listings", rank >= 2 ? "done" : "not yet"],
+    ["Live", rank >= 3 ? "done" : "not yet"],
+  ];
+}
+
+export function listingsLine(listings = {}) {
+  return COUNT_WORDS.filter(([key]) => listings[key] > 0).map(([key, one, many]) => `${listings[key]} ${listings[key] === 1 ? one : many}`).join(" · ");
+}
+
+function PipelineSteps({ pipeline }) {
+  if (!pipeline || !(pipeline.stage in STAGE_RANK)) return null;
+  const line = listingsLine(pipeline.listings);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <ol aria-label="Pipeline steps" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", gap: 4, flexWrap: "wrap" }}>
+        {stepStates(pipeline).map(([label, state]) => (
+          <li key={label} aria-label={`${label}: ${state}`} style={{
+            display: "inline-flex", alignItems: "center", gap: 4, borderRadius: 999, padding: "2px 8px", fontSize: "0.7rem", fontWeight: 700,
+            background: state === "done" ? D.okBg : state === "waiting" ? D.warnBg : D.panelBg2,
+            color: state === "done" ? D.okInk : state === "waiting" ? D.warnInk : D.textDim,
+            border: state === "waiting" ? `1px dashed ${D.warnInk}` : "1px solid transparent",
+          }}>
+            <span aria-hidden="true">{state === "done" ? "✓" : state === "waiting" ? "…" : "○"}</span>{label}
+          </li>
+        ))}
+      </ol>
+      {line && <div style={dim}>{line}</div>}
+    </div>
+  );
+}
+
+export default function ProspectsPanel({ onRegister, auth }) {
   const [status, setStatus] = useState("all");
-  const { data, isLoading, isError, refetch } = useProspects(status);
+  // A scout works their own list. Operations and Super Admin work every scout's and may narrow to one.
+  const isScout = !auth?.user?.role || auth.user.role === "scout";
+  const [scoutFilter, setScoutFilter] = useState("");
+  const { scouts } = useReassignableScouts(auth, { enabled: !isScout });
+  const { data, isLoading, isError, refetch } = useProspects(status, { scout: isScout ? "" : scoutFilter });
   const [sheet, setSheet] = useState(null); // null | {type: "add"} | {type: "edit", prospect} | {type: "call", prospect}
   const [notice, setNotice] = useState(null);
   const counts = data?.counts || {};
   const results = data?.results || [];
   const month = new Date().toLocaleDateString("en-GB", { month: "long" });
   const signedUp = data?.signed_up_this_month ?? 0;
+  const live = data?.listings_live_this_month;
+  const liveLine = typeof live === "number" ? ` · ${live} ${live === 1 ? "listing" : "listings"} live in ${month}` : "";
   const close = () => setSheet(null);
-  const empty = status === "all" ? "No prospects yet. Add the businesses you meet, then follow them up here." : "No prospects with this status.";
+  const empty = !isScout
+    ? "No prospects here yet. Add one for a scout, or choose another scout."
+    : status === "all" ? "No prospects yet. Add the businesses you meet, then follow them up here." : "No prospects with this status.";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 720 }}>
       <div>
         <div style={eyebrow}>Pipeline</div>
         <h2 style={{ color: D.text, fontSize: "1.4rem", fontWeight: 800, margin: "2px 0 0" }}>Prospects</h2>
-        <div style={dim}>{`Not registered yet · ${signedUp} signed up in ${month}`}</div>
+        <div style={dim}>{`Not registered yet · ${signedUp} signed up in ${month}${liveLine}`}</div>
       </div>
 
       <button type="button" onClick={() => { setNotice(null); setSheet({ type: "add" }); }} style={{ ...button(D.gold, D.text), minHeight: 48, fontSize: "0.9rem", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
         <span aria-hidden="true" style={{ fontSize: "1.1rem", lineHeight: 1 }}>+</span>Add prospect
       </button>
       {notice && <div role="status" style={{ ...dim, color: D.text, fontWeight: 700 }}>{notice}</div>}
+
+      {!isScout && (
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.78rem", fontWeight: 800, color: D.text, maxWidth: 320 }}>Scout
+          <select value={scoutFilter} onChange={(e) => setScoutFilter(e.target.value)} style={{ ...field, minHeight: 44, fontSize: "1rem" }}>
+            <option value="">All scouts</option>
+            {scouts.map((s) => <option key={s.id} value={String(s.id)}>{s.full_name}</option>)}
+          </select>
+        </label>
+      )}
 
       <div role="group" aria-label="Filter by status" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {FILTERS.map(([id, label]) => (
@@ -81,7 +149,8 @@ export default function ProspectsPanel({ onRegister }) {
                 <span style={{ background: bg, color: fg, borderRadius: 999, padding: "2px 10px", fontSize: "0.7rem", fontWeight: 800, whiteSpace: "nowrap" }}>{p.status_label}</span>
               </span>
             </div>
-            <div style={dim}>{[p.area || "No area set", p.last_visit_at ? `last visit ${shortDay(p.last_visit_at)}` : "no visit yet"].join(" · ")}</div>
+            <div style={dim}>{[!isScout && p.scout_name ? `Scout ${p.scout_name}` : null, p.area || "No area set", p.last_visit_at ? `last visit ${shortDay(p.last_visit_at)}` : "no visit yet"].filter(Boolean).join(" · ")}</div>
+            <PipelineSteps pipeline={p.pipeline} />
             {p.note && <div style={{ fontSize: "0.82rem", color: D.text, lineHeight: 1.4 }}>{p.note}</div>}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: "0.8rem", fontWeight: 700, color: next.overdue ? D.warnInk : next.text.startsWith("Next") ? D.text : D.textDim, ...figures }}>{next.text}</span>
@@ -101,9 +170,9 @@ export default function ProspectsPanel({ onRegister }) {
 
       <div style={{ ...dim, textAlign: "center", lineHeight: 1.45 }}>Registering a prospect links it, so your earlier visits stay on the business's record.</div>
 
-      {sheet?.type === "add" && <ProspectSheet onClose={close} onSaved={() => { close(); setNotice("Prospect added."); }} />}
+      {sheet?.type === "add" && <ProspectSheet auth={auth} defaultScout={scoutFilter} onClose={close} onSaved={() => { close(); setNotice("Prospect added."); }} />}
       {sheet?.type === "edit" && <ProspectSheet prospect={sheet.prospect} onClose={close} onSaved={() => { close(); setNotice("Prospect saved."); }} />}
-      {sheet?.type === "call" && <LogCallSheet preset={{ type: "prospect", id: sheet.prospect.id }} onClose={close} onSaved={() => { close(); setNotice("Call saved."); }} />}
+      {sheet?.type === "call" && <LogCallSheet preset={{ type: "prospect", id: sheet.prospect.id, label: sheet.prospect.name }} onClose={close} onSaved={() => { close(); setNotice("Call saved."); }} />}
     </div>
   );
 }

@@ -75,6 +75,17 @@ class RedactClaimTokenTests(SimpleTestCase):
 
 
 class RedactFrameVarsTests(SimpleTestCase):
+    def test_a_token_in_the_url_fragment_is_filtered(self):
+        # The owner confirmation link carries its token after a # (portfolio.confirmations.confirm_link): a referrer,
+        # a breadcrumb or a frame variable may still hold the whole link.
+        from ashantihub.sentry import _redact_text, redact_claim_token
+
+        link = "https://theashantihub.com/business/confirm#token=abc123_-xyz"
+        self.assertEqual(_redact_text(link), "https://theashantihub.com/business/confirm#token=[Filtered]")
+        self.assertEqual(_redact_text("/x?a=1#token=abc&b=2"), "/x?a=1#token=[Filtered]&b=2")
+        out = redact_claim_token({"request": {"url": link}}, {})
+        self.assertEqual(out["request"]["url"], "https://theashantihub.com/business/confirm#token=[Filtered]")
+
     def test_a_token_in_stack_frame_variables_is_filtered(self):
         from ashantihub.sentry import redact_claim_token
 

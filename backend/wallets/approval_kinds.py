@@ -241,7 +241,7 @@ def chain(request):
 WITHDRAWAL_RESOLUTION = ApprovalKind(
     key=KEY, label="Resolve a stuck withdrawal", pool_permission=MANAGE, current_state=current_state, apply=apply,
     response_hours=4, resolve_approver=chain, render_diff=render_diff, validate=validate, consequences=consequences,
-    requires_sudo=True, amount_of=amount_of, two_people=True,
+    requires_sudo=True, money=True, amount_of=amount_of, two_people=True,
     chain_note="One approval from another holder of wallets.manage, or a Super Admin; two approvals above the co-sign limit "
                "(approval setting cosign_threshold); it moves to a Super Admin if unanswered; never the person who asked",
 )

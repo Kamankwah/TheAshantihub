@@ -147,7 +147,7 @@ def diff(request):
 RECOVERY_KIND = ApprovalKind(
     key=KEY, label="Recover a sign-in", pool_permission="", current_state=current_state, apply=apply,
     response_hours=24, chain_note="Super Admin only", resolve_approver=super_admin_only, render_diff=diff,
-    validate=validate, requires_sudo=True,
+    validate=validate, requires_sudo=True, money=True,
     consequences=lambda request: [
         "Ends every trusted device and turns their authenticator app off.",
         "Sends a one-hour password-reset link to the contact chosen. Nothing else about the account changes.",

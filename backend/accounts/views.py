@@ -46,6 +46,7 @@ from .permissions import (
     RequiresSudo,
     can_lead_team,
     can_manage_staff,
+    general_manager_manager_problem,
 )
 from storefront import opening
 from .phones import filter_by_phone, phone_key
@@ -522,7 +523,10 @@ class KYCApproveView(APIView):
         try:
             owner = kyc.approve_owner(pk, request.user, http_request=request)
         except (kyc.KycError, ApprovalError) as exc:
-            return Response({"detail": exc.message}, status=exc.status_code)
+            body = {"detail": exc.message}
+            if exc.code:
+                body["code"] = exc.code
+            return Response(body, status=exc.status_code)
         return Response({"id": owner.id, "kyc_status": owner.kyc_status})
 
 
@@ -688,9 +692,15 @@ class StaffManagerView(APIView):
         staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
         manager_id = request.data.get("manager")
         if manager_id in (None, ""):
+            problem = general_manager_manager_problem(staff.role.name, None)
+            if problem:
+                return Response({"detail": problem}, status=400)
             staff.manager = None
         else:
             manager = generics.get_object_or_404(StaffUser, pk=manager_id, is_active=True)
+            problem = general_manager_manager_problem(staff.role.name, manager)
+            if problem:
+                return Response({"detail": problem}, status=400)
             if not can_lead_team(manager):
                 return Response({"detail": "Choose a manager who can lead a team."}, status=400)
             node = manager

@@ -21,6 +21,7 @@ from django.db.models import Count, Exists, OuterRef, Q, Subquery
 from django.utils import timezone
 
 from accounts.models import BusinessOwner, Role
+from accounts.permissions import sees_every_team
 from accounts.phones import filter_by_phone
 from contact.models import ContactMessage
 from disputes.models import Dispute
@@ -39,7 +40,7 @@ EXCERPT = 300
 def team_owner_filter(user):
     """The owners whose businesses are in the caller's scope: those managed by
     their scouts (or by themselves). A Super Admin sees every business."""
-    if user.role.name == Role.SUPER_ADMIN:
+    if sees_every_team(user):
         return Q()
     ids = [s.pk for s in scouts_in_scope(user, "team")] + [user.pk]
     return Q(account_manager_id__in=ids)
@@ -254,7 +255,7 @@ def deliveries_payload(user, now=None):
     customer's delivery address and name are shown only for orders holding a
     business in the caller's team (team_owner_filter; a Super Admin sees all)."""
     now = now or timezone.now()
-    scoped = None if user.role.name == Role.SUPER_ADMIN else set(
+    scoped = None if sees_every_team(user) else set(
         BusinessOwner.objects.filter(team_owner_filter(user)).values_list("pk", flat=True)
     )
 
@@ -369,7 +370,7 @@ def support_team_payload(user, now=None):
     now = now or timezone.now()
     today = timezone.localdate(now)
     agents = StaffUser.objects.filter(role__name=Role.SUPPORT, is_active=True, invite_token__isnull=True)
-    if user.role.name != Role.SUPER_ADMIN:
+    if not sees_every_team(user):
         agents = agents.filter(manager=user)
     agents = list(sessions.with_last_sign_in(agents).order_by("full_name"))
     desk_rows = _desk_stats([a.pk for a in agents], now)

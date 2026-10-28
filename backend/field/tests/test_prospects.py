@@ -235,3 +235,238 @@ class RegisterFromProspectTests(RegistrationBase):
         data = self.client.get(PROSPECTS).data
         self.assertEqual(data["signed_up_this_month"], 1)
         self.assertEqual(data["counts"]["all"], 0)
+
+
+class StaffAddsProspectForScoutTests(ProspectBase):
+    """Operations and Super Admin add a prospect on behalf of a named scout (plan M3, Task 5)."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = make_staff("super_admin", "root@example.com")
+        self.gm = make_staff("general_manager", "gm@example.com")
+
+    def add_for(self, who, scout=None, **overrides):
+        self.as_staff(who)
+        body = {"name": "Ohemaa Waakye Joint", "phone": "024 123 4567", "zone": self.zone.pk, **overrides}
+        if scout is not None:
+            body["scout"] = scout.pk
+        return self.client.post(PROSPECTS, body, format="json")
+
+    def test_operations_adds_prospect_for_scout(self):
+        response = self.add_for(self.lead, self.kwame)
+        self.assertEqual(response.status_code, 201, response.content)
+        prospect = Prospect.objects.get()
+        self.assertEqual(prospect.scout, self.kwame)
+        from activity.models import ActivityEvent
+
+        event = ActivityEvent.objects.get(verb="prospect.create")
+        self.assertEqual(event.actor_id, self.lead.pk)
+        self.assertEqual(event.on_behalf_of_id, self.kwame.pk)
+
+    def test_super_admin_adds_prospect_for_scout(self):
+        self.assertEqual(self.add_for(self.admin, self.efua).status_code, 201)
+        self.assertEqual(Prospect.objects.get().scout, self.efua)
+
+    def test_the_scout_is_required_and_must_be_an_active_scout(self):
+        self.assertEqual(self.add_for(self.lead).status_code, 400)
+        self.assertEqual(self.add_for(self.lead, self.lead).status_code, 400)  # not a scout
+        self.efua.is_active = False
+        self.efua.save()
+        self.assertEqual(self.add_for(self.lead, self.efua).status_code, 400)
+        self.as_staff(self.lead)
+        bad = self.client.post(PROSPECTS, {"name": "X", "phone": "0241234567", "scout": 99999}, format="json")
+        self.assertEqual(bad.status_code, 400)
+        self.assertFalse(Prospect.objects.exists())
+
+    def test_prospect_phone_dedupe_still_applies(self):
+        self.assertEqual(self.add_for(self.lead, self.kwame).status_code, 201)
+        again = self.add_for(self.admin, self.kwame, name="Other")
+        self.assertEqual(again.status_code, 400)
+        self.assertEqual(again.data["code"], "own_phone")
+        existing_business("Adwoa Fabrics", phone="+233 24 555 0000", gps="AK-112-0399")
+        taken = self.add_for(self.lead, self.efua, phone="0245550000")
+        self.assertEqual(taken.status_code, 400)
+        self.assertEqual(taken.data["code"], "phone_taken")
+
+    def test_a_scout_still_adds_their_own_and_cannot_name_another(self):
+        self.assertEqual(self.add_for(self.kwame).status_code, 201)
+        self.assertEqual(Prospect.objects.get().scout, self.kwame)
+        self.assertEqual(self.add_for(self.efua, self.kwame, phone="0249990000").status_code, 400)
+
+    def test_general_manager_and_support_are_refused(self):
+        support = make_staff("support", "help@example.com")
+        self.assertEqual(self.add_for(self.gm, self.kwame).status_code, 403)
+        self.assertEqual(self.add_for(support, self.kwame).status_code, 403)
+        self.assertFalse(Prospect.objects.exists())
+
+
+class StaffSeesEveryScoutsProspectsTests(ProspectBase):
+    """Final-fix F4: Operations and Super Admin list every scout's prospects (?scout= narrows); the monthly listings
+    figure is sent only when the list is one scout's."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = make_staff("super_admin", "root@example.com")
+        self.gm = make_staff("general_manager", "gm@example.com")
+        self.add(self.kwame, name="Kwame's find", phone="0241110001")
+        self.add(self.efua, name="Efua's find", phone="0241110002")
+
+    def listing(self, who, **query):
+        self.as_staff(who)
+        response = self.client.get(PROSPECTS, query)
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
+    def test_operations_and_super_admin_see_every_scouts_prospects_with_the_scout_named(self):
+        for who in (self.lead, self.admin):
+            body = self.listing(who)
+            self.assertEqual({row["name"]: row["scout_name"] for row in body["results"]},
+                             {"Kwame's find": self.kwame.full_name, "Efua's find": self.efua.full_name})
+            self.assertEqual(body["counts"]["all"], 2)
+
+    def test_the_scout_filter_narrows_and_a_scout_still_sees_only_their_own(self):
+        body = self.listing(self.lead, scout=self.kwame.pk)
+        self.assertEqual([row["name"] for row in body["results"]], ["Kwame's find"])
+        self.assertEqual(body["counts"]["all"], 1)
+        mine = self.listing(self.kwame, scout=self.efua.pk)  # a scout cannot widen or retarget the list
+        self.assertEqual([row["name"] for row in mine["results"]], ["Kwame's find"])
+
+    def test_a_bad_scout_filter_is_a_400(self):
+        self.as_staff(self.lead)
+        self.assertEqual(self.client.get(PROSPECTS, {"scout": "abc"}).status_code, 400)
+
+    def test_the_monthly_listings_figure_is_sent_only_for_one_scout(self):
+        from approvals.models import ApprovalRequest
+
+        ApprovalRequest.objects.create(
+            kind="listing.staff_create", title="x", status="approved", maker=self.kwame, decided_at=timezone.now(),
+            due_at=timezone.now() + timedelta(days=1),
+        )
+        everyone = self.listing(self.lead)
+        self.assertNotIn("listings_live_this_month", everyone)
+        self.assertEqual(self.listing(self.lead, scout=self.kwame.pk)["listings_live_this_month"], 1)
+        self.assertEqual(self.listing(self.lead, scout=self.efua.pk)["listings_live_this_month"], 0)
+        self.assertEqual(self.listing(self.kwame)["listings_live_this_month"], 1)
+
+    def test_the_all_scouts_list_costs_the_same_queries_however_many_prospects(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self.as_staff(self.lead)
+        with CaptureQueriesContext(connection) as small:
+            self.client.get(PROSPECTS)
+        for i in range(6):
+            self.add(self.kwame if i % 2 else self.efua, name=f"P{i}", phone=f"024222000{i}")
+        self.as_staff(self.lead)
+        with CaptureQueriesContext(connection) as big:
+            self.client.get(PROSPECTS)
+        self.assertEqual(len(small), len(big))
+
+    def test_operations_adds_for_a_named_scout_and_sees_it_in_the_list(self):
+        self.as_staff(self.lead)
+        response = self.client.post(
+            PROSPECTS, {"name": "Added by Ama", "phone": "0243330000", "zone": self.zone.pk, "scout": self.efua.pk}, format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["scout_name"], self.efua.full_name)
+        self.assertIn("Added by Ama", [row["name"] for row in self.listing(self.lead)["results"]])
+
+    def test_the_general_manager_is_refused(self):
+        self.as_staff(self.gm)
+        self.assertEqual(self.client.get(PROSPECTS).status_code, 403)
+
+
+class ManagerEditsAreAttributedTests(ProspectBase):
+    """Post-review fix A1: a manager's edit of a scout's prospect is the manager's act in the activity log, done on the
+    scout's behalf; the scout's own edit is unchanged. No phone number reaches an activity body."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = make_staff("super_admin", "root@example.com")
+        self.prospect_id = self.add(self.kwame).data["id"]
+        from activity.models import ActivityEvent
+
+        # The log is append-only: remember where it stood, and look only at what the edits below add.
+        self.mark = ActivityEvent.objects.order_by("-id").values_list("id", flat=True).first() or 0
+
+    def patch(self, who, **body):
+        self.as_staff(who)
+        return self.client.patch(f"{PROSPECTS}{self.prospect_id}/", body, format="json")
+
+    def events(self, verb="prospect.update"):
+        from activity.models import ActivityEvent
+
+        return list(ActivityEvent.objects.filter(verb=verb, id__gt=self.mark))
+
+    def test_operations_edit_is_recorded_as_operations_for_the_scout(self):
+        response = self.patch(self.lead, note="Spoke to the owner", status="interested")
+        self.assertEqual(response.status_code, 200, response.content)
+        (event,) = self.events()
+        self.assertEqual(event.actor_id, self.lead.pk)
+        self.assertEqual(event.on_behalf_of_id, self.kwame.pk)
+
+    def test_super_admin_edit_is_recorded_as_super_admin_for_the_scout(self):
+        self.patch(self.admin, status="not_interested")
+        (event,) = self.events()
+        self.assertEqual((event.actor_id, event.actor_role, event.on_behalf_of_id), (self.admin.pk, "super_admin", self.kwame.pk))
+
+    def test_the_scouts_own_edit_is_unchanged(self):
+        self.patch(self.kwame, note="Called back")
+        (event,) = self.events()
+        self.assertEqual(event.actor_id, self.kwame.pk)
+        self.assertIsNone(event.on_behalf_of_id)
+
+    def test_a_manager_changing_the_phone_never_puts_a_number_in_the_log(self):
+        self.patch(self.lead, phone="0249998877", name="New name")
+        (event,) = self.events()
+        self.assertNotIn("9998877", repr((event.before, event.after, event.summary, event.target_label)))
+        self.assertNotIn("1234567", repr((event.before, event.after, event.summary, event.target_label)))
+
+
+class ManagerRegistersFromProspectTests(RegisterFromProspectTests):
+    """Post-review fix A2: Operations / Super Admin register a business from another scout's prospect; the prospect closes
+    for the scout, the business links to it, and the registrar is the manager."""
+
+    def test_operations_register_closes_the_scouts_prospect_and_links_the_business(self):
+        response = self.register(staff=self.lead, prospect_id=str(self.prospect.pk))
+        self.assertEqual(response.status_code, 201, response.content)
+        owner = BusinessOwner.objects.get(pk=response.data["id"])
+        self.prospect.refresh_from_db()
+        self.assertEqual((self.prospect.status, self.prospect.registered_business), ("registered", owner))
+        self.assertEqual(self.prospect.scout, self.scout)  # the scout still owns the credit
+        self.assertEqual(owner.registered_by, self.lead)
+        self.visit.refresh_from_db()
+        self.assertEqual(self.visit.business_owner, owner)
+        self.call.refresh_from_db()  # the scout's earlier call moves onto the business too
+        self.assertEqual((self.call.related_type, self.call.related_id), ("business_owner", str(owner.pk)))
+        self.as_(self.scout)
+        self.assertEqual(self.client.get(PROSPECTS).data["signed_up_this_month"], 1)
+
+    def test_a_manager_call_on_the_prospect_moves_to_the_business_too(self):
+        manager_call = CallLog.objects.create(
+            staff=self.lead, direction="out", counterpart_type="prospect", counterpart_id=self.prospect.pk,
+            counterpart_name="Asafo Hair & Beauty", related_type="prospect", related_id=str(self.prospect.pk),
+            purpose="prospecting", outcome="connected", started_at=timezone.now(),
+        )
+        response = self.register(staff=self.lead, prospect_id=str(self.prospect.pk))
+        manager_call.refresh_from_db()
+        self.assertEqual((manager_call.related_type, manager_call.related_id), ("business_owner", str(response.data["id"])))
+
+    def test_the_registration_event_names_the_manager_for_the_scout(self):
+        from activity.models import ActivityEvent
+
+        self.register(staff=self.lead, prospect_id=str(self.prospect.pk))
+        event = ActivityEvent.objects.get(verb="business.registered")
+        self.assertEqual((event.actor_id, event.on_behalf_of_id), (self.lead.pk, self.scout.pk))
+
+    def test_super_admin_can_too(self):
+        admin = make_staff("super_admin", "root@example.com")
+        self.assertEqual(self.register(staff=admin, prospect_id=str(self.prospect.pk)).status_code, 201)
+        self.prospect.refresh_from_db()
+        self.assertEqual(self.prospect.status, "registered")
+
+    def test_the_gm_is_refused_and_the_prospect_stays_open(self):
+        gm = make_staff("general_manager", "gm@example.com")
+        self.assertEqual(self.register(staff=gm, prospect_id=str(self.prospect.pk)).status_code, 403)
+        self.prospect.refresh_from_db()
+        self.assertEqual(self.prospect.status, "interested")

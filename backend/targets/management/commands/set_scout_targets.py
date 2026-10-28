@@ -15,7 +15,7 @@ from targets.models import METRICS
 
 
 class Command(BaseCommand):
-    help = "Prints the plan and writes only with --yes. NOTE: this bypasses the targets.cut approval (lowering targets needs no Super Admin sign-off here). Set the daily targets of one or more staff members, e.g. --staff kwame@x.com --registrations 1 --visits 6 --calls 10 --renewals 1 --set-by ama@x.com"
+    help = "Prints the plan and writes only with --yes. NOTE: this bypasses the targets.cut approval (lowering targets needs no Super Admin sign-off here). Set the daily targets of one or more staff members, e.g. --staff kwame@x.com --registrations 1 --visits 6 --calls 10 --listings 1 --set-by ama@x.com"
 
     def add_arguments(self, parser):
         parser.add_argument("--staff", action="append", default=[], help="Staff email (repeatable)")

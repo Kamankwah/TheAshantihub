@@ -20,7 +20,7 @@ import { when } from "./sessionParts.jsx";
 const TABS = [["overview", "Overview"], ["performance", "Performance"], ["activity", "Activity"], ["reports", "Reports"], ["approvals", "Approvals"], ["access", "Access & devices"], ["pay", "Pay & commission"]];
 const REPORT_WORDS = { submitted: "Submitted", acknowledged: "Acknowledged", returned: "Returned" };
 const APPROVAL_WORDS = { pending: "Waiting", approved: "Approved", rejected: "Returned", cancelled: "Cancelled", expired: "Expired" };
-const METRIC_WORDS = { registrations: "Registrations", activations: "Activations", visits: "Visits", calls: "Calls", renewals: "Renewals" };
+const METRIC_WORDS = { registrations: "Registrations", activations: "Activations", visits: "Visits", calls: "Calls", listings: "Listings", renewals: "Renewals" };
 
 function Facts({ rows }) {
   return (

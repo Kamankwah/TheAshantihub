@@ -18,7 +18,7 @@ import { errorStyle, eyebrow, h2, labelStyle, toDate } from "./portfolioParts.js
 // accepted. Below the form: pending invites (Resend / Cancel, with the state
 // the server tracks: not opened, opened but no password yet, expired), who
 // joined in the last 60 days, and the people already on the team.
-const ROLE_LABEL = { scout: "Scout", support: "Support", operations: "Operations", accountant: "Accountant", marketing: "Marketing", delivery_manager: "Delivery Manager", dispatch: "Dispatch", cosigner: "Co-signer", super_admin: "Super Admin" };
+const ROLE_LABEL = { scout: "Scout", general_manager: "General Manager", support: "Support", operations: "Operations", accountant: "Accountant", marketing: "Marketing", delivery_manager: "Delivery Manager", dispatch: "Dispatch", cosigner: "Co-signer", super_admin: "Super Admin" };
 const ROLE_NOTE = { scout: "Registers and manages businesses in the field", support: "Runs the help desk and call log" };
 const STATE = { not_opened: ["Not opened", D.textDim], opened: ["Opened · password not set", D.amber], expired: ["Expired", D.red] };
 

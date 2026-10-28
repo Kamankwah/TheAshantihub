@@ -304,3 +304,17 @@ class StagedPhotoPurgeTests(TestCase):
         self.assertEqual(purge_staged_photos(), 1)
         self.assertFalse(os.path.exists(old_path))
         self.assertEqual(set(StagedPhoto.objects.values_list("pk", flat=True)), {recent.pk, used.pk, held.pk})
+
+    def test_photos_of_a_live_staff_draft_survive_and_a_withdrawn_drafts_are_purged(self):
+        from portfolio.models import ListingDraft
+
+        main, gallery, gone, plain = (self.stage(days_old=9) for _ in range(4))
+        for status, payload in (
+            (ListingDraft.AWAITING_OWNER, {"main_photo_id": main.pk, "photo_ids": [gallery.pk]}),
+            (ListingDraft.WITHDRAWN, {"main_photo_id": gone.pk, "photo_ids": []}),
+        ):
+            ListingDraft.objects.create(
+                business_owner=self.owner, kind="product", created_by=self.scout, status=status, payload=payload,
+            )
+        self.assertEqual(purge_staged_photos(), 2)
+        self.assertEqual(set(StagedPhoto.objects.values_list("pk", flat=True)), {main.pk, gallery.pk})

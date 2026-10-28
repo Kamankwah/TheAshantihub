@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { D } from '../../theme.js'
@@ -14,11 +14,11 @@ const prospect = (over = {}) => ({
 })
 const COUNTS = { all: 4, new: 1, interested: 2, follow_up: 0, not_interested: 1, registered: 0 }
 
-function serve(results, { counts = COUNTS, signed = 3, onList } = {}) {
+function serve(results, { counts = COUNTS, signed = 3, onList, live } = {}) {
   server.use(http.get(`${API}/api/field/prospects/`, ({ request }) => {
     const status = new URL(request.url).searchParams.get('status')
     onList?.(status)
-    return HttpResponse.json({ counts, signed_up_this_month: signed, results: typeof results === 'function' ? results(status) : results })
+    return HttpResponse.json({ counts, signed_up_this_month: signed, ...(live === undefined ? {} : { listings_live_this_month: live }), results: typeof results === 'function' ? results(status) : results })
   }))
 }
 
@@ -36,6 +36,73 @@ describe('nextLine', () => {
     expect(nextLine({ status: 'follow_up', next_follow_up_at: '2026-10-06T15:00:00' }, now)).toEqual({ text: 'Follow up was due Tue 6 Oct', overdue: true })
     // due today but later is not overdue
     expect(nextLine({ status: 'follow_up', next_follow_up_at: '2026-10-08T17:00:00' }, now).overdue).toBe(false)
+  })
+})
+
+const REG = { prospect: 'none', registered: 'not_confirmed', awaiting_owner: 'waiting', confirmed: 'confirmed', listing: 'confirmed', live: 'confirmed' }
+const pipeline = (stage, listings = {}, registration = REG[stage]) => ({ stage, registration, listings: { drafts: 0, awaiting_owner: 0, lapsed: 0, pending_approval: 0, live: 0, ...listings } })
+const stepStates = (card) => within(within(card).getByRole('list', { name: 'Pipeline steps' })).getAllByRole('listitem').map((li) => li.getAttribute('aria-label'))
+
+describe('ProspectsPanel pipeline', () => {
+  it('marks the steps through Listings for stage "listing" and says Live is not reached', async () => {
+    serve([prospect({ pipeline: pipeline('listing', { drafts: 1, pending_approval: 2 }) })], { live: 3 })
+    renderPanel()
+    const card = await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
+    expect(stepStates(card)).toEqual(['Prospect: done', 'Registered: done', 'Owner confirmed: done', 'Listings: done', 'Live: not yet'])
+    expect(within(card).getByText('1 draft · 2 waiting for approval')).toBeInTheDocument()
+  })
+
+  it('does not tick Owner confirmed when drafts exist but the registration link is still open', async () => {
+    serve([prospect({ pipeline: pipeline('listing', { awaiting_owner: 2 }, 'waiting') })])
+    renderPanel()
+    const card = await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
+    expect(stepStates(card)).toEqual(['Prospect: done', 'Registered: done', 'Owner confirmed: waiting', 'Listings: done', 'Live: not yet'])
+    // and when the owner declined or the link ran out, it is not ticked and not waiting
+    cleanup()
+    serve([prospect({ pipeline: pipeline('listing', { drafts: 1 }, 'not_confirmed') })])
+    renderPanel()
+    expect(stepStates(await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' }))).toEqual(['Prospect: done', 'Registered: done', 'Owner confirmed: not yet', 'Listings: done', 'Live: not yet'])
+  })
+
+  it('shows the live-listings count for the month in the header', async () => {
+    serve([prospect({ pipeline: pipeline('prospect') })], { live: 3 })
+    renderPanel()
+    const month = new Date().toLocaleDateString('en-GB', { month: 'long' })
+    expect(await screen.findByText(new RegExp(`3 listings live in ${month}`))).toBeInTheDocument()
+    expect(screen.getByText(/Not registered yet · 3 signed up in /)).toBeInTheDocument()
+  })
+
+  it('shows a real 0 and omits the figure when the server did not send it', async () => {
+    serve([prospect({ pipeline: pipeline('prospect') })], { live: 0 })
+    renderPanel()
+    const month = new Date().toLocaleDateString('en-GB', { month: 'long' })
+    expect(await screen.findByText(new RegExp(`0 listings live in ${month}`))).toBeInTheDocument()
+  })
+
+  it('omits the live line when the figure is missing, rather than inventing one', async () => {
+    serve([prospect({ pipeline: pipeline('prospect') })])
+    renderPanel()
+    await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
+    expect(screen.queryByText(/listings? live in/)).not.toBeInTheDocument()
+  })
+
+  it('reads awaiting_owner as Registered done and Owner confirmed waiting, and live as everything done', async () => {
+    serve([
+      prospect({ id: 1, name: 'Waiting Kitchen', pipeline: pipeline('awaiting_owner') }),
+      prospect({ id: 2, name: 'Live Kitchen', pipeline: pipeline('live', { live: 4 }) }),
+      prospect({ id: 3, name: 'Plain Kitchen', pipeline: pipeline('prospect') }),
+    ])
+    renderPanel()
+    expect(stepStates(await screen.findByRole('article', { name: 'Waiting Kitchen' }))).toEqual(['Prospect: done', 'Registered: done', 'Owner confirmed: waiting', 'Listings: not yet', 'Live: not yet'])
+    expect(stepStates(screen.getByRole('article', { name: 'Live Kitchen' }))).toEqual(['Prospect: done', 'Registered: done', 'Owner confirmed: done', 'Listings: done', 'Live: done'])
+    expect(stepStates(screen.getByRole('article', { name: 'Plain Kitchen' }))).toEqual(['Prospect: done', 'Registered: not yet', 'Owner confirmed: not yet', 'Listings: not yet', 'Live: not yet'])
+  })
+
+  it('shows no step row for a prospect the server sent without a pipeline', async () => {
+    serve([prospect()])
+    renderPanel()
+    const card = await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
+    expect(within(card).queryByRole('list', { name: 'Pipeline steps' })).not.toBeInTheDocument()
   })
 })
 
@@ -250,5 +317,136 @@ describe('ProspectsPanel', () => {
     renderPanel({ onRegister })
     fireEvent.click(await screen.findByRole('button', { name: 'Register' }))
     expect(onRegister).toHaveBeenCalledWith(expect.objectContaining({ id: 1, name: 'Ohemaa Waakye Joint' }))
+  })
+})
+
+// Final-fix F4: Operations and Super Admin work every scout's prospects.
+describe('ProspectsPanel for Operations and Super Admin', () => {
+  const OPS = { user: { id: 2, full_name: 'Ama Boateng', role: 'operations' }, hasPermission: () => true }
+  const SCOUTS = [
+    { id: 7, full_name: 'Kwame Asante', role: 'scout', status: 'active' },
+    { id: 8, full_name: 'Efua Mensah', role: 'scout', status: 'active' },
+  ]
+  const asOps = (extra = []) => server.use(
+    http.get(`${API}/api/accounts/staff/team/`, () => HttpResponse.json([...SCOUTS, ...extra])),
+    http.get(`${API}/api/listings/zones/`, () => HttpResponse.json([{ id: 1, name: 'Asafo' }])),
+  )
+
+  it('names each prospect scout, filters by scout and sends ?scout=', async () => {
+    const urls = []
+    asOps()
+    server.use(http.get(`${API}/api/field/prospects/`, ({ request }) => {
+      urls.push(new URL(request.url).searchParams.get('scout'))
+      return HttpResponse.json({ counts: COUNTS, signed_up_this_month: 1, results: [prospect({ scout_id: 7, scout_name: 'Kwame Asante' })] })
+    }))
+    renderPanel({ auth: OPS })
+    const card = await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
+    expect(within(card).getByText(/^Scout Kwame Asante · Asafo/)).toBeInTheDocument()
+    fireEvent.change(await screen.findByLabelText('Scout'), { target: { value: '8' } })
+    await waitFor(() => expect(urls).toContain('8'))
+    expect(urls[0]).toBeNull() // all scouts first
+  })
+
+  it('shows no listings-live figure when the server sends none (a list over several scouts)', async () => {
+    asOps()
+    serve([prospect({ scout_id: 7, scout_name: 'Kwame Asante' })])
+    renderPanel({ auth: OPS })
+    expect(await screen.findByText(/Not registered yet · 3 signed up in [A-Za-z]+$/)).toBeInTheDocument()
+  })
+
+  it('a scout gets no scout filter', async () => {
+    serve([prospect()])
+    renderPanel({ auth: { user: { id: 7, role: 'scout' }, hasPermission: () => true } })
+    await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
+    expect(screen.queryByLabelText('Scout')).toBeNull()
+  })
+
+  it('the add sheet needs a scout for Operations and sends it', async () => {
+    let body = null
+    asOps()
+    serve([])
+    server.use(http.post(`${API}/api/field/prospects/`, async ({ request }) => { body = await request.json(); return HttpResponse.json(prospect({ scout_id: 8, scout_name: 'Efua Mensah' }), { status: 201 }) }))
+    renderPanel({ auth: OPS })
+    fireEvent.click(await screen.findByRole('button', { name: 'Add prospect' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add prospect' })
+    fireEvent.change(within(dialog).getByLabelText('Business name'), { target: { value: 'Golden Needle Tailoring' } })
+    fireEvent.change(within(dialog).getByLabelText('Phone'), { target: { value: '024 123 4567' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add prospect' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Choose the scout this prospect is for.')
+    expect(body).toBeNull()
+    await within(dialog).findByRole('option', { name: 'Efua Mensah' })
+    fireEvent.change(within(dialog).getByLabelText(/Scout \(required\)/), { target: { value: '8' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add prospect' }))
+    await waitFor(() => expect(body).not.toBeNull())
+    expect(body).toMatchObject({ name: 'Golden Needle Tailoring', scout: 8 })
+  })
+
+  it('a scout adding a prospect sees no scout picker and sends no scout', async () => {
+    let body = null
+    serve([])
+    server.use(
+      http.get(`${API}/api/listings/zones/`, () => HttpResponse.json([{ id: 1, name: 'Asafo' }])),
+      http.post(`${API}/api/field/prospects/`, async ({ request }) => { body = await request.json(); return HttpResponse.json(prospect(), { status: 201 }) }),
+    )
+    renderPanel({ auth: { user: { id: 7, role: 'scout' }, hasPermission: () => true } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Add prospect' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add prospect' })
+    expect(within(dialog).queryByLabelText(/Scout \(required\)/)).toBeNull()
+    fireEvent.change(within(dialog).getByLabelText('Business name'), { target: { value: 'Own find' } })
+    fireEvent.change(within(dialog).getByLabelText('Phone'), { target: { value: '024 123 4567' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add prospect' }))
+    await waitFor(() => expect(body).not.toBeNull())
+    expect(body).not.toHaveProperty('scout')
+  })
+
+  // Post-review fix A2: Call and Register work on another scout's card.
+  describe("on another scout's card", () => {
+    const THEIRS = () => prospect({ scout_id: 7, scout_name: 'Kwame Asante' })
+    const serveCall = (post) => {
+      asOps()
+      server.use(
+        // Operations' own call list does not hold the scout's prospect.
+        http.get(`${API}/api/calls/counterparts/`, () => HttpResponse.json({ businesses: [], prospects: [] })),
+        http.get(`${API}/api/calls/purposes/`, () => HttpResponse.json([{ value: 'escalation', label: 'Escalation' }, { value: 'prospecting', label: 'Prospecting' }])),
+        http.post(`${API}/api/calls/`, post),
+      )
+      serve([THEIRS()])
+    }
+    const openCall = async () => {
+      renderPanel({ auth: OPS })
+      const call = await screen.findByRole('link', { name: 'Call Ohemaa Waakye Joint' })
+      call.addEventListener('click', (e) => e.preventDefault())
+      fireEvent.click(call)
+      return screen.findByRole('dialog', { name: 'Log a call' })
+    }
+
+    it('Call posts the prospect and shows the saved notice', async () => {
+      let body = null
+      serveCall(async ({ request }) => { body = await request.json(); return HttpResponse.json({ id: 9 }, { status: 201 }) })
+      const dialog = await openCall()
+      expect(within(dialog).getByLabelText('Who')).toHaveValue('prospect:1')
+      await waitFor(() => expect(within(dialog).getByLabelText('Purpose')).toHaveValue('prospecting'))
+      fireEvent.click(within(dialog).getByRole('button', { name: /^Save/ }))
+      await waitFor(() => expect(body).not.toBeNull())
+      expect(body).toMatchObject({ counterpart_type: 'prospect', counterpart_id: 1, purpose: 'prospecting' })
+      expect(await screen.findByText('Call saved.')).toBeInTheDocument()
+    })
+
+    it('Call shows the server refusal in the sheet', async () => {
+      serveCall(() => HttpResponse.json({ counterpart_id: ["That prospect isn't on your list."] }, { status: 400 }))
+      const dialog = await openCall()
+      fireEvent.click(within(dialog).getByRole('button', { name: /^Save/ }))
+      expect(await within(dialog).findByRole('alert')).toBeInTheDocument()
+      expect(screen.queryByText('Call saved.')).toBeNull()
+    })
+
+    it('Register hands the scout\'s prospect to the wizard', async () => {
+      const onRegister = vi.fn()
+      asOps()
+      serve([THEIRS()])
+      renderPanel({ auth: OPS, onRegister })
+      fireEvent.click(await screen.findByRole('button', { name: 'Register' }))
+      expect(onRegister).toHaveBeenCalledWith(expect.objectContaining({ id: 1, scout_id: 7 }))
+    })
   })
 })

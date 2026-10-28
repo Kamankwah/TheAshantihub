@@ -14,8 +14,11 @@ from rest_framework.views import APIView
 
 from django.utils.dateparse import parse_date
 
-from accounts.models import BusinessOwner, ScoutAssignment, StaffUser
+from accounts.models import BusinessOwner, Role, ScoutAssignment, StaffUser
 from accounts.permissions import HasAnyRolePermission, HasRolePermission
+
+from targets import models as target_models
+from targets import services as target_services
 
 from . import prospects as prospects_module
 from . import services
@@ -374,6 +377,33 @@ def _prospect_order(prospect, now):
     return (closed, due is None, due or now, -prospect.pk)
 
 
+NAME_A_SCOUT = "Choose the scout this prospect is for. It must be an active scout."
+OWN_LIST_ONLY = "A scout adds prospects to their own list."
+
+
+def _named_scout_id(body):
+    raw = body.get("scout") if isinstance(body, dict) else None
+    if raw in (None, "") or isinstance(raw, bool):
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return -1
+
+
+def _named_scout(body):
+    """The active scout named by `scout` in the body, else None."""
+    pk = _named_scout_id(body)
+    if pk is None:
+        return None
+    return StaffUser.objects.filter(pk=pk, role__name=Role.SCOUT, is_active=True, is_suspended=False).first()
+
+
+def _manages_prospects(user):
+    """Operations and Super Admin (portfolio.manage) work every scout's prospects; a scout works only their own."""
+    return prospects_module.manages_prospects(user)
+
+
 class ProspectListCreateView(APIView):
     """GET prospects/ — the scout's own, not yet registered (?status= narrows;
     status=registered lists the signed-up ones), with counts per status and
@@ -384,30 +414,63 @@ class ProspectListCreateView(APIView):
 
     def get(self, request):
         now = timezone.now()
-        own = Prospect.objects.filter(scout=request.user)
+        manages = _manages_prospects(request.user)
+        scout_id = None  # the one scout this list is scoped to, or None while it spans several
+        if manages:
+            # Operations and Super Admin see every scout's prospects, narrowed with ?scout=<id>.
+            own = Prospect.objects.all()
+            raw = request.query_params.get("scout")
+            if raw not in (None, ""):
+                try:
+                    scout_id = int(raw)
+                except (TypeError, ValueError):
+                    return Response({"detail": NAME_A_SCOUT, "code": "scout_required"}, status=400)
+                own = own.filter(scout_id=scout_id)
+        else:
+            own = Prospect.objects.filter(scout=request.user)
+            scout_id = request.user.pk
         counts = {code: 0 for code, _ in Prospect.STATUS_CHOICES}
         for row in own.values("status").annotate(n=Count("pk")):
             counts[row["status"]] = row["n"]
         counts["all"] = sum(n for code, n in counts.items() if code != Prospect.REGISTERED)
         wanted = request.query_params.get("status", "all")
         listed = own.filter(status=wanted) if wanted in counts and wanted != "all" else own.exclude(status=Prospect.REGISTERED)
-        rows = sorted(prospects_module.with_last_visit(listed)[:500], key=lambda p: _prospect_order(p, now))
-        return Response({
+        rows = sorted(prospects_module.with_last_visit(listed.select_related("scout"))[:500], key=lambda p: _prospect_order(p, now))
+        prospects_module.attach_pipelines(rows)
+        today = timezone.localdate(now)
+        body = {
             "counts": counts,
             "signed_up_this_month": own.filter(registered_at__gte=_month_start_local(now)).count(),
             "results": [prospect_item(prospect) for prospect in rows],
-        })
+        }
+        if scout_id is not None:
+            # The same count the scout's Targets "listings" measure uses, so the two can never disagree. Sent only for
+            # one scout's list: a total over several scouts would be a figure nobody's target is measured against.
+            scout = request.user if scout_id == request.user.pk else StaffUser.objects.filter(pk=scout_id).first()
+            if scout is not None:
+                body["listings_live_this_month"] = target_services.actual(
+                    scout, target_models.LISTINGS, today.replace(day=1), today,
+                )
+        return Response(body)
 
     def post(self, request):
         serializer = ProspectSerializer(data=request.data if isinstance(request.data, dict) else {})
         if not serializer.is_valid():
             return _invalid(serializer)
         data = serializer.validated_data
+        scout, actor = request.user, None
+        if request.user.role.name != Role.SCOUT:  # Operations or Super Admin: on behalf of a named scout
+            scout, actor = _named_scout(request.data), request.user
+            if scout is None:
+                return Response({"detail": NAME_A_SCOUT, "code": "scout_required"}, status=400)
+        elif _named_scout_id(request.data) not in (None, request.user.pk):
+            return Response({"detail": OWN_LIST_ONLY, "code": "scout_not_allowed"}, status=400)
         try:
-            prospect = prospects_module.create_prospect(request.user, data, request=request)
+            prospect = prospects_module.create_prospect(scout, data, request=request, actor=actor)
         except VisitError as error:
             return _refused(error)
-        prospect = prospects_module.with_last_visit(Prospect.objects.filter(pk=prospect.pk)).get()
+        prospect = prospects_module.with_last_visit(Prospect.objects.filter(pk=prospect.pk).select_related("scout")).get()
+        prospects_module.attach_pipelines([prospect])
         return Response(prospect_item(prospect), status=201)
 
 
@@ -416,10 +479,18 @@ class ProspectDetailView(APIView):
         return [HasRolePermission("businesses.register")]
 
     def _own(self, request, pk):
-        return get_object_or_404(prospects_module.with_last_visit(Prospect.objects.filter(scout=request.user)), pk=pk)
+        rows = Prospect.objects.select_related("scout")
+        if not _manages_prospects(request.user):
+            rows = rows.filter(scout=request.user)
+        return get_object_or_404(prospects_module.with_last_visit(rows), pk=pk)
+
+    def _attached(self, request, pk):
+        prospect = self._own(request, pk)
+        prospects_module.attach_pipelines([prospect])
+        return prospect
 
     def get(self, request, pk):
-        return Response(prospect_item(self._own(request, pk)))
+        return Response(prospect_item(self._attached(request, pk)))
 
     def patch(self, request, pk):
         prospect = self._own(request, pk)
@@ -427,7 +498,7 @@ class ProspectDetailView(APIView):
         if not serializer.is_valid():
             return _invalid(serializer)
         try:
-            prospects_module.update_prospect(prospect, serializer.validated_data, request=request)
+            prospects_module.update_prospect(prospect, serializer.validated_data, request=request, actor=request.user)
         except VisitError as error:
             return _refused(error)
-        return Response(prospect_item(self._own(request, pk)))
+        return Response(prospect_item(self._attached(request, pk)))

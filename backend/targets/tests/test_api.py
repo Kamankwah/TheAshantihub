@@ -22,7 +22,7 @@ class MyTargetsApiTests(TargetsBase):
         response = self.client.get(ME, {"period": "week", "date": "2026-10-07"})
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.data["working_days"], 6)
-        self.assertEqual([m["metric"] for m in response.data["measures"]], ["registrations", "visits", "calls", "renewals"])
+        self.assertEqual([m["metric"] for m in response.data["measures"]], ["registrations", "visits", "calls", "listings"])
         self.assertEqual(response.data["daily"][2], {"metric": "calls", "label": "Calls", "value": 10})
 
     def test_without_targets_nothing_is_invented(self):
@@ -76,6 +76,17 @@ class SetPlansTests(TargetsBase):
         self.assertEqual(self.put(self.lead, staff=self.kwame.pk, values={"calls": 31}).status_code, 400)
         self.assertEqual(self.put(self.lead, staff=self.kwame.pk, values={"calls": 30}).status_code, 200)
         self.assertEqual(TargetPlan.objects.filter(staff=self.kwame).count(), 1)
+
+    def test_limits_accept_listings_and_refuse_renewals(self):
+        self.assertEqual(self.put(self.lead, staff=self.kwame.pk, values={"listings": 2}).status_code, 200)
+        response = self.put(self.lead, staff=self.kwame.pk, values={"renewals": 1})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("renewals is not a measure.", str(response.content))
+        self.as_staff(self.admin)
+        body = {"limits": [{"metric": "listings", "min_daily": 0, "max_daily": 5}]}
+        self.assertEqual(self.client.put("/api/targets/limits/", body, format="json").status_code, 200)
+        body = {"limits": [{"metric": "renewals", "min_daily": 0, "max_daily": 5}]}
+        self.assertEqual(self.client.put("/api/targets/limits/", body, format="json").status_code, 400)
 
     def test_bad_values_are_refused(self):
         for values in ({}, {"calls": -1}, {"calls": "ten"}, {"calls": 2.5}, {"mood": 3}, {"calls": True}):

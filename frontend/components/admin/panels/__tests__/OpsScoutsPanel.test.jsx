@@ -7,7 +7,7 @@ import OpsScoutsPanel from '../OpsScoutsPanel.jsx'
 
 const API = 'http://localhost:8000'
 const measures = (over = {}) => ({
-  registrations: { done: 2, target: 3 }, visits: { done: 6, target: 8 }, calls: { done: 9, target: 10 }, renewals: { done: 1, target: 1 }, ...over,
+  registrations: { done: 2, target: 3 }, visits: { done: 6, target: 8 }, calls: { done: 9, target: 10 }, listings: { done: 1, target: 1 }, ...over,
 })
 const scout = (over = {}) => ({
   id: 1, name: 'Kwame Asante', areas: ['Asafo', 'Bantama'], manager: { id: 9, name: 'Ama Boateng' }, mine: true, state: 'working', back_on: null,
@@ -21,7 +21,7 @@ const scout = (over = {}) => ({
 const board = (scouts, over = {}) => ({
   scope: 'team', today: '2026-10-07', month_label: 'October', now: '2026-10-07T11:46:00',
   counts: { team: scouts.filter((s) => s.mine).length, all: scouts.length },
-  totals: { registrations: { done: 10, target: 13 }, visits: { done: 27, target: 32 }, calls: { done: 38, target: 40 }, renewals: { done: 3, target: 4 }, visits_flagged: 1 },
+  totals: { registrations: { done: 10, target: 13 }, visits: { done: 27, target: 32 }, calls: { done: 38, target: 40 }, listings: { done: 3, target: 4 }, visits_flagged: 1 },
   scouts, ...over,
 })
 
@@ -46,7 +46,7 @@ describe('OpsScoutsPanel', () => {
     expect(regs).toHaveTextContent('Counted when KYC is approved')
     expect(screen.getByRole('group', { name: 'Your team · visits' })).toHaveTextContent('Check-ins with a check-out · 1 flagged')
     expect(screen.getByRole('group', { name: 'Your team · calls' })).toHaveTextContent('From the call log')
-    expect(screen.getByRole('group', { name: 'Your team · renewals' })).toHaveTextContent('Subscription payments in the app')
+    expect(screen.getByRole('group', { name: 'Your team · listings' })).toHaveTextContent('Counted when Operations approves a listing')
     const row = screen.getByText('Kwame Asante').closest('tr')
     expect(row).toHaveTextContent('Asafo · Bantama')
     expect(row).toHaveTextContent('2 / 3')

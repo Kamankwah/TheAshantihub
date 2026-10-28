@@ -41,7 +41,7 @@ class ScoreboardTests(TestCase):
         now.start()
         self.addCleanup(now.stop)
         for scout in (self.kwame, self.efua, self.kwaku):
-            for metric, value in (("registrations", 3), ("visits", 8), ("calls", 10), ("renewals", 1)):
+            for metric, value in (("registrations", 3), ("visits", 8), ("calls", 10), ("listings", 1)):
                 TargetPlan.objects.create(staff=scout, metric=metric, daily_value=value, effective_from=date(2026, 10, 1), set_by=self.lead)
 
     def get(self, who, **params):

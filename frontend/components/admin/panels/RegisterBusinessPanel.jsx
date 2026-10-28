@@ -14,6 +14,7 @@ import OwnerHandover, { SendClaimLinkCard } from "./OwnerHandover.jsx";
 import PhotoSlot, { hhmm, revokePreview } from "./PhotoSlot.jsx";
 import { hoursSummary } from "./hoursSummary.js";
 import { MATCH_LABELS, alreadyBelongsText } from "./registrationCheckCopy.js";
+import { confirmationLine } from "./confirmationLine.js";
 import { button, callout, chip, dim, field, linkButton } from "./panelStyles.js";
 
 // ─── Register a business (staff phase 2A, S1) ────────────────────────────────
@@ -434,6 +435,9 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
           <div style={dim}>
             {hhmm(submitted.at)} · {submitted.approver_name ? `${submitted.approver_name} has 24 hours, then any Operations lead.` : "Operations will check it in the KYC queue."} The draft has been cleared from this phone.
           </div>
+          {submitted.confirmation && (
+            <div style={dim}>{`Owner confirmation: ${confirmationLine(submitted.confirmation)}`}</div>
+          )}
           {(submitted.flags || []).map((flag) => (
             <div key={flag.id} style={callout(D.amber)}>Flagged for Operations: {flag.kind_label}</div>
           ))}

@@ -780,12 +780,17 @@ class ModerationListingDetailView(generics.RetrieveAPIView):
         return [HasRolePermission("listings.moderate")]
 
 
+OWN_LISTING = "You made this listing for the client, so someone else has to decide it."
+
+
 class ModerationApproveView(APIView):
     def get_permissions(self):
         return [HasRolePermission("listings.moderate")]
 
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
+        if listing.created_by_staff_id == request.user.id:
+            return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
         if listing.business_owner.kyc_status != BusinessOwner.VERIFIED:
             return Response(
                 {"detail": "Cannot publish a listing whose owner is not KYC-verified."}, status=400
@@ -812,6 +817,8 @@ class ModerationRejectView(APIView):
         if not reason:
             return Response({"reason": "A rejection reason is required."}, status=400)
         listing = generics.get_object_or_404(Listing, pk=pk)
+        if listing.created_by_staff_id == request.user.id:
+            return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
         listing.status = Listing.REJECTED
         listing.rejection_reason = reason
         listing.reviewed_by = request.user

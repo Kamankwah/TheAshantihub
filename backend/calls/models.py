@@ -16,6 +16,7 @@ PURPOSES_BY_ROLE = {
     "operations": [
         ("escalation", "Escalation"), ("fraud_check", "Fraud check"), ("kyc_follow_up", "KYC follow-up"),
         ("business_issue", "Business issue"), ("staff_follow_up", "Staff follow-up"),
+        ("prospecting", "Prospecting"),  # Operations may call a scout's prospect
     ],
 }
 

@@ -10,12 +10,12 @@ import { errorStyle, eyebrow, h2 } from "./portfolioParts.jsx";
 // every other team's scouts read-only. All numbers come from
 // GET /api/operations/scouts/ (check-ins, the call log, KYC approvals,
 // payments); nothing here is typed in.
-const MEASURES = [["registrations", "Registrations"], ["visits", "Visits"], ["calls", "Calls"], ["renewals", "Renewals"]];
+const MEASURES = [["registrations", "Registrations"], ["visits", "Visits"], ["calls", "Calls"], ["listings", "Listings"]];
 const TOTAL_SUB = {
   registrations: () => "Counted when KYC is approved",
   visits: (totals) => `Check-ins with a check-out${totals.visits_flagged ? ` · ${totals.visits_flagged} flagged` : ""}`,
   calls: () => "From the call log",
-  renewals: () => "Subscription payments in the app",
+  listings: () => "Counted when Operations approves a listing",
 };
 const REPORT_LABEL = { not_yet: "Not yet", draft: "Draft saved", submitted: "Submitted", acknowledged: "Acknowledged", returned: "Returned" };
 const REPORT_COLOR = { draft: D.amber, submitted: D.blue, acknowledged: D.green, returned: D.red };

@@ -31,12 +31,12 @@ class ScoutReportProviderTests(TargetsBase):
         )
 
     def test_the_four_measures_equal_the_targets_service_for_the_same_days(self):
-        self.plan_all(self.kwame, registrations=1, visits=6, calls=10, renewals=1)
+        self.plan_all(self.kwame, registrations=1, visits=6, calls=10, listings=1)
         self.visit(WED)
         self.visit(WED, outside=True)
         self.call(WED)
         rows = {r["label"]: r for r in self.sections()["targets"]["rows"]}
-        for metric in ("registrations", "visits", "calls", "renewals"):
+        for metric in ("registrations", "visits", "calls", "listings"):
             row = rows[services.LABELS[metric]]
             self.assertEqual(row["value"], services.actual(self.kwame, metric, WED, WED))
             self.assertEqual(row["target"], services.target(self.kwame, metric, WED, WED))

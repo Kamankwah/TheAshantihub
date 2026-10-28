@@ -265,6 +265,20 @@ describe('ApprovalsPanel — scout requests (staff phase 2A)', () => {
     expect(screen.getByRole('button', { name: 'Approve KYC' })).toBeInTheDocument()
   })
 
+  it('shows the owner-confirmation line on the KYC sheet, and the server reason when Approve KYC is refused until the owner confirms', async () => {
+    const line = 'Waiting — text sent to 024 *** 1234 on 5 Oct, expires 12 Oct'
+    const message = 'The owner has not confirmed this registration yet.'
+    server.use(
+      http.get(`${API}/api/approvals/9/`, () => HttpResponse.json(kycRequest())),
+      http.get(`${API}/api/portfolio/businesses/41/review/`, () => HttpResponse.json({ ...REVIEW, owner_confirmation: { confirmed: false, line } })),
+      http.post(`${API}/api/approvals/9/approve/`, () => HttpResponse.json({ detail: message, code: 'confirmation_missing' }, { status: 409 })),
+    )
+    renderPanel({ detailId: '9' })
+    expect(await screen.findByText(line)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve KYC' }))
+    expect(await screen.findByText(message)).toBeInTheDocument()
+  })
+
   it('refreshes the request table when the address decision is recorded', async () => {
     let approvalGets = 0
     server.use(
@@ -307,5 +321,69 @@ describe('ApprovalsPanel — scout requests (staff phase 2A)', () => {
     expect(await screen.findByRole('table', { name: 'What would change' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Duplicate and self-dealing checks' })).not.toBeInTheDocument()
     expect(reviews).toBe(0)
+  })
+})
+
+describe('ApprovalsPanel staff-made listing', () => {
+  const listingDetail = (payloadOver = {}) => detail({
+    id: 9, kind: 'listing.staff_create', kind_label: 'Listing made by staff', title: 'Banku and tilapia', can_decide: true,
+    target: { type: 'portfolio.listingdraft', id: '31', label: 'Banku and tilapia' }, payload: { draft_id: 31, business_owner_id: 52, ...payloadOver },
+    before: {}, diff: [
+      { field: 'Business', before: null, after: "Akosua's Kitchen" },
+      { field: 'Text sent to', before: null, after: '024 *** 1234 (texts are simulated)' },
+    ],
+  })
+
+  it('shows the number the owner text went to masked, and reveals it through the recorded endpoint only on click', async () => {
+    let revealed = 0
+    server.use(
+      http.get('http://localhost:8000/api/approvals/9/', () => HttpResponse.json(listingDetail())),
+      http.post('http://localhost:8000/api/portfolio/businesses/52/reveal-phone/', () => { revealed += 1; return HttpResponse.json({ login_phone: '+233241231234' }) }),
+    )
+    renderPanel({ detailId: 9 })
+    const row = (await screen.findByText('Text sent to')).closest('tr')
+    expect(within(row).getByText(/024 \*\*\* 1234/)).toBeInTheDocument()
+    expect(screen.queryByText(/233241231234/)).not.toBeInTheDocument()
+    expect(revealed).toBe(0)
+    fireEvent.click(within(row).getByRole('button', { name: /Show full phone number/ }))
+    expect(await within(row).findByText(/\+233241231234/)).toBeInTheDocument()
+    expect(revealed).toBe(1)
+  })
+
+  it('drops a revealed number when another approval is opened', async () => {
+    const other = { ...listingDetail({ business_owner_id: 77 }), id: 10, title: 'Fufu' }
+    server.use(
+      http.get('http://localhost:8000/api/approvals/9/', () => HttpResponse.json(listingDetail())),
+      http.get('http://localhost:8000/api/approvals/10/', () => HttpResponse.json(other)),
+      http.post('http://localhost:8000/api/portfolio/businesses/52/reveal-phone/', () => HttpResponse.json({ login_phone: '+233241231234' })),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const ui = (detailId) => <QueryClientProvider client={queryClient}><ApprovalsPanel detailId={detailId} onOpenDetail={() => {}} /></QueryClientProvider>
+    const { rerender } = render(ui(9))
+    const row = (await screen.findByText('Text sent to')).closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Show full phone number/ }))
+    expect(await within(row).findByText(/233241231234/)).toHaveTextContent(/Owner's sign-in number/)
+    rerender(ui(10))
+    await screen.findByRole('heading', { name: 'Fufu' })
+    expect(screen.queryByText(/233241231234/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Show full phone number/ })).toBeInTheDocument()
+  })
+
+  it('shows the reveal error rather than a number when the reveal is refused', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/approvals/9/', () => HttpResponse.json(listingDetail())),
+      http.post('http://localhost:8000/api/portfolio/businesses/52/reveal-phone/', () => HttpResponse.json({ detail: 'You cannot see this number.' }, { status: 403 })),
+    )
+    renderPanel({ detailId: 9 })
+    const row = (await screen.findByText('Text sent to')).closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Show full phone number/ }))
+    expect(await within(row).findByRole('alert')).toHaveTextContent('You cannot see this number.')
+  })
+
+  it('offers no reveal when the approval carries no owner id (made before the id was kept)', async () => {
+    server.use(http.get('http://localhost:8000/api/approvals/9/', () => HttpResponse.json(listingDetail({ business_owner_id: undefined }))))
+    renderPanel({ detailId: 9 })
+    const row = (await screen.findByText('Text sent to')).closest('tr')
+    expect(within(row).queryByRole('button', { name: /Show full phone number/ })).not.toBeInTheDocument()
   })
 })

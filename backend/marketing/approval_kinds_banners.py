@@ -64,6 +64,6 @@ def _consequences(request):
 
 BANNER_KIND = ApprovalKind(
     key=KIND_KEY, label="Show a banner on the site", pool_permission="", current_state=_current_state, apply=_apply,
-    response_hours=48, chain_note="Super Admin only", resolve_approver=_super_admin_only, render_diff=_diff,
+    response_hours=48, chain_note="Super Admin or General Manager", resolve_approver=_super_admin_only, render_diff=_diff,
     validate=_validate, on_rejected=_on_rejected, consequences=_consequences,
 )
