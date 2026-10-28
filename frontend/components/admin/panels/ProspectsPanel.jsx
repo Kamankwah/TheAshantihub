@@ -172,7 +172,7 @@ export default function ProspectsPanel({ onRegister, auth }) {
 
       {sheet?.type === "add" && <ProspectSheet auth={auth} defaultScout={scoutFilter} onClose={close} onSaved={() => { close(); setNotice("Prospect added."); }} />}
       {sheet?.type === "edit" && <ProspectSheet prospect={sheet.prospect} onClose={close} onSaved={() => { close(); setNotice("Prospect saved."); }} />}
-      {sheet?.type === "call" && <LogCallSheet preset={{ type: "prospect", id: sheet.prospect.id }} onClose={close} onSaved={() => { close(); setNotice("Call saved."); }} />}
+      {sheet?.type === "call" && <LogCallSheet preset={{ type: "prospect", id: sheet.prospect.id, label: sheet.prospect.name }} onClose={close} onSaved={() => { close(); setNotice("Call saved."); }} />}
     </div>
   );
 }

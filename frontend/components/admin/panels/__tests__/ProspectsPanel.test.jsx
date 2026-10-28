@@ -398,4 +398,55 @@ describe('ProspectsPanel for Operations and Super Admin', () => {
     await waitFor(() => expect(body).not.toBeNull())
     expect(body).not.toHaveProperty('scout')
   })
+
+  // Post-review fix A2: Call and Register work on another scout's card.
+  describe("on another scout's card", () => {
+    const THEIRS = () => prospect({ scout_id: 7, scout_name: 'Kwame Asante' })
+    const serveCall = (post) => {
+      asOps()
+      server.use(
+        // Operations' own call list does not hold the scout's prospect.
+        http.get(`${API}/api/calls/counterparts/`, () => HttpResponse.json({ businesses: [], prospects: [] })),
+        http.get(`${API}/api/calls/purposes/`, () => HttpResponse.json([{ value: 'escalation', label: 'Escalation' }, { value: 'prospecting', label: 'Prospecting' }])),
+        http.post(`${API}/api/calls/`, post),
+      )
+      serve([THEIRS()])
+    }
+    const openCall = async () => {
+      renderPanel({ auth: OPS })
+      const call = await screen.findByRole('link', { name: 'Call Ohemaa Waakye Joint' })
+      call.addEventListener('click', (e) => e.preventDefault())
+      fireEvent.click(call)
+      return screen.findByRole('dialog', { name: 'Log a call' })
+    }
+
+    it('Call posts the prospect and shows the saved notice', async () => {
+      let body = null
+      serveCall(async ({ request }) => { body = await request.json(); return HttpResponse.json({ id: 9 }, { status: 201 }) })
+      const dialog = await openCall()
+      expect(within(dialog).getByLabelText('Who')).toHaveValue('prospect:1')
+      await waitFor(() => expect(within(dialog).getByLabelText('Purpose')).toHaveValue('prospecting'))
+      fireEvent.click(within(dialog).getByRole('button', { name: /^Save/ }))
+      await waitFor(() => expect(body).not.toBeNull())
+      expect(body).toMatchObject({ counterpart_type: 'prospect', counterpart_id: 1, purpose: 'prospecting' })
+      expect(await screen.findByText('Call saved.')).toBeInTheDocument()
+    })
+
+    it('Call shows the server refusal in the sheet', async () => {
+      serveCall(() => HttpResponse.json({ counterpart_id: ["That prospect isn't on your list."] }, { status: 400 }))
+      const dialog = await openCall()
+      fireEvent.click(within(dialog).getByRole('button', { name: /^Save/ }))
+      expect(await within(dialog).findByRole('alert')).toBeInTheDocument()
+      expect(screen.queryByText('Call saved.')).toBeNull()
+    })
+
+    it('Register hands the scout\'s prospect to the wizard', async () => {
+      const onRegister = vi.fn()
+      asOps()
+      serve([THEIRS()])
+      renderPanel({ auth: OPS, onRegister })
+      fireEvent.click(await screen.findByRole('button', { name: 'Register' }))
+      expect(onRegister).toHaveBeenCalledWith(expect.objectContaining({ id: 1, scout_id: 7 }))
+    })
+  })
 })
