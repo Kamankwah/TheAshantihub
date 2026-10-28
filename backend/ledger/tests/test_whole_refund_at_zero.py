@@ -40,6 +40,12 @@ class WholeRefundAtZeroBase(WiringBase):
         )
         return order
 
+    def case(self, order):
+        return Dispute.objects.create(
+            order=order, reason=Dispute.DELIVERY_ISSUE, case_type=Dispute.NOT_RECEIVED, description="Never arrived",
+            status=Dispute.INVESTIGATING,
+        )
+
     def rider_balances(self):
         return posting.balance_of(Account.RIDER_BALANCE, self.swift.staff), posting.balance_of(Account.RIDER_RESERVE, self.swift.staff)
 
@@ -179,12 +185,6 @@ class DisputeWholeRefundTests(WholeRefundAtZeroBase):
 
 
 class DeliveryCaseWholeRefundTests(WholeRefundAtZeroBase):
-    def case(self, order):
-        return Dispute.objects.create(
-            order=order, reason=Dispute.DELIVERY_ISSUE, case_type=Dispute.NOT_RECEIVED, description="Never arrived",
-            status=Dispute.INVESTIGATING,
-        )
-
     def decide(self, case, **body):
         self.as_staff(self.manager, sudo=True)
         return self.client.post(
@@ -230,3 +230,68 @@ class DeliveryCaseWholeRefundTests(WholeRefundAtZeroBase):
         approval.refresh_from_db()
         self.assertEqual(approval.status, ApprovalRequest.PENDING)
         self.assertEqual(self.rider_balances(), (1350, 150))
+
+
+class DeliveryCaseMoneyFieldsTests(WholeRefundAtZeroBase):
+    def detail(self, case):
+        self.as_staff(self.manager)
+        response = self.client.get(f"/api/delivery/cases/{case.pk}/")
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
+    def test_case_detail_carries_refundable_and_the_kept_fee(self):
+        case = self.case(self.shortfall_order())
+        order = self.detail(case)["order"]
+        self.assertEqual((order["refundable"], order["delivery_fee_kept"], order["whole_refund_at_zero"]), ("0.00", "15.00", True))
+        self.assertIsNone(order["free_delivery"])
+
+    def test_refundable_money_leaves_the_whole_refund_flag_off(self):
+        order = self.detail(self.case(self.shortfall_order(price="100.00", discount="10.00")))["order"]
+        self.assertEqual(order["refundable"], "90.00")
+        self.assertFalse(order["whole_refund_at_zero"])
+
+    @override_settings(LEDGER_ENABLED=False)
+    def test_money_fields_are_empty_while_the_ledger_is_off(self):
+        data = self.detail(self.case(self.shortfall_order()))
+        order = data["order"]
+        self.assertEqual((order["refundable"], order["delivery_fee_kept"], order["whole_refund_at_zero"]), (None, None, False))
+        self.assertIn("simulated", data["payments"])
+
+    def test_whole_refund_flag_is_false_once_decided(self):
+        case = self.case(self.shortfall_order())
+        case.status = Dispute.RESOLVED
+        case.save(update_fields=["status"])
+        order = self.detail(case)["order"]
+        self.assertEqual(order["refundable"], "0.00")
+        self.assertFalse(order["whole_refund_at_zero"])
+
+    def test_shop_scoped_case_never_offers_whole_refund(self):
+        order = self.shortfall_order()
+        case = self.case(order)
+        assignment = DeliveryAssignment.objects.get(order=order)
+        stop = PickupStop.objects.create(assignment=assignment, sequence=1, business_owner=self.kofi, status=PickupStop.SKIPPED)
+        DeliveryEvent.objects.create(assignment=assignment, stop=stop, step=DeliveryEvent.SKIPPED_STOP, at=timezone.now(), dispute=case)
+        self.assertFalse(self.detail(case)["order"]["whole_refund_at_zero"])
+
+    def test_free_delivery_names_the_funder(self):
+        order = self.shortfall_order()
+        rider_helpers.waived(order, self.kofi, amount="15.00", funded_by="platform")
+        self.assertEqual(self.detail(self.case(order))["order"]["free_delivery"], {"amount": "15.00", "funded_by": "platform"})
+
+    @override_settings(LEDGER_ENABLED=False)
+    def test_free_delivery_does_not_depend_on_the_ledger(self):
+        order = self.shortfall_order()
+        rider_helpers.waived(order, self.kofi, amount="15.00", funded_by="business")
+        self.assertEqual(self.detail(self.case(order))["order"]["free_delivery"], {"amount": "15.00", "funded_by": "business"})
+
+    def test_refund_block_says_whole(self):
+        case = self.case(self.shortfall_order())
+        self.as_staff(self.manager, sudo=True)
+        self.client.post(f"/api/delivery/cases/{case.pk}/decide/", {"outcome": "refund", "fault": "rider", "note": "Lost", "whole_refund": True}, format="json")
+        refund = self.detail(case)["refund"]
+        self.assertTrue(refund["whole"])
+        self.assertEqual(refund["amount"], "0.00")
+
+    def test_payments_copy_follows_the_ledger(self):
+        data = self.detail(self.case(self.shortfall_order()))
+        self.assertEqual(data["payments"], "A refund is paid into the customer's AshantiHub wallet once a Super Admin approves it.")

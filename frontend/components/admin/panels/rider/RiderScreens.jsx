@@ -3,10 +3,11 @@ import { apiPost, apiPostForm } from "../../../../apiClient.js";
 import { apiErrorMessage } from "../../../../lib/apiErrorMessage.js";
 import { currentFix } from "../../../../lib/riderTracking.js";
 import { useRiderCash, useRiderDocuments, useRiderEarnings, useRiderJobs, useRiderMe } from "../../../../hooks/useDelivery.js";
+import { formatGhs } from "../../../wallet/walletMoney.js";
 import { D } from "../../theme.js";
 import { chip, dim, field } from "../panelStyles.js";
 import { ScoutDevices } from "../../shell/ScoutProfile.jsx";
-import { Err, Info, Warn, bigButton, card, h2, hhmm, mono, money, quietButton, screen } from "./riderParts.jsx";
+import { Err, Info, Tabs, Warn, bigButton, card, h2, hhmm, mono, money, quietButton, screen } from "./riderParts.jsx";
 
 // ─── Dispatch 10 Jobs, 11 Earnings, 12 Cash, 13 Report an issue, 14 Documents, 16 Menu ───
 // Everything is the rider's own data. Pay is a record of what each job earned under the rate card
@@ -15,14 +16,6 @@ import { Err, Info, Warn, bigButton, card, h2, hhmm, mono, money, quietButton, s
 const day = (iso) => new Date(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 const PERIODS = [["today", "Today"], ["week", "This week"], ["all", "Earlier"]];
 const STATUS = { delivered: ["Delivered", D.green], confirmed: ["Delivered", D.green], failed: ["Could not deliver", D.red], assigned: ["Assigned", D.amber], accepted: ["Accepted", D.gold], at_pickup: ["At pickup", D.gold], picked_up: ["On the way", D.blue], at_customer: ["At the customer", D.amber] };
-
-function Tabs({ value, onChange, options, label }) {
-  return (
-    <div role="tablist" aria-label={label} style={{ display: "flex", gap: 4, borderBottom: `1px solid ${D.cardBorder}` }}>
-      {options.map(([id, text]) => <button key={id} type="button" role="tab" aria-selected={value === id} onClick={() => onChange(id)} style={{ flex: 1, minHeight: 44, border: 0, borderBottom: `3px solid ${value === id ? D.text : "transparent"}`, background: "transparent", color: D.text, fontWeight: value === id ? 800 : 600, fontFamily: "inherit", cursor: "pointer" }}>{text}</button>)}
-    </div>
-  );
-}
 
 export function JobsScreen() {
   const [scope, setScope] = useState("today");
@@ -85,6 +78,17 @@ export function EarningsScreen() {
               </div>
             ))}
           </section>
+          {data.redeliveries?.length > 0 && (
+            <section aria-label="Re-delivery trips" style={card}>
+              <h2 style={h2}>Re-delivery trips</h2>
+              <span style={dim}>Each re-delivery fee is owed to you and paid through payroll.</span>
+              {data.redeliveries.map((r) => (
+                <div key={r.id} style={{ borderTop: `1px solid ${D.divider}`, paddingTop: 8, display: "flex", justifyContent: "space-between", color: D.text }}>
+                  <span>Order #{r.order} · re-delivery {r.attempt} · {day(r.completed_at)}</span><b style={{ fontVariantNumeric: "tabular-nums" }}>{formatGhs(r.fee)}</b>
+                </div>
+              ))}
+            </section>
+          )}
           <section aria-label="Rates" style={card}>
             <h2 style={h2}>How your pay is worked out</h2>
             {data.rates ? <span style={{ fontSize: "0.86rem", color: D.text, lineHeight: 1.5 }}>{money(data.rates.per_job)} a job + {money(data.rates.per_km)} a km + {money(data.rates.wait_per_min)} a minute after {data.rates.wait_after_min} minutes waiting (rate card version {data.rates.version}).{data.rate_change_pending ? " A change to the rates is waiting for approval; you will be told before it applies." : ""}</span> : <span style={{ fontSize: "0.86rem", color: D.text }}>No rate card has been approved yet, so no job records any pay.</span>}

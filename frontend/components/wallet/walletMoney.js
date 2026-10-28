@@ -21,6 +21,13 @@ export function formatGhs(value) {
   return `${sign}GH₵ ${group(whole.replace(/^0+(?=\d)/, ''))}.${(frac + '00').slice(0, 2)}`
 }
 
+// A value that can be below zero: the leading "-" becomes the real minus sign
+// (U+2212) before the currency, "-13.50" -> "−GH₵ 13.50". Anything else is formatGhs.
+export function signedGhs(value) {
+  const text = value === null || value === undefined ? '' : String(value).trim()
+  return text.startsWith('-') ? `−${formatGhs(text.slice(1))}` : formatGhs(value)
+}
+
 // "12.5" -> 1250 (whole pesewas), or null when the text is not a plain GHS
 // amount. Integer parsing only, for display comparisons and sums.
 export function ghsToPesewas(text) {

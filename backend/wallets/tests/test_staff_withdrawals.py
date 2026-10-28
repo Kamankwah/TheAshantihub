@@ -383,6 +383,40 @@ class StaffWithdrawalTests(TestCase):
         self.assertNotIn("secret", withdrawal.failure_reason)
         self.assertFalse(ActivityEvent.objects.filter(verb="wallets.withdrawal_failed").exists())
 
+    def rider_withdrawal(self):
+        """A withdrawal held by a staff account (a third-party rider), made directly: the rider path is tested in delivery."""
+        rider = make_staff("support", "rider@example.com")
+        rider_dest = destination(rider, number="+233201112222", name="Kwesi Rider")
+        return Withdrawal.objects.create(
+            holder_type="staff", holder_id=rider.pk, source_kind=Account.RIDER_BALANCE, destination=rider_dest,
+            request_id="req-rider-0001", amount_pesewas=3000, charge_pesewas=100, net_pesewas=2900,
+            status=Withdrawal.PENDING, provider="simulated",
+        )
+
+    def test_holder_type_filter_lists_riders_only(self):
+        self.sent()
+        rider = self.rider_withdrawal()
+        self.as_staff(self.accountant)
+        response = self.client.get(URL, {"holder_type": "staff"})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual([row["reference"] for row in response.json()["results"]], [rider.reference])
+        self.assertEqual(response.json()["results"][0]["holder_type"], "staff")
+        self.assertEqual(self.client.get(URL, {"holder_type": "customer"}).json()["count"], 1)
+        self.assertEqual(self.client.get(URL, {"holder_type": "business_owner"}).json()["count"], 0)
+
+    def test_unknown_holder_type_is_refused(self):
+        self.as_staff(self.accountant)
+        response = self.client.get(URL, {"holder_type": "rider"})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"holder_type": "Choose customer, business_owner or staff."})
+
+    def test_no_holder_type_lists_everyone(self):
+        self.sent()
+        self.rider_withdrawal()
+        self.as_staff(self.accountant)
+        self.assertEqual(self.client.get(URL).json()["count"], 2)
+        self.assertEqual(self.client.get(URL, {"holder_type": ""}).json()["count"], 2)
+
     def test_the_list_does_not_query_per_row(self):
         self.sent(amount=1000, request_id="req-list-0000")
         self.as_staff(self.accountant)
