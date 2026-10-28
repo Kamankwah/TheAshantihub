@@ -235,7 +235,7 @@ const ROLE_MENUS = {
     ["teams", "Teams (step in)", ["step-in-operations", "step-in-support", "step-in-delivery", "step-in-marketing", "step-in-accounting"]],
     // Scheduled orders (paid orders held until their shops open, with Send now) sits beside Orders & deliveries:
     // Director ruling 7 (2026-10-20) added it to the canvas menu. Re-deliveries and Free delivery follow it (wallet 5F,
-    // Director ruling 8). Plan 1F's Pickup Desk menu is not on this base, so the Pickup Desk finds Re-deliveries under More tools.
+    // Director ruling 8). Plan 1F's Pickup Desk menu is not on this base, so the Pickup Desk finds Re-deliveries in its default "System" group until Plan 1F gives the role a Desk menu.
     ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "redeliveries", "mk-delivery-promos", "events-moderation", "hero", "disputes"]],
     ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation", "wallets", "withdrawals"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],

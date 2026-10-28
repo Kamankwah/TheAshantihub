@@ -6,12 +6,12 @@ import { apiFetch } from '../apiClient.js'
 // (Support, the Pickup Desk, a Super Admin). Pass enabled=false for staff without it.
 // The body also says whether the order can be re-delivered now: { results, redeliverable, redelivery_fee (only when it
 // can), not_redeliverable_reason (the server's words when it cannot, including "already open") }. An order number that
-// does not exist answers 404 { detail } (the query errors; apiFetch's error carries the body). It is never retried.
+// does not exist answers 404 { detail } (the query errors; apiFetch's error carries the body). A 404 is never retried; other errors (network) retry up to three times.
 export function useOrderRedeliveries(orderId, { enabled = true } = {}) {
   return useQuery({
     queryKey: ['redeliveries', String(orderId)],
     queryFn: () => apiFetch(`/api/delivery/redeliveries/?order=${encodeURIComponent(orderId)}`),
     enabled: Boolean(orderId) && enabled,
-    retry: false,
+    retry: (count, error) => error?.status !== 404 && count < 3,
   })
 }

@@ -60,6 +60,22 @@ describe('RiderEarningsTab', () => {
     expect(screen.queryByRole('tab', { name: 'Wallet' })).toBeNull()
   })
 
+  it('keeps the loaded wallet when a refresh fails, with a Try again note', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } })
+    let calls = 0
+    walletOn()
+    server.use(http.get(`${B}/`, () => { calls += 1; return calls === 1 ? HttpResponse.json(summary) : HttpResponse.json({ detail: 'boom' }, { status: 500 }) }))
+    render(<QueryClientProvider client={qc}><RiderEarningsTab /></QueryClientProvider>)
+    await screen.findByText('Your balance')
+    await qc.invalidateQueries({ queryKey: ['rider-wallet'] })
+    expect(await screen.findByText(/Could not refresh your wallet/)).toBeInTheDocument()
+    expect(screen.getByText('Your balance')).toBeInTheDocument()
+    expect(screen.queryByText('Could not load your wallet.')).toBeNull()
+    const before = calls
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(calls).toBeGreaterThan(before))
+  })
+
   it('the payroll record opens from the wallet', async () => {
     walletOn()
     mount(<RiderEarningsTab />)

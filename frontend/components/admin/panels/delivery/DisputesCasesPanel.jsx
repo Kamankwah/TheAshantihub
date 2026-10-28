@@ -120,7 +120,7 @@ function DecisionForm({ detail, onDone }) {
             <Note><span style={NUM}>{`Delivery was free for the customer: a promo paid by ${order.free_delivery.funded_by === "platform" ? "AshantiHub" : "the business"} covers the ${formatGhs(order.free_delivery.amount)} fee.`}</span></Note>
           )}
           <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700, color: D.text, maxWidth: 220, ...NUM }}>
-            Refund amount (GH₵, at most {formatGhs(order.refundable ?? order.total)})
+            Refund amount (GH₵{formatGhs(order.refundable ?? order.total) ? `, at most ${formatGhs(order.refundable ?? order.total)}` : ""})
             <input inputMode="decimal" value={wholeRefund ? "" : amount} onChange={(e) => setAmount(e.target.value)} disabled={wholeRefund} style={{ ...field, opacity: wholeRefund ? 0.5 : 1 }} />
           </label>
           {order.whole_refund_at_zero && (
@@ -138,7 +138,7 @@ function DecisionForm({ detail, onDone }) {
         Note (required, kept with the case)
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={2000} style={field} />
       </label>
-      <Note><span style={NUM}>{detail.payments} A refund goes to Accounting as a request and Super Admin approves it. You will be asked for your password.</span></Note>
+      <Note><span style={NUM}>{detail.payments}{order.refundable == null ? " A refund goes to Accounting as a request and Super Admin approves it." : ""} You will be asked for your password.</span></Note>
       <div><button type="button" disabled={!ready || busy} onClick={submit} style={button(D.gold, D.text, !ready || busy)}>Record decision</button></div>
     </section>
   );

@@ -37,9 +37,15 @@ function WalletEarnings({ onNavigate }) {
     );
   }
   if (code === "wallet_disabled") return <EarningsScreen />;
-  if (wallet.isError || !wallet.data) return <div style={screen}><div role="alert" style={dim}>Could not load your wallet.</div></div>;
+  if (!wallet.data) return <div style={screen}><div role="alert" style={dim}>Could not load your wallet.</div></div>;
   return (
     <div style={screen}>
+      {wallet.isError && (
+        <div role="alert" style={dim}>
+          Could not refresh your wallet, so this may be out of date.{" "}
+          <button type="button" style={quietButton(false)} onClick={() => wallet.refetch()}>Try again</button>
+        </div>
+      )}
       <h1 style={{ ...h2, fontSize: "1.3rem" }}>Earnings</h1>
       <Tabs label="Earnings" value={tab} onChange={setTab} options={TABS} />
       {tab === "wallet" && (

@@ -46,7 +46,7 @@ function WalletsTab({ onOpen }) {
                   {isBelowZero(r.balance) && <div style={chip(D.red)}>Below zero</div>}
                 </td>
                 <td style={{ ...td, ...amount }}>{formatGhs(r.reserve)}</td>
-                <td style={td}><button type="button" aria-label={`Open ${r.name || `rider ${r.rider_id}`}`} onClick={() => onOpen(r.rider_id)} style={button(D.panelBg, D.text, false)}>Open</button></td>
+                <td style={td}><button type="button" aria-label={`Open ${r.name || `rider ${r.rider_id}`}`} onClick={() => onOpen(r.rider_id)} disabled={r.rider_id == null} style={button(D.panelBg, D.text, r.rider_id == null)}>Open</button></td>
               </tr>
             ))}
           </tbody>

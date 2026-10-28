@@ -53,6 +53,13 @@ describe('Rider money: wallets', () => {
     expect(screen.getByRole('heading', { name: 'Rider money' })).toBeInTheDocument()
   })
 
+  it('a wallet row with no rider id cannot be opened', async () => {
+    server.use(http.get(WALLETS, () => envelope([rider({ rider_id: null, name: 'Orphan Wallet' })])))
+    wrap(<RiderMoneyPanel auth={auth} />)
+    const row = (await screen.findByText('Orphan Wallet')).closest('tr')
+    expect(within(row).getByRole('button', { name: /Open/ })).toBeDisabled()
+  })
+
   it('flags a balance below zero in words', async () => {
     server.use(http.get(WALLETS, () => envelope([rider({ balance: '-13.50' }), rider({ holder_id: 8, name: 'Fine Rider', balance: '0.00' })])))
     wrap(<RiderMoneyPanel auth={auth} />)

@@ -38,6 +38,15 @@ describe('RedeliveriesPanel', () => {
     expect(screen.getByText('GH₵ 15.00')).toBeInTheDocument()
   })
 
+  it('reads #041 as order 41: every request asks for 41 and the heading says Order #41', async () => {
+    const seen = mount(qualifies)
+    find('#041')
+    expect(await screen.findByText('Order #41')).toBeInTheDocument()
+    expect(seen.urls.length).toBeGreaterThan(0)
+    for (const u of seen.urls) expect(new URL(u).searchParams.get('order')).toBe('41')
+    expect(screen.queryByText('Order #041')).not.toBeInTheDocument()
+  })
+
   it('asks for a second trip with a reason', async () => {
     const seen = mount(qualifies)
     find('41')

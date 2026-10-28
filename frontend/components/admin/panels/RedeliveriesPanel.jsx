@@ -20,7 +20,7 @@ const PAID_THROUGH = {
 
 function orderNumber(text) {
   const match = /^#?\s*(\d+)$/.exec(text.trim());
-  return match ? match[1] : null;
+  return match ? String(Number(match[1])) : null;
 }
 
 function Attempts({ rows }) {
