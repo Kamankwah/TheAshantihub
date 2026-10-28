@@ -46,6 +46,8 @@ def eligibility_problem(listing, sale=None):
         return "The business is hidden from the site."
     if listing.business_owner.kyc_status != "verified":
         return "The business is not verified."
+    if listing.variants.filter(is_active=True).exists():
+        return "Has variants: choose a single-price listing."
     if listing.stock_quantity is None:
         return "Its stock is not tracked, so the sale cap can't be enforced."
     if listing.stock_quantity <= 0:

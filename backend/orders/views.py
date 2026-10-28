@@ -17,7 +17,8 @@ from cart import guard as cart_guard
 from cart.models import Cart
 from delivery.models import DeliveryEvent
 from disputes.models import Dispute
-from listings.models import Listing
+from listings import variants as variants_module
+from listings.models import Listing, ListingVariant
 from listings.visibility import hidden_business_q
 from disputes.serializers import DisputeSerializer
 from notifications.services import notify_customer
@@ -90,7 +91,7 @@ class OrderCheckoutView(APIView):
 
     def post(self, request):
         cart = Cart.objects.filter(customer=request.user).first()
-        items = list(cart.items.select_related("listing__business_owner__profile", "listing__category")) if cart is not None else []
+        items = list(cart.items.select_related("listing__business_owner__profile", "listing__category", "variant")) if cart is not None else []
         if not items:
             return Response({"detail": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
         # A line whose listing was dropped, discontinued or unpublished, or whose business is hidden, is refused
@@ -185,18 +186,58 @@ class OrderCheckoutView(APIView):
             # tracked (services, or products the owner hasn't set a count on)
             # and is never decremented. Mirrors the ticket flow's optimistic
             # reserve-at-checkout, rolled back on payment failure below.
-            reservations = []
+            #
+            # Variant lines (listings.ListingVariant) reserve from the variant's own stock. Locks are taken in one global
+            # order, every Listing row by primary key and then every ListingVariant row by primary key, so two checkouts
+            # can never wait on each other; the stock is checked for the whole cart before anything is decremented.
+            locked = {
+                row.pk: row
+                for row in Listing.objects.select_for_update().filter(pk__in={i.listing_id for i in items}).order_by("pk")
+            }
+            locked_variants = {
+                row.pk: row
+                for row in ListingVariant.objects.select_for_update()
+                .filter(pk__in={i.variant_id for i in items if i.variant_id}).order_by("pk")
+            }
             for item in items:
-                listing = Listing.objects.select_for_update().get(pk=item.listing_id)
-                if listing.stock_quantity is not None:
-                    if listing.stock_quantity < item.quantity:
+                listing = locked[item.listing_id]
+                if item.variant_id is None:
+                    if listing.stock_quantity is not None and listing.stock_quantity < item.quantity:
                         return Response(
                             {"detail": f"Only {listing.stock_quantity} of “{listing.name}” left in stock."},
                             status=status.HTTP_400_BAD_REQUEST,
                         )
-                    listing.stock_quantity -= item.quantity
-                    listing.save(update_fields=["stock_quantity"])
-                    reservations.append({"listing_id": listing.id, "quantity": item.quantity})
+                    continue
+                variant = locked_variants.get(item.variant_id)
+                if variant is None or not variant.is_active:
+                    return Response(
+                        {"detail": f"“{listing.name} ({item.variant.label})” is no longer available. Remove it from your cart.",
+                         "code": "listing_unavailable"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if variant.stock_quantity is not None and variant.stock_quantity < item.quantity:
+                    return Response(
+                        {"detail": f"Only {variant.stock_quantity} of “{listing.name} ({variant.label})” left in stock."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            reservations = []
+            touched = {}
+            for item in items:
+                listing = locked[item.listing_id]
+                if item.variant_id is None:
+                    if listing.stock_quantity is not None:
+                        listing.stock_quantity -= item.quantity
+                        listing.save(update_fields=["stock_quantity"])
+                        reservations.append({"listing_id": listing.id, "quantity": item.quantity})
+                    continue
+                variant = locked_variants[item.variant_id]
+                if variant.stock_quantity is not None:
+                    variant.stock_quantity -= item.quantity
+                    variant.save(update_fields=["stock_quantity"])
+                    reservations.append({"listing_id": listing.id, "variant_id": variant.id, "quantity": item.quantity})
+                touched[listing.pk] = listing
+            for listing in touched.values():
+                variants_module.sync_listing(listing)
 
             total = sum(
                 (item.unit_price_snapshot * item.quantity for item in items), Decimal("0.00")
@@ -235,6 +276,8 @@ class OrderCheckoutView(APIView):
                     OrderItem.objects.create(
                         order=order,
                         listing=item.listing,
+                        variant=item.variant,
+                        variant_label=item.variant.label if item.variant_id else "",
                         quantity=item.quantity,
                         unit_price=item.unit_price_snapshot,
                         line_total=line_total,

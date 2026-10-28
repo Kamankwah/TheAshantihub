@@ -50,6 +50,7 @@ class Line:
     unit_price: Decimal
     flash_sale: object = None
     cart_item_id: int = None
+    variant: object = None
 
     @property
     def line_total(self):
@@ -115,7 +116,7 @@ def _flash_lines(customer, items, now, lock):
     sales = live_window_sales(now, lock)
     lines, notes = [], []
     if not sales:
-        return [Line(i.listing, i.quantity, i.unit_price_snapshot, None, i.id) for i in items], notes
+        return [Line(i.listing, i.quantity, i.unit_price_snapshot, None, i.id, i.variant) for i in items], notes
     by_sale = {s.pk: s for s in sales}
     rows = FlashSaleListing.objects.filter(
         sale_id__in=by_sale, listing_id__in=[i.listing_id for i in items],
@@ -131,19 +132,19 @@ def _flash_lines(customer, items, now, lock):
         row = usable.get(item.listing_id)
         snapshot = cents(item.unit_price_snapshot)
         if row is None or cents(row.sale_price) >= snapshot:
-            lines.append(Line(item.listing, item.quantity, item.unit_price_snapshot, None, item.id))
+            lines.append(Line(item.listing, item.quantity, item.unit_price_snapshot, None, item.id, item.variant))
             continue
         left = room[row.sale_id]
         take = min(item.quantity, left[0], left[1])
         if take <= 0:
-            lines.append(Line(item.listing, item.quantity, item.unit_price_snapshot, None, item.id))
+            lines.append(Line(item.listing, item.quantity, item.unit_price_snapshot, None, item.id, item.variant))
             notes.append(f"{item.listing.name}: the sale price is no longer available for you, so it is at its normal price." if left[1] <= 0 else f"{item.listing.name}: sold out at the sale price, so it is at its normal price.")
             continue
         left[0] -= take
         left[1] -= take
-        lines.append(Line(item.listing, take, row.sale_price, by_sale[row.sale_id], item.id))
+        lines.append(Line(item.listing, take, row.sale_price, by_sale[row.sale_id], item.id, item.variant))
         if take < item.quantity:
-            lines.append(Line(item.listing, item.quantity - take, item.unit_price_snapshot, None, item.id))
+            lines.append(Line(item.listing, item.quantity - take, item.unit_price_snapshot, None, item.id, item.variant))
             notes.append(f"{item.listing.name}: {take} at the sale price, the other {item.quantity - take} at the normal price.")
     return lines, notes
 
@@ -271,6 +272,7 @@ def create_lines(order, priced):
         OrderItem.objects.create(
             order=order, listing=line.listing, quantity=line.quantity, unit_price=line.unit_price,
             line_total=line.line_total, flash_sale=line.flash_sale,
+            variant=line.variant, variant_label=line.variant.label if line.variant is not None else "",
         )
 
 
