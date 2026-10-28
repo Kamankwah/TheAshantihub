@@ -287,6 +287,55 @@ class ListingVariant(models.Model):
         return pricing.dec(self.price_amount)
 
 
+class ListingRevision(models.Model):
+    """A proposed edit of an approved listing. The listing row is untouched until staff approve it
+    (listings.revisions.apply_revision copies it over in one transaction). `changes` holds the scalar fields,
+    `variants` the variant structure operations, `remove_photo_ids`/`remove_video_ids` the gallery items to delete and
+    `new_main_photo` a staged replacement main photo. One open (draft or pending) revision per listing.
+    `draft` is outside the staff queue so an owner can prepare several changes before sending."""
+
+    DRAFT = "draft"
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    STATUS_CHOICES = [(DRAFT, "Draft"), (PENDING, "Pending"), (APPROVED, "Approved"), (REJECTED, "Rejected")]
+
+    # `Listing.revisions` is already a text field (a service's revision allowance), hence this related_name.
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="listing_revisions")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=DRAFT)
+    changes = models.JSONField(default=dict, blank=True)
+    variants = models.JSONField(default=list, blank=True)
+    remove_photo_ids = models.JSONField(default=list, blank=True)
+    remove_video_ids = models.JSONField(default=list, blank=True)
+    new_main_photo = models.ImageField(
+        upload_to="listing_photos/main/", null=True, blank=True, validators=[validate_image_content_type],
+    )
+    created_by = models.ForeignKey(
+        BusinessOwner, on_delete=models.SET_NULL, null=True, blank=True, related_name="listing_revisions",
+    )
+    created_by_staff = models.ForeignKey(
+        "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="listing_revisions_created",
+    )
+    rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_listing_revisions",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["listing"], condition=models.Q(status__in=["draft", "pending"]), name="listing_one_open_revision",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Edit of {self.listing.name} ({self.status})"
+
+
 class ListingPhoto(models.Model):
     listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="photos")
     image = models.ImageField(

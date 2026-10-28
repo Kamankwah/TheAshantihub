@@ -21,7 +21,7 @@ from accounts.views import IsBusinessOwner
 from billing.models import Transaction
 from notifications.services import notify_business_owner, notify_staff_role
 
-from . import lifecycle, variants
+from . import lifecycle, revisions, variants
 from .moderation_checks import (
     CONTACT_DETAILS_MESSAGE,
     blocking_failures,
@@ -512,7 +512,7 @@ class OwnerListingCreateListView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated, IsBusinessOwner]
 
     def get_queryset(self):
-        return Listing.objects.filter(business_owner=self.request.user).prefetch_related("variants")
+        return Listing.objects.filter(business_owner=self.request.user).prefetch_related("variants", "listing_revisions")
 
 
 class OwnerListingUpdateView(generics.UpdateAPIView):
@@ -897,6 +897,8 @@ class ModerationApproveView(APIView):
 
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
+        if revisions.cannot_decide(request.user, listing):
+            return Response({"detail": revisions.OWN_APPROVAL_MESSAGE}, status=403)
         if listing.business_owner.kyc_status != BusinessOwner.VERIFIED:
             return Response(
                 {"detail": "Cannot publish a listing whose owner is not KYC-verified."}, status=400

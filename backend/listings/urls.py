@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import views, views_revisions
 
 urlpatterns = [
     path("mine/", views.OwnerListingCreateListView.as_view(), name="listing-mine-list-create"),
@@ -14,6 +14,21 @@ urlpatterns = [
     path("mine/<int:pk>/variants/", views.ListingVariantListCreateView.as_view(), name="listing-variants"),
     path("mine/<int:pk>/variants/<int:vid>/", views.ListingVariantDetailView.as_view(), name="listing-variant-detail"),
     path("mine/<int:pk>/variants/<int:vid>/live/", views.ListingVariantLiveView.as_view(), name="listing-variant-live"),
+    path("mine/<int:pk>/revision/", views_revisions.ListingRevisionView.as_view(), name="listing-revision"),
+    path(
+        "mine/<int:pk>/revision/submit/", views_revisions.ListingRevisionSubmitView.as_view(),
+        name="listing-revision-submit",
+    ),
+    path("revisions/pending/", views_revisions.RevisionPendingQueueView.as_view(), name="listing-revision-pending"),
+    path("revisions/<int:pk>/", views_revisions.RevisionDetailView.as_view(), name="listing-revision-detail"),
+    path(
+        "revisions/<int:pk>/approve/", views_revisions.RevisionApproveView.as_view(), name="listing-revision-approve",
+    ),
+    path("revisions/<int:pk>/reject/", views_revisions.RevisionRejectView.as_view(), name="listing-revision-reject"),
+    path(
+        "revisions/<int:pk>/re-review/", views_revisions.RevisionReReviewView.as_view(),
+        name="listing-revision-re-review",
+    ),
     path("mine/<int:pk>/photos/", views.ListingPhotoCreateView.as_view(), name="listing-photo-create"),
     path(
         "mine/<int:pk>/photos/<int:photo_id>/",

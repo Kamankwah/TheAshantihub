@@ -298,29 +298,31 @@ save_sent_fields = services.save_sent_fields
 
 
 class OwnerListingManageSerializer(serializers.ModelSerializer):
-    """Light edit of a listing's *operational* fields (business item 2) —
-    price, specs, stock, and the product/service decision fields — allowed
-    even on a *published* listing WITHOUT sending it back to moderation.
+    """The live edit of a listing: price, the live sale price and the price unit, and nothing else.
 
-    The content-moderated fields (name, description, category, zone, photos)
-    are deliberately NOT here: changing those still requires the full edit +
-    re-review via OwnerListingSerializer. This mirrors how the restock endpoint
-    already mutates a published listing's stock without re-moderation — routine
-    commercial changes shouldn't pull a live listing off the marketplace.
+    Narrowed in marketplace Plan 2 (decision V5). It used to also let `tag`, `contact_phone`, `specs`,
+    `service_duration`, the warranty/expiry/return/brand/condition/dimensions/weight/barcode fields and the
+    cancellation policy through without moderation, but a shopper sees those, so an approved listing now changes them
+    only through a revision that staff approve (listings.revisions). Stock goes live through `restock` and the
+    variants' own live endpoint. A field sent here that is not live is refused with a message, not ignored.
     """
-
-    # The product's barcode (catalogue plan 6): typed with spaces or hyphens, kept as its 14-digit GTIN.
-    barcode = serializers.CharField(required=False, allow_blank=True, max_length=40)
 
     class Meta:
         model = Listing
-        fields = [
-            "id", "price_amount", "sale_price", "price_unit", "tag", "contact_phone",
-            "specs", "service_duration", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
-        ]
+        fields = ["id", "price_amount", "sale_price", "price_unit"]
 
-    def validate_barcode(self, value):
-        return clean_listing_barcode(value, self.instance)
+    def to_internal_value(self, data):
+        from .revisions import REVISABLE_FIELDS
+
+        refused = sorted(set(getattr(data, "keys", lambda: [])()) - set(self.fields))
+        if refused:
+            raise serializers.ValidationError({
+                key: "Changes to this are sent for approval; save them as an edit of the listing."
+                if key in REVISABLE_FIELDS else "Stock is changed with the restock control." if key == "stock_quantity"
+                else "This cannot be changed here."
+                for key in refused
+            })
+        return super().to_internal_value(data)
 
     def validate(self, data):
         if self.instance is not None and self.instance.status == Listing.DISCONTINUED:
@@ -365,7 +367,7 @@ def active_listing_cap_reached(owner):
     return Listing.objects.filter(business_owner=owner, status=Listing.PUBLISHED).count() >= cap
 
 
-def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None):
+def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None, revising=False, adds_variants=False):
     """The rules a business's listing must meet — shared by the owner's own
     form (OwnerListingSerializer.validate) and a scout's proposed listing
     (portfolio.proposals), so the two paths can't drift apart.
@@ -373,14 +375,19 @@ def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None)
     `data` is validated serializer data; `instance` the listing being edited
     (None on create); `initial_data` the raw input — the product answers
     check which keys were actually sent (defaults to `data`). Raises
-    serializers.ValidationError; returns `data` unchanged."""
+    serializers.ValidationError; returns `data` unchanged.
+
+    `revising` is the edit of an approved listing through a revision (listings.revisions): the published-listing
+    refusal is skipped and a dropped listing is accepted, a discontinued one is still refused. `adds_variants` says the
+    revision leaves the listing with variants, so its category must still allow them."""
     if initial_data is None:
         initial_data = data
 
-    if instance is not None and instance.status in (Listing.DROPPED, Listing.DISCONTINUED):
+    refused = (Listing.DISCONTINUED,) if revising else (Listing.DROPPED, Listing.DISCONTINUED)
+    if instance is not None and instance.status in refused:
         raise serializers.ValidationError({"status": "A dropped or discontinued listing cannot be edited."})
 
-    if instance is not None and instance.status == Listing.PUBLISHED:
+    if instance is not None and instance.status == Listing.PUBLISHED and not revising:
         raise serializers.ValidationError(
             {"status": "Cannot edit a published listing."}
         )
@@ -401,6 +408,14 @@ def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None)
         raise serializers.ValidationError(
             {"category": f"Your business is registered for {profile.business_kind} listings only."}
         )
+
+    # Variants exist only on goods and food: a listing that has them (or will after this revision) cannot move to a
+    # category of another kind.
+    if (
+        category is not None and ("category" in data or adds_variants) and not pricing.sale_allowed(category)
+        and (adds_variants or (instance is not None and variants.has_variants(instance)))
+    ):
+        raise serializers.ValidationError({"category": "Only products and food can have variants. Remove the variants first."})
 
     if instance is None and subscriptions_on():
         subscription = getattr(owner, "subscription", None)
@@ -467,6 +482,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     photos = ListingPhotoSerializer(many=True, read_only=True)
     variants = ListingVariantSerializer(many=True, read_only=True)
     has_variants = serializers.SerializerMethodField()
+    pending_revision = serializers.SerializerMethodField()
 
     # The product's barcode (catalogue plan 6): typed with spaces or hyphens, kept as its 14-digit GTIN.
     barcode = serializers.CharField(required=False, allow_blank=True, max_length=40)
@@ -474,7 +490,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Listing
         fields = [
-            "id", "variants", "has_variants", "category", "zone", "name", "description", "price_amount", "sale_price", "price_unit",
+            "id", "variants", "has_variants", "pending_revision", "category", "zone", "name", "description", "price_amount", "sale_price", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "specs",
             "service_duration", "units_total", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
             "status", "rejection_reason", "dropped_at", "discontinued_at", "created_at", "updated_at",
@@ -485,6 +501,14 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     def get_has_variants(self, obj):
         return any(row.is_active for row in obj.variants.all())
 
+    def get_pending_revision(self, obj):
+        """The open edit of this approved listing (draft, waiting, or rejected), small: enough for a banner."""
+        rows = [row for row in obj.listing_revisions.all() if row.status != "approved"]
+        if not rows:
+            return None
+        row = max(rows, key=lambda item: item.pk)
+        return {"id": row.pk, "status": row.status, "rejection_reason": row.rejection_reason}
+
     def validate_barcode(self, value):
         return clean_listing_barcode(value, self.instance)
 
@@ -492,8 +516,11 @@ class OwnerListingSerializer(serializers.ModelSerializer):
         if data.get("barcode"):
             clean_listing_barcode(data["barcode"], self.instance, data.get("category"))
         validate_sale_price(data, self.instance)
+        # The owner is the signed-in business unless the caller names one (a company-run listing, Plan 2 Task 11).
+        owner = self.context.get("owner") or self.context["request"].user
         return validate_listing_for_owner(
-            self.context["request"].user, data, instance=self.instance, initial_data=self.initial_data,
+            owner, data, instance=self.instance, initial_data=self.initial_data,
+            revising=self.context.get("revising", False), adds_variants=self.context.get("adds_variants", False),
         )
 
     def update(self, instance, validated_data):

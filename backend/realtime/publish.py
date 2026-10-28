@@ -138,6 +138,8 @@ QUEUE_INVALIDATIONS = [
         ("delivery.dispatch",),
         ("delivery-rider-me", "delivery-rider-offers", "delivery-rider-jobs", "delivery-rider-shifts", "delivery-rider-cash"),
     ),
+    # Edits of approved listings: submit, approve, reject and re-review refresh the revisions queue.
+    (("listing-revision-",), ("listings.moderate",), ("listing-revisions-queue",)),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
 FEED_KEYS = [
