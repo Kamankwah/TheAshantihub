@@ -15,6 +15,7 @@ from billing.clock import pause_enabled
 from listings.models import Listing
 from listings.visibility import hidden_business_q
 
+from . import sales_counts
 from .common import OversightPagination, choice_param, csv_export
 
 STATUSES = ("live", "waiting", "hidden", "rejected", "draft")
@@ -89,7 +90,7 @@ def filtered(request):
     return listings.order_by("-created_at", "-id")
 
 
-def item(listing):
+def item(listing, counts=(0, 0)):
     state, note = state_of(listing, listing.is_hidden)
     owner = listing.business_owner
     return {
@@ -110,6 +111,8 @@ def item(listing):
         "reviewed_at": listing.reviewed_at,
         "rejection_reason": listing.rejection_reason,
         "sponsored": listing.sponsored,
+        "paid_count": counts[0],
+        "refunded_count": counts[1],
     }
 
 
@@ -127,7 +130,8 @@ class ListingListView(generics.ListAPIView):
 
     def list(self, request, *args, **kwargs):
         page = self.paginate_queryset(self.get_queryset())
-        return self.get_paginated_response([item(listing) for listing in page])
+        counts = sales_counts.for_listings([listing.pk for listing in page])
+        return self.get_paginated_response([item(listing, counts[listing.pk]) for listing in page])
 
 
 class ListingCountsView(APIView):
@@ -200,16 +204,19 @@ class ListingExportView(APIView):
 
     def get(self, request):
         rows = []
-        for listing in filtered(request):
-            row = item(listing)
+        listings = list(filtered(request))
+        counts = sales_counts.for_listings([listing.pk for listing in listings])
+        for listing in listings:
+            row = item(listing, counts[listing.pk])
             rows.append([
                 row["name"], row["business_name"], row["type"], row["category"], row["price_amount"] or "",
                 row["state"], row["state_note"], row["added_by"] or "Owner",
                 row["reviewed_by"] or "", row["reviewed_at"].strftime("%Y-%m-%d") if row["reviewed_at"] else "",
+                row["paid_count"], row["refunded_count"],
             ])
         return csv_export(
             request, stem="listings", kind="listings", personal_data=False,
             filters={k: v for k, v in request.query_params.items() if v},
-            header=["Listing", "Business", "Type", "Category", "Price (GH₵)", "Status", "Note", "Added by", "Last decided by", "Decided on"],
+            header=["Listing", "Business", "Type", "Category", "Price (GH₵)", "Status", "Note", "Added by", "Last decided by", "Decided on", "Paid", "Refunded"],
             rows=rows,
         )
