@@ -219,6 +219,112 @@ class StartAndShowTests(DiscountBase):
         self.assertEqual(self.start({"sale_price": "80"}).status_code, 403)
 
 
+class WasPriceAnchorTests(DiscountBase):
+    """R29: the 7 days are counted back from when the sale began, not from now."""
+
+    def shift(self, target, history_days, sale_days):
+        """History row started `history_days` ago, the sale began `sale_days` ago."""
+        now = timezone.now()
+        if isinstance(target, ListingVariant):
+            ListingPriceHistory.objects.filter(variant=target).update(started_at=now - timedelta(days=history_days))
+            ListingVariant.objects.filter(pk=target.pk).update(sale_started_at=now - timedelta(days=sale_days))
+        else:
+            ListingPriceHistory.objects.filter(listing=target, variant__isnull=True).update(started_at=now - timedelta(days=history_days))
+            Listing.objects.filter(pk=target.pk).update(sale_started_at=now - timedelta(days=sale_days))
+
+    def was(self):
+        return self.client.get(f"/api/listings/{self.listing.pk}/").json()["was_price"]
+
+    def test_price_raised_with_the_sale_never_earns_a_was_price_later(self):
+        self.listing.price_amount = Decimal("150.00")
+        self.listing.save()
+        self.start({"sale_price": "100"})
+        self.shift(self.listing, history_days=12, sale_days=10)  # the price changed 2 days before the sale began
+        self.assertIsNone(self.was())
+        feed = self.client.get("/api/storefront/deals/").json()
+        rows = feed if isinstance(feed, list) else feed.get("results", feed)
+        self.assertIsNone(next(r for r in rows if r["id"] == self.listing.pk)["was_price"])
+
+    def test_a_price_held_before_the_sale_shows_was_and_keeps_showing_it(self):
+        self.start({"sale_price": "80"})
+        self.shift(self.listing, history_days=20, sale_days=10)
+        self.assertEqual(self.was(), "100.00")
+        self.shift(self.listing, history_days=40, sale_days=1)
+        self.assertEqual(self.was(), "100.00")
+
+    def test_a_sale_without_a_start_time_has_no_was_price(self):
+        self.start({"sale_price": "80"})
+        self.age(days=30)
+        Listing.objects.filter(pk=self.listing.pk).update(sale_started_at=None)
+        self.assertIsNone(self.was())
+
+    def test_a_variant_sale_uses_its_own_anchor(self):
+        listing = self.make("Cake")
+        a, _ = self.variants(listing)
+        self.start({"variant": a.pk, "percent_off": 20}, listing)
+        a.refresh_from_db()
+        self.assertIsNotNone(a.sale_started_at)
+        self.shift(a, history_days=12, sale_days=10)
+        rows = {r["label"]: r for r in self.client.get(f"/api/listings/{listing.pk}/").json()["variants"]}
+        self.assertIsNone(rows["Small"]["was_price"])
+        self.shift(a, history_days=20, sale_days=10)
+        rows = {r["label"]: r for r in self.client.get(f"/api/listings/{listing.pk}/").json()["variants"]}
+        self.assertEqual(rows["Small"]["was_price"], "50.00")
+
+    def test_the_start_is_stamped_and_cleared_with_the_sale(self):
+        self.start({"sale_price": "80"})
+        self.listing.refresh_from_db()
+        self.assertIsNotNone(self.listing.sale_started_at)
+        self.client.post(self.url(suffix="end/"), {}, format="json")
+        self.listing.refresh_from_db()
+        self.assertIsNone(self.listing.sale_started_at)
+        manage = self.client.patch(f"/api/listings/mine/{self.listing.pk}/manage/", {"sale_price": "90"}, format="json")
+        self.assertEqual(manage.status_code, 200, manage.content)
+        self.listing.refresh_from_db()
+        self.assertIsNotNone(self.listing.sale_started_at)
+        self.client.patch(f"/api/listings/mine/{self.listing.pk}/manage/", {"price_amount": "90"}, format="json")
+        self.listing.refresh_from_db()
+        self.assertIsNone(self.listing.sale_price)  # price at the sale price ends it
+        self.assertIsNone(self.listing.sale_started_at)
+
+    def test_manage_uses_the_discount_bounds(self):
+        for bad in ("5", "99.95"):
+            response = self.client.patch(f"/api/listings/mine/{self.listing.pk}/manage/", {"sale_price": bad}, format="json")
+            self.assertEqual(response.status_code, 400, bad)
+        ok = self.client.patch(f"/api/listings/mine/{self.listing.pk}/manage/", {"sale_price": "10"}, format="json")
+        self.assertEqual(ok.status_code, 200, ok.content)
+
+
+class ExpiryTests(DiscountBase):
+    def test_an_expired_variant_discount_gives_a_new_cart_line_the_regular_price(self):
+        open_marketplace()
+        listing = self.make("Cake")
+        a, _ = self.variants(listing)
+        self.start({"variant": a.pk, "percent_off": 50, "ends_at": (timezone.now() + timedelta(days=1)).isoformat()}, listing)
+        ListingVariant.objects.filter(pk=a.pk).update(sale_ends_at=timezone.now() - timedelta(minutes=1))
+        customer = Customer.objects.create(full_name="Buyer", phone="+233200881004", password_hash="x")
+        self.auth(customer, "customer")
+        response = self.client.post("/api/cart/items/", {"listing": listing.pk, "variant": a.pk, "quantity": 1}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(CartItem.objects.get().unit_price_snapshot, Decimal("50.00"))
+
+    def test_the_price_filter_honours_expiry(self):
+        self.start({"sale_price": "30", "ends_at": (timezone.now() + timedelta(days=1)).isoformat()})
+        ids = lambda q: [r["id"] for r in self.client.get("/api/listings/?category=zz-disc" + q).json()["results"]]
+        self.assertEqual(ids("&max_price=40"), [self.listing.pk])
+        Listing.objects.filter(pk=self.listing.pk).update(sale_ends_at=timezone.now() - timedelta(minutes=1))
+        self.assertEqual(ids("&max_price=40"), [])
+        self.assertEqual(ids("&min_price=90"), [self.listing.pk])
+
+    def test_the_owner_listing_shows_a_sale_price_only_while_live(self):
+        self.start({"sale_price": "30", "ends_at": (timezone.now() + timedelta(days=1)).isoformat()})
+        mine = lambda: next(i for i in (lambda d: d if isinstance(d, list) else d["results"])(self.client.get("/api/listings/mine/").json()) if i["id"] == self.listing.pk)
+        self.assertEqual(mine()["sale_price"], "30.00")
+        Listing.objects.filter(pk=self.listing.pk).update(sale_ends_at=timezone.now() - timedelta(minutes=1))
+        self.assertIsNone(mine()["sale_price"])
+        self.assertIsNone(mine()["sale_ends_at"])
+
+
 class EndTests(DiscountBase):
     def test_ending_clears_the_sale_and_the_end_date(self):
         self.start({"sale_price": "80", "ends_at": (timezone.now() + timedelta(days=1)).isoformat()})

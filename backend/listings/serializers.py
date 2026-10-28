@@ -399,6 +399,10 @@ def validate_sale_price(data, instance=None):
     price = data["price_amount"] if "price_amount" in data else getattr(instance, "price_amount", None)
     if price is None or not (0 < sale < price):
         raise serializers.ValidationError({"sale_price": SALE_PRICE_MESSAGE})
+    try:
+        pricing.sale_for(pricing.dec(price), sale_price=sale)  # the discount endpoint's bounds: 1% to 90% off
+    except pricing.PricingError as exc:
+        raise serializers.ValidationError({"sale_price": str(exc)}) from None
     return data
 
 
@@ -614,6 +618,12 @@ class OwnerListingSerializer(serializers.ModelSerializer):
 
     def get_sale_ends_at(self, obj):
         return live_sale_ends_at(obj)
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        if not pricing.is_discounted(obj):
+            data["sale_price"] = None  # live-only, like sale_ends_at: an expired or inert sale price is not shown
+        return data
 
     def get_photos(self, obj):
         return OwnerPhotoSerializer(list(obj.photos.all()), many=True, context=self.context).data

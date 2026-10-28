@@ -4,9 +4,10 @@ One price read: `Listing.effective_price` (Python) and `effective_price_expr()` 
 expression, for ordering and aggregates). A sale price counts only while it is below the regular price; if the owner
 later lowers the regular price to or under the sale price, the sale is not a discount and the regular price applies.
 
-A struck-through "was" price is shown only when the listing really held its current regular price for the previous
-7 full days (an open `ListingPriceHistory` row for that price that started at least 7 days ago). Raising the price
-and starting a sale the same day therefore never produces a "was" price. History is recorded from `Listing.save` on
+A struck-through "was" price is shown only when the listing really held its current regular price for the 7 full days
+before the sale began (an open `ListingPriceHistory` row for that price that started at least 7 days before
+`sale_started_at`; no start time, no "was"). Raising the price and starting a sale together therefore never produces a
+"was" price, now or later. History is recorded from `Listing.save` on
 create and whenever `price_amount` is saved; a bulk `QuerySet.update(price_amount=...)` bypasses `save` and records
 nothing, so price edits must go through `save` (or call `record_price`)."""
 from datetime import timedelta
@@ -51,7 +52,7 @@ def live_discount_q(prefix="", listing_prefix=None, now=None):
     from cart.guard import deliverable_q
 
     now = now or timezone.now()
-    price, sale = F(f"{prefix}price_amount"), F(f"{prefix}sale_price")
+    price = F(f"{prefix}price_amount")
     return (
         deliverable_q(prefix if listing_prefix is None else listing_prefix)
         & Q(**{f"{prefix}sale_price__isnull": False}) & Q(**{f"{prefix}sale_price__lt": price})
@@ -96,6 +97,7 @@ def _record(obj, listing, variant, now):
 
     now = now or timezone.now()
     price = dec(obj.price_amount)
+    listing_id = listing if isinstance(listing, int) else listing.pk
     with transaction.atomic():
         open_row = _history(obj).select_for_update().filter(ended_at__isnull=True).first()
         if open_row is not None and open_row.price == price:
@@ -104,7 +106,7 @@ def _record(obj, listing, variant, now):
             open_row.ended_at = now  # the only write a history row ever gets: it is closed once, never rewritten
             open_row.save(update_fields=["ended_at"])
         if price is not None:
-            ListingPriceHistory.objects.create(listing=listing, variant=variant, price=price, started_at=now)
+            ListingPriceHistory.objects.create(listing_id=listing_id, variant=variant, price=price, started_at=now)
 
 
 def record_price(listing, now=None):
@@ -116,21 +118,22 @@ def record_price(listing, now=None):
 
 def record_variant_price(variant, now=None):
     """The same for one variant's regular price (rows with `variant` set; the listing's own history is untouched)."""
-    _record(variant, variant.listing, variant, now)
+    _record(variant, variant.listing_id, variant, now)
 
 
 def was_price_since(obj, started_at, now=None, listing=None):
-    """The "was" price given when the current regular price started (None when unknown), by the 7-day rule."""
-    now = now or timezone.now()
-    if started_at is None or not is_discounted(obj, now, listing):
+    """The "was" price given when the current regular price started (None when unknown). The 7-day rule is anchored
+    at the moment the sale began, not at now: the regular price must have stood for the 7 days before `sale_started_at`,
+    so raising the price and starting a sale together never earns a struck-through price a week later."""
+    if started_at is None or obj.sale_started_at is None or not is_discounted(obj, now, listing):
         return None
-    if started_at > now - timedelta(days=WAS_PRICE_DAYS):
+    if started_at > obj.sale_started_at - timedelta(days=WAS_PRICE_DAYS):
         return None
     return dec(obj.price_amount)
 
 
 def was_price(obj, now=None, listing=None):
-    """`price_amount` when a discount is live and that regular price has stood 7 full days, otherwise None.
+    """`price_amount` when a discount is live and that regular price had stood 7 full days when the sale began, else None.
     Works for a listing and for a variant (each keeps its own history)."""
     if not is_discounted(obj, now, listing):
         return None
@@ -221,7 +224,7 @@ def _lock(listing_id, variant_id):
     """The listing row (and the variant row) locked for writing, and whether the listing has active variants."""
     from .models import Listing, ListingVariant
 
-    listing = Listing.objects.select_for_update().select_related("category").get(pk=listing_id)
+    listing = Listing.objects.select_related("category").select_for_update(of=("self",)).get(pk=listing_id)
     has_variants = listing.variants.filter(is_active=True).exists()
     variant = None
     if variant_id not in (None, ""):
@@ -256,8 +259,8 @@ def start_discount(listing_id, *, variant=None, sale_price=None, percent_off=Non
             raise PricingError(RUNNING_MESSAGE, status=409)
         sale = sale_for(regular, sale_price, percent_off)
         end = _end_date(ends_at, now)
-        target.sale_price, target.sale_ends_at = sale, end
-        fields = ["sale_price", "sale_ends_at"]
+        target.sale_price, target.sale_ends_at, target.sale_started_at = sale, end, now
+        fields = ["sale_price", "sale_ends_at", "sale_started_at"]
         target.save(update_fields=fields if target_variant else [*fields, "updated_at"])
     return target
 
@@ -270,8 +273,8 @@ def end_discount(listing_id, *, variant=None):
         target = target_variant or listing
         if target.sale_price is None:
             raise PricingError("There is no discount running here.", status=404)
-        target.sale_price = target.sale_ends_at = None
-        fields = ["sale_price", "sale_ends_at"]
+        target.sale_price = target.sale_ends_at = target.sale_started_at = None
+        fields = ["sale_price", "sale_ends_at", "sale_started_at"]
         target.save(update_fields=fields if target_variant else [*fields, "updated_at"])
     return target
 

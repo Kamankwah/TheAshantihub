@@ -92,7 +92,7 @@ class WasPriceTests(DealsBase):
         self.age_history(listing, 8)
         self.assertEqual(pricing.was_price(listing), Decimal("100.00"))
 
-    def test_raising_price_then_sale_has_no_was_price_for_7_days(self):
+    def test_raising_price_then_sale_has_no_was_price_even_after_7_days(self):  # R29: anchored at the sale start
         listing = self.listing()
         self.age_history(listing, 40)
         listing.price_amount = Decimal("150.00")
@@ -100,8 +100,12 @@ class WasPriceTests(DealsBase):
         listing.sale_price = Decimal("120.00")
         listing.save()
         self.assertIsNone(pricing.was_price(listing))
-        # the new regular price standing a full 7 days makes the strike-through honest
-        listing.price_history.filter(ended_at__isnull=True).update(started_at=timezone.now() - timedelta(days=7, minutes=1))
+        # a week passes: the price still changed within the 7 days before the sale began, so it never earns a "was"
+        listing.price_history.filter(ended_at__isnull=True).update(started_at=timezone.now() - timedelta(days=8))
+        listing.sale_started_at = timezone.now() - timedelta(days=8)
+        self.assertIsNone(pricing.was_price(listing))
+        # a price held 7 full days before the sale began does
+        listing.price_history.filter(ended_at__isnull=True).update(started_at=timezone.now() - timedelta(days=16))
         self.assertEqual(pricing.was_price(listing), Decimal("150.00"))
 
     def test_sale_not_below_price_is_not_a_discount(self):

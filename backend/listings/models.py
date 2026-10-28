@@ -101,6 +101,8 @@ class Listing(models.Model):
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     # Optional end of the discount (listings.pricing.live_discount_q): read-time expiry, no job. Null = no end date.
     sale_ends_at = models.DateTimeField(null=True, blank=True)
+    # When the current sale price was set; the "was" price needs the regular price held 7 days before this moment.
+    sale_started_at = models.DateTimeField(null=True, blank=True)
     # Flagged by marketing/operations/super admin (`deals.manage`): appears in Deals even without a discount.
     sponsored = models.BooleanField(default=False)
     sponsored_by = models.ForeignKey(
@@ -232,6 +234,8 @@ class Listing(models.Model):
         update_fields = kwargs.get("update_fields")
         adding = self._state.adding
         touches_price = update_fields is None or "price_amount" in update_fields
+        if adding and self.sale_price is not None and self.sale_started_at is None:
+            self.sale_started_at = timezone.now()
         loaded = getattr(self, "_loaded_price", self._UNKNOWN)
         changed = adding or loaded is self._UNKNOWN or pricing.dec(loaded) != pricing.dec(self.price_amount)
         super().save(*args, **kwargs)
@@ -274,6 +278,7 @@ class ListingVariant(models.Model):
     # A discount on this variant alone (same rules as Listing.sale_price / sale_ends_at; listings.pricing).
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     sale_ends_at = models.DateTimeField(null=True, blank=True)
+    sale_started_at = models.DateTimeField(null=True, blank=True)
     # None = stock is not counted for this variant.
     stock_quantity = models.PositiveIntegerField(null=True, blank=True)
     position = models.PositiveSmallIntegerField(default=0)

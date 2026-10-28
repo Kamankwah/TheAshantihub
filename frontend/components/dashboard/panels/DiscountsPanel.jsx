@@ -15,14 +15,18 @@ const field = { display: "flex", flexDirection: "column", gap: 4, fontSize: "0.7
 const input = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", color: D.text, background: D.panelBg, minHeight: 36, boxSizing: "border-box" };
 const btn = (bg, color, disabled) => ({ background: bg, color, border: bg === D.panelBg ? `1px solid ${D.cardBorder}` : "none", borderRadius: 10, padding: "7px 12px", fontSize: "0.76rem", fontWeight: 800, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1, fontFamily: "inherit" });
 
-// The price a shopper will see, in whole cents (a preview; the server computes the saved price).
+// The price a shopper will see, in whole cents (a preview; the server computes the saved price). Returns
+// {cents} inside the server's bounds (below the regular price, 1% to 90% off), {outside: true} outside them, or null
+// while nothing usable is typed.
 function previewPrice(regular, mode, value) {
   const base = Math.round(Number(regular) * 100);
   const n = Number(value);
   if (!base || value === "" || !Number.isFinite(n) || n <= 0) return null;
+  if (mode === "percent" && (n < 1 || n > 90)) return { outside: true };
   const cents = mode === "percent" ? Math.round((base * (100 - n)) / 100 + 1e-9) : Math.round(n * 100);
-  if (mode === "percent" && (n < 1 || n > 90)) return null;
-  return cents > 0 && cents < base ? cents / 100 : null;
+  const lowest = Math.round(base * 0.1 + 1e-9);
+  const highest = Math.round(base * 0.99 + 1e-9);
+  return cents > 0 && cents < base && cents >= lowest && cents <= highest ? { cents: cents / 100 } : { outside: true };
 }
 
 export default function DiscountsPanel({ basePath = DEFAULT_LISTINGS_PATH, listings: given }) {
@@ -122,11 +126,15 @@ export default function DiscountsPanel({ basePath = DEFAULT_LISTINGS_PATH, listi
         {regular != null && (
           <div style={{ fontSize: "0.78rem", color: D.text }} aria-live="polite">
             Regular price {money(regular)}.{" "}
-            {shown != null ? <strong>Shoppers will see {money(shown)}.</strong> : <span style={{ color: D.textDim }}>Enter {mode === "percent" ? "1 to 90" : "a lower price"} to see the price shoppers will see.</span>}
+            {shown?.cents != null
+              ? <strong>Shoppers will see {money(shown.cents)}.</strong>
+              : shown?.outside
+                ? <span style={{ color: D.red }}>That is outside what is allowed: between 1% and 90% off the regular price.</span>
+                : <span style={{ color: D.textDim }}>Enter {mode === "percent" ? "1 to 90" : "a lower price"} to see the price shoppers will see.</span>}
           </div>
         )}
         {message && <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>{message}</div>}
-        <div><button type="submit" disabled={busy || !ready} style={btn(D.gold, D.text, busy || !ready)}>Start discount</button></div>
+        <div><button type="submit" disabled={busy || !ready} style={btn(D.gold, D.darkBrown, busy || !ready)}>Start discount</button></div>
       </form>
 
       {listing && (

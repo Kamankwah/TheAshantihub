@@ -1,8 +1,10 @@
 """The owner-side listing writes, kept apart from the serializers so scouts and staff tools reuse them unchanged."""
+from django.utils import timezone
+
 from . import variants
 from .models import Listing
 
-DERIVED_FIELDS = ("price_amount", "stock_quantity", "sale_price", "sale_ends_at")
+DERIVED_FIELDS = ("price_amount", "stock_quantity", "sale_price", "sale_ends_at", "sale_started_at")
 
 
 def save_sent_fields(instance, validated_data):
@@ -13,7 +15,11 @@ def save_sent_fields(instance, validated_data):
     if variants.has_variants(instance):
         validated_data = {k: v for k, v in validated_data.items() if k not in DERIVED_FIELDS}
     if "sale_price" in validated_data:
-        validated_data = {**validated_data, "sale_ends_at": None}  # a sale price written here has no end date
+        # A sale price written here has no end date; its start is now unless it is the sale already running.
+        new = validated_data["sale_price"]
+        running = new is not None and new == instance.sale_price and instance.sale_started_at is not None
+        started = None if new is None else instance.sale_started_at if running else timezone.now()
+        validated_data = {**validated_data, "sale_ends_at": None, "sale_started_at": started}
     for attr, value in validated_data.items():
         setattr(instance, attr, value)
     instance.save(update_fields=[*validated_data, "updated_at"])

@@ -76,6 +76,14 @@ describe('DiscountsPanel', () => {
     expect(await screen.findByText(/No discount is running on this item/)).toBeInTheDocument()
   })
 
+  it('does not preview a price outside the allowed range', async () => {
+    renderPanel()
+    choose(9)
+    fireEvent.change(screen.getByLabelText('Percent (1 to 90)'), { target: { value: '95' } })
+    expect(await screen.findByText(/outside what is allowed/)).toBeInTheDocument()
+    expect(screen.queryByText(/Shoppers will see/)).not.toBeInTheDocument()
+  })
+
   it('explains the 7-day rule honestly', () => {
     renderPanel()
     expect(screen.getByText(/Struck-through original price shows only after 7 days of the same price/)).toBeInTheDocument()
