@@ -2200,7 +2200,7 @@ function OrdersDeliveryTab({ searchQuery }) {
             {o.delivery_method==="door_to_door" ? `🚚 Door-to-door${o.delivery_address ? ` — ${o.delivery_address}` : ""}` : "🏬 Store pickup"}
           </div>
         )}
-        {o.delivery_method==="store_pickup" && <div style={{marginTop:8}}><PickupCollectionNote code={o.collection_code ?? null} collectBy={o.collect_by ?? null} tone="dark"/></div>}
+        {o.delivery_method==="store_pickup" && o.collection_code && <div style={{marginTop:8}}><PickupCollectionNote code={o.collection_code ?? null} collectBy={o.collect_by ?? null} tone="dark"/></div>}
         {o.status==="paid" && o.delivery_method==="door_to_door" && o.ready_not_before && new Date(o.ready_not_before) > new Date() && !["delivered","confirmed"].includes(o.delivery_assignment_status) && o.delivery_status!=="delivered" && formatAccraDayTime(o.ready_not_before) && (
           <div data-testid="order-scheduled-start" style={{marginTop:6,color:D.textDim,fontSize:"0.72rem",fontWeight:700}}>Delivery scheduled to start {formatAccraDayTime(o.ready_not_before)}</div>
         )}
