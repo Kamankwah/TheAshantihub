@@ -20,14 +20,16 @@ function InstantPay({ onSuccess, processing }) {
 const API = 'http://localhost:8000'
 const ledgerOff = () => http.get(`${API}/api/wallet/`, () => HttpResponse.json({ code: 'ledger_off', detail: 'off' }, { status: 409 }))
 const ledgerOn = (balance = '500.00') => http.get(`${API}/api/wallet/`, () => HttpResponse.json({ kind: 'customer', balance }))
-const listAccepted = () => http.get(`${API}/api/services/requests/mine/`, () => HttpResponse.json(ACCEPTED))
+// Accepted until the pay call lands, then in_progress like the real server.
+let paidYet = false
+const listAccepted = () => http.get(`${API}/api/services/requests/mine/`, () => HttpResponse.json(paidYet ? [{ ...ACCEPTED[0], status: 'in_progress' }] : ACCEPTED))
 const quote = (pp = '1.80') => http.get(`${API}/api/wallet/processing/`, ({ request }) => {
   const amount = new URL(request.url).searchParams.get('amount')
   return HttpResponse.json({ amount, payment_processing: pp, you_pay: '121.80', provider: 'simulated' })
 })
 
 // Old cases run with the ledger off, so the flow is the one before wallets.
-beforeEach(() => server.use(ledgerOff()))
+beforeEach(() => { paidYet = false; server.use(ledgerOff()) })
 
 function renderTab() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -120,6 +122,7 @@ describe('ServiceRequestsTab — paying by method with the server charge', () =>
       http.post(`${API}/api/services/requests/:id/pay/`, async ({ request }) => {
         bodies.push(await request.json())
         await new Promise((r) => setTimeout(r, 50))
+        paidYet = true
         return HttpResponse.json({ id: 5, status: 'in_progress', payment_processing: '0.00' })
       }),
     )
@@ -132,6 +135,9 @@ describe('ServiceRequestsTab — paying by method with the server charge', () =>
     expect(await screen.findByText('Paid. The job can start.')).toBeInTheDocument()
     expect(bodies).toEqual([{ payment_method: 'wallet' }])
     expect(screen.queryByText(/Payment processing GH/)).not.toBeInTheDocument()
+    // After the refetch the request is in progress and the line is still there.
+    expect(await screen.findByText('In progress')).toBeInTheDocument()
+    expect(screen.getByText('Paid. The job can start.')).toBeInTheDocument()
   })
 
   it('insufficient funds shows the server text', async () => {
@@ -167,7 +173,7 @@ describe('ServiceRequestsTab — paying by method with the server charge', () =>
   it("the paid line shows the server's processing charge", async () => {
     server.use(
       ledgerOn(), listAccepted(), quote('1.80'),
-      http.post(`${API}/api/services/requests/:id/pay/`, () => HttpResponse.json({ id: 5, status: 'in_progress', payment_processing: '1.80' })),
+      http.post(`${API}/api/services/requests/:id/pay/`, () => { paidYet = true; return HttpResponse.json({ id: 5, status: 'in_progress', payment_processing: '1.80' }) }),
     )
     renderTab()
     const btn = await screen.findByRole('button', { name: /Pay GHS 120.00 to start/ })
@@ -175,6 +181,9 @@ describe('ServiceRequestsTab — paying by method with the server charge', () =>
     fireEvent.click(btn)
     fireEvent.click(screen.getByText('Simulate paid'))
     expect(await screen.findByText('Paid. The job can start.')).toBeInTheDocument()
+    expect(screen.getByText('Payment processing GH₵ 1.80')).toBeInTheDocument()
+    expect(await screen.findByText('In progress')).toBeInTheDocument()
+    expect(screen.getByText('Paid. The job can start.')).toBeInTheDocument()
     expect(screen.getByText('Payment processing GH₵ 1.80')).toBeInTheDocument()
   })
 })

@@ -20,7 +20,7 @@ export default function ServiceRequestPay({ sr, PaymentComponent, onPaid }) {
   const pay = useBookingPayment({ amount: sr.agreed_price, enabled: canBuy })
   const [modal, setModal] = useState(false)
   const [error, setError] = useState(null)
-  const [paid, setPaid] = useState(null) // {processing}
+  const [paid, setPaid] = useState(false) // the tab shows the paid line, which must survive this unmounting
   const inFlight = useRef(false)
   const [busy, setBusy] = useState(false)
 
@@ -36,9 +36,9 @@ export default function ServiceRequestPay({ sr, PaymentComponent, onPaid }) {
         return
       }
       setModal(false)
-      setPaid({ processing: res?.payment_processing })
+      setPaid(true)
       queryClient.invalidateQueries({ queryKey: ['wallet'] })
-      onPaid && onPaid()
+      onPaid && onPaid(res)
     } catch (err) {
       const code = err?.body?.code
       if ((err?.status === 409 && (code === 'insufficient_funds' || code === 'ledger_off')) || (err?.status === 403 && code === 'not_open')) {
@@ -61,14 +61,7 @@ export default function ServiceRequestPay({ sr, PaymentComponent, onPaid }) {
     else setModal(true)
   }
 
-  if (paid) {
-    return (
-      <div role="status" style={{ ...s.note, marginTop: 10 }}>
-        <div>Paid. The job can start.</div>
-        {paid.processing && paid.processing !== '0.00' && <div>Payment processing GH₵ {paid.processing}</div>}
-      </div>
-    )
-  }
+  if (paid) return null
 
   const walletPay = pay.ledgerOn && pay.method === 'wallet'
   const checking = canBuy && pay.state === 'unknown' && !pay.problem

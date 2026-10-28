@@ -2059,6 +2059,8 @@ const SR_STATUS_META = {
 
 export function ServiceRequestsTab({ PaymentComponent }) {
   const { data, isLoading, isError, refetch } = useMyServiceRequests();
+  // The server's pay answer per request id: the card keeps its paid line after the refetch moves it past "accepted".
+  const [paidAnswers, setPaidAnswers] = useState({});
 
   const requests = data || [];
   if (isLoading) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>Loading…</div>;
@@ -2082,7 +2084,13 @@ export function ServiceRequestsTab({ PaymentComponent }) {
           </div>
           <ServiceAcceptBar request={sr} onChanged={refetch} />
           {sr.status==="accepted" && <BookingTermsNote kind="service" tone="light" />}
-          {sr.status==="accepted" && <ServiceRequestPay sr={sr} PaymentComponent={PaymentComponent} onPaid={refetch} />}
+          {sr.status==="accepted" && <ServiceRequestPay sr={sr} PaymentComponent={PaymentComponent} onPaid={(res)=>{ setPaidAnswers(m=>({...m,[sr.id]:res||{}})); refetch(); }} />}
+          {paidAnswers[sr.id] && (
+            <div role="status" style={{marginTop:10,color:D.textDim,fontSize:"0.78rem"}}>
+              <div>Paid. The job can start.</div>
+              {paidAnswers[sr.id].payment_processing && paidAnswers[sr.id].payment_processing!=="0.00" && <div>Payment processing GH₵ {paidAnswers[sr.id].payment_processing}</div>}
+            </div>
+          )}
         </div>
       );
     })}
