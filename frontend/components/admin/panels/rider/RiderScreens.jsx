@@ -3,6 +3,7 @@ import { apiPost, apiPostForm } from "../../../../apiClient.js";
 import { apiErrorMessage } from "../../../../lib/apiErrorMessage.js";
 import { currentFix } from "../../../../lib/riderTracking.js";
 import { useRiderCash, useRiderDocuments, useRiderEarnings, useRiderJobs, useRiderMe } from "../../../../hooks/useDelivery.js";
+import { formatGhs } from "../../../wallet/walletMoney.js";
 import { D } from "../../theme.js";
 import { chip, dim, field } from "../panelStyles.js";
 import { ScoutDevices } from "../../shell/ScoutProfile.jsx";
@@ -77,6 +78,17 @@ export function EarningsScreen() {
               </div>
             ))}
           </section>
+          {data.redeliveries?.length > 0 && (
+            <section aria-label="Re-delivery trips" style={card}>
+              <h2 style={h2}>Re-delivery trips</h2>
+              <span style={dim}>Each re-delivery fee is owed to you and paid through payroll.</span>
+              {data.redeliveries.map((r) => (
+                <div key={r.id} style={{ borderTop: `1px solid ${D.divider}`, paddingTop: 8, display: "flex", justifyContent: "space-between", color: D.text }}>
+                  <span>Order #{r.order} · re-delivery {r.attempt} · {day(r.completed_at)}</span><b style={{ fontVariantNumeric: "tabular-nums" }}>{formatGhs(r.fee)}</b>
+                </div>
+              ))}
+            </section>
+          )}
           <section aria-label="Rates" style={card}>
             <h2 style={h2}>How your pay is worked out</h2>
             {data.rates ? <span style={{ fontSize: "0.86rem", color: D.text, lineHeight: 1.5 }}>{money(data.rates.per_job)} a job + {money(data.rates.per_km)} a km + {money(data.rates.wait_per_min)} a minute after {data.rates.wait_after_min} minutes waiting (rate card version {data.rates.version}).{data.rate_change_pending ? " A change to the rates is waiting for approval; you will be told before it applies." : ""}</span> : <span style={{ fontSize: "0.86rem", color: D.text }}>No rate card has been approved yet, so no job records any pay.</span>}

@@ -575,3 +575,73 @@ class QueueRowAssignLimitTests(RedeliveryBase):
     def test_fresh_order_has_no_limit(self):
         order = self.door_order()
         self.assertIsNone(self.row(order)["assign_limit"])
+
+
+@override_settings(LEDGER_ENABLED=True)
+class RedeliveryOwedThroughPayrollTests(RedeliveryBase):
+    """Plan 5F Task 11: the re-delivery fees owed to in-house riders show on the payroll reads."""
+
+    def client_for(self, staff):
+        from rest_framework.test import APIClient
+
+        from accounts.testing import staff_token
+
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff)}")
+        return client
+
+    def completed_by(self, rider_row):
+        order = self.unavailable()
+        row = self.ask(order)
+        self.pay(row)
+        self.second_trip(order, rider_row)
+        self.collect_all(order, rider_row)
+        self.deliver(order, rider_row)
+        row.refresh_from_db()
+        return order, row
+
+    def test_payouts_list_redelivery_fees_owed_to_in_house_riders(self):
+        order, row = self.completed_by(self.own)
+        body = self.client_for(self.manager).get("/api/delivery/payouts/").json()
+        self.assertEqual(body["redeliveries"], [
+            {"staff_id": self.own.staff_id, "full_name": "Ama Boateng", "trips": 1, "owed": "15.00"},
+        ])
+
+    def test_payout_lines_list_each_redelivery(self):
+        order, row = self.completed_by(self.own)
+        body = self.client_for(self.manager).get(f"/api/delivery/payouts/{self.own.staff_id}/").json()
+        self.assertEqual(len(body["redeliveries"]), 1)
+        line = body["redeliveries"][0]
+        self.assertEqual((line["id"], line["order"], line["attempt"], line["fee"]), (row.pk, order.pk, 1, "15.00"))
+        self.assertIsNotNone(line["completed_at"])
+        other = self.client_for(self.manager).get(f"/api/delivery/payouts/{self.own2.staff_id}/").json()
+        self.assertEqual(other["redeliveries"], [])
+
+    def test_rider_earnings_list_their_redelivery_trips(self):
+        order, row = self.completed_by(self.own)
+        body = self.client_for(self.own.staff).get("/api/delivery/rider/earnings/?period=week").json()
+        self.assertEqual([(r["id"], r["order"], r["fee"]) for r in body["redeliveries"]], [(row.pk, order.pk, "15.00")])
+        theirs = self.client_for(self.own2.staff).get("/api/delivery/rider/earnings/?period=week").json()
+        self.assertEqual(theirs["redeliveries"], [])
+
+    def test_open_or_cancelled_requests_are_not_owed(self):
+        paid_order = self.unavailable()
+        self.pay(self.ask(paid_order))
+        self.second_trip(paid_order, self.own)                      # given to a rider, not done
+        cancelled = self.unavailable()
+        redelivery.cancel(self.ask(cancelled).pk, self.support)
+        self.assertEqual(redelivery.owed_trips(since=timezone.now() - timedelta(days=30)).count(), 0)
+        body = self.client_for(self.manager).get("/api/delivery/payouts/").json()
+        self.assertEqual(body["redeliveries"], [])
+
+    def test_a_third_party_second_trip_is_paid_by_wallet_not_owed_through_payroll(self):
+        order, row = self.completed_by(self.third())
+        self.assertEqual(redelivery.owed_trips(since=timezone.now() - timedelta(days=30)).count(), 0)
+        self.assertEqual(self.client_for(self.manager).get("/api/delivery/payouts/").json()["redeliveries"], [])
+
+    def test_old_trips_fall_outside_the_window(self):
+        order, row = self.completed_by(self.own)
+        Redelivery.objects.filter(pk=row.pk).update(completed_at=timezone.now() - timedelta(days=30))
+        self.assertEqual(self.client_for(self.manager).get("/api/delivery/payouts/").json()["redeliveries"], [])
+        wide = self.client_for(self.manager).get("/api/delivery/payouts/?weeks=6").json()["redeliveries"]
+        self.assertEqual(wide[0]["trips"], 1)

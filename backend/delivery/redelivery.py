@@ -165,6 +165,29 @@ def customer_row(redelivery):
     return data
 
 
+def owed_trips(*, since, rider=None):
+    """The second trips AshantiHub owes an in-house rider through payroll since `since` (a datetime; `completed_at`), as ONE
+    queryset filter that states `Redelivery.owed_through_payroll`: done, a rider, the fee settled, and no `rider_earning` (a
+    third-party fallback rider was paid into the wallet instead). `rider` is a StaffUser id or None for everyone."""
+    from .models import Redelivery
+
+    trips = Redelivery.objects.filter(
+        status=Redelivery.COMPLETED, rider__isnull=False, settle_journal__isnull=False, rider_earning__isnull=True,
+        completed_at__gte=since,
+    )
+    if rider is not None:
+        trips = trips.filter(rider_id=rider)
+    return trips
+
+
+def owed_row(r):
+    """One owed trip as the payroll screens show it (the fee as the server's decimal string)."""
+    return {
+        "id": r.pk, "order": r.order_id, "attempt": r.attempt, "completed_at": r.completed_at,
+        "fee": str(from_pesewas(r.fee_pesewas)),
+    }
+
+
 def _log(actor, verb, redelivery, *, request=None):
     """The activity event (last in the caller's transaction when it is a staff request; otherwise after commit, so the
     chain lock is never held while a delivery or payment path takes further row locks)."""
