@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { C, tint } from "../../theme.js";
 import { lensRect, paneOffset } from "../../lib/zoomMath.js";
+import useBreakpoint from "../../hooks/useBreakpoint.js";
 import GalleryLightbox from "./GalleryLightbox.jsx";
+import MobileGallery from "./MobileGallery.jsx";
 
 const ZOOM = 2.5;
 const CAN_HOVER = "(hover: hover) and (pointer: fine)";
@@ -18,6 +20,7 @@ export default function ProductGallery({ media = [], title = "", activeVariantIm
   const [zoom, setZoom] = useState(null); // {lens, offset, box} while hovering
   const [hovering, setHovering] = useState(false);
   const box = useRef(null);
+  const phone = useBreakpoint() === "phone";
 
   useEffect(() => { if (activeVariantImage) setIdx(0); }, [activeVariantImage]);
   useEffect(() => { if (idx >= images.length) setIdx(0); }, [images.length, idx]);
@@ -41,6 +44,44 @@ export default function ProductGallery({ media = [], title = "", activeVariantIm
     return (
       <div style={{ aspectRatio: "1 / 1", background: C.surface2, border: `1px solid ${C.line}`, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", color: C.inkDim, fontSize: 14 }}>
         No photo yet
+      </div>
+    );
+  }
+
+  const onStripScroll = (e) => {
+    const w = e.currentTarget.clientWidth || 1;
+    const i = Math.round(e.currentTarget.scrollLeft / w);
+    if (i !== idx && i >= 0 && i < images.length) setIdx(i);
+  };
+  const viewer = lightbox === null ? null : phone
+    ? <MobileGallery media={media} startIndex={lightbox} title={title} onClose={() => setLightbox(null)} />
+    : <GalleryLightbox media={media} startIndex={lightbox} title={title} onClose={() => setLightbox(null)} />;
+
+  if (phone) {
+    const slides = images.length ? images.map((m, i) => ({ m, src: i === 0 && activeVariantImage ? activeVariantImage : m.url })) : [{ m: null, src: activeVariantImage }];
+    return (
+      <div>
+        <div data-testid="gallery-strip" onScroll={onStripScroll}
+          style={{ display: "flex", overflowX: "auto", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", borderRadius: 12, border: `1px solid ${C.line}`, background: C.surface2 }}>
+          {slides.map(({ m, src }, i) => (
+            <div key={m?.id ?? "variant"} style={{ flex: "0 0 100%", scrollSnapAlign: "center", aspectRatio: "1 / 1", position: "relative" }}>
+              <img data-testid="gallery-main-image" src={src} alt={title} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+              <button aria-label={`Open photo ${i + 1} full screen`} onClick={() => open(Math.min(i, images.length - 1))}
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", background: "transparent", border: 0, cursor: "zoom-in" }} />
+            </div>
+          ))}
+        </div>
+        {images.length > 1 && (
+          <div style={{ textAlign: "center", marginTop: 8, fontSize: 12, color: C.inkDim, fontVariantNumeric: "tabular-nums" }}>{Math.min(idx, images.length - 1) + 1} / {images.length}</div>
+        )}
+        {videos.length > 0 && (
+          <button onClick={() => setLightbox(media.indexOf(videos[0]))} aria-label={`Videos (${videos.length})`}
+            style={{ marginTop: 8, padding: "10px 14px", minHeight: 44, borderRadius: 8, border: `1px solid ${C.line}`, background: C.surface2, color: C.ink, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+            ▶ Videos ({videos.length})
+          </button>
+        )}
+        {mainSrc && <div style={{ textAlign: "center", marginTop: 8, fontSize: 12, color: C.inkDim }}>Tap to see full screen</div>}
+        {viewer}
       </div>
     );
   }
@@ -89,9 +130,7 @@ export default function ProductGallery({ media = [], title = "", activeVariantIm
           <img src={mainSrc} alt="" style={{ position: "absolute", left: 0, top: 0, width: zoom.box.w * ZOOM, height: zoom.box.h * ZOOM, maxWidth: "none", objectFit: "contain", transform: `translate(${zoom.offset.x}px, ${zoom.offset.y}px)` }} />
         </div>
       )}
-      {lightbox !== null && (
-        <GalleryLightbox media={media} startIndex={lightbox} title={title} onClose={() => setLightbox(null)} />
-      )}
+      {viewer}
     </div>
   );
 }

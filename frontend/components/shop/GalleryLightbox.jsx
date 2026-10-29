@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { C, tint } from "../../theme.js";
 import usePrefersReducedMotion from "../../hooks/usePrefersReducedMotion.js";
+import { youtubeEmbedUrl } from "./youtubeEmbed.js";
 
-const YT_ID = /^[\w-]{11}$/;
 const FOCUSABLE = 'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 const navBtn = {
@@ -85,8 +85,8 @@ export default function GalleryLightbox({ media = [], startIndex = 0, title = ""
   ) : cur.kind === "video" ? (
     <video key={cur.id} ref={videoEl} data-testid="lightbox-slide" className="gl-slide" src={cur.url} poster={cur.thumb_url || undefined}
       controls playsInline preload="metadata" style={{ maxWidth: "100%", maxHeight: "100%" }} />
-  ) : YT_ID.test(cur.youtube_id || "") ? (
-    <iframe key={cur.id} className="gl-slide" title={`${title} video`} src={`https://www.youtube-nocookie.com/embed/${cur.youtube_id}`}
+  ) : youtubeEmbedUrl(cur.youtube_id) ? (
+    <iframe key={cur.id} className="gl-slide" title={`${title} video`} src={youtubeEmbedUrl(cur.youtube_id)}
       allow="encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"
       style={{ width: "min(100%, 800px)", aspectRatio: "16 / 9", border: 0 }} />
   ) : (
