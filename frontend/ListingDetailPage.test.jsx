@@ -75,7 +75,7 @@ describe('ListingDetailPage', () => {
     renderPage()
     expect(await screen.findByText('Royal Ashanti Lodge')).toBeInTheDocument()
     expect(screen.getByText(/Luxury rooms with kente-draped interiors/)).toBeInTheDocument()
-    expect(screen.getByText(/450/)).toBeInTheDocument()
+    expect(within(screen.getByTestId('buy-box')).getByText('GHS 450.00')).toBeInTheDocument()
   })
 
   it('shows no business phone or tel link even if a response still carried one', async () => {
@@ -87,44 +87,54 @@ describe('ListingDetailPage', () => {
     expect(container.textContent).not.toMatch(/233244000001|0244000001/)
   })
 
-  it('renders a gallery thumbnail per photo', async () => {
+  it('renders a gallery thumbnail per photo, the main photo first', async () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)))
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(screen.getByLabelText('View photo 1')).toBeInTheDocument()
-    expect(screen.getByLabelText('View photo 2')).toBeInTheDocument()
+    expect(screen.getAllByTestId('gallery-thumb')).toHaveLength(3)
+    expect(screen.getByLabelText('Show photo 1')).toBeInTheDocument()
+    expect(screen.getByLabelText('Show photo 3')).toBeInTheDocument()
   })
 
-  it('renders an enabled Add to Cart button for a priced listing', async () => {
+  it('renders an enabled Add to cart button for a priced listing', async () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)))
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(screen.getByText('Add to Cart')).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add to cart' })).not.toBeDisabled()
   })
 
-  it('blocks a business account from buying, showing a notice instead of Add to Cart', async () => {
+  it('blocks a business account from buying, showing a notice instead of Add to cart', async () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)))
     renderPage({ user: { id: 5, fullName: 'Biz Owner', accountType: 'business_owner' } })
     await screen.findByText('Royal Ashanti Lodge')
     expect(screen.getByText(/Business accounts can't purchase/i)).toBeInTheDocument()
-    expect(screen.queryByText('Add to Cart')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add to cart' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Customer accounts only' })).toBeDisabled()
   })
 
-  it('disables Add to Cart when the listing has no price', async () => {
+  it('disables Add to cart when the listing has no price', async () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, price_amount: null })))
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(screen.getByText('No Price Set')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'No price set' })).toBeDisabled()
   })
 
-  it('calls onAddToCart and shows an "Added" confirmation on success', async () => {
-    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)))
+  it('a customer adds through the buy box and sees an "Added" confirmation', async () => {
+    const posts = []
+    server.use(
+      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)),
+      http.post('http://localhost:8000/api/cart/items/', async ({ request }) => {
+        posts.push(await request.json())
+        return HttpResponse.json({ id: 1 }, { status: 201 })
+      }),
+    )
     const onAddToCart = vi.fn().mockResolvedValue(undefined)
-    renderPage({ onAddToCart })
+    renderPage({ user: { id: 4, fullName: 'Ama Boateng', accountType: 'customer' }, onAddToCart })
     await screen.findByText('Royal Ashanti Lodge')
-    fireEvent.click(screen.getByText('Add to Cart'))
-    expect(onAddToCart).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), 1)
-    expect(await screen.findByText('Added to Cart ✓')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }))
+    expect(await screen.findByText('Added to cart ✓')).toBeInTheDocument()
+    expect(posts).toEqual([{ listing: 1, quantity: 1 }])
+    expect(onAddToCart).not.toHaveBeenCalled()
   })
 
   it('shows an error message next to the button when onAddToCart rejects', async () => {
@@ -132,7 +142,7 @@ describe('ListingDetailPage', () => {
     const onAddToCart = vi.fn().mockRejectedValue(new Error('Only customer accounts can add items to a cart.'))
     renderPage({ onAddToCart })
     await screen.findByText('Royal Ashanti Lodge')
-    fireEvent.click(screen.getByText('Add to Cart'))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }))
     expect(await screen.findByText('Only customer accounts can add items to a cart.')).toBeInTheDocument()
   })
 
@@ -145,30 +155,31 @@ describe('ListingDetailPage', () => {
     expect(onBack).toHaveBeenCalled()
   })
 
+  // The Related rail is the service/stay page's; goods show the also-viewed carousel instead.
   it('renders related listings from useRelatedListings via the injected CardComponent', async () => {
     server.use(
-      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)),
-      http.get('http://localhost:8000/api/listings/1/related/', () =>
-        HttpResponse.json([{ id: 2, name: 'Adum Guest House', category: LISTING.category }]),
+      http.get('http://localhost:8000/api/listings/2/', () => HttpResponse.json(SERVICE_LISTING)),
+      http.get('http://localhost:8000/api/listings/2/related/', () =>
+        HttpResponse.json([{ id: 5, name: 'Adum Guest House', category: LISTING.category }]),
       ),
     )
-    renderPage()
+    renderPage({ id: 2 })
     await waitFor(() => expect(screen.getByTestId('related-rail')).toBeInTheDocument())
     expect(within(screen.getByTestId('related-rail')).getByText('Adum Guest House')).toBeInTheDocument()
   })
 
   it('forwards onOpenListing as onOpen to related CardComponent instances', async () => {
     server.use(
-      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)),
-      http.get('http://localhost:8000/api/listings/1/related/', () =>
-        HttpResponse.json([{ id: 2, name: 'Adum Guest House', category: LISTING.category }]),
+      http.get('http://localhost:8000/api/listings/2/', () => HttpResponse.json(SERVICE_LISTING)),
+      http.get('http://localhost:8000/api/listings/2/related/', () =>
+        HttpResponse.json([{ id: 5, name: 'Adum Guest House', category: LISTING.category }]),
       ),
     )
     const onOpenListing = vi.fn()
-    renderPage({ onOpenListing })
+    renderPage({ id: 2, onOpenListing })
     await waitFor(() => expect(screen.getByTestId('related-rail')).toBeInTheDocument())
     fireEvent.click(within(screen.getByTestId('related-rail')).getByText('Adum Guest House'))
-    expect(onOpenListing).toHaveBeenCalledWith(2)
+    expect(onOpenListing).toHaveBeenCalledWith(5)
   })
 
   it('shows a retry option on error', async () => {
@@ -180,13 +191,17 @@ describe('ListingDetailPage', () => {
 
 describe('ListingDetailPage — tabbed sections (reviews/ratings/Q&A Phase 5)', () => {
   it('renders the product tab set, in order, for a product listing', async () => {
-    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)))
+    server.use(
+      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)),
+      http.get('http://localhost:8000/api/listings/1/also-viewed/', () => HttpResponse.json({
+        basis: 'same_category', results: [{ id: 2, name: 'Adum Guest House', category: LISTING.category, price_amount: '300.00', review_count: 0 }],
+      })),
+    )
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    const tabLabels = screen.getAllByRole('tab').map((t) => t.textContent)
-    expect(tabLabels).toEqual([
-      'Overview', 'Specs', 'Reviews', 'Q&As', 'Compare Products', 'Warranty & Returns', 'More buying options',
-    ])
+    await waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
+      'Top', 'About this item', 'Similar', 'Product information', 'Reviews',
+    ]))
   })
 
   it('renders the service tab set, in order, for a service listing', async () => {
@@ -195,7 +210,7 @@ describe('ListingDetailPage — tabbed sections (reviews/ratings/Q&A Phase 5)', 
     await screen.findByText('Kumasi City Tour')
     const tabLabels = screen.getAllByRole('tab').map((t) => t.textContent)
     expect(tabLabels).toEqual([
-      'Overview', 'Service Duration', 'Reviews', 'Q&As', 'Compare Services', 'Service satisfaction & dispute', 'More Service options',
+      'Overview', 'Service Duration', 'Reviews', 'Compare Services', 'Service satisfaction & dispute', 'More Service options',
     ])
   })
 
@@ -207,11 +222,12 @@ describe('ListingDetailPage — tabbed sections (reviews/ratings/Q&A Phase 5)', 
     expect(screen.getByText('King')).toBeInTheDocument()
   })
 
-  it('shows the empty specs state when a product listing has no specs', async () => {
+  it('leaves out the item details group when a product listing has no specs', async () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, specs: [] })))
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(screen.getByText('No specs listed yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Item details' })).not.toBeInTheDocument()
+    expect(screen.queryByText('No specs listed yet.')).not.toBeInTheDocument()
   })
 
   it('renders the service duration for a service listing', async () => {
@@ -236,14 +252,14 @@ describe('ListingDetailPage — Reviews tab', () => {
       http.get('http://localhost:8000/api/reviews/listing/1/', () => HttpResponse.json({
         count: 1, next: null, previous: null,
         results: [{ id: 5, author_name: 'Kwame', rating: 5, comment: 'Loved it, would stay again.', verified: true, created_at: '2026-07-01T00:00:00Z' }],
-        avg_rating: 5, review_count: 1,
+        avg_rating: 5, review_count: 1, distribution: { 5: 1, 4: 0, 3: 0, 2: 0, 1: 0 },
       })),
     )
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
     expect(await screen.findByText('Loved it, would stay again.')).toBeInTheDocument()
     expect(screen.getByText('Kwame')).toBeInTheDocument()
-    expect(screen.getByText('(1 reviews)')).toBeInTheDocument()
+    expect(screen.getByTestId('review-histogram')).toHaveTextContent('1 rating')
   })
 
   it('prompts a signed-out visitor to sign in before writing a review', async () => {
@@ -284,65 +300,6 @@ describe('ListingDetailPage — Reviews tab', () => {
   })
 })
 
-describe('ListingDetailPage — Q&As tab', () => {
-  it('lists each question with its answer, or "Not yet answered"', async () => {
-    server.use(
-      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)),
-      http.get('http://localhost:8000/api/qa/questions/listing/1/', () => HttpResponse.json({
-        count: 2, next: null, previous: null,
-        results: [
-          { id: 1, question_text: 'Is breakfast included?', answer_text: 'Yes, complimentary breakfast is included.', answered_at: '2026-07-01T00:00:00Z' },
-          { id: 2, question_text: 'Is parking available?', answer_text: null, answered_at: null },
-        ],
-      })),
-    )
-    renderPage()
-    await screen.findByText('Royal Ashanti Lodge')
-    expect(await screen.findByText('Q: Is breakfast included?')).toBeInTheDocument()
-    expect(screen.getByText('A: Yes, complimentary breakfast is included.')).toBeInTheDocument()
-    expect(screen.getByText('Q: Is parking available?')).toBeInTheDocument()
-    expect(screen.getByText('Not yet answered')).toBeInTheDocument()
-  })
-
-  it('lets a signed-in customer ask a question, POSTing to /api/qa/questions/', async () => {
-    let requestBody = null
-    server.use(
-      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)),
-      http.post('http://localhost:8000/api/qa/questions/', async ({ request }) => {
-        requestBody = await request.json()
-        return HttpResponse.json({ id: 9, question_text: requestBody.question_text, answer_text: null, answered_at: null }, { status: 201 })
-      }),
-    )
-    renderPage({ user: { id: 1, fullName: 'Ama', accountType: 'customer' } })
-    await screen.findByText('Royal Ashanti Lodge')
-    fireEvent.change(screen.getByPlaceholderText('Ask a question about this listing…'), { target: { value: 'Do you allow pets?' } })
-    fireEvent.click(screen.getByText('Ask a Question'))
-    await waitFor(() => expect(requestBody).toEqual({ target_type: 'listing', target_id: 1, question_text: 'Do you allow pets?' }))
-  })
-
-  it('lets the listing owner answer an unanswered question inline', async () => {
-    let answerBody = null
-    server.use(
-      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)),
-      http.get('http://localhost:8000/api/qa/questions/listing/1/', () => HttpResponse.json({
-        count: 1, next: null, previous: null,
-        results: [{ id: 3, question_text: 'Is parking available?', answer_text: null, answered_at: null }],
-      })),
-      http.post('http://localhost:8000/api/qa/questions/:id/answer/', async ({ request }) => {
-        answerBody = await request.json()
-        return HttpResponse.json({ id: 3, answer_text: answerBody.answer_text, answered_at: '2026-07-01T00:00:00Z' })
-      }),
-    )
-    // item.business_owner.id === 9 on the LISTING fixture — signed in as that same id.
-    renderPage({ user: { id: 9, fullName: 'Ama Boateng', accountType: 'business_owner' } })
-    await screen.findByText('Royal Ashanti Lodge')
-    fireEvent.click(await screen.findByText('Answer'))
-    fireEvent.change(screen.getByPlaceholderText('Write your answer…'), { target: { value: 'Yes, free parking on site.' } })
-    fireEvent.click(screen.getByText('Submit Answer'))
-    await waitFor(() => expect(answerBody).toEqual({ answer_text: 'Yes, free parking on site.' }))
-  })
-})
-
 describe('ListingDetailPage — Compare tab', () => {
   const RELATED = [
     { id: 2, name: 'Adum Guest House', category: LISTING.category, price_amount: '300.00', price_unit: '/night', avg_rating: 4, review_count: 5, zone: { name: 'Adum' } },
@@ -350,13 +307,14 @@ describe('ListingDetailPage — Compare tab', () => {
     { id: 4, name: 'Suame Suites', category: LISTING.category, price_amount: '400.00', price_unit: '/night', avg_rating: 0, review_count: 0, zone: { name: 'Suame' } },
   ]
 
+  // Compare lives on the service/stay page; the product page has carousels instead.
   it('prompts for a second selection, caps selection at two, then renders a comparison table', async () => {
     server.use(
-      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)),
-      http.get('http://localhost:8000/api/listings/1/related/', () => HttpResponse.json(RELATED)),
+      http.get('http://localhost:8000/api/listings/2/', () => HttpResponse.json(SERVICE_LISTING)),
+      http.get('http://localhost:8000/api/listings/2/related/', () => HttpResponse.json(RELATED)),
     )
-    renderPage()
-    await screen.findByText('Royal Ashanti Lodge')
+    renderPage({ id: 2 })
+    await screen.findByText('Kumasi City Tour')
     expect(await screen.findByText('Select two listings to compare.')).toBeInTheDocument()
 
     fireEvent.click(screen.getAllByRole('checkbox')[0])
@@ -384,11 +342,13 @@ describe('ListingDetailPage — Warranty & dispute tabs', () => {
     expect(await screen.findByText('Returns accepted within 7 days of purchase.')).toBeInTheDocument()
   })
 
-  it('shows the empty-policy state when no warranty policy has been published yet', async () => {
+  it('leaves out the warranty group when neither the listing nor AshantiHub has published one', async () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)))
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(await screen.findByText('No policy has been published yet.')).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByRole('button', { name: 'Warranty & returns' })).not.toBeInTheDocument()
+    expect(screen.queryByText('No policy has been published yet.')).not.toBeInTheDocument()
   })
 
   it('renders the dispute policy text for a service listing', async () => {
@@ -466,7 +426,7 @@ describe('ListingDetailPage — staff session is view-only', () => {
     await screen.findByText('Royal Ashanti Lodge')
     expect(screen.queryByText(/Business accounts can't purchase/i)).not.toBeInTheDocument()
     const before = screen.queryAllByText(STAFF_NOTICE).length
-    fireEvent.click(screen.getByRole('button', { name: 'Add to Cart' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }))
     expect(screen.getAllByText(STAFF_NOTICE)).toHaveLength(before + 1)
     expect(onAddToCart).not.toHaveBeenCalled()
   })
@@ -538,22 +498,24 @@ describe('ListingDetailPage and the delivery cart', () => {
     renderPage({ user: CUSTOMER })
     expect(await screen.findByText('Delivery limit reached')).toBeInTheDocument()
     expect(screen.getByText('Your delivery can include up to 4 shops. Remove one to add this.')).toBeInTheDocument()
-    expect(screen.queryByText('Add to Cart')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add to cart' })).toBeDisabled()
   })
 
   it('food is added to the cart, not requested as a service', async () => {
     const food = { ...LISTING, category: { slug: 'food', icon: '🍲', label: 'Food', color: '#CC0000', kind: 'service', is_food: true } }
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(food)), guard(null))
     renderPage({ user: CUSTOMER })
-    expect(await screen.findByText('Add to Cart')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Add to cart' })).toBeInTheDocument()
     expect(screen.queryByText('Request this service')).not.toBeInTheDocument()
   })
 
   it("a refused add shows the server's reason", async () => {
-    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)), guard(null))
-    const err = Object.assign(new Error('API request to /api/cart/items/ failed with status 400'), { status: 400, body: { detail: 'Your delivery can include food from up to 2 places. Remove one to add this.', code: 'food_limit' } })
-    renderPage({ user: CUSTOMER, onAddToCart: vi.fn().mockRejectedValue(err) })
-    fireEvent.click(await screen.findByText('Add to Cart'))
+    server.use(
+      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)), guard(null),
+      http.post('http://localhost:8000/api/cart/items/', () => HttpResponse.json({ detail: 'Your delivery can include food from up to 2 places. Remove one to add this.', code: 'food_limit' }, { status: 400 })),
+    )
+    renderPage({ user: CUSTOMER })
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to cart' }))
     expect(await screen.findByText('Your delivery can include food from up to 2 places. Remove one to add this.')).toBeInTheDocument()
   })
 
@@ -656,7 +618,7 @@ describe('ListingDetailPage — before the marketplace opens', () => {
       renderPage({ user: CUSTOMER })
       await screen.findByText('Royal Ashanti Lodge')
       expect(await screen.findByRole('button', { name: 'Opens 6 Nov' })).toBeDisabled()
-      expect(screen.queryByText('Add to Cart')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Add to cart' })).not.toBeInTheDocument()
     } finally { setStoredAuth(null) }
   })
 
@@ -675,7 +637,7 @@ describe('ListingDetailPage — before the marketplace opens', () => {
     try {
       renderPage({ user: CUSTOMER })
       await screen.findByText('Royal Ashanti Lodge')
-      await waitFor(() => expect(screen.getByText('Add to Cart')).not.toBeDisabled())
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Add to cart' })).not.toBeDisabled())
     } finally { setStoredAuth(null) }
   })
 
@@ -697,16 +659,20 @@ describe('ListingDetailPage price', () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, sale_price: '400.00', effective_price: '400.00', was_price: '450.00' })))
     const { container } = renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(screen.getByText('GHS 400.00/night')).toBeInTheDocument()
-    const struck = [...container.querySelectorAll('s')]
-    expect(struck.map((s) => s.textContent)).toEqual(['Was GHS 450.00'])
+    const price = screen.getByTestId('product-price')
+    expect(within(price).getByText('GHS 400.00')).toBeInTheDocument()
+    expect(price).toHaveTextContent('/night')
+    expect(within(price).getByText('Was GHS 450.00')).toBeInTheDocument()
+    // The centre price and the buy box each strike the server's was_price, and nothing else.
+    const struck = [...container.querySelectorAll('s')].map((s) => s.textContent)
+    expect(struck).toEqual(['GHS 450.00', 'GHS 450.00'])
   })
 
   it('does not strike through price_amount when the sale has no honest was price', async () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, sale_price: '400.00', effective_price: '400.00', was_price: null })))
     const { container } = renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(screen.getByText('GHS 400.00/night')).toBeInTheDocument()
+    expect(within(screen.getByTestId('product-price')).getByText('GHS 400.00')).toBeInTheDocument()
     expect(container.querySelector('s')).toBeNull()
   })
 })
@@ -720,82 +686,93 @@ const WITH_VARIANTS = {
   price_unit: '',
   price_amount: '50.00',
   has_variants: true,
+  // `available` is on every variant of the detail response (backend-contract A10).
   variants: [
-    { ...VARIANT_BASE, id: 11, label: 'Small', stock_quantity: 3 },
-    { ...VARIANT_BASE, id: 12, label: 'Large', price_amount: '70.00', effective_price: '60.00', sale_price: '60.00', was_price: '70.00', stock_quantity: null },
-    { ...VARIANT_BASE, id: 13, label: 'Giant', stock_quantity: 0 },
-    { ...VARIANT_BASE, id: 14, label: 'Mini', price_amount: '40.00', effective_price: '35.00', sale_price: '35.00', was_price: null, stock_quantity: 5 },
+    { ...VARIANT_BASE, id: 11, label: 'Small', stock_quantity: 3, available: true },
+    { ...VARIANT_BASE, id: 12, label: 'Large', price_amount: '70.00', effective_price: '60.00', sale_price: '60.00', was_price: '70.00', stock_quantity: null, available: true },
+    { ...VARIANT_BASE, id: 13, label: 'Giant', stock_quantity: 0, available: false },
+    { ...VARIANT_BASE, id: 14, label: 'Mini', price_amount: '40.00', effective_price: '35.00', sale_price: '35.00', was_price: null, stock_quantity: 5, available: true },
   ],
 }
 function showListing(listing) {
   server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(listing)))
 }
+const selectionRow = (label) => screen.getAllByTestId('selection-row').find((row) => within(row).queryByText(label))
 
+// Goods use the product page's picker: one chip per option; a picked option gets its own row and quantity.
 describe('ListingDetailPage — variants', () => {
-  it('shows one row per variant, striking through a price only when was_price is set', async () => {
+  it('each picked option gets a row, striking through a price only when was_price is set', async () => {
     showListing(WITH_VARIANTS)
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
     const picker = screen.getByTestId('variant-picker')
-    expect(within(picker).getAllByTestId('variant-row')).toHaveLength(4)
-    const large = within(picker).getByText('Large').closest('[data-testid="variant-row"]')
+    fireEvent.click(within(picker).getByRole('button', { name: 'Large' }))
+    fireEvent.click(within(picker).getByRole('button', { name: 'Mini' }))
+    expect(within(picker).getAllByTestId('selection-row')).toHaveLength(2)
+    const large = selectionRow('Large')
     expect(within(large).getByText('GHS 60.00')).toBeInTheDocument()
-    expect([...large.querySelectorAll('s')].map((n) => n.textContent)).toEqual(['Was GHS 70.00'])
-    const mini = within(picker).getByText('Mini').closest('[data-testid="variant-row"]')
+    expect([...large.querySelectorAll('s')].map((n) => n.textContent)).toEqual(['GHS 70.00'])
+    const mini = selectionRow('Mini')
     expect(within(mini).getByText('GHS 35.00')).toBeInTheDocument()
     expect(mini.querySelector('s')).toBeNull()
   })
 
-  it('marks a zero-stock variant "Out of stock" with no stepper', async () => {
+  it('a sold-out option cannot be picked', async () => {
     showListing(WITH_VARIANTS)
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    const giant = screen.getByText('Giant').closest('[data-testid="variant-row"]')
-    expect(within(giant).getByText('Out of stock')).toBeInTheDocument()
-    expect(within(giant).queryByRole('button', { name: /more/i })).toBeNull()
+    const giant = screen.getByRole('button', { name: 'Giant' })
+    expect(giant).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(giant)
+    expect(screen.queryAllByTestId('selection-row')).toHaveLength(0)
   })
 
   it('bounds the stepper by stock when stock is counted, and leaves it open when it is not', async () => {
     showListing(WITH_VARIANTS)
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    const small = screen.getByText('Small').closest('[data-testid="variant-row"]')
-    for (let i = 0; i < 6; i++) fireEvent.click(within(small).getByRole('button', { name: 'One more Small' }))
-    expect(within(small).getByTestId('variant-qty')).toHaveTextContent('3')
-    const large = screen.getByText('Large').closest('[data-testid="variant-row"]')
-    for (let i = 0; i < 6; i++) fireEvent.click(within(large).getByRole('button', { name: 'One more Large' }))
-    expect(within(large).getByTestId('variant-qty')).toHaveTextContent('6')
+    fireEvent.click(screen.getByRole('button', { name: 'Small' }))
+    for (let i = 0; i < 6; i++) fireEvent.click(screen.getByRole('button', { name: 'Increase quantity of Small' }))
+    expect(within(selectionRow('Small')).getByTestId('qty-value')).toHaveTextContent('3')
+    expect(within(selectionRow('Small')).getByText('Only 3 left')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Large' }))
+    for (let i = 0; i < 6; i++) fireEvent.click(screen.getByRole('button', { name: 'Increase quantity of Large' }))
+    expect(within(selectionRow('Large')).getByTestId('qty-value')).toHaveTextContent('7')
   })
 
   it('adds only the rows with a quantity, as lines', async () => {
+    const posts = []
+    server.use(http.post('http://localhost:8000/api/cart/items/bulk/', async ({ request }) => {
+      posts.push(await request.json())
+      return HttpResponse.json({ id: 1, items: [], total: '135.00' }, { status: 201 })
+    }))
     showListing(WITH_VARIANTS)
     const onAddToCart = vi.fn().mockResolvedValue(undefined)
-    renderPage({ onAddToCart })
+    renderPage({ user: { id: 4, fullName: 'Ama', accountType: 'customer' }, onAddToCart })
     await screen.findByText('Royal Ashanti Lodge')
-    expect(screen.getByRole('button', { name: 'Add to cart' })).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: 'One more Small' }))
-    fireEvent.click(screen.getByRole('button', { name: 'One more Small' }))
-    fireEvent.click(screen.getByRole('button', { name: 'One more Mini' }))
+    expect(screen.getByRole('button', { name: 'Choose options' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Small' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Increase quantity of Small' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mini' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }))
-    expect(onAddToCart).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 1 }), 1, [{ variant: 11, quantity: 2 }, { variant: 14, quantity: 1 }],
-    )
-    expect(await screen.findByText('Added to Cart ✓')).toBeInTheDocument()
+    expect(await screen.findByText('Added to cart ✓')).toBeInTheDocument()
+    expect(posts).toEqual([{ listing: 1, lines: [{ variant: 11, quantity: 2 }, { variant: 14, quantity: 1 }] }])
+    expect(onAddToCart).not.toHaveBeenCalled()
   })
 
   it('labels the price of a listing with options "From"', async () => {
     showListing(WITH_VARIANTS)
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(screen.getAllByTestId('price-line')[0]).toHaveTextContent(/^From\s*GHS/)
+    expect(screen.getByTestId('product-price')).toHaveTextContent(/^From\s*GHS/)
   })
 
-  it('keeps the single Add to Cart for a listing without variants', async () => {
+  it('keeps the single Add to cart for a listing without variants', async () => {
     showListing({ ...LISTING, variants: [], has_variants: false })
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
     expect(screen.queryByTestId('variant-picker')).toBeNull()
-    expect(screen.getByText('Add to Cart')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add to cart' })).toBeInTheDocument()
   })
 
   it('shows the staff notice instead of adding for a staff session', async () => {
@@ -803,7 +780,7 @@ describe('ListingDetailPage — variants', () => {
     const onAddToCart = vi.fn()
     renderPage({ user: STAFF, onAddToCart })
     await screen.findByText('Royal Ashanti Lodge')
-    fireEvent.click(screen.getByRole('button', { name: 'One more Small' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Small' }))
     const before = screen.queryAllByText(STAFF_NOTICE).length
     fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }))
     expect(screen.getAllByText(STAFF_NOTICE)).toHaveLength(before + 1)
@@ -830,10 +807,13 @@ describe('ListingDetailPage — videos and seller link', () => {
   const YT = { id: 2, kind: 'youtube', youtube_id: 'dQw4w9WgXcQ', poster: null, position: 1 }
   const UP = { id: 1, kind: 'upload', url: 'http://localhost:8000/media/v/1.mp4', poster: 'http://localhost:8000/media/v/1.jpg', position: 0 }
 
+  // Inline players are the service/stay page's; goods play videos in the gallery viewer.
+  const showService = (listing) => server.use(http.get('http://localhost:8000/api/listings/2/', () => HttpResponse.json(listing)))
+
   it('plays an uploaded video in a controls player with its poster', async () => {
-    showListing({ ...LISTING, videos: [UP] })
-    const { container } = renderPage()
-    await screen.findByText('Royal Ashanti Lodge')
+    showService({ ...SERVICE_LISTING, videos: [UP] })
+    const { container } = renderPage({ id: 2 })
+    await screen.findByText('Kumasi City Tour')
     const video = container.querySelector('video')
     expect(video).toHaveAttribute('controls')
     expect(video).toHaveAttribute('src', UP.url)
@@ -841,9 +821,9 @@ describe('ListingDetailPage — videos and seller link', () => {
   })
 
   it('embeds a YouTube video through youtube-nocookie only for a well-formed id', async () => {
-    showListing({ ...LISTING, videos: [YT, { id: 3, kind: 'youtube', youtube_id: 'bad"><script>', poster: null, position: 2 }] })
-    const { container } = renderPage()
-    await screen.findByText('Royal Ashanti Lodge')
+    showService({ ...SERVICE_LISTING, videos: [YT, { id: 3, kind: 'youtube', youtube_id: 'bad"><script>', poster: null, position: 2 }] })
+    const { container } = renderPage({ id: 2 })
+    await screen.findByText('Kumasi City Tour')
     const frames = container.querySelectorAll('iframe')
     expect(frames).toHaveLength(1)
     expect(frames[0]).toHaveAttribute('src', 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')
@@ -862,7 +842,8 @@ describe('ListingDetailPage — videos and seller link', () => {
     const onOpenSeller = vi.fn()
     renderPage({ onOpenSeller })
     await screen.findByText('Royal Ashanti Lodge')
-    const link = screen.getByRole('link', { name: 'Sold by Ama Boateng' })
+    // The buy box's "Sold by" line links the business name itself.
+    const link = within(screen.getByTestId('buy-box')).getByRole('link', { name: 'Ama Boateng' })
     expect(link).toHaveAttribute('href', '/seller/9')
     fireEvent.click(link)
     expect(onOpenSeller).toHaveBeenCalledWith(9)
@@ -870,9 +851,9 @@ describe('ListingDetailPage — videos and seller link', () => {
 
   it('has no seller link when the listing has no business_owner', async () => {
     showListing({ ...LISTING, business_owner: null })
-    renderPage()
+    const { container } = renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(screen.queryByRole('link', { name: /Sold by/ })).toBeNull()
+    expect(container.querySelector('a[href^="/seller/"]')).toBeNull()
   })
 })
 
@@ -881,7 +862,7 @@ describe('ListingDetailPage — Ashanti Direct (marketplace plan 2)', () => {
     showListing({ ...LISTING, business_owner: { id: 3, full_name: 'ops login', name: 'Ashanti Direct', kyc_status: 'verified', is_ashanti_direct: true } })
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(screen.getByRole('link', { name: 'Sold by Ashanti Direct' })).toBeInTheDocument()
+    expect(within(screen.getByTestId('buy-box')).getByRole('link', { name: 'Ashanti Direct' })).toBeInTheDocument()
     expect(screen.getByText('Ashanti Direct', { selector: 'span' })).toBeInTheDocument()
   })
 
@@ -889,11 +870,11 @@ describe('ListingDetailPage — Ashanti Direct (marketplace plan 2)', () => {
     showListing({ ...LISTING, business_owner: { id: 9, full_name: 'Ama Boateng', name: 'Ama Boateng Crafts', kyc_status: 'verified', is_ashanti_direct: false } })
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(screen.getByRole('link', { name: 'Sold by Ama Boateng Crafts' })).toBeInTheDocument()
+    expect(within(screen.getByTestId('buy-box')).getByRole('link', { name: 'Ama Boateng Crafts' })).toBeInTheDocument()
     expect(screen.queryByText('Ashanti Direct')).not.toBeInTheDocument()
   })
 
-  it('clears the variant quantities when the page switches to another listing', async () => {
+  it('clears the variant selection when the page switches to another listing', async () => {
     server.use(
       http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(WITH_VARIANTS)),
       http.get('http://localhost:8000/api/listings/2/', () => HttpResponse.json({ ...WITH_VARIANTS, id: 2, name: 'Second thing' })),
@@ -906,12 +887,12 @@ describe('ListingDetailPage — Ashanti Direct (marketplace plan 2)', () => {
     )
     const { rerender } = render(tree(1))
     await screen.findByText('Royal Ashanti Lodge')
-    fireEvent.click(screen.getByRole('button', { name: 'One more Small' }))
-    expect(screen.getByText('Small').closest('[data-testid="variant-row"]')).toHaveTextContent('1')
+    fireEvent.click(screen.getByRole('button', { name: 'Small' }))
+    expect(within(selectionRow('Small')).getByTestId('qty-value')).toHaveTextContent('1')
     rerender(tree(2))
     await screen.findByText('Second thing')
-    const qty = within(screen.getByText('Small').closest('[data-testid="variant-row"]')).getByTestId('variant-qty')
-    expect(qty).toHaveTextContent('0')
+    expect(screen.queryAllByTestId('selection-row')).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'Small' })).toHaveAttribute('aria-pressed', 'false')
   })
 })
 
@@ -1060,5 +1041,24 @@ describe('ListingDetailPage — booking a stay with the wallet ledger (plan 1F)'
     fireEvent.change(screen.getByLabelText('Units / rooms'), { target: { value: '2' } })
     expect(await screen.findByText('Only 1 free for those dates.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Book and pay' })).toBeDisabled()
+  })
+})
+
+describe('ListingDetailPage — verified check mark', () => {
+  it('listing detail shows the mark only for identity_verified sellers', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, business_owner: { ...LISTING.business_owner, identity_verified: true } })))
+    const { unmount } = renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    // The goods page now renders the seller twice (BuyBox "Sold by" and the seller badge), each with the mark.
+    expect((await screen.findAllByLabelText('Verified business')).length).toBeGreaterThan(0)
+    unmount()
+
+    // kyc_status "verified" (address checked) without an approved identity shows no mark.
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, business_owner: { ...LISTING.business_owner, identity_verified: false } })))
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect((await screen.findAllByText(/Sold by/)).length).toBeGreaterThan(0)
+    expect(screen.queryByLabelText('Verified business')).not.toBeInTheDocument()
+    expect(screen.queryByText(/unverified|not verified/i)).not.toBeInTheDocument()
   })
 })

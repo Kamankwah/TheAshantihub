@@ -50,6 +50,8 @@ def validate_ashanti_gps(raw):
     """Return the normalized Ghana Post code, or raise
     serializers.ValidationError if it isn't a valid Ashanti Region address.
     """
+    if raw is not None and not isinstance(raw, str):  # a number, list or object is a malformed code, not a crash
+        raise serializers.ValidationError("Enter a valid Ghana Post GPS address, e.g. AK-039-5028.")
     code = normalize_gps(raw)
     if not code:
         raise serializers.ValidationError("A Ghana Post GPS address is required.")

@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.direct import direct_q
-from accounts.models import BusinessOwner, StaffUser
+from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
 from activity.services import record as activity_record
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner
@@ -54,6 +54,7 @@ from .serializers import (
     PromotionAdminSerializer,
     PromotionPurchaseSerializer,
     PromotionSerializer,
+    PublicListingDetailSerializer,
     PublicListingSerializer,
     ZoneSerializer,
 )
@@ -363,7 +364,9 @@ class PublicListingListView(generics.ListAPIView):
 
         verified = self.request.query_params.get("verified")
         if verified and verified.lower() in ("true", "1"):
-            queryset = queryset.filter(business_owner__kyc_status=BusinessOwner.VERIFIED)
+            queryset = queryset.filter(
+                business_owner__profile__identity_status=BusinessOwnerProfile.IDENTITY_VERIFIED
+            )
 
         if self.request.query_params.get("sold_by") == "direct":
             queryset = queryset.filter(direct_q("business_owner__"))
@@ -456,7 +459,7 @@ class PublicListingListView(generics.ListAPIView):
 
 
 class PublicListingDetailView(generics.RetrieveAPIView):
-    serializer_class = PublicListingSerializer
+    serializer_class = PublicListingDetailSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):

@@ -14,7 +14,7 @@ from orders.models import Order
 
 FEE = {"total": "15.00", "lines": [], "distance_km": "3", "distance_basis": "test"}
 FEE_ON = override_settings(DELIVERY_FEE_ENABLED=True)
-DOOR = {"delivery_method": "door_to_door", "delivery_address": "1 Road", "delivery_phone": "+233200660001", "delivery_lat": 6.69, "delivery_lng": -1.62}
+DOOR = {"delivery_method": "door_to_door", "delivery_address": "1 Road", "delivery_phone": "+233200660001", "delivery_gps_address": "AK-039-5028", "delivery_landmark": "Blue gate", "delivery_lat": 6.69, "delivery_lng": -1.62}
 
 
 def fee_patch():

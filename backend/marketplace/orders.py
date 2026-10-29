@@ -188,6 +188,7 @@ class OrderDetailView(APIView):
                 steps.append({"at": assignment.confirmed_at, "text": "Receipt confirmed by the customer"})
         data.update({
             "delivery_address": order.delivery_address,
+            "delivery_gps_address": order.delivery_gps_address, "delivery_landmark": order.delivery_landmark,
             "lines": [
                 {
                     "name": line.listing.name, "quantity": line.quantity, "line_total": str(line.line_total),

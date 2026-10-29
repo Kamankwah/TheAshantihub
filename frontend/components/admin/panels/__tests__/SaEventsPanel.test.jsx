@@ -84,4 +84,16 @@ describe('SaEventsPanel', () => {
     expect(within(side).getByText(/Manhyia Tours · verified business/)).toBeInTheDocument()
     expect(within(side).getByText(/Regular GH₵ 80.00 · 45 of 50 sold/)).toBeInTheDocument()
   })
+
+  it('names an organiser without the check mark "Identity not verified", not KYC', async () => {
+    server.use(
+      http.get(`${API}/api/marketplace/events/`, () => HttpResponse.json(page([ev({ organiser: { kind: 'business', id: 1, name: 'Manhyia Tours', verified: false } })]))),
+      http.get(`${API}/api/marketplace/events/counts/`, () => HttpResponse.json(COUNTS)),
+    )
+    renderPanel(<SaEventsPanel />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Akwasidae palace visit' }))
+    const side = await screen.findByRole('region', { name: 'Akwasidae palace visit' })
+    expect(within(side).getByText(/Manhyia Tours · Identity not verified/)).toBeInTheDocument()
+    expect(within(side).queryByText(/KYC/)).not.toBeInTheDocument()
+  })
 })

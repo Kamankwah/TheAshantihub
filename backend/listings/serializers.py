@@ -150,10 +150,14 @@ class BusinessOwnerMiniSerializer(serializers.ModelSerializer):
     # names the business; `is_ashanti_direct` marks the company's own shop.
     name = serializers.CharField(source="display_name", read_only=True)
     is_ashanti_direct = serializers.SerializerMethodField()
+    # identity_verified (staff approved the owner's identity documents) is what drives the public verified mark;
+    # kyc_status stays for older clients. Querysets feeding this select_related("business_owner__profile"), and
+    # no Ghana Card detail is ever serialized here.
+    identity_verified = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = BusinessOwner
-        fields = ["id", "full_name", "name", "kyc_status", "is_ashanti_direct"]
+        fields = ["id", "full_name", "name", "kyc_status", "identity_verified", "is_ashanti_direct"]
 
     def get_is_ashanti_direct(self, obj):
         return direct.is_direct(obj)
@@ -310,6 +314,66 @@ class PublicListingSerializer(serializers.ModelSerializer):
 
     def get_review_count(self, obj):
         return getattr(obj, "review_count", 0)
+
+
+class DetailCategorySerializer(CategorySerializer):
+    """The category on the listing detail page only: adds the breadcrumb (`ancestors`, root first)."""
+
+    ancestors = serializers.SerializerMethodField()
+
+    class Meta(CategorySerializer.Meta):
+        fields = [*CategorySerializer.Meta.fields, "ancestors"]
+
+    MAX_DEPTH = 10
+
+    def get_ancestors(self, obj):
+        chain, seen, node = [], {obj.pk}, obj.parent
+        while node is not None and node.pk not in seen and len(chain) < self.MAX_DEPTH:
+            chain.append({"id": node.pk, "slug": node.slug, "label": node.label})
+            seen.add(node.pk)
+            node = node.parent
+        return chain[::-1]
+
+
+class DetailVariantSerializer(PublicVariantSerializer):
+    available = serializers.SerializerMethodField()
+    discount_percent = serializers.SerializerMethodField()
+
+    class Meta(PublicVariantSerializer.Meta):
+        fields = [*PublicVariantSerializer.Meta.fields, "available", "discount_percent"]
+
+    def get_available(self, obj):
+        return obj.stock_quantity is None or obj.stock_quantity > 0
+
+    def get_discount_percent(self, obj):
+        return pricing.discount_percent(pricing.was_price(obj), obj.effective_price)
+
+
+class PublicListingDetailSerializer(PublicListingSerializer):
+    """GET /api/listings/<id>/ only: the card fields plus the breadcrumb, the variant axes and availability, and the
+    discount percent. Kept off the shared card serializer so list rows stay lean."""
+
+    category = DetailCategorySerializer(read_only=True)
+    variant_axes = serializers.SerializerMethodField()
+    discount_percent = serializers.SerializerMethodField()
+
+    class Meta(PublicListingSerializer.Meta):
+        fields = [*PublicListingSerializer.Meta.fields, "variant_axes", "discount_percent"]
+
+    def get_variants(self, obj):
+        return DetailVariantSerializer(variants.active_rows(obj), many=True).data
+
+    def get_variant_axes(self, obj):
+        axes = {}
+        for row in sorted(variants.active_rows(obj), key=lambda r: (r.position, r.pk)):
+            for name, value in (row.attributes or {}).items():
+                values = axes.setdefault(name, [])
+                if value not in values:
+                    values.append(value)
+        return [{"name": name, "values": values} for name, values in axes.items()]
+
+    def get_discount_percent(self, obj):
+        return pricing.discount_percent(pricing.was_price(obj), obj.effective_price)
 
 
 class CartTieredListingSerializer(PublicListingSerializer):

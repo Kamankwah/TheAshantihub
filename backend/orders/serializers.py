@@ -17,7 +17,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 DELIVERY_FIELDS = [
-    "delivery_method", "delivery_address", "delivery_phone", "delivery_lat", "delivery_lng",
+    "delivery_method", "delivery_address", "delivery_gps_address", "delivery_landmark", "delivery_phone",
+    "delivery_lat", "delivery_lng",
 ]
 # A business owner gets the customer's name and address but never their phone:
 # AshantiHub's delivery team runs door-to-door fulfilment, and a phone number
@@ -326,6 +327,8 @@ class DispatchDeliverySerializer(serializers.ModelSerializer):
     order_id = serializers.IntegerField(source="order.id", read_only=True)
     customer_name = serializers.CharField(source="order.customer.full_name", read_only=True)
     delivery_address = serializers.CharField(source="order.delivery_address", read_only=True)
+    delivery_gps_address = serializers.CharField(source="order.delivery_gps_address", read_only=True)
+    delivery_landmark = serializers.CharField(source="order.delivery_landmark", read_only=True)
     delivery_phone = serializers.CharField(source="order.delivery_phone", read_only=True)
     delivery_lat = serializers.FloatField(source="order.delivery_lat", read_only=True, default=None)
     delivery_lng = serializers.FloatField(source="order.delivery_lng", read_only=True, default=None)
@@ -335,7 +338,7 @@ class DispatchDeliverySerializer(serializers.ModelSerializer):
         model = DeliveryAssignment
         fields = [
             "id", "order_id", "status", "customer_name",
-            "delivery_address", "delivery_phone", "delivery_lat", "delivery_lng",
+            "delivery_address", "delivery_gps_address", "delivery_landmark", "delivery_phone", "delivery_lat", "delivery_lng",
             "pickups", "assigned_at", "picked_up_at", "delivered_at", "confirmed_at",
         ]
         read_only_fields = fields

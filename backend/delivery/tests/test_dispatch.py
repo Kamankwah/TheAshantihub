@@ -357,7 +357,7 @@ class RateTests(EngineCase):
             cart.items.all().delete()
             CartItem.objects.create(cart=cart, listing=self.listing, quantity=1, unit_price_snapshot="100.00")
             self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.customer, 'customer')}")
-            return self.client.post("/api/orders/checkout/", {"delivery_method": "door_to_door", "delivery_address": "1 Road", "delivery_phone": "+233200000000", "delivery_lat": DROP[0], "delivery_lng": DROP[1]}, format="json").json()
+            return self.client.post("/api/orders/checkout/", {"delivery_method": "door_to_door", "delivery_address": "1 Road", "delivery_phone": "+233200000000", "delivery_gps_address": "AK-039-5028", "delivery_landmark": "Blue gate", "delivery_lat": DROP[0], "delivery_lng": DROP[1]}, format="json").json()
 
         off = checkout()
         self.assertEqual(Decimal(str(off["total_amount"])), Decimal("100.00"))

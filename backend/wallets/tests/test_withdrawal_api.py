@@ -13,7 +13,7 @@ from otp.tests.helpers import last_sms_code
 from wallets import withdrawals
 from wallets.models import Withdrawal
 
-from .helpers import Holder, destination, fund
+from .helpers import Holder, destination, fund, verify_identity
 
 URL = "/api/wallet/withdrawals/"
 
@@ -101,6 +101,7 @@ class WithdrawalApiTests(WithdrawalApiBase):
         owner = BusinessOwner.objects.create(
             full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
         )
+        verify_identity(owner)
         kwame = Holder(owner, "business_owner")
         to_kwame = destination(owner, number="+233201112233", name="Kwame Mensah")
         fund(Account.VENDOR_AVAILABLE, owner, 5000, "fund-vendor")

@@ -13,11 +13,12 @@ from django.utils import timezone
 
 from core import video as core_video
 
-from .models import ListingVideo
+from .models import ListingVideo, ListingView
 
 logger = logging.getLogger(__name__)
 
 STUCK_AFTER = timedelta(minutes=30)
+VIEW_RETENTION = timedelta(days=31)  # the also-viewed window is 30 days; one day of slack
 
 
 def _claim(video_id):
@@ -104,3 +105,11 @@ def reap_stuck_videos():
             Q(status=ListingVideo.PROCESSING, created_at__lt=cutoff) | Q(status=ListingVideo.CONVERTING, claimed_at__lt=cutoff)
         )
     )
+
+
+@shared_task
+def prune_listing_views():
+    """Delete listing-view rows older than the retention window (the also-viewed read only looks back 30 days).
+    Returns how many were deleted."""
+    deleted, _ = ListingView.objects.filter(viewed_at__lt=timezone.now() - VIEW_RETENTION).delete()
+    return deleted

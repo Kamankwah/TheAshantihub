@@ -6,7 +6,7 @@ phone numbers. A guest has no data to show and says so."""
 from django.conf import settings as django_settings
 from django.utils import timezone
 
-from accounts.models import BusinessOwner, Role
+from accounts.models import Role
 from accounts.phones import mask_phone
 from billing import clock
 from calls.models import CallLog
@@ -67,7 +67,7 @@ def _business(owner):
         return None
     return {
         "id": owner.pk, "name": owner.display_name, "owner_name": owner.full_name,
-        "verified": owner.kyc_status == BusinessOwner.VERIFIED,
+        "verified": owner.identity_verified,
         "listings_live": Listing.objects.filter(business_owner=owner, status=Listing.PUBLISHED).count(),
         "account_manager": _manager(owner),
     }

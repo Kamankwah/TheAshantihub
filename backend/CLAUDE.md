@@ -147,10 +147,29 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   who only confirmed it is not). A correction rewrites `gps_address` and clears the address
   decision, so someone else re-checks it - a lead through address-verify or another scout's later
   visit; `GET kyc/{id}/` and the review sheet show it as `address_correction`.
-  `kyc.address_decision_missing()` makes a scout-channel business, or any business with a field
-  correction, wait for the Ghana Post address decision before KYC approval through either door. A
+  `kyc.address_decision_missing()` makes every business (a missing profile counts) wait for the
+  Ghana Post address decision before KYC approval through either door; the Ghana Card, certificate
+  and TIN are optional and never gate it. A
   scout's `business.update` that changes `gps_address` clears that decision too (kept in
   `AppliedChange.result`; an undo puts it back with the address).
+  **KYC means the address; identity is a second, separate decision.** `kyc_status` gates approval and
+  blocked-business behaviour. `BusinessOwnerProfile.identity_status` (`not_submitted`/`pending`/`verified`/`rejected`)
+  is what the public verified check mark, `?verified=true`, featured offers (`catalogue`, `marketing.featured`), the
+  Support chip (`support/people.py`), the credit `kyc_verified` factor and payout-name matching (`wallets.names`) read,
+  all through `BusinessOwner.identity_verified`; never read `kyc_status` for those. Submitting: `kyc.submit_identity`
+  (conditional UPDATE, only with the card number and both photos on file), reached from the owner endpoint
+  `business-owners/me/identity/` and from the profile PATCH when it changes the card (a new photo, or a number other
+  than the stored one, compared trimmed and upper-case: the registration form resends the number with every save);
+  that PATCH locks the owner row, then the profile row (each `select_for_update(of=("self",))`, the order the staff
+  decisions use), and refuses card changes while identity is pending or verified (the same number is allowed). The
+  scout's KYC resubmit refuses a new card photo while identity is pending or verified. Card numbers are stored
+  upper-case and compared `iexact`; the identity POST is throttled (`owner_identity`). Replaced card photos and
+  certificates are deleted after commit (`accounts.files`). Deciding: `kyc.approve_identity` / `reject_identity` / `reopen_identity`, behind
+  `kyc.approve`, at `kyc/identity/pending/` and `kyc/{id}/identity/{approve,reject,re-review}/` (their own serializer,
+  identity-named keys). Same submitter refusal (`is_kyc_submitter` never decides identity); lock order owner, then
+  profile row, `record()` last (`identity-*` verbs refresh `kyc-queue`); notices reuse the `kyc_approved` /
+  `kyc_rejected` kinds. KYC approval never touches `identity_status` and identity decisions never touch `kyc_status`.
+  Migration `accounts/0068` backfilled every already KYC-verified business to identity `verified`, so no mark vanished.
 - **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
   `PortfolioConfig.ready()`); only the business's account manager may submit them; each applied
   change writes a `portfolio.AppliedChange` the owner can undo for 7 days
@@ -300,7 +319,7 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `NotConnected` until Plan 7.
 - **Payout destinations, withdrawals, reconciliation (`wallets/`, Stage 3b).** A destination is accepted only when the
   provider's account name matches the holder's verified name (`wallets.names`: customer profile name, which is
-  self-declared, spec §13 (xxix); KYC-verified vendor's owner or business name) and a step-up code is spent; the name
+  self-declared, spec §13 (xxix); identity-verified vendor's owner or business name) and a step-up code is spent; the name
   lookup runs before that transaction (`destinations.check`, then `save`). It can receive money after
   `payout_cooling_hours`, is never edited (remove + add), and every add and remove sends the holder a notice.
   Destination add/remove and withdrawals call `step_up.require(..., force=True)`, and adding a customer recovery email
@@ -457,6 +476,32 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `sale_started_at` means no "was". Expiry is read-time through `pricing`. Flash sales exclude variant listings.
 - **Ashanti Direct has no money special-case.** Its wallet, fees and payouts are an ordinary business's. `is_company`
   is read only through `accounts/direct.py`.
+
+## Shopper pages (marketplace Plan 4)
+
+- **GhanaPost + landmark are enforced in `OrderCheckoutView` before routing**, for door-to-door only (store pickup
+  needs neither), via `accounts.gps` (`normalize_gps`, `validate_ashanti_gps`); field-keyed 400s. Older `Order` rows
+  have blank GhanaPost fields, so serializers must tolerate them. A non-string value is a field-keyed 400, never a
+  500. `GPS_REMOTE_VALIDATION`, when on, now also gates shopper checkout and address-book saves: a synchronous call of
+  up to 4 s, and a "not found" answer blocks the shopper. The code and landmark are carried read-only (blank on old
+  orders) in the rider job, `DispatchDeliverySerializer`, dispatch board, queue, live tracking, and the support and GM
+  order details; the customer's phone is never added to any of them.
+- **Map pin rule (ruling P45):** while `DELIVERY_FEE_ENABLED` is on and a rate card is in force
+  (`delivery.rates.pin_required`), a door-to-door checkout without `delivery_lat`/`delivery_lng` is refused with
+  400 `{"delivery_lat": [...]}` before routing and creates nothing. Fees off, or no card: a free-text address is enough.
+- **`CustomerAddress`:** one default per customer, at most 10; writes take the Customer-row lock.
+- **`ListingView`:** anonymous viewers are keyed by an HMAC of the client UUID; one row per viewer, listing and day;
+  the read looks back 30 days and the daily beat task `listings.tasks.prune_listing_views` deletes rows older than
+  31 days (signed-in `c:<id>` history included). "Also viewed" (own throttle scope `listing_also_viewed`) needs 3 co-viewers per row and at least 4 rows,
+  else the basis is `same_category`.
+- **Bulk cart add is atomic under the cart lock** and merges into existing lines by the two conditional unique
+  constraints. Lock order: the cart row, then the listing row, then its variant rows by pk; checkout never takes the
+  cart row, so it cannot deadlock with this. Errors are `{"detail": "<string>"}` for body-level problems and
+  `{"lines": [{"index", "detail"}]}` for per-line ones, and an unknown or hidden listing answers
+  `{"listing": ["..."]}` (OrdersPanel relies on it); a line is capped at `listings.variants.MAX_STOCK` of one version.
+- **The wishlist API is not opening-gated** (browse and wishlist work before opening).
+- **Two sponsored lists:** the public `storefront/sponsored/` feed (live, published, not hidden) versus the
+  staff-only `listings/sponsored/` Marketing list; never swap their permissions.
 
 ## Test-fixture gotcha
 

@@ -37,10 +37,10 @@ import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
 import { C } from "./theme.js";
 import ThemeToggle from "./components/ThemeToggle.jsx";
+import VerifiedMark from "./components/VerifiedMark.jsx";
 import Flag from "./components/Flag.jsx";
-import { formatAccraDayTime } from "./lib/accraTime.js";
-import OrderTrackingMap from "./components/OrderTrackingMap.jsx";
-import DeliveryCodeBox from "./components/DeliveryCodeBox.jsx";
+import AccountHub from "./components/account/AccountHub.jsx";
+import { ACCOUNT_ROOT, isAccountPath } from "./components/account/accountNav.js";
 import Navbar from "./components/Navbar.jsx";
 import StorefrontHome from "./components/storefront/StorefrontHome.jsx";
 import StorefrontHeader from "./components/storefront/StorefrontHeader.jsx";
@@ -70,6 +70,9 @@ import AccountSecurityCard from "./components/security/AccountSecurityCard.jsx";
 import UnsubscribePage from "./components/UnsubscribePage.jsx";
 import TrackedLinkPage from "./components/TrackedLinkPage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
+import CartPage from "./components/shop/CartPage.jsx";
+import CheckoutPage from "./components/shop/CheckoutPage.jsx";
+import PaymentVerifyPage from "./components/shop/PaymentVerifyPage.jsx";
 import FlashPriceTag from "./components/FlashPriceTag.jsx";
 import PriceLine from "./components/PriceLine.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
@@ -93,13 +96,13 @@ import { readCookieConsent, saveCookieConsent } from "./lib/cookieConsent.js";
 import useBreakpoint from "./hooks/useBreakpoint.js";
 import SpendAreaChart from "./components/dashboard/charts/SpendAreaChart.jsx";
 import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
-import RaiseDisputeForm from "./components/RaiseDisputeForm.jsx";
+import OrdersPanel from "./components/account/OrdersPanel.jsx";
 import TicketQr from "./components/TicketQr.jsx";
 import StaffGateNotice from "./components/StaffGateNotice.jsx";
-import PickupCollectionNote from "./components/PickupCollectionNote.jsx";
 import StaffViewOnlyBar, { STAFF_VIEW_ONLY_BAR_HEIGHT } from "./components/StaffViewOnlyBar.jsx";
 import { isStaffSession } from "./lib/staffSession.js";
 import { useStaffGate } from "./hooks/useStaffGate.js";
+import { useFavourites } from "./hooks/useFavourites.js";
 
 // ─── Payment System ───────────────────────────────────────────────────────────
 const MOMO_NETWORKS = [
@@ -479,7 +482,7 @@ function formatConvTime(iso) {
 // flow instead, sized to fill its container — used only by UserPanel's
 // Messages tab, where a full floating widget/backdrop makes no sense inside
 // an already-dedicated dashboard tab.
-export function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
+export function MessagingCenter({ user, onClose, initialBusiness, embedded = false, startNew = false }) {
   // Support chat is open to everyone except a staff session (whose inbox is
   // the admin MessagingPanel — /api/messaging/conversations/ 403s a
   // StaffUser). A signed-in Customer/BusinessOwner is scoped by their auth
@@ -517,13 +520,15 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
   // immediately overridden by this effect re-picking the same conversation.
   useEffect(() => {
     if (hasAutoSelectedRef.current || conversations.length === 0) return;
+    // startNew (Customer Service): open the new-conversation pane, never an old conversation.
+    if (startNew) { hasAutoSelectedRef.current = true; return; }
     hasAutoSelectedRef.current = true;
     const bySubject = initialBusiness && conversations.find(c => c.subject?.includes(initialBusiness.name));
     // Opened for a business or listing with no conversation about it: leave the new-conversation pane open so the
     // "Re: <name>" subject is used, rather than landing in an unrelated conversation.
     if (initialBusiness && !bySubject) return;
     setActiveConvId((bySubject || conversations[0]).id);
-  }, [conversations, initialBusiness]);
+  }, [conversations, initialBusiness, startNew]);
 
   const activeConv = conversations.find(c => c.id === activeConvId) || null;
 
@@ -1039,7 +1044,7 @@ export function groupCategoriesByKind(categories) {
 }
 
 // ─── Business Card ─────────────────────────────────────────────────────────────
-export function Card({item,accentColor,user,favourites,onFavourite,currency,onMessage,onOpen}) {
+export function Card({item,accentColor,user,favourites,onFavourite,favFailed,currency,onMessage,onOpen}) {
   const [showReviews,setShowReviews]=useState(false);
   const [photoIdx,setPhotoIdx]=useState(0);
   const isFav = favourites.includes(item.id);
@@ -1087,16 +1092,19 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
           <span style={{position:"absolute",top:8,left:40,background:"linear-gradient(90deg,#f59e0b,#d97706)",color:"white",fontSize:"0.58rem",fontWeight:800,padding:"2px 8px",borderRadius:20,zIndex:2,boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>⭐ Promoted</span>
         )}
         <span style={{position:"absolute",top:8,right:8,background:accentColor,color:"white",fontSize:"0.6rem",fontWeight:700,padding:"2px 7px",borderRadius:20,zIndex:2}}>{item.tag}</span>
-        <button onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:8,left:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
+        <button aria-label={isFav?"Remove from Your Lists":"Save to Your Lists"} title={favFailed?"We couldn't update Your Lists. Tap to try again.":undefined} onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:8,left:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
           {isFav?"❤️":"🤍"}
         </button>
+        {favFailed&&<span role="status" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>We couldn't update Your Lists. Tap the heart to try again.</span>}
         <button onClick={(e)=>{e.stopPropagation();if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
           style={{position:"absolute",bottom:8,right:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.8rem",zIndex:2}}>
           📤
         </button>
       </div>
       <div style={{padding:"12px 14px"}}>
-        <div onClick={()=>onOpen&&onOpen(item.id)} style={{fontWeight:700,fontSize:"0.9rem",color:"white",marginBottom:2,cursor:onOpen?"pointer":"default"}}>{item.name}</div>
+        <div onClick={()=>onOpen&&onOpen(item.id)} style={{fontWeight:700,fontSize:"0.9rem",color:"white",marginBottom:2,cursor:onOpen?"pointer":"default"}}>{item.name}{item.business_owner?.identity_verified===true&&<span style={{marginLeft:6,verticalAlign:"middle"}}><VerifiedMark verified compact/></span>}</div>
+        {/* The check mark follows the seller's staff-approved identity (business_owner.identity_verified), not KYC;
+            sellers without it show nothing. */}
         {/* Listing's public serializer now returns avg_rating/review_count directly
             (Phase 4 of the reviews/ratings work) — a listing with zero reviews shows
             no stars at all rather than "0.0 ★ (0 reviews)". */}
@@ -1503,95 +1511,6 @@ function ResetPasswordPage({auth,setPage,setAuthModal}) {
   </div>;
 }
 
-// ─── Payment Return Page (/payment/return) ───────────────────────────────────
-// Hubtel integration (docs/HUBTEL_INTEGRATION.md, plan Workstream E) — where
-// a customer/business owner lands back after Hubtel's hosted checkout
-// (MoMoPayment's redirect, and every onSuccess handler's own added
-// `mode==="redirect"` branch, both point here via `?reference=`). The
-// redirect itself is never trusted as proof of payment — this page polls
-// GET /api/payments/checkout-sessions/{reference}/ (the only source of
-// truth, resolved by payments.views.HubtelWebhookView) rather than reading
-// anything off the URL/query string as a success signal. Functional-but-
-// not-fully-polished per the launch plan: this path is entirely unexercised
-// until real Hubtel credentials exist (payments_provider stays "simulated"
-// until then), so nothing has ever actually redirected here in practice.
-const PAYMENT_RETURN_POLL_INTERVAL_MS = 2000;
-const PAYMENT_RETURN_TIMEOUT_MS = 60000;
-
-function PaymentReturnPage({setPage}) {
-  const location = useLocation();
-  const reference = new URLSearchParams(location.search).get("reference") || "";
-  const [session,setSession] = useState(null);
-  const [error,setError] = useState(null);
-  const [timedOut,setTimedOut] = useState(false);
-
-  useEffect(() => {
-    if (!reference) { setError("No payment reference found in this link."); return; }
-
-    let cancelled = false;
-    const startedAt = Date.now();
-
-    const poll = async () => {
-      if (cancelled) return;
-      try {
-        const data = await apiFetch(`/api/payments/checkout-sessions/${reference}/`);
-        if (cancelled) return;
-        setSession(data);
-        if (data.status !== "pending") return; // stop polling — resolved
-        if (Date.now() - startedAt >= PAYMENT_RETURN_TIMEOUT_MS) { setTimedOut(true); return; }
-        setTimeout(poll, PAYMENT_RETURN_POLL_INTERVAL_MS);
-      } catch (err) {
-        if (!cancelled) setError("Could not check this payment's status. Please check your account for the latest status.");
-      }
-    };
-    poll();
-    return () => { cancelled = true; };
-  }, [reference]);
-
-  const status = session?.status;
-  const isDone = status && status !== "pending";
-
-  return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:16}}>
-    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden",textAlign:"center"}}>
-      <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"20px 24px"}}>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Payment Status</div>
-      </div>
-      <div style={{padding:"28px 24px"}}>
-        {error ? (
-          <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"12px 14px",fontSize:"0.8rem",lineHeight:1.6}}>{error}</div>
-        ) : !session ? (
-          <div style={{color:C.inkDim,fontSize:"0.82rem"}}>Confirming your payment…</div>
-        ) : status === "success" ? (
-          <>
-            <div style={{fontSize:"3rem",marginBottom:10}}>✅</div>
-            <div style={{fontWeight:900,color:"#22c55e",fontSize:"1rem",marginBottom:8}}>Payment Successful!</div>
-            <div style={{color:C.inkDim,fontSize:"0.8rem",lineHeight:1.6}}>Your payment of GHS {session.amount} for "{session.purpose}" has been confirmed.</div>
-          </>
-        ) : status === "failed" ? (
-          <>
-            <div style={{fontSize:"3rem",marginBottom:10}}>❌</div>
-            <div style={{fontWeight:900,color:C.errInk,fontSize:"1rem",marginBottom:8}}>Payment Failed</div>
-            <div style={{color:C.inkDim,fontSize:"0.8rem",lineHeight:1.6}}>Your payment could not be completed. Please try again.</div>
-          </>
-        ) : status === "expired" ? (
-          <>
-            <div style={{fontSize:"3rem",marginBottom:10}}>⏰</div>
-            <div style={{fontWeight:900,color:"#d97706",fontSize:"1rem",marginBottom:8}}>Payment Expired</div>
-            <div style={{color:C.inkDim,fontSize:"0.8rem",lineHeight:1.6}}>This checkout session expired before payment was completed. Please try again.</div>
-          </>
-        ) : timedOut ? (
-          <div style={{color:C.inkDim,fontSize:"0.82rem",lineHeight:1.6}}>Still confirming your payment — this is taking longer than expected. Check "My Account" shortly for the latest status.</div>
-        ) : (
-          <div style={{color:C.inkDim,fontSize:"0.82rem"}}>Confirming your payment…</div>
-        )}
-        {(isDone || error || timedOut) && (
-          <button onClick={()=>setPage("home")} style={{...authSubmitStyle,marginTop:16}}>Back to AshantiHub</button>
-        )}
-      </div>
-    </div>
-  </div>;
-}
-
 // ─── Notifications Panel ──────────────────────────────────────────────────────
 // Relative "time ago" for a notification's created_at ISO string. Local,
 // dependency-free (no date lib is used anywhere in this app).
@@ -1749,45 +1668,22 @@ export function BusinessDashboard({ onExit, user, auth }) {
 // imports back into App.jsx. Follows the site's light/dark theme through `D`
 // (theme tokens), with a toggle in its header like the business and staff
 // shells. EventSubmissionPanel (My Events) keeps its own fixed-dark palette.
-const ACCOUNT_NAV_ITEMS = [
-  { id: "overview", icon: "📊", label: "Overview", group: "main" },
-  { id: "orders", icon: "📦", label: "Orders & Delivery", group: "main" },
-  { id: "requests", icon: "🛠️", label: "My Requests", group: "main" },
-  { id: "bookings", icon: "🏨", label: "My Bookings", group: "main" },
-  { id: "saved", icon: "❤️", label: "Saved Businesses", group: "main" },
-  { id: "messages", icon: "💬", label: "Messages", group: "main" },
-  { id: "events", icon: "🎉", label: "My Events", group: "main" },
-  { id: "tickets", icon: "🎟️", label: "My Tickets", group: "main" },
-  { id: "profile", icon: "👤", label: "Profile", group: "system" },
-  { id: "settings", icon: "⚙️", label: "Settings", group: "system" },
-];
-const ACCOUNT_NAV_GROUPS = [
-  { id: "main", label: "Main" },
-  { id: "system", label: "System" },
-];
-
-// Orders (order id / item name) and Tickets (event name / ticket code) are the
-// only two tabs whose already-loaded data is cheaply client-side filterable —
-// the topbar search box only renders for these rather than sitting inert
-// (non-functional) on every other tab.
-const ACCOUNT_SEARCHABLE_TABS = new Set(["orders", "tickets"]);
-
 const accountMenuItemStyle = { display: "block", width: "100%", textAlign: "left", background: "none", border: "none", color: D.textDim, padding: "8px 10px", borderRadius: 8, fontSize: "0.76rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
 
-export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, setLang, PaymentComponent, theme, toggleTheme }) {
-  const [activeTab, setActiveTab] = useState("overview");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, setLang, PaymentComponent, theme, toggleTheme, onOpenPage, onStartRegistration }) {
+  const navigate = useNavigate();
   const [showNotifs, setShowNotifs] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const { data: categories } = useCategories();
   const { data: zones } = useZones();
 
   // "Contact AshantiHub Support" on a booking opens Messages about that listing or event (never the business).
-  const [supportAbout, setSupportAbout] = useState(null); // null | { name }
-  const goTab = (id) => { setActiveTab(id); setSearchQuery(""); setSidebarOpen(false); setSupportAbout(null); };
-  const contactSupport = (about) => { setSupportAbout(about || null); setActiveTab("messages"); setSearchQuery(""); setSidebarOpen(false); };
-  const activeItem = ACCOUNT_NAV_ITEMS.find(i=>i.id===activeTab);
+  // The context rides in navigation state, so it belongs to that one visit: opening the
+  // Your Messages tile later starts clean, never "about" the last booking.
+  const location = useLocation();
+  const supportAbout = location.state?.about ?? null; // null | { name }
+  const startNewSupport = !!location.state?.startNew;
+  const contactSupport = (about, opts) => navigate(`${ACCOUNT_ROOT}/messages`, { state: { about: about || null, startNew: !!opts?.startNew } });
   const signOut = () => { auth.logout(); onExit(); };
 
   // /my-account is a real URL anyone can hit directly, and AshantiHub's own
@@ -1801,7 +1697,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
   // that's who this page is for (Navbar sends a business owner to
   // BusinessCommandCenter instead) and who those endpoints admit.
   // Placed below this component's own hooks so the rules of hooks still
-  // hold; the queries live in the tab panels below, which never mount.
+  // hold; the queries live in the sections below, which never mount.
   const isCustomer = user?.accountType === "customer";
   if (auth.isLoading) {
     return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:D.pageBg,color:D.textDim}}>Loading…</div>;
@@ -1815,119 +1711,67 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     );
   }
 
-  return <div className="shadcn-scope command-center account-grid" style={{minHeight:"100vh",display:"flex"}}>
-    <div className="ah-account-backdrop" onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:190,display:sidebarOpen?"block":"none"}}/>
+  // App-owned pieces, handed to the hub as render functions (components/** never import App.jsx).
+  const render = {
+    overview: () => <OverviewPanel favourites={favourites} user={user}/>,
+    orders: () => <OrdersPanel user={user}/>,
+    requests: () => <ServiceRequestsTab PaymentComponent={PaymentComponent} onContactSupport={contactSupport}/>,
+    bookings: () => <MyBookingsTab onContactSupport={contactSupport}/>,
+    messages: () => (
+      <div>
+        <div style={{color:D.textDim,fontSize:"0.82rem",marginBottom:12}}>Messages with AshantiHub Support</div>
+        <MessagingCenter key={`${supportAbout?.name ?? ""}|${startNewSupport}`} user={user} onClose={()=>navigate(ACCOUNT_ROOT)} initialBusiness={supportAbout} startNew={startNewSupport} embedded/>
+      </div>
+    ),
+    events: () => <MyEventsTab user={user} categories={categories} zones={zones}/>,
+    tickets: (searchQuery) => <TicketsTab searchQuery={searchQuery} onContactSupport={contactSupport}/>,
+    profile: () => <AccountProfileCard user={user} auth={auth}/>,
+    settings: () => <SettingsTab user={user} auth={auth} lang={lang} setLang={setLang} onSignOut={signOut}/>,
+  };
 
-    <div className={`ah-account-sidebar${sidebarOpen?" ah-account-sidebar-open":""}`} style={{background:D.panelSolid,borderRight:`1px solid ${D.cardBorder}`,display:"flex",flexDirection:"column"}}>
-      <div style={{padding:"18px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${D.divider}`}}>
+  return <div className="shadcn-scope command-center account-grid" style={{minHeight:"100vh",display:"flex",flexDirection:"column"}}>
+    <div style={{background:tint(D.pageBg, "e6"),backdropFilter:"blur(8px)",borderBottom:`1px solid ${D.divider}`,padding:"0 16px",display:"flex",alignItems:"center",gap:12,height:64,position:"sticky",top:0,zIndex:80}}>
+      <button onClick={()=>navigate(ACCOUNT_ROOT)} aria-label="Your Account home" style={{display:"flex",alignItems:"center",gap:10,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>
         <Flag w={30} h={20}/>
-        <div>
+        <div style={{textAlign:"left"}}>
           <div style={{color:D.gold,fontWeight:900,fontSize:"0.88rem",lineHeight:1}}>AshantiHub</div>
           <div style={{color:D.textFaint,fontSize:"0.6rem",letterSpacing:"0.06em",textTransform:"uppercase"}}>My Account</div>
         </div>
-      </div>
-
-      <nav style={{flex:1,overflowY:"auto",padding:"14px 10px"}}>
-        {ACCOUNT_NAV_GROUPS.map(group=>(
-          <div key={group.id} style={{marginBottom:14}}>
-            <div style={{padding:"0 8px 6px",fontSize:"0.62rem",fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",color:D.textFaint}}>{group.label}</div>
-            {ACCOUNT_NAV_ITEMS.filter(i=>i.group===group.id).map(item=>{
-              const active = activeTab===item.id;
-              return (
-                <button key={item.id} onClick={()=>goTab(item.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:active?D.goldSoft:"none",border:"none",borderLeft:active?`3px solid ${D.gold}`:"3px solid transparent",borderRadius:"0 10px 10px 0",color:active?D.gold:D.textDim,padding:"9px 10px",fontSize:"0.78rem",fontWeight:active?800:600,cursor:"pointer",textAlign:"left",fontFamily:"inherit",marginBottom:2}}>
-                  <span>{item.icon}</span><span>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </nav>
-
-      <button onClick={()=>goTab("profile")} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",borderTop:`1px solid ${D.divider}`,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",width:"100%",textAlign:"left"}}>
-        <div style={{width:36,height:36,borderRadius:"50%",overflow:"hidden",background:D.gold,color:"#1a1205",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.9rem",flexShrink:0}}>
-          {user?.avatar ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (user?.fullName?.[0]?.toUpperCase()||"U")}
-        </div>
-        <div style={{minWidth:0,flex:1}}>
-          <div style={{color:D.text,fontWeight:700,fontSize:"0.78rem",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user?.fullName||"Customer"}</div>
-          <div style={{color:D.textFaint,fontSize:"0.64rem"}}>Customer Account</div>
-        </div>
       </button>
-    </div>
 
-    <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
-      <div style={{background:tint(D.pageBg, "e6"),backdropFilter:"blur(8px)",borderBottom:`1px solid ${D.divider}`,padding:"0 16px",display:"flex",alignItems:"center",gap:12,height:64,position:"sticky",top:0,zIndex:80}}>
-        <button className="ah-account-hamburger" onClick={()=>setSidebarOpen(true)} style={{display:"none",background:"none",border:`1px solid ${D.divider}`,borderRadius:8,color:D.text,width:34,height:34,cursor:"pointer",fontSize:"1rem",flexShrink:0}}>☰</button>
+      <div style={{flex:1}}/>
 
-        {/* Label only (no icon) — MessagingCenter renders its own "💬 Messages"
-            header when that tab is active, so icon+label here would duplicate
-            it verbatim on screen. */}
-        <div style={{color:D.text,fontWeight:800,fontSize:"0.92rem",whiteSpace:"nowrap"}}>{activeItem?.label}</div>
+      <div style={{position:"relative"}}>
+        <button onClick={()=>setShowNotifs(v=>!v)} title="Notifications" style={{background:"none",border:`1px solid ${D.divider}`,borderRadius:10,width:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text}}>🔔</button>
+        {showNotifs && <NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
+      </div>
 
-        {ACCOUNT_SEARCHABLE_TABS.has(activeTab) && (
-          <input
-            value={searchQuery}
-            onChange={e=>setSearchQuery(e.target.value)}
-            placeholder={activeTab==="orders" ? "Search orders…" : "Search tickets…"}
-            style={{flex:1,maxWidth:320,marginLeft:8,background:D.panelBg2,border:`1px solid ${D.divider}`,borderRadius:10,padding:"7px 12px",fontSize:"0.76rem",color:D.text,fontFamily:"inherit"}}
-          />
+      <div style={{position:"relative"}}>
+        <button onClick={()=>setShowProfileMenu(v=>!v)} aria-label="Account menu" style={{display:"flex",alignItems:"center",gap:6,background:"none",border:`1px solid ${D.divider}`,borderRadius:20,padding:"4px 10px 4px 4px",cursor:"pointer"}}>
+          <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",background:D.gold,color:"#1a1205",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.72rem"}}>
+            {user?.avatar ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (user?.fullName?.[0]?.toUpperCase()||"U")}
+          </div>
+          <span style={{color:D.text,fontSize:"0.7rem"}}>▾</span>
+        </button>
+        {showProfileMenu && (
+          <div onClick={()=>setShowProfileMenu(false)} style={{position:"fixed",inset:0,zIndex:98}}>
+            <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:44,right:0,width:200,...glassCard,padding:6,zIndex:99}}>
+              <div style={{padding:"6px 10px",color:D.text,fontWeight:700,fontSize:"0.78rem",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user?.fullName||"Customer"}</div>
+              <button onClick={()=>{navigate(`${ACCOUNT_ROOT}/security`);setShowProfileMenu(false);}} style={accountMenuItemStyle}>🔒 Login &amp; security</button>
+              <div style={{height:1,background:D.divider,margin:"4px 6px"}}/>
+              <button onClick={signOut} style={{...accountMenuItemStyle,color:D.red}}>🚪 Sign Out</button>
+            </div>
+          </div>
         )}
-
-        <div style={{flex:1}}/>
-
-        <div style={{position:"relative"}}>
-          <button onClick={()=>setShowNotifs(v=>!v)} title="Notifications" style={{background:"none",border:`1px solid ${D.divider}`,borderRadius:10,width:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text}}>🔔</button>
-          {showNotifs && <NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
-        </div>
-
-        <div style={{position:"relative"}}>
-          <button onClick={()=>setShowProfileMenu(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,background:"none",border:`1px solid ${D.divider}`,borderRadius:20,padding:"4px 10px 4px 4px",cursor:"pointer"}}>
-            <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",background:D.gold,color:"#1a1205",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.72rem"}}>
-              {user?.avatar ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (user?.fullName?.[0]?.toUpperCase()||"U")}
-            </div>
-            <span style={{color:D.text,fontSize:"0.7rem"}}>▾</span>
-          </button>
-          {showProfileMenu && (
-            <div onClick={()=>setShowProfileMenu(false)} style={{position:"fixed",inset:0,zIndex:98}}>
-              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:44,right:0,width:180,...glassCard,padding:6,zIndex:99}}>
-                <button onClick={()=>{goTab("profile");setShowProfileMenu(false);}} style={accountMenuItemStyle}>👤 Profile</button>
-                <button onClick={()=>{goTab("settings");setShowProfileMenu(false);}} style={accountMenuItemStyle}>⚙️ Settings</button>
-                <div style={{height:1,background:D.divider,margin:"4px 6px"}}/>
-                <button onClick={signOut} style={{...accountMenuItemStyle,color:D.red}}>🚪 Sign Out</button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <ThemeToggle theme={theme} onToggle={toggleTheme}/>
-        <button onClick={onExit} style={{background:"none",border:`1px solid ${D.divider}`,color:D.textDim,borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← Exit</button>
       </div>
 
-      <div style={{padding:"22px 20px 60px",flex:1}}>
-        {activeTab==="overview"&&<OverviewPanel favourites={favourites} user={user}/>}
-        {activeTab==="orders"&&<OrdersDeliveryTab searchQuery={searchQuery}/>}
-        {activeTab==="requests"&&<ServiceRequestsTab PaymentComponent={PaymentComponent} onContactSupport={contactSupport}/>}
-        {activeTab==="bookings"&&<MyBookingsTab onContactSupport={contactSupport}/>}
-        {activeTab==="saved"&&<SavedBusinessesTab favourites={favourites} toggleFav={toggleFav}/>}
-        {activeTab==="messages"&&<MessagingCenter key={supportAbout?.name ?? ""} user={user} onClose={()=>goTab("profile")} initialBusiness={supportAbout} embedded/>}
-        {activeTab==="events"&&<MyEventsTab user={user} categories={categories} zones={zones}/>}
-        {activeTab==="tickets"&&<TicketsTab searchQuery={searchQuery} onContactSupport={contactSupport}/>}
-        {activeTab==="profile"&&<AccountProfileCard user={user} auth={auth}/>}
-        {activeTab==="settings"&&<SettingsTab user={user} auth={auth} lang={lang} setLang={setLang} onSignOut={signOut}/>}
-      </div>
+      <ThemeToggle theme={theme} onToggle={toggleTheme}/>
+      <button onClick={onExit} style={{background:"none",border:`1px solid ${D.divider}`,color:D.textDim,borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← Exit</button>
     </div>
 
-    <style>{`
-      .ah-account-sidebar{ width:260px; height:100vh; position:sticky; top:0; flex-shrink:0; transition:transform .25s ease-out; }
-      @media (max-width:760px){
-        .ah-account-sidebar{ position:fixed; top:0; left:0; bottom:0; width:82vw; max-width:280px; z-index:200; transform:translateX(-100%); }
-        .ah-account-sidebar.ah-account-sidebar-open{ transform:translateX(0); }
-        .ah-account-hamburger{ display:inline-flex !important; }
-      }
-      @media (min-width:761px){
-        .ah-account-backdrop{ display:none !important; }
-        .ah-account-hamburger{ display:none; }
-      }
-    `}</style>
+    <div style={{padding:"22px 20px 60px",flex:1,width:"100%",maxWidth:1100,margin:"0 auto",boxSizing:"border-box"}}>
+      <AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport(null,{startNew:true})} onOpenPage={onOpenPage} onStartRegistration={onStartRegistration}/>
+    </div>
   </div>;
 }
 
@@ -1985,7 +1829,7 @@ function OverviewPanel({ user, favourites }) {
   const kpis = [
     { icon:"📦", label:"Total Orders", value: orders.length, accent: D.gold, sub: `${paidOrders.length} paid` },
     { icon:"💰", label:"Total Spent", value: ghs(totalSpent), accent: D.green, sub: "last 6 months" },
-    { icon:"❤️", label:"Saved Businesses", value: favourites.length, accent: D.red, sub: favourites.length===1?"business saved":"businesses saved" },
+    { icon:"❤️", label:"Saved items", value: favourites.length, accent: D.red, sub: favourites.length===1?"item saved":"items saved" },
     { icon:"🎟️", label:"My Tickets", value: activeTickets.length, accent: D.blue, sub: `${tickets.length} total` },
   ];
 
@@ -2027,35 +1871,6 @@ function OverviewPanel({ user, favourites }) {
 // account-profile-card.tsx), a shadcn/Tailwind card — see that file for why
 // it replaced this inline D-palette form.
 
-const DELIVERY_STEPS = [
-  { id: "processing", label: "Processing" },
-  { id: "shipped", label: "Shipped" },
-  { id: "out_for_delivery", label: "Out for Delivery" },
-  { id: "delivered", label: "Delivered" },
-];
-
-function DeliveryStepper({ status }) {
-  const activeIndex = DELIVERY_STEPS.findIndex(s=>s.id===status);
-  return <div style={{display:"flex",alignItems:"flex-start",marginTop:12}}>
-    {DELIVERY_STEPS.map((step,i)=>(
-      <div key={step.id} style={{display:"flex",alignItems:"center",flex:i<DELIVERY_STEPS.length-1?1:"none"}}>
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:60}}>
-          <div style={{width:10,height:10,borderRadius:"50%",background:i<=activeIndex?D.gold:D.divider,flexShrink:0}}/>
-          <span style={{fontSize:"0.6rem",color:i<=activeIndex?D.text:D.textFaint,fontWeight:i<=activeIndex?800:600,textAlign:"center"}}>{step.label}</span>
-        </div>
-        {i<DELIVERY_STEPS.length-1&&<div style={{flex:1,height:2,background:i<activeIndex?D.gold:D.divider,margin:"5px 4px 0"}}/>}
-      </div>
-    ))}
-  </div>;
-}
-
-// GET /api/orders/ is NOT paginated (unlike most staff moderation-queue
-// endpoints elsewhere in App.jsx) — reads the array directly, not
-// data?.results. Read-only: no customer-side actions, the delivery stepper
-// is only rendered for a paid order (delivery_status is otherwise still
-// "processing" by default but meaningless until payment clears). `searchQuery`
-// filters client-side by order id or an item's listing_name (see
-// ACCOUNT_SEARCHABLE_TABS above).
 // The customer's service requests (business item 2 / Wave H2). Shows each
 // request's status; an accepted request gets a "Pay to start" button that runs
 // the simulated payment then POSTs the pay endpoint (moving it to in_progress).
@@ -2151,91 +1966,6 @@ function MyBookingsTab({ onContactSupport }) {
   </div>;
 }
 
-function OrdersDeliveryTab({ searchQuery }) {
-  const { data, isLoading, isError, refetch } = useOrders();
-  const [confirmError, setConfirmError] = useState(null);
-  const orders = data || [];
-
-  const confirmReceipt = async (orderId) => {
-    setConfirmError(null);
-    try { await apiPost(`/api/orders/${orderId}/confirm-receipt/`, {}); refetch(); }
-    catch { setConfirmError("Could not confirm receipt. Please try again."); }
-  };
-  const q = (searchQuery||"").trim().toLowerCase();
-  const filtered = q
-    ? orders.filter(o => String(o.id).includes(q) || (o.items||[]).some(it=>it.listing_name?.toLowerCase().includes(q)))
-    : orders;
-
-  if (isLoading) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>Loading…</div>;
-  if (isError) return <div style={{color:D.red,fontSize:"0.8rem"}}>Could not load your orders.</div>;
-  if (orders.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>No orders yet.</div>;
-  if (filtered.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>No orders match "{searchQuery}".</div>;
-
-  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
-    {filtered.map(o=>{
-      const statusMeta = ORDER_STATUS_META[o.status]||{label:o.status,color:D.textDim};
-      return (
-      <div key={o.id} style={{...glassCard,padding:18}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <div style={{color:D.text,fontWeight:800,fontSize:"0.85rem"}}>Order #{o.id}</div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{color:D.textDim,fontSize:"0.7rem"}}>{o.placed_at?.slice(0,10)}</span>
-            <span style={{background:tint(statusMeta.color, "22"),color:statusMeta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{statusMeta.label}</span>
-          </div>
-        </div>
-        <div style={{marginTop:10}}>
-          {(o.items||[]).map(it=>(
-            <div key={it.id} style={{display:"flex",justifyContent:"space-between",fontSize:"0.76rem",color:D.textDim,padding:"3px 0"}}>
-              <span>{it.listing_name}{it.variant_label ? ` (${it.variant_label})` : ""} × {it.quantity}</span>
-              <span>GHS {it.line_total}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{marginTop:8,color:D.text,fontWeight:800,fontSize:"0.8rem"}}>Total: GHS {o.total_amount}</div>
-        {o.delivery_method && (
-          <div style={{marginTop:4,color:D.textDim,fontSize:"0.72rem"}}>
-            {o.delivery_method==="door_to_door" ? `🚚 Door-to-door${o.delivery_address ? ` — ${o.delivery_address}` : ""}` : "🏬 Store pickup"}
-          </div>
-        )}
-        {o.delivery_method==="store_pickup" && o.collection_code && <div style={{marginTop:8}}><PickupCollectionNote code={o.collection_code ?? null} collectBy={o.collect_by ?? null} tone="dark"/></div>}
-        {o.status==="paid" && o.delivery_method==="door_to_door" && o.ready_not_before && new Date(o.ready_not_before) > new Date() && !["delivered","confirmed"].includes(o.delivery_assignment_status) && o.delivery_status!=="delivered" && formatAccraDayTime(o.ready_not_before) && (
-          <div data-testid="order-scheduled-start" style={{marginTop:6,color:D.textDim,fontSize:"0.72rem",fontWeight:700}}>Delivery scheduled to start {formatAccraDayTime(o.ready_not_before)}</div>
-        )}
-        {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryStepper status={o.delivery_status}/>}
-        {o.status==="paid" && o.delivery_method==="door_to_door" && <OrderTrackingMap orderId={o.id} assignmentStatus={o.delivery_assignment_status ?? null} deliveryStatus={o.delivery_status} stops={o.delivery_stops ?? null} redelivery={o.redelivery ?? null}/>}
-        {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryCodeBox code={o.delivery_code} assignmentStatus={o.delivery_assignment_status ?? null}/>}
-        {o.delivery_assignment_status==="delivered" && (
-          <div style={{marginTop:10}}>
-            <div style={{color:D.textDim,fontSize:"0.72rem",marginBottom:6}}>Your courier marked this delivered. Please confirm you received it.</div>
-            <button onClick={()=>confirmReceipt(o.id)} style={{background:D.green,color:"#fff",border:"none",borderRadius:20,padding:"8px 16px",fontWeight:800,fontSize:"0.76rem",cursor:"pointer",fontFamily:"inherit"}}>✓ Confirm receipt</button>
-            {confirmError && <div style={{color:D.red,fontSize:"0.72rem",marginTop:6}}>{confirmError}</div>}
-          </div>
-        )}
-        {o.delivery_assignment_status==="confirmed" && (
-          <div style={{marginTop:8,color:D.green,fontSize:"0.72rem",fontWeight:700}}>✓ Receipt confirmed</div>
-        )}
-        <RaiseDisputeForm orderId={o.id}/>
-      </div>
-      );
-    })}
-  </div>;
-}
-
-// Reuses FavDrawerItem (also module-top-level in this file) exactly as
-// FavsDrawer does, just without the drawer's fixed-position overlay chrome —
-// a plain list in this tab's content column instead. Same empty-state copy
-// as FavsDrawer's. The inner list keeps its own light card background (same
-// look FavsDrawer itself already relies on) — a light content card sitting on
-// this panel's dark shell is a normal, established look elsewhere in the app.
-function SavedBusinessesTab({ favourites, toggleFav }) {
-  return <div>
-    {favourites.length===0 && <div style={{padding:"20px",textAlign:"center",color:D.textFaint,fontSize:"0.78rem"}}>No saved businesses yet.<br/>Tap ❤️ on any listing to save it.</div>}
-    {favourites.length>0 && <div style={{background:C.surface,borderRadius:16,overflow:"hidden",maxWidth:420,boxShadow:"0 4px 24px rgba(0,0,0,0.35)"}}>
-      {favourites.map(id=><FavDrawerItem key={id} id={id} onRemove={toggleFav}/>)}
-    </div>}
-  </div>;
-}
-
 // Mounts the same self-contained EventSubmissionPanel used on the public
 // Events page (form + "My Events" list + ticket management) — an organizer
 // submits and manages events straight from their account. Its own hardcoded
@@ -2252,7 +1982,7 @@ function MyEventsTab({ user, categories, zones }) {
 // mirrors that component's own ticketStatus() exactly (TicketSerializer has
 // no single status field): refunded takes priority, then delivered, then the
 // raw escrow_status. `searchQuery` filters client-side by event name or
-// ticket code (see ACCOUNT_SEARCHABLE_TABS above).
+// ticket code (the "Search tickets" box on Your Orders' Tickets tab).
 function accountTicketStatus(t) {
   if (t.refunded_at) return { label: "Refunded", color: D.red };
   if (t.delivered_at) return { label: "Delivered", color: D.green };
@@ -2645,6 +2375,12 @@ const PATH_TO_PAGE = {
   "/business/claim": "business-claim",
   // The owner's texted confirmation link (staff listing pipeline): public, token in the #fragment. Never a listing.
   "/business/confirm": "business-confirm",
+  // The full shopping cart (Marketplace Plan 4); the Navbar/StorefrontHeader cart icons go here.
+  "/cart": "cart",
+  // The secure checkout (Marketplace Plan 4): a standalone page with its own slim header, no Navbar/Footer.
+  "/checkout": "checkout",
+  // Verify a payment (Marketplace Plan 4): the checkout lands here; shares PaymentVerifyPage with /payment/return.
+  "/checkout/verify": "checkout-verify",
 };
 const PAGE_TO_PATH = {
   home: "/",
@@ -2659,6 +2395,9 @@ const PAGE_TO_PATH = {
   "payment-return": "/payment/return",
   "business-claim": "/business/claim",
   "business-confirm": "/business/confirm",
+  cart: "/cart",
+  checkout: "/checkout",
+  "checkout-verify": "/checkout/verify",
 };
 // Full-page dashboard "routes" (isAdmin/showBizDash-style early returns) that
 // now have real URLs too. Same two-map convention as PATH_TO_PAGE/
@@ -2739,8 +2478,10 @@ export default function AshantiHub() {
     const path = PAGE_TO_PATH[id] ?? "/";
     if (location.pathname !== path) navigate(path);
   };
-  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !sellerMatch && !unsubscribeMatch && !trackedLinkMatch && !notifyStopMatch && !onStaffDashboardPath;
+  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !sellerMatch && !unsubscribeMatch && !trackedLinkMatch && !notifyStopMatch && !onStaffDashboardPath && !isAccountPath(location.pathname);
   const [authModal,setAuthModal]=useState(null);
+  // Where to go once the sign-in modal succeeds (checkout sends the shopper home to show the modal, then back).
+  const [authReturn,setAuthReturn]=useState(null);
   const auth=useAuth();
   const queryClient=useQueryClient();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;
@@ -2772,16 +2513,23 @@ export default function AshantiHub() {
     const path = val ? FLAG_TO_DASH_PATH.showCredit : "/";
     if (val ? !showCredit : showCredit) navigate(path);
   };
-  const showAccount = location.pathname === FLAG_TO_DASH_PATH.showAccount;
+  const showAccount = isAccountPath(location.pathname);
   const setShowAccount = (val) => {
     const path = val ? FLAG_TO_DASH_PATH.showAccount : "/";
     if (val ? !showAccount : showAccount) navigate(path);
   };
   const [isAdmin,setIsAdmin]=useState(false);
   const [adminClicks,setAdminClicks]=useState(0);
-  const [favourites,setFavourites]=useState([]);
+  // Hearts: a signed-in customer's are their server wishlist (Your Lists); everyone else keeps the local list.
+  const { favourites, toggleFav, failedId: favFailedId } = useFavourites(user, { ready: !auth.isLoading });
+  // Set when a signed-in customer starts a business registration from Sell on AshantiHub: the details to
+  // pre-fill ({} = from scratch). It lives only while the /register page is open.
+  const [registerPrefill,setRegisterPrefill]=useState(undefined);
+  useEffect(()=>{ if(page!=="register") setRegisterPrefill(undefined); },[page]);
   const [showFavs,setShowFavs]=useState(false);
   const [showCart,setShowCart]=useState(false);
+  // The cart icons (Navbar, StorefrontHeader) go to the full cart page; the drawer stays mounted but is no longer opened from them.
+  const openCartPage=()=>navigate("/cart");
   const [showReferral,setShowReferral]=useState(false);
   const [showNotifs,setShowNotifs]=useState(false);
   const [currency,setCurrency]=useState("GHS");
@@ -3066,7 +2814,6 @@ export default function AshantiHub() {
       else{setAuthModal("staff-login");}
     }
   };
-  const toggleFav=(id)=>setFavourites(f=>f.includes(id)?f.filter(x=>x!==id):[...f,id]);
   // Businesses can no longer be contacted directly (fraud-prevention —
   // docs/UI_MODERNIZATION_ROADMAP.md Phase F): the old handleWA/WABtn combo
   // that opened a wa.me chat with *a business* is gone. AshantiHub's own
@@ -3080,7 +2827,7 @@ export default function AshantiHub() {
   // (staff onboarding work) both hand their result here rather than each
   // separately deciding whether to flip isAdmin, so a staff activation
   // behaves identically to a staff login.
-  const handleAuthSuccess=(result)=>{setAuthModal(null);if(result.account_type==="staff"){setIsAdmin(true);}};
+  const handleAuthSuccess=(result)=>{setAuthModal(null);if(result.account_type==="staff"){setIsAdmin(true);}else if(authReturn){navigate(authReturn);}setAuthReturn(null);};
 
   // /staff is staff-only in every display mode. On a staff dashboard URL
   // without a staff session — a direct visit, an expired token, a customer
@@ -3120,12 +2867,18 @@ export default function AshantiHub() {
 
   // Sell/create entry points: a staff session gets the shared notice instead.
   const openRegister=staffGated(()=>setPage("register"));
+  const startRegistration=staffGated((prefill)=>{ setRegisterPrefill(prefill||{}); setPage("register"); });
   const openEventSubmit=staffGated(()=>setShowEventSubmit(true));
 
   // A signed-in CUSTOMER can't register a business on their existing account —
   // Customer and BusinessOwner are separate account types. Explain it and offer
   // to sign out and start a business registration (after logout, user becomes
   // null and the /register flow below renders the business signup).
+  // Started from Your Account > Sell on AshantiHub: the customer stays signed in (the flow runs as a new
+  // account and only replaces the session when the business login is actually created).
+  if(page==="register" && user?.accountType==="customer" && registerPrefill!==undefined){
+    return <BusinessRegistrationFlow user={null} auth={auth} prefill={registerPrefill} setPage={setPage} setShowBizDash={setShowBizDash}/>;
+  }
   if(page==="register" && user?.accountType==="customer"){
     return (
       <div style={{minHeight:"100vh",background:C.void,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:24,textAlign:"center"}}>
@@ -3170,7 +2923,7 @@ export default function AshantiHub() {
       theme={theme} toggleTheme={toggleTheme}
       onViewSite={isStandaloneDisplay() ? undefined : ()=>navigate("/")}/>;
   }
-  if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment} theme={theme} toggleTheme={toggleTheme}/>;
+  if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment} theme={theme} toggleTheme={toggleTheme} onOpenPage={setPage} onStartRegistration={startRegistration}/>;
   if(showBizDash||showPayments||showCredit) return <BusinessCommandCenter
     initialTab={showPayments?"payments":showCredit?"credit":"analytics"}
     onExit={()=>{setShowBizDash(false);setShowPayments(false);setShowCredit(false);}}
@@ -3180,7 +2933,8 @@ export default function AshantiHub() {
   if(page==="staff-activate") return <StaffActivatePage auth={auth} onSuccess={handleAuthSuccess}/>;
   if(page==="staff-install") return <StaffInstallPage/>;
   if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
-  if(page==="payment-return") return <PaymentReturnPage setPage={setPage}/>;
+  if(page==="payment-return"||page==="checkout-verify") return <PaymentVerifyPage/>;
+  if(page==="checkout") return <CheckoutPage user={user} currency={currency} PaymentComponent={MoMoPayment} authLoading={auth.isLoading} onNavigate={navigate} onSignIn={()=>{setAuthReturn("/checkout");setAuthModal("login");setPage("home");}}/>;
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
   if(page==="business-confirm") return <OwnerConfirmPage/>;
   if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
@@ -3217,8 +2971,8 @@ export default function AshantiHub() {
   const FavsDrawer=()=>{
     return <div style={{position:"fixed",inset:0,zIndex:999}} onClick={()=>setShowFavs(false)}>
       <div style={{position:"absolute",top:65,right:16,background:C.surface,borderRadius:16,width:300,maxHeight:400,overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}} onClick={e=>e.stopPropagation()}>
-        <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.line}`,fontWeight:800,color:C.ink,fontSize:"0.85rem"}}>❤️ Saved Businesses ({favourites.length})</div>
-        {favourites.length===0&&<div style={{padding:"20px",textAlign:"center",color:C.inkFaint,fontSize:"0.78rem"}}>No saved businesses yet.<br/>Tap ❤️ on any listing to save it.</div>}
+        <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.line}`,fontWeight:800,color:C.ink,fontSize:"0.85rem"}}>❤️ Saved items ({favourites.length})</div>
+        {favourites.length===0&&<div style={{padding:"20px",textAlign:"center",color:C.inkFaint,fontSize:"0.78rem"}}>No saved items yet.<br/>Tap ❤️ on any listing to save it.</div>}
         {favourites.map(id=><FavDrawerItem key={id} id={id} onRemove={toggleFav}/>)}
       </div>
     </div>;
@@ -3237,12 +2991,12 @@ export default function AshantiHub() {
       {appStaffGate.shownFor&&<StaffGateNotice floating onDismiss={appStaffGate.dismiss}/>}
       {!cookieDismissed&&<CookieBanner onAccept={()=>{saveCookieConsent("accepted");setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{saveCookieConsent("essential");setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
       <OfflineBanner/>
-      {shownAuthModal&&<AuthModal key={shownAuthModal} authState={shownAuthModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess} onGoToMarketplace={leaveStaffSignInForMarketplace}/>}
+      {shownAuthModal&&<AuthModal key={shownAuthModal} authState={shownAuthModal} auth={auth} onClose={()=>{setAuthModal(null);setAuthReturn(null);}} onSuccess={handleAuthSuccess} onGoToMarketplace={leaveStaffSignInForMarketplace}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
       {showIntake&&<ChatIntake user={user} onClose={()=>setShowIntake(false)} onContinue={()=>{setShowIntake(false);setShowMessaging(true);}}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
-      {showCart&&isCustomer&&<CartDrawer user={user} currency={currency} onClose={()=>setShowCart(false)} PaymentComponent={MoMoPayment}/>}
+      {showCart&&isCustomer&&<CartDrawer onClose={()=>setShowCart(false)} onGoToCart={()=>{setShowCart(false);navigate("/cart");}}/>}
       {/* Referral feature hidden until it's built properly (see note below). */}
       {/* On "/" the marketplace home's own StorefrontHeader replaces this bar
           (it is passed to StorefrontHome below); every other page keeps it. */}
@@ -3256,7 +3010,7 @@ export default function AshantiHub() {
         setShowBizDash={setShowBizDash}
         setShowPayments={setShowPayments}
         setShowAccount={setShowAccount}
-        setShowCart={setShowCart}
+        setShowCart={openCartPage}
         cartCount={cartItemCount}
         notifCount={unreadNotifs}
         theme={theme} toggleTheme={toggleTheme}
@@ -3266,6 +3020,10 @@ export default function AshantiHub() {
 
       {/* A staff session can't register a business — same notice the
           "Register Your Business" CTAs show, for a direct /register visit. */}
+      {page==="cart"&&(
+        <CartPage user={user} currency={currency} onNavigate={navigate} authLoading={auth.isLoading} onSignIn={()=>setAuthModal("login")}/>
+      )}
+
       {page==="register"&&staffSession&&(
         <div style={{maxWidth:560,margin:"0 auto",padding:"48px 16px"}}>
           <StaffGateNotice passive/>
@@ -3287,7 +3045,7 @@ export default function AshantiHub() {
               setShowAccount={setShowAccount}
               setShowBizDash={setShowBizDash}
               setShowPayments={setShowPayments}
-              setShowCart={setShowCart}
+              setShowCart={openCartPage}
               setShowFavs={setShowFavs}
               setShowNotifs={setShowNotifs}
               cartCount={cartItemCount}
@@ -3346,8 +3104,8 @@ export default function AshantiHub() {
               first field (docs/UI_MODERNIZATION_ROADMAP.md Phase G; the old
               standalone top search bar, its POPULAR SEARCHES suggestions
               dropdown, Map View toggle, Saved button, and currency selector
-              are all gone — Saved businesses are reachable via UserPanel's
-              existing "❤️ Saved Businesses" tab instead). On desktop the
+              are all gone — Saved items are reachable via UserPanel's
+              existing "❤️ Saved items" tab instead). On desktop the
               Sidebar is always visible alongside the grid, so this bar is
               mobile-only (ah-filter-trigger-bar media query below); on mobile
               it opens Sidebar as a slide-in panel. */}
@@ -3374,6 +3132,10 @@ export default function AshantiHub() {
               onOpenListing={(otherId)=>setSelectedListingId(otherId)}
               onOpenSeller={(sellerId)=>navigate(`/seller/${sellerId}`)}
               onAddToCart={handleAddToCart}
+              // The slim mini-cart opens after a successful add on the product page (the cart icons go to /cart).
+              onAddedToCart={()=>setShowCart(true)}
+              // The product page's "More from Ashanti Direct": the sidebar's own "Sold by Ashanti Direct" filter, on the browse grid.
+              onShowDirect={()=>{setFilters(f=>({...f,directOnly:true}));setSelectedListingId(null);}}
               CardComponent={Card}
               PaymentComponent={MoMoPayment}
             />
@@ -3485,7 +3247,7 @@ export default function AshantiHub() {
                         page). Promoted/boosted sorting-first lands in a later phase — this renders
                         `listings` in whatever order the API returns, unsorted client-side. */}
                     {(()=>{
-                      const renderCard=(item)=><Card key={item.id} item={item} accentColor={activeCatObj?.color||C.gold} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>;
+                      const renderCard=(item)=><Card key={item.id} item={item} accentColor={activeCatObj?.color||C.gold} user={user} favourites={favourites} onFavourite={toggleFav} favFailed={favFailedId===item.id} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>;
                       return listings.some((l)=>"cart_tier" in l)
                         ? <CartTieredResults listings={listings} renderCard={renderCard}/>
                         : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>{listings.map(renderCard)}</div>;

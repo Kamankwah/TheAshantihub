@@ -267,3 +267,27 @@ describe('Card price', () => {
     expect(price.style.color).toBe('rgb(245, 222, 179)')
   })
 })
+
+describe('Card verified check mark', () => {
+  const renderCard = (item) => renderWithClient(
+    <Card item={item} accentColor="#000080" user={null} favourites={[]} onFavourite={vi.fn()} currency="GHS" onMessage={vi.fn()} />,
+  )
+
+  it('card shows the mark only for identity_verified sellers', () => {
+    const { unmount } = renderCard({ ...REAL_SHAPED_LISTING, business_owner: { id: 9, full_name: 'Ama', kyc_status: 'verified', identity_verified: true } })
+    expect(screen.getByLabelText('Verified business')).toBeInTheDocument()
+    unmount()
+
+    // KYC (address) approval alone does not earn the mark.
+    renderCard({ ...REAL_SHAPED_LISTING, business_owner: { id: 9, full_name: 'Ama', kyc_status: 'verified', identity_verified: false } })
+    expect(screen.queryByLabelText('Verified business')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Verified/)).not.toBeInTheDocument()
+  })
+
+  it('no unverified label anywhere on a card without the mark', () => {
+    renderCard({ ...REAL_SHAPED_LISTING, business_owner: { id: 9, full_name: 'Ama', kyc_status: 'pending', identity_verified: false } })
+    expect(screen.queryByText(/unverified|not verified/i)).not.toBeInTheDocument()
+    renderCard({ ...REAL_SHAPED_LISTING, business_owner: null })
+    expect(screen.queryByLabelText('Verified business')).not.toBeInTheDocument()
+  })
+})

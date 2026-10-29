@@ -89,8 +89,22 @@ class ScoutRegisteredStepTests(TestCase):
 
 
 class SelfRegisteredStepUnchangedTests(TestCase):
-    def test_the_same_partial_details_still_need_business_info_when_self_registered(self):
-        self.assertEqual(_step(_owner(BusinessOwner.SELF, **SCOUT_CAPTURE)), "business_info")
+    def test_a_self_registered_owner_without_an_address_still_needs_business_info(self):
+        details = dict(SCOUT_CAPTURE, gps_address=None)
+        self.assertEqual(_step(_owner(BusinessOwner.SELF, **details)), "business_info")
+
+    def test_registration_step_skips_documents(self):
+        # Address and contact phone are all the business-info step now needs:
+        # no Ghana Card number or images, no certificate or TIN even if formal.
+        for formal in (False, True):
+            with self.subTest(is_formal=formal):
+                owner = _owner(
+                    BusinessOwner.SELF, phone=f"+23324122000{int(formal)}", business_kind="product",
+                    gps_address="AK-039-5028", business_contact_phone="+233241220001", is_formal=formal,
+                )
+                self.assertEqual(_step(owner), "plan_selection")
+                _subscribe(owner)
+                self.assertEqual(_step(owner), "payment_info")
 
     def test_a_verified_self_registered_owner_is_complete_without_a_plan(self):
         owner = _owner(BusinessOwner.SELF, kyc_status=BusinessOwner.VERIFIED, **SCOUT_CAPTURE)

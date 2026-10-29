@@ -2,7 +2,11 @@
 
 The phone and email come from the environment (ASHANTI_DIRECT_PHONE, ASHANTI_DIRECT_EMAIL); with either blank this stops
 and creates nothing. The password is unusable: a Super Admin sets it afterwards with the normal password flow, and
-Operations never holds it, so wallet withdrawals follow the ordinary holder flow."""
+Operations never holds it, so wallet withdrawals follow the ordinary holder flow.
+
+The company's shop has no Ghana Card to upload, so its identity is verified by the system (identity_status verified,
+identity_reviewed_at set, no reviewer): it keeps the public check mark, featured eligibility and payout-name matching.
+A run against an existing Direct whose identity is not verified sets it again."""
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand, CommandError
@@ -24,7 +28,10 @@ class Command(BaseCommand):
         except LookupError:
             existing = None
         if existing is not None:
-            self.stdout.write(f"Ashanti Direct already exists (id {existing.pk}); nothing changed.")
+            if self._verify_identity(existing):
+                self.stdout.write(f"Ashanti Direct already exists (id {existing.pk}); its identity is now verified by the system.")
+            else:
+                self.stdout.write(f"Ashanti Direct already exists (id {existing.pk}); nothing changed.")
             return
         raw_phone = (settings.ASHANTI_DIRECT_PHONE or "").strip()
         email = (settings.ASHANTI_DIRECT_EMAIL or "").strip()
@@ -46,7 +53,20 @@ class Command(BaseCommand):
             BusinessOwnerProfile.objects.create(
                 business_owner=owner, business_name=NAME, business_contact_phone=phone,
                 business_kind=BusinessOwnerProfile.PRODUCT,
+                identity_status=BusinessOwnerProfile.IDENTITY_VERIFIED, identity_reviewed_at=timezone.now(),
             )
         self.stdout.write(self.style.SUCCESS(
             f"Created Ashanti Direct (id {owner.pk}), verified by the system. A Super Admin must set its password."
         ))
+
+    @staticmethod
+    def _verify_identity(owner):
+        """Mark an existing Direct's identity verified by the system; False when it already was (idempotent)."""
+        with transaction.atomic():
+            updated = BusinessOwnerProfile.objects.filter(business_owner=owner).exclude(
+                identity_status=BusinessOwnerProfile.IDENTITY_VERIFIED
+            ).update(
+                identity_status=BusinessOwnerProfile.IDENTITY_VERIFIED, identity_reviewed_at=timezone.now(),
+                identity_reviewed_by=None, identity_rejection_reason=None,
+            )
+        return bool(updated)

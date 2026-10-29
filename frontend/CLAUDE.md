@@ -195,6 +195,29 @@ monolith holding most components, with extractions living in `components/`,
   come only from booking-terms (`useBookingTerms`), never a literal "24/48/72 hours". Booking sales are read from
   `vendor/bookings/`, not the order sales list. The sweep test is the conformance contract: add a new Money screen to it.
 
+## Shopper pages (marketplace Plan 4)
+
+- **`components/shop/` and `components/account/` are themed and light/dark** (`var(--ah-*)` through `C`), unlike the
+  old fixed-dark detail bodies. `ListingDetailPage` is a chooser: goods (the backend's deliverable test: not a stay,
+  and food or `kind === "product"`) render `shop/ProductPage`; services and stays keep the old fixed-dark body.
+  Questions-and-answers are gone from listing pages (event Q&A is untouched).
+- **The cart lives at `/cart`** (`shop/CartPage`); `CartDrawer` is only a mini-cart opened after a product-page add
+  (`onAddedToCart`) and has no checkout step. Checkout is `/checkout` (`shop/CheckoutPage`); `/checkout/verify`
+  is `shop/PaymentVerifyPage`, which also serves `/payment/return` for **every** checkout-session kind (orders,
+  service requests, bookings, tickets, top-ups), so keep its per-kind destinations. Cart, checkout and verify amounts
+  are always GHS (what is charged); `PriceTag` converts for display only.
+- **Account hub routes:** `/my-account/<section>` and `/my-account/payments/<tab>` (`accountNav.js` is the one list;
+  `AccountHub` parses the path itself). App-owned pieces (Bookings, Service requests, Tickets, My events,
+  MessagingCenter) arrive as props. Your Orders carries those four as tabs.
+- **The wallet hooks and components are holder-agnostic** (`useWallet`, `TopUpForm`, `WithdrawForm`,
+  `PaymentMethodPicker`, ...): the shopper wallet tabs (`account/wallet/`) compose 3F's parts and never re-implement
+  them. **Never build a second step-up prompt** - the one `StepUpPrompt` mounted in `main.jsx` handles every step-up challenge.
+- **`useWishlist` owns the single `['wishlist']` query key** shared by card hearts, the product page's "Add to list"
+  and Your Lists; do not add a parallel favourites source for signed-in customers.
+- **`ShopperNoInventionSweep.test.jsx` (`components/__tests__/`) is the conformance contract** for the shopper pages
+  (no `tel:`/`wa.me`, no Prime/gift-card/ETA/"bought in past month" text, no "0.0" rating, tabular figures on every
+  price, no "not available yet" placeholder). Add any new shopper page or wallet tab to its list.
+
 ## Owner listing panels and `basePath`
 
 Owner listing panels (`ListingsPanel`, the variants, revision and discount editors) take a `basePath` prop, default

@@ -36,7 +36,7 @@ function Capacity({ sold, capacity }) {
 
 function EventSide({ event: e, onClose }) {
   const facts = [
-    ["Organiser", `${e.organiser.name}${e.organiser.kind === "business" ? (e.organiser.verified ? " · verified business" : " · KYC not verified") : " · a customer"}`],
+    ["Organiser", `${e.organiser.name}${e.organiser.kind === "business" ? (e.organiser.verified ? " · verified business" : " · Identity not verified") : " · a customer"}`],
     ["Tickets", e.ticket_types.map((t) => `${t.name} ${money(t.price)} · ${t.sold}${t.total != null ? ` of ${t.total}` : ""} sold${t.active ? "" : " · off sale"}`).join(" | ") || "No ticket types"],
     ["Held", money(e.held)], ["Released", money(e.released)], ["Refunded", `${money(e.refunded)} (${e.refunded_count} ${e.refunded_count === 1 ? "ticket" : "tickets"})`],
     ["Checked in at the door", String(e.checked_in)], ["Listing fee paid", e.paid_at ? dateTime(e.paid_at) : "Not paid"],

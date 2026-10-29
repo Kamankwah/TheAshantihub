@@ -17,7 +17,7 @@ class ServiceAreaCheckoutTests(CheckoutTestsBase):
         self._add_to_cart(self.listing_a, 1)
 
     def _post(self, **extra):
-        body = {"delivery_method": "door_to_door", "delivery_address": "12 Test St", "delivery_phone": "0240000000", **extra}
+        body = {"delivery_method": "door_to_door", "delivery_address": "12 Test St", "delivery_phone": "0240000000", "delivery_gps_address": "AK-039-5028", "delivery_landmark": "Blue gate", **extra}
         return self.client.post("/api/orders/checkout/", body, format="json")
 
     def test_point_outside_ashanti_is_refused(self):

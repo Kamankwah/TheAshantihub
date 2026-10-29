@@ -391,6 +391,19 @@ class PublicFeaturedTests(FeaturedBase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(set(rows[0]), {"id", "name", "main_photo", "price_amount", "price_unit", "category", "business", "verified"})
 
+    def test_verified_follows_approved_identity_not_kyc(self):
+        owner = self.owner(kyc_status=BusinessOwner.VERIFIED)
+        self.book(self.promo(owner))
+        self.client.credentials()
+
+        def verified():
+            return self.client.get("/api/marketing/featured/home/").json()["listings"][0]["verified"]
+
+        self.assertIs(verified(), False)
+        owner.profile.identity_status = BusinessOwnerProfile.IDENTITY_VERIFIED
+        owner.profile.save()
+        self.assertIs(verified(), True)
+
     def test_category_row(self):
         self.book(self.promo(), slot="category-top", category=self.cat.pk)
         self.client.credentials()

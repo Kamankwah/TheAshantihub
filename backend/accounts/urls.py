@@ -92,14 +92,23 @@ urlpatterns = [
         views.BusinessOwnerProfileUpdateView.as_view(),
         name="business-owner-profile-update",
     ),
+    path(
+        "business-owners/me/identity/",
+        views.IdentitySubmissionView.as_view(),
+        name="business-owner-identity",
+    ),
     path("business/hours/", views.BusinessHoursView.as_view(), name="business-hours"),
     path("business-owners/me/terms/", views.TermsAcceptView.as_view(), name="business-owner-terms"),
     path("kyc/pending/", views.KYCPendingQueueView.as_view(), name="kyc-pending"),
     path("kyc/stats/", views.KYCStatsView.as_view(), name="kyc-stats"),
+    path("kyc/identity/pending/", views.IdentityPendingQueueView.as_view(), name="kyc-identity-pending"),
     path("kyc/<int:pk>/", views.KYCDetailView.as_view(), name="kyc-detail"),
     path("kyc/<int:pk>/approve/", views.KYCApproveView.as_view(), name="kyc-approve"),
     path("kyc/<int:pk>/reject/", views.KYCRejectView.as_view(), name="kyc-reject"),
     path("kyc/<int:pk>/re-review/", views.KYCReReviewView.as_view(), name="kyc-re-review"),
+    path("kyc/<int:pk>/identity/approve/", views.IdentityApproveView.as_view(), name="kyc-identity-approve"),
+    path("kyc/<int:pk>/identity/reject/", views.IdentityRejectView.as_view(), name="kyc-identity-reject"),
+    path("kyc/<int:pk>/identity/re-review/", views.IdentityReReviewView.as_view(), name="kyc-identity-re-review"),
     path(
         "kyc/<int:pk>/address-verify/",
         views.KYCAddressVerifyView.as_view(),
@@ -143,6 +152,14 @@ urlpatterns = [
     path("staff/<int:pk>/reactivate/", views.StaffReactivateView.as_view(), name="staff-reactivate"),
     path("staff/<int:pk>/permissions/", views.StaffPermissionsView.as_view(), name="staff-permissions"),
     path("permissions/", views.PermissionCatalogView.as_view(), name="permission-catalog"),
+    # Customer address book (default delivery address)
+    path("addresses/", views.CustomerAddressListCreateView.as_view(), name="customer-address-list"),
+    path("addresses/<int:pk>/", views.CustomerAddressDetailView.as_view(), name="customer-address-detail"),
+    path(
+        "addresses/<int:pk>/set-default/",
+        views.CustomerAddressSetDefaultView.as_view(),
+        name="customer-address-set-default",
+    ),
     # Scout field verification (item 11)
     path("scouts/", views.ScoutListView.as_view(), name="scout-list"),
     path("scout-assignments/", views.ScoutAssignmentListCreateView.as_view(), name="scout-assignment-list-create"),

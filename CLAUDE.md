@@ -75,6 +75,12 @@ there is no "payment type" or card-digits field for a customer because no paymen
 exists; cancelling a promotion is explicitly not a refund, and the UI says so before confirming.
 Keep this bar — prefer an honest empty state or a stated limitation over a plausible-looking mock.
 
+**Shopper delivery and payment limits (marketplace Plan 4).** There are **no delivery dates** anywhere (no ETA
+source exists); the UI says the delivery fee is worked out at checkout from the GhanaPost address. There is no
+payment-method model, so there is **no default payment method** and no saved cards; saved mobile-money numbers are
+payout destinations for withdrawals only. A **GhanaPost digital address plus a landmark is required for door-to-door
+delivery** (Ashanti codes only); store pickup needs neither.
+
 ## Area guidance
 
 - `frontend/CLAUDE.md` — the no-`useMutation` mutation convention, the

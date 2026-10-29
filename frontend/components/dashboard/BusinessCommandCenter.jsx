@@ -246,7 +246,8 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                   <>
                     <div style={{ fontSize: "2rem", marginBottom: 10 }}>⏳</div>
                     <div style={{ fontWeight: 900, color: D.text, fontSize: "1.05rem", marginBottom: 8 }}>Your application is under review</div>
-                    <div style={{ color: D.textDim, fontSize: "0.85rem", lineHeight: 1.6 }}>Our team is verifying your Ghana Card and business details. This usually takes 1-2 business days — you'll be able to manage listings, enquiries and your subscription here as soon as you're approved.</div>
+                    <div style={{ color: D.textDim, fontSize: "0.85rem", lineHeight: 1.6 }}>Our team is checking your business details and address. This usually takes 1-2 business days — you'll be able to manage listings, enquiries and your subscription here as soon as you're approved.</div>
+                    <div style={{ color: D.textDim, fontSize: "0.85rem", lineHeight: 1.6, marginTop: 8 }}>While you wait, you can add your Ghana Card for the verified check mark under Profile &amp; Settings → Get verified.</div>
                   </>
                 )}
               </div>

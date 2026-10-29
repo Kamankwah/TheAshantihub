@@ -165,4 +165,25 @@ describe('KYCQueuePanel (staff phase 2A)', () => {
     expect(within(kofiRow).getByText(/Owners who register online give a Ghana Post address only/)).toBeInTheDocument()
     expect(within(kofiRow).queryByRole('img', { name: 'Signboard' })).not.toBeInTheDocument()
   })
+
+  it('address approve button does not depend on documents', async () => {
+    const o = owner()
+    let posted = 0
+    mockQueue([o], { 41: detailOf(o, { profile: { ...detailOf(o).profile, ghana_card_number: '', ghana_card_front_image: null, ghana_card_back_image: null, business_reg_certificate: null, tin: '' } }) })
+    server.use(http.post(`${API}/api/accounts/kyc/41/approve/`, () => { posted += 1; return HttpResponse.json({ id: 41, kyc_status: 'approved' }) }))
+    renderPanel()
+    const row = await openApproveReady('Nana Adwoa Agyeman')
+    fireEvent.click(within(row).getByText('✓ Approve'))
+    await waitFor(() => expect(posted).toBe(1))
+  })
+
+  it('says Not provided for a missing card number, certificate and TIN in the address details', async () => {
+    const o = owner()
+    mockQueue([o], { 41: detailOf(o, { profile: { ...detailOf(o).profile, is_formal: true } }) })
+    renderPanel()
+    const row = await openApproveReady('Nana Adwoa Agyeman')
+    // card number, TIN and the certificate
+    expect(within(row).getAllByText('Not provided')).toHaveLength(3)
+    expect(within(row).getAllByText('Not uploaded')).toHaveLength(2)
+  })
 })

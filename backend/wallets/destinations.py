@@ -112,7 +112,10 @@ def _holder_problem(holder):
         return _rider_problem(holder)
     if not names.verified_names(holder):
         if isinstance(holder, BusinessOwner):
-            return DestinationError("Your business must pass KYC before money can be paid out to it.", "kyc_required", 409)
+            return DestinationError(
+                "Your identity must be verified before you can add a payout account. Go to Profile & Settings, open Get "
+                "verified, upload your Ghana Card and wait for AshantiHub to approve it.", "kyc_required", 409,
+            )
         return DestinationError("Add your full name to your profile first.", "name_required", 409)
     return None
 
@@ -164,7 +167,7 @@ def check(holder, data):
 def save(holder, checked, now=None):
     """Write a destination `check` accepted. Call inside the transaction that spends the step-up code. The holder's
     own row is locked and reloaded first (a lock on live destinations would lock nothing for the first adds), so two
-    adds at once are taken one after the other; then, on the fresh row, the suspension, KYC and name checks are run
+    adds at once are taken one after the other; then, on the fresh row, the suspension, identity and name checks are run
     again (they may have changed since `check`) and the duplicate and five-destination checks see what the other add
     committed. Raises DestinationError, saving nothing."""
     now = now or timezone.now()

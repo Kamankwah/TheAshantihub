@@ -8,7 +8,7 @@ from PIL import Image
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
-from accounts.models import BusinessOwner, Customer, Role, StaffUser
+from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer, Role, StaffUser
 from events.models import Event
 from listings.models import Category, HeroMediaSubmission, Listing, ListingPhoto, Zone
 from messaging.models import Conversation, Message
@@ -69,6 +69,11 @@ class NotificationTriggerTests(TestCase):
         pending = BusinessOwner.objects.create(
             full_name="Pending Trader", login_phone="+233201110003", password_hash="x",
             kyc_status=BusinessOwner.PENDING,
+        )
+        # Approval needs a recorded Ghana Post address decision.
+        BusinessOwnerProfile.objects.create(
+            business_owner=pending, gps_address="AK-039-5030", business_contact_phone="+233201110003",
+            address_verified=True, address_verified_by=self.super_admin, address_verified_at=timezone.now(),
         )
         self._auth(self.super_admin, "staff")
         resp = self.client.post(f"/api/accounts/kyc/{pending.id}/approve/")

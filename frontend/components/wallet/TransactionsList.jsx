@@ -26,8 +26,10 @@ const hidden = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', 
 // Money tab both compose it. An order link renders only when the caller
 // passes `orderHref(orderId)`. Filtering is client-side on loaded pages.
 // `path` reads another holder's journal; `filters={false}` hides the chips;
-// `accountLabels` is merged over the built-in account words.
-export default function TransactionsList({ tone = 'light', orderHref, path, filters = true, accountLabels }) {
+// `accountLabels` is merged over the built-in account words. `limit` shows only
+// the newest N rows (no chips, no Load more): a "recent activity" glance.
+// `empty` is an extra node under the empty-state line (e.g. a way onward).
+export default function TransactionsList({ tone = 'light', orderHref, path, filters = true, accountLabels, limit, empty }) {
   const s = walletStyles(tone)
   const [group, setGroup] = useState('all')
   const { query, loaded, rows, hasMore, loadMore, loadError } = usePagedRows((p) => useWalletTransactions(p, path ? { path } : undefined))
@@ -38,11 +40,12 @@ export default function TransactionsList({ tone = 'light', orderHref, path, filt
     return <div style={s.card}><div style={m.kind === 'off' ? s.note : s.error}>{m.text}</div></div>
   }
   if (!loaded.length) return <div style={s.card}><div style={s.note}>Loading your transactions…</div></div>
-  if (!rows.length) return <div style={s.card}><div style={s.note}>You don't have any transactions yet.</div></div>
+  if (!rows.length) return <div style={s.card}><div style={s.note}>You don't have any transactions yet.</div>{empty}</div>
 
-  const chips = !filters ? [] : GROUPS.filter((g) => rows.some((r) => g.kinds.includes(r.kind)))
+  const chips = !filters || limit ? [] : GROUPS.filter((g) => rows.some((r) => g.kinds.includes(r.kind)))
   const active = chips.find((g) => g.id === group)
-  const shown = active ? rows.filter((r) => active.kinds.includes(r.kind)) : rows
+  const filtered = active ? rows.filter((r) => active.kinds.includes(r.kind)) : rows
+  const shown = limit ? filtered.slice(0, limit) : filtered
   const chipStyle = (on) => ({ ...s.ghost, padding: '6px 12px', minHeight: 36, fontSize: 13, fontWeight: on ? 700 : 500 })
 
   return (
@@ -81,7 +84,7 @@ export default function TransactionsList({ tone = 'light', orderHref, path, filt
         })}
       </ul>
       {loadError && <div style={{ ...s.error, marginTop: 12 }}>{loadError.text}</div>}
-      {hasMore && (
+      {hasMore && !limit && (
         <button type="button" style={{ ...s.ghost, marginTop: 12 }} disabled={query.isFetching} onClick={loadMore}>Load more</button>
       )}
     </div>

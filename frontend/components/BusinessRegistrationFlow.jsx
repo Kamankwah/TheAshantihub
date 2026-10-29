@@ -46,6 +46,7 @@ const CYCLE_OPTIONS = [1, 3, 6, 12];
 
 const inputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.line}`,marginBottom:10,fontSize:"0.82rem",fontFamily:"inherit"};
 const labelStyle={display:"block",fontSize:"0.72rem",fontWeight:700,color:C.ink,marginBottom:10};
+const hintStyle={color:C.inkDim,fontSize:"0.7rem",margin:"0 0 10px",lineHeight:1.4};
 const submitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"12px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",marginTop:4};
 
 export default function BusinessRegistrationFlow({ user, auth, initialStep, prefill, setPage, setShowBizDash }) {
@@ -56,9 +57,9 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
   const [submitting, setSubmitting] = useState(false);
 
   // Step 1 — Personal Information
-  const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState(prefill?.full_name || "");
+  const [phone, setPhone] = useState(prefill?.phone || "");
+  const [email, setEmail] = useState(prefill?.email || "");
   const [password, setPassword] = useState("");
 
   // Step 2 — Business Information
@@ -124,7 +125,8 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
       }
       setStep("business_info");
     } catch (err) {
-      setError("Could not create your account. Please check your details.");
+      // The server's own refusal (e.g. a phone or email another business account already uses) is shown as sent.
+      setError(apiErrorMessage(err, "Could not create your account. Please check your details."));
     } finally {
       setSubmitting(false);
     }
@@ -133,8 +135,8 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
   const handleBusinessInfoSubmit = async (e) => {
     e.preventDefault();
     setError(null);
-    // Ghana Card + a valid Ashanti Region Ghana Post address are required.
-    if (!ghanaCardNumber.trim()) { setError("Your Ghana Card number is required."); return; }
+    // Only a valid Ashanti Region Ghana Post address (and a contact phone) is required. The Ghana Card,
+    // certificate and TIN are optional here; they are only needed later for the verified check mark.
     const gps = gpsAddress.trim().toUpperCase();
     if (!/^[A-Z]{2}-\d{3,4}-\d{4}$/.test(gps)) {
       setError("Enter a valid Ghana Post GPS address, e.g. AK-039-5028."); return;
@@ -144,16 +146,14 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
     }
     setSubmitting(true);
     try {
-      await auth.submitBusinessInfo({
-        ghana_card_number: ghanaCardNumber,
-        ghana_card_front_image: ghanaCardFront,
-        ghana_card_back_image: ghanaCardBack,
-        gps_address: gps,
-        business_contact_phone: businessContactPhone,
-        is_formal: isFormal,
-        business_reg_certificate: isFormal ? businessRegCertificate : undefined,
-        tin: isFormal ? tin : undefined,
-      });
+      // Send only what the owner actually filled in: no empty strings, no null files.
+      const payload = { gps_address: gps, business_contact_phone: businessContactPhone, is_formal: isFormal };
+      if (ghanaCardNumber.trim()) payload.ghana_card_number = ghanaCardNumber.trim();
+      if (ghanaCardFront) payload.ghana_card_front_image = ghanaCardFront;
+      if (ghanaCardBack) payload.ghana_card_back_image = ghanaCardBack;
+      if (isFormal && businessRegCertificate) payload.business_reg_certificate = businessRegCertificate;
+      if (isFormal && tin.trim()) payload.tin = tin.trim();
+      await auth.submitBusinessInfo(payload);
       const fresh = await auth.refreshUser();
       if (fresh.registration_step === "complete") {
         setShowBizDash(true);
@@ -341,25 +341,27 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
         {step==="business_info" && (
           <form onSubmit={handleBusinessInfoSubmit}>
             <h2 style={{color:C.ink,fontSize:"1.05rem",margin:"0 0 14px"}}>Tell us about your business</h2>
-            <input value={ghanaCardNumber} onChange={e=>setGhanaCardNumber(e.target.value)} placeholder="Ghana Card number" required style={inputStyle}/>
+            <div style={hintStyle}>Add your Ghana Card to earn the verified check mark. You can also do this later from your dashboard.</div>
+            <input value={ghanaCardNumber} onChange={e=>setGhanaCardNumber(e.target.value)} placeholder="Ghana Card number" style={inputStyle}/>
             <label style={labelStyle}>Ghana Card — front
-              <input type="file" accept="image/*" required onChange={e=>setGhanaCardFront(e.target.files[0])} style={inputStyle}/>
+              <input type="file" accept="image/*" onChange={e=>setGhanaCardFront(e.target.files[0] || null)} style={inputStyle}/>
             </label>
             <label style={labelStyle}>Ghana Card — back
-              <input type="file" accept="image/*" required onChange={e=>setGhanaCardBack(e.target.files[0])} style={inputStyle}/>
+              <input type="file" accept="image/*" onChange={e=>setGhanaCardBack(e.target.files[0] || null)} style={inputStyle}/>
             </label>
             <input value={gpsAddress} onChange={e=>setGpsAddress(e.target.value)} placeholder="Ghana Post GPS address (e.g. AK-039-5028)" required style={inputStyle}/>
             <div style={{color:C.warnInk,fontSize:"0.68rem",margin:"-6px 0 10px",lineHeight:1.4}}>📍 Ashanti Region only — your Ghana Post address must be an Ashanti Region address (it begins with “A”).</div>
             <input value={businessContactPhone} onChange={e=>setBusinessContactPhone(e.target.value)} placeholder="Business contact phone (AshantiHub support only, not shown to shoppers)" required style={inputStyle}/>
             <label style={{...labelStyle,display:"flex",alignItems:"center",gap:8}}>
               <input type="checkbox" checked={isFormal} onChange={e=>setIsFormal(e.target.checked)}/>
-              My business is formally registered with the Registrar General's Department
+              This business is registered
             </label>
             {isFormal && <>
+              <div style={hintStyle}>Registration certificate and TIN are optional. You can add these later from your dashboard.</div>
               <label style={labelStyle}>Business registration certificate
-                <input type="file" accept="application/pdf,image/*" required onChange={e=>setBusinessRegCertificate(e.target.files[0])} style={inputStyle}/>
+                <input type="file" accept="application/pdf,image/*" onChange={e=>setBusinessRegCertificate(e.target.files[0] || null)} style={inputStyle}/>
               </label>
-              <input value={tin} onChange={e=>setTin(e.target.value)} placeholder="TIN" required style={inputStyle}/>
+              <input value={tin} onChange={e=>setTin(e.target.value)} placeholder="TIN" style={inputStyle}/>
             </>}
             <button type="submit" disabled={submitting} style={submitStyle}>{submitting?"Saving…":"Continue"}</button>
           </form>

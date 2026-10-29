@@ -372,6 +372,13 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
         return self.registration_channel == self.SCOUT and self.claimed_at is None
 
     @property
+    def identity_verified(self):
+        """Staff approved this owner's identity documents. This, not
+        kyc_status, drives the verified check mark."""
+        profile = getattr(self, "profile", None)
+        return profile is not None and profile.identity_status == BusinessOwnerProfile.IDENTITY_VERIFIED
+
+    @property
     def display_name(self):
         """The business's name for staff screens and notices — the profile's
         business_name, or the owner's own name when none is set."""
@@ -388,12 +395,9 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
             profile = self.profile
         except BusinessOwnerProfile.DoesNotExist:
             return "business_info"
-        if not (profile.ghana_card_number and profile.gps_address
-                and profile.business_contact_phone
-                and profile.ghana_card_front_image
-                and profile.ghana_card_back_image):
-            return "business_info"
-        if profile.is_formal and not (profile.business_reg_certificate and profile.tin):
+        # The Ghana Card, certificate and TIN are optional: KYC rests on the
+        # Ghana Post address, so that and a contact phone finish this step.
+        if not (profile.gps_address and profile.business_contact_phone):
             return "business_info"
         if not profile.business_kind or (subscriptions_enabled() and getattr(self, "subscription", None) is None):
             return "plan_selection"
@@ -518,6 +522,39 @@ class BusinessOwnerProfile(models.Model):
     signboard_photo = models.ImageField(
         upload_to="signboards/", validators=[validate_image_content_type], null=True, blank=True,
     )
+
+    # ── Identity check (optional identity documents) ─────────────────────────
+    # A staff-approved check on the owner's Ghana Card, separate from
+    # BusinessOwner.kyc_status (which stays the business approval). Verified
+    # is what earns the check mark.
+    IDENTITY_NOT_SUBMITTED = "not_submitted"
+    IDENTITY_PENDING = "pending"
+    IDENTITY_VERIFIED = "verified"
+    IDENTITY_REJECTED = "rejected"
+    IDENTITY_STATUS_CHOICES = [
+        (IDENTITY_NOT_SUBMITTED, "Not submitted"),
+        (IDENTITY_PENDING, "Pending"),
+        (IDENTITY_VERIFIED, "Verified"),
+        (IDENTITY_REJECTED, "Rejected"),
+    ]
+    identity_status = models.CharField(
+        max_length=14, choices=IDENTITY_STATUS_CHOICES, default=IDENTITY_NOT_SUBMITTED,
+    )
+    identity_rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+    identity_submitted_at = models.DateTimeField(null=True, blank=True)
+    identity_reviewed_at = models.DateTimeField(null=True, blank=True)
+    identity_reviewed_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="identity_reviewed_profiles",
+    )
+
+    def has_identity_documents(self):
+        """The Ghana Card number and both photos are on file."""
+        return bool(
+            self.ghana_card_number
+            and self.ghana_card_front_image
+            and self.ghana_card_back_image
+        )
 
     def has_payout_details(self):
         """The registration's "payment_info" step is done: a payout method is
@@ -696,3 +733,34 @@ class BusinessHours(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["business_owner", "weekday"], name="unique_business_hours_weekday"),
         ]
+
+
+class CustomerAddress(models.Model):
+    """A delivery address a customer saved (default delivery address, marketplace plan 4). `gps_address` is a
+    normalised Ashanti GhanaPost code; the old free-text `Customer.address` is separate and untouched. At most one
+    default per customer (partial unique constraint); the view caps the book at MAX_PER_CUSTOMER."""
+
+    MAX_PER_CUSTOMER = 10
+
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="addresses")
+    label = models.CharField(max_length=60)
+    recipient_name = models.CharField(max_length=150)
+    phone = models.CharField(max_length=20)
+    gps_address = models.CharField(max_length=20)
+    landmark = models.CharField(max_length=200)
+    address_text = models.CharField(max_length=255, blank=True)
+    lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-is_default", "-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["customer"], condition=models.Q(is_default=True), name="one_default_per_customer",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.label} ({self.gps_address}) for customer {self.customer_id}"

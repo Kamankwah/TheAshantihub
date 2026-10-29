@@ -485,7 +485,7 @@ export default function CreditPanel({ user }) {
               {[
                 { icon:"🏷️", tip:"Publish more listings", impact:"up to 25% of score", action:"Get listings approved and published — this factor counts up to 10 published listings.", color:D.blue },
                 { icon:"📅", tip:"Stay active longer", impact:"up to 20% of score", action:"The longer your business account exists on AshantiHub, the higher your tenure score (counted up to 24 months).", color:D.gold },
-                { icon:"🪪", tip:"Complete KYC verification", impact:"up to 30% of score", action:"Submit your Ghana Card and business details for KYC review and get verified by AshantiHub staff.", color:D.purple },
+                { icon:"🪪", tip:"Get your identity verified", impact:"up to 30% of score", action:"Upload your Ghana Card under Get verified on your profile and wait for AshantiHub staff to approve it.", color:D.purple },
                 { icon:"🏦", tip:"Verify your payout details", impact:"up to 25% of score", action:"Add and verify your MoMo/bank payout details in your Business Dashboard profile.", color:D.green },
               ].map(item => (
                 <div key={item.tip} style={{ display:"flex", gap:12, padding:"12px 0", borderBottom:`1px solid ${D.divider}`, alignItems:"flex-start" }}>

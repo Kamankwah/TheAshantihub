@@ -400,6 +400,8 @@ REST_FRAMEWORK = {
         "notify_me": "30/hour",
         "notify_me_stop": "30/hour",
         "category_visit": "60/min",
+        "listing_view": "60/min",
+        "listing_also_viewed": "60/min",
         "storefront_search": "120/min",
         "storefront_deals": "120/min",
         "storefront_home": "120/min",
@@ -425,6 +427,9 @@ REST_FRAMEWORK = {
         "claim_link": "5/hour",
         # A business asking to change its name, sign-in phone or email (portfolio.detail_changes).
         "owner_detail_change": "10/hour",
+        # A business sending its Ghana Card for the verified mark (accounts.views.IdentitySubmissionView, POST only):
+        # keeps the generic duplicate-number answer from being an unlimited lookup of which numbers are on file.
+        "owner_identity": "10/hour",
         # The Hubtel webhook is a public, unauthenticated endpoint (Hubtel
         # calls it from the internet, not a logged-in app user) — generous
         # but not unlimited, since it's dark/unexercised until HUBTEL_* env
@@ -536,6 +541,10 @@ CELERY_BEAT_SCHEDULE = {
     "reports-reap-stuck-exports": {
         "task": "reports.tasks.reap_stuck_exports",
         "schedule": 900.0,  # every 15 minutes
+    },
+    "listings-prune-views": {
+        "task": "listings.tasks.prune_listing_views",
+        "schedule": crontab(hour=3, minute=50),
     },
     "listings-reap-stuck-videos": {
         "task": "listings.tasks.reap_stuck_videos",

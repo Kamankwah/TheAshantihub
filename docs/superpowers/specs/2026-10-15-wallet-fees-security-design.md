@@ -214,7 +214,7 @@ riders: wallet disabled by role.
 ## 8. Payout destinations
 
 A destination is verified when the account name from the network/bank matches the user's
-verified name (customer profile or vendor KYC) and the owner confirms by OTP. New or changed
+verified name (customer profile or vendor identity) and the owner confirms by OTP. New or changed
 destinations cannot receive money for an editable cooling period (default 24 h). Vendors may only
 withdraw to a destination matching their registered business or owner name. Daily and
 per-transaction limits are editable.
@@ -470,7 +470,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
 
 - **W9 Payout destinations.** The provider looks up the name on the account (before the transaction that spends the
   code: no provider call runs inside a transaction); it must match the holder's verified name (customer profile name;
-  KYC-verified vendor's owner or business name) as a set of words, and the holder confirms with a step-up code. A
+  identity-verified vendor's owner or business name) as a set of words, and the holder confirms with a step-up code. A
   customer's profile name is self-declared and can be changed without a code, so for customers this falls short of
   §8's "verified name" (a deviation; see (xxix)). Usable after `payout_cooling_hours` (governed, default 24, at least 1);
   never edited (a change is remove + add); every add and remove sends the holder an in-app notice; numbers stored
@@ -532,8 +532,8 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   exclude secondary emails from wallet-action channels, and notify the primary contacts whenever a recovery email is added.
 - (xxxiv) **Staff can change a customer's or owner's contacts and the matched name without a second person:**
   `PATCH accounts/customers/<id>/` and `business-owners/<id>/` (`accounts/views.py` ~720-758) need only `users.manage`,
-  no sudo, and send no notice; the portfolio `business.update` approval can change a KYC-verified owner's name with no
-  re-KYC. While the ledger is on these need sudo and maker-checker, the old contacts must be notified, and a contact or
+  no sudo, and send no notice; the portfolio `business.update` approval can change an identity-verified owner's name with no
+  re-check. While the ledger is on these need sudo and maker-checker, the old contacts must be notified, and a contact or
   name change must restart the cooling period or block withdrawals.
   **Built (7C Task 5):** while the ledger is on, those two PATCH doors need sudo and submit `wallets.holder_details_edit`
   (two_people; one approval from another `users.manage` holder or a Super Admin applies it). Applying revalidates, restarts
@@ -941,7 +941,7 @@ nothing until `CATALOGUE_MATCHER_ENABLED` is on, and sold-out listings leave sea
 - (cxvi) **No price floor on `Listing.price_amount`.** A zero or negative price is excluded from the offers (they need a
   price above 0) but the listing still sells. Add a validation floor to the listing forms and model, and check existing
   rows, before offers are ranked by price at volume.
-- (cxvii) **Unverified sellers are shown, marked `verified: false`.** Other-sellers rows include businesses whose KYC is
+- (cxvii) **Unverified sellers are shown, marked `verified: false`.** Other-sellers rows include businesses whose identity is
   not verified, honestly marked; the featured offer prefers verified ones. Owner confirmation is needed on whether
   unverified sellers should be shown at all, shown lower, or hidden.
   **DECIDED 2026-10-20 (Director): unverified sellers are hidden; built by 6F Task 3.**

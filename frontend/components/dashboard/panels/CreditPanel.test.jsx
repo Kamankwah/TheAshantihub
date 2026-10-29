@@ -14,9 +14,9 @@ const SCORE = {
   grade_label: 'Below Average', loan_eligible: false, factors: {}, computed_at: '2026-10-05T09:00:00Z',
 }
 
-function renderPanel({ partners = [] } = {}) {
+function renderPanel({ partners = [], score = SCORE } = {}) {
   server.use(
-    http.get('http://localhost:8000/api/credit/scores/me/', () => HttpResponse.json(SCORE)),
+    http.get('http://localhost:8000/api/credit/scores/me/', () => HttpResponse.json(score)),
     http.get('http://localhost:8000/api/credit/partners/', () => HttpResponse.json(partners)),
   )
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -62,5 +62,20 @@ describe('CreditPanel without lending partners', () => {
     await screen.findAllByText('562')
     fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
     expectNoInventedFigures()
+  })
+
+  it('Insights tab and score factors speak about identity, not KYC', async () => {
+    renderPanel({ score: { ...SCORE, factors: { kyc_verified: { weight: 0.3, score: 0, value: 0 } } } })
+    await screen.findAllByText('562')
+    expect(await screen.findByText('Identity Verified')).toBeInTheDocument()
+    expect(screen.getByText(/Whether AshantiHub staff have verified your Ghana Card/)).toBeInTheDocument()
+    expect(screen.queryByText('KYC Verified')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /My Score/ }))
+    expect(await screen.findByText('Identity Verified')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
+    expect(screen.getByText('Get your identity verified')).toBeInTheDocument()
+    expect(screen.getByText(/Upload your Ghana Card under Get verified on your profile and wait for AshantiHub staff to approve it\./)).toBeInTheDocument()
+    expect(screen.queryByText(/Complete KYC verification/)).not.toBeInTheDocument()
   })
 })
