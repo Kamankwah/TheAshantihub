@@ -160,3 +160,11 @@ monolith holding most components, with extractions living in `components/`,
   `WalletNoInventionSweep.test.jsx` is the conformance contract for every wallet screen: add a new wallet
   screen to its list.
 - **The vendor tab is "Money"** (`id: "money"`, one tab for payouts and the wallet), not "Payouts".
+
+## Owner listing panels and `basePath`
+
+Owner listing panels (`ListingsPanel`, the variants, revision and discount editors) take a `basePath` prop, default
+`"/api/listings/mine"`. Ashanti Direct mounts the same panels on `"/api/direct/listings"`, whose URLs mirror the
+`mine/` subtree exactly, so the swap needs no other change. The promotion hub takes `promoteBase` (default
+`"/api/listings"`) and a `direct` prop; for Direct it hides the hero, free-delivery and flash-invitation cards (hero
+ads are Marketing's). Never hardcode `/api/listings/mine` in a panel.

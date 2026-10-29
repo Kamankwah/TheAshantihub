@@ -375,6 +375,34 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `OrderFeeSnapshot` only, and `booking_*` journal lines land in the daily summary's `other` column. A follow-up (Plan
   4F or 4b) must add `BookingSale` rows, `FOLD` kinds and texts before the ledger is turned on (spec §13 (lxxxiii)).
 
+## Listing tools (marketplace Plan 2)
+
+- **Pending revisions.** An approved listing stays live while an edit waits (`ListingRevision`, related name
+  `listing_revisions`; `Listing.revisions` is an older field). Only `price_amount`, `sale_price`, `price_unit` and stock
+  are live edits (`PATCH mine/<id>/manage/`, which 400s anything else); everything else, including `tag`,
+  `contact_phone` and the decision fields, goes through a revision. A revision **never touches price or stock of
+  existing rows**: staged variants add new rows, and existing variants' price and stock stay live. Approve **re-validates**
+  against today's rules (the listing may have changed since). One open revision per listing. Maker-checker: the
+  creator, and for Ashanti Direct any `staff_contributors` member (original `created_by_staff` is never overwritten),
+  cannot decide (`revisions.cannot_decide`, also called by `ModerationApproveView`).
+- **Variants** are goods/food only. Stock reservation order: listing rows by pk, then variant rows by pk. Checkout,
+  `_fail_order_checkout` and `orders.support.return_stock` all return stock per variant; the listing's price and stock are
+  derived by `variants.sync_listing` (a variant listing has no listing-level sale price). A plain cart line on a listing
+  that later gained variants is refused `choose_variant` before any stock work.
+- **Drop / Discontinue.** `dropped` is reversible without re-approval (restore respects the plan active-listing cap);
+  `discontinued` is final and deletes any open revision. Both leave every public surface through `status=PUBLISHED`;
+  old orders still open. Live price and stock edits are allowed on dropped, refused on discontinued.
+- **Media.** At most 9 images including the main photo, 5 MB each; one video per listing, at most 100 MB and 60 s
+  (nginx `client_max_body_size` is 110m on the API templates). Uploads are converted by `core/video.py` with
+  ffmpeg/ffprobe, installed in `Dockerfile` and `Dockerfile.prod`: **rebuild `web` and `worker`**. The 720p cap is
+  short side at most 720, never upscaled. After conversion the source is deleted. A listing or revision cannot be
+  submitted while a video is processing, and staff see every video (with its URL) in the queue and the diff.
+- **"Was" price.** A sale is `sale_price` + `sale_ends_at` + `sale_started_at` on `Listing` and `ListingVariant` (no
+  discount model). "Was" shows only when the regular price has stood for 7 days **before `sale_started_at`**; a null
+  `sale_started_at` means no "was". Expiry is read-time through `pricing`. Flash sales exclude variant listings.
+- **Ashanti Direct has no money special-case.** Its wallet, fees and payouts are an ordinary business's. `is_company`
+  is read only through `accounts/direct.py`.
+
 ## Test-fixture gotcha
 
 **Reviews are pre-moderated.** A new `Review` lands in `pending` and is invisible to the public
