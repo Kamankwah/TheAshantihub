@@ -164,7 +164,7 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   identity-named keys). Same submitter refusal (`is_kyc_submitter` never decides identity); lock order owner, then
   profile row, `record()` last (`identity-*` verbs refresh `kyc-queue`); notices reuse the `kyc_approved` /
   `kyc_rejected` kinds. KYC approval never touches `identity_status` and identity decisions never touch `kyc_status`.
-  Migration `accounts/0062` backfilled every already KYC-verified business to identity `verified`, so no mark vanished.
+  Migration `accounts/0068` backfilled every already KYC-verified business to identity `verified`, so no mark vanished.
 - **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
   `PortfolioConfig.ready()`); only the business's account manager may submit them; each applied
   change writes a `portfolio.AppliedChange` the owner can undo for 7 days

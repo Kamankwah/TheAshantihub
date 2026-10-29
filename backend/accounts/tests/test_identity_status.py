@@ -7,7 +7,7 @@ from accounts.models import BusinessOwner, BusinessOwnerProfile
 
 
 def _backfill():
-    module = importlib.import_module("accounts.migrations.0062_identity_status")
+    module = importlib.import_module("accounts.migrations.0068_identity_status")
     module.backfill_identity(apps, None)
 
 

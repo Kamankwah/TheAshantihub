@@ -37,7 +37,7 @@ def backfill_identity(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('accounts', '0061_seed_redelivery_fee_permission'),
+        ('accounts', '0067_seed_direct_operate_permission'),
     ]
 
     operations = [

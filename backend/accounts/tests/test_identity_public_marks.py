@@ -94,7 +94,7 @@ class IdentityPublicMarkTests(TestCase):
         )
         listing(business)
         self.assertIs(self.results()[0]["business_owner"]["identity_verified"], False)
-        importlib.import_module("accounts.migrations.0062_identity_status").backfill_identity(apps, None)
+        importlib.import_module("accounts.migrations.0068_identity_status").backfill_identity(apps, None)
         self.assertIs(self.results()[0]["business_owner"]["identity_verified"], True)
         self.assertEqual([r["business_owner"]["id"] for r in self.results("?verified=true")], [business.pk])
 
