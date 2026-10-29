@@ -99,6 +99,17 @@ export function kindPatch(kind) {
   return patch;
 }
 
+// Picking a department/category node: the category, and the context changes a
+// pick can imply. `kind` is cleared (not replaced) only when a kind is set and
+// the node is of another kind, so the node's own kind takes over; a service
+// node also drops the goods-only filters its sections do not show.
+export function departmentPatch(node, filters = {}) {
+  const patch = { category: node.slug };
+  if (filters.kind && filters.kind !== node.kind) patch.kind = undefined;
+  if (node.kind === "service") Object.assign(patch, { onSale: undefined, directOnly: undefined });
+  return patch;
+}
+
 // GH₵ price bands; a missing bound is open.
 export const PRICE_BANDS = [
   { label: "Under GH₵ 50", max: 50 },

@@ -3,7 +3,8 @@ import { apiFetch } from '../apiClient.js'
 
 // Events tab (docs/BUSINESS_EVENTS_ROADMAP.md Phase 6) — mirrors useListings'
 // infinite-query pattern exactly. GET /api/events/ only supports `category`
-// (slug), `zone` (name) and `search` filters — no price range/ordering/kind
+// (slug), `zone` (name), `search` and `when` ("today" | "week" | "month")
+// filters — no price range/ordering/kind
 // (there's no product/service split for events, and no per-event price on
 // the Event model), so buildQueryString here is a strict subset of
 // useListings' version rather than the same shared function.
@@ -12,6 +13,7 @@ function buildQueryString(filters, page) {
   if (filters.category) params.set('category', filters.category)
   if (filters.zone) params.set('zone', filters.zone)
   if (filters.search) params.set('search', filters.search)
+  if (filters.when) params.set('when', filters.when)
   if (page) params.set('page', page)
   const query = params.toString()
   return query ? `?${query}` : ''

@@ -8,6 +8,7 @@ import {
   availableSections,
   clearSectionPatch,
   departmentNodes,
+  departmentPatch,
   effectiveKind,
   findNodePath,
   isSectionActive,
@@ -198,5 +199,27 @@ describe('price bands and time windows', () => {
       { value: 'week', label: 'This week' },
       { value: 'month', label: 'This month' },
     ])
+  })
+})
+
+describe('departmentPatch', () => {
+  const product = { slug: 'electronics', kind: 'product' }
+  const service = { slug: 'hotels', kind: 'service' }
+
+  it('sets the category and leaves everything else alone', () => {
+    expect(departmentPatch(product, {})).toStrictEqual({ category: 'electronics' })
+    expect(departmentPatch(product, { kind: 'product' })).toStrictEqual({ category: 'electronics' })
+  })
+
+  it('clears kind only when it is set and differs from the node', () => {
+    expect(departmentPatch(service, { kind: 'product' })).toStrictEqual({
+      category: 'hotels', kind: undefined, onSale: undefined, directOnly: undefined,
+    })
+    expect(departmentPatch(product, { kind: 'service' })).toStrictEqual({ category: 'electronics', kind: undefined })
+  })
+
+  it('a service node drops the goods-only filters even when kind was unset', () => {
+    expect(departmentPatch(service, {})).toStrictEqual({ category: 'hotels', onSale: undefined, directOnly: undefined })
+    expect(departmentPatch(service, { kind: 'service' })).toStrictEqual({ category: 'hotels', onSale: undefined, directOnly: undefined })
   })
 })

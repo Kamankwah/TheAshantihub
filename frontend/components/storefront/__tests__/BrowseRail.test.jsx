@@ -385,4 +385,26 @@ describe('BrowseRail controls', () => {
     expect(heading).toHaveAttribute('tabindex', '-1')
     expect(screen.getByRole('region', { name: 'Department' })).toContainElement(heading)
   })
+
+  describe('section bodies', () => {
+    it('goods context draws the department list and the rating radios', async () => {
+      server.use(json(TREE_URL, TREE))
+      const { props } = renderRail()
+      const department = await screen.findByRole('region', { name: 'Department' })
+      expect(within(department).getByRole('button', { name: 'Electronics' })).toBeInTheDocument()
+      expect(within(department).queryByRole('button', { name: 'Concerts' })).not.toBeInTheDocument()
+      fireEvent.click(within(department).getByRole('button', { name: 'Books' }))
+      expect(props.setFilters.mock.calls[0][0]({})).toStrictEqual({ category: 'books' })
+      const reviews = screen.getByRole('region', { name: 'Customer reviews' })
+      fireEvent.click(within(reviews).getByRole('radio', { name: '4 stars and up' }))
+      expect(props.setFilters.mock.calls[1][0]({})).toStrictEqual({ minRating: 4 })
+    })
+
+    it('a selected leaf marks itself current inside the rail', async () => {
+      server.use(json(TREE_URL, TREE))
+      renderRail({ filters: { category: 'books' } })
+      const department = await screen.findByRole('region', { name: 'Department' })
+      await waitFor(() => expect(within(department).getByRole('button', { name: 'Books' })).toHaveAttribute('aria-current', 'true'))
+    })
+  })
 })
