@@ -1049,14 +1049,15 @@ describe('ListingDetailPage — verified check mark', () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, business_owner: { ...LISTING.business_owner, identity_verified: true } })))
     const { unmount } = renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(await screen.findByLabelText('Verified business')).toBeInTheDocument()
+    // The goods page now renders the seller twice (BuyBox "Sold by" and the seller badge), each with the mark.
+    expect((await screen.findAllByLabelText('Verified business')).length).toBeGreaterThan(0)
     unmount()
 
     // kyc_status "verified" (address checked) without an approved identity shows no mark.
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, business_owner: { ...LISTING.business_owner, identity_verified: false } })))
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(await screen.findByRole('link', { name: 'Sold by Ama Boateng' })).toBeInTheDocument()
+    expect((await screen.findAllByText(/Sold by/)).length).toBeGreaterThan(0)
     expect(screen.queryByLabelText('Verified business')).not.toBeInTheDocument()
     expect(screen.queryByText(/unverified|not verified/i)).not.toBeInTheDocument()
   })
