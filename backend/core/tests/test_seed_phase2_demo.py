@@ -42,6 +42,13 @@ class SeedPhase2DemoTests(TestCase):
         paused = demo.get(login_phone="+233550000204")
         self.assertIsNotNone(paused.subscription.paused_at)
 
+    def test_kyc_verified_demo_businesses_have_the_verified_mark(self):
+        self.run_seed()
+        demo = BusinessOwner.objects.filter(email__endswith="@example.com", full_name__startswith="Demo ")
+        for owner in demo:
+            with self.subTest(phone=owner.login_phone):
+                self.assertEqual(owner.identity_verified, owner.kyc_status == BusinessOwner.VERIFIED)
+
     @override_settings(SUBSCRIPTION_PAUSE_ENABLED=False)
     def test_with_the_pause_off_the_would_be_paused_business_is_seeded_overdue(self):
         self.run_seed()
