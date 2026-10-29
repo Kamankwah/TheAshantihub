@@ -121,3 +121,4 @@ Decisions recorded for Plan 4 (shopper pages):
 - **Product page** is themed (light and dark), unlike the fixed-dark service and stay pages.
 - **Questions-and-answers** removed from listing pages; event Q&A is untouched (owner follow-up).
 - **Amounts** in the cart, checkout and verify pages are always GHS (what is charged); there are no delivery dates (no ETA source).
+- **Owner checks on staging:** each new page at 360, 768 and 1280 px for horizontal overflow plus a `DESIGN.md` pass (gold only on actions, cream canvas, Fraunces headings, tabular figures); the product gallery's pinch-zoom and swipe gestures on a real phone.

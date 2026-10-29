@@ -47,6 +47,8 @@ const SESSION = {
 
 const client = () => new QueryClient({ defaultOptions: { queries: { retry: false } } })
 const wrap = (ui) => render(<QueryClientProvider client={client()}>{ui}</QueryClientProvider>)
+const ownText = (el) => Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim()
+const findPrices = (container) => Array.from(container.querySelectorAll('*')).filter((el) => AMOUNT_TEXT.test(ownText(el)))
 const hub = (path) => wrap(
   <MemoryRouter initialEntries={[path]}>
     <AccountHub
@@ -56,6 +58,20 @@ const hub = (path) => wrap(
   </MemoryRouter>,
 )
 
+const dest = { id: 7, rail: 'momo', institution: 'MTN', account_name: 'Akosua Ntoma', account_number_masked: '024****567', usable_from: '2026-10-01T10:00:00Z', usable: true, removed: false }
+const wd = { id: 1, reference: 'WD-1', amount: '100.00', charge: '1.00', you_receive: '99.00', status: 'processing', status_label: 'Processing', destination: dest, created_at: '2026-10-20T10:05:00Z', settled_at: null, failure_reason: '' }
+const tx = (o) => ({ id: 1, at: '2026-10-18T10:30:00+00:00', account: 'wallet', kind: 'wallet_top_up', label: 'Top-up', direction: 'in', amount: '20.00', order: null, booking_sale: null, reference: '', ...o })
+const envelope = (results) => HttpResponse.json({ count: results.length, next: null, previous: null, results })
+// A funded wallet, so the wallet tabs have real amounts to check.
+const seedWallet = () => server.use(
+  http.get(`${API}/api/wallet/`, () => HttpResponse.json({ kind: 'customer', balance: '1250.50' })),
+  http.get(`${API}/api/wallet/transactions/`, () => envelope([tx({ id: 1 }), tx({ id: 2, kind: 'order_payment', label: 'Order payment', direction: 'out', amount: '7.50', order: 42 })])),
+  http.get(`${API}/api/wallet/destinations/`, () => HttpResponse.json({ results: [dest], cooling_hours: 24 })),
+  http.get(`${API}/api/wallet/withdrawals/`, () => envelope([wd])),
+)
+const seeded = (path, ready) => [() => { seedWallet(); return hub(path) }, () => screen.findByText(ready)]
+
+// [name, mount, ready anchor, whether the page must show at least one price]
 const scenarios = [
   ['ProductPage (no rating, no was-price, no co-views)', () => {
     server.use(
@@ -67,7 +83,7 @@ const scenarios = [
       <ListingDetailPage id={12} onBack={vi.fn()} user={null} favourites={[]} onFavourite={vi.fn()} currency="GHS" onMessage={vi.fn()}
         onOpenListing={vi.fn()} onOpenSeller={vi.fn()} onAddToCart={vi.fn()} CardComponent={() => null} />,
     )
-  }, () => screen.findByTestId('product-page')],
+  }, () => screen.findByTestId('product-page'), true],
   ['CartPage', () => {
     server.use(
       http.get(`${API}/api/cart/`, () => HttpResponse.json(CART)),
@@ -76,7 +92,7 @@ const scenarios = [
       http.get(`${API}/api/listings/:id/also-viewed/`, () => HttpResponse.json({ basis: 'same_category', results: [] })),
     )
     return wrap(<CartPage user={CUSTOMER} currency="GHS" onNavigate={vi.fn()} />)
-  }, () => screen.findByRole('heading', { name: 'Shopping Cart' })],
+  }, () => screen.findByRole('heading', { name: 'Shopping Cart' }), true],
   ['CheckoutPage', () => {
     server.use(
       http.get(`${API}/api/cart/`, () => HttpResponse.json(CART)),
@@ -84,16 +100,16 @@ const scenarios = [
       http.get(`${API}/api/accounts/addresses/`, () => HttpResponse.json([])),
     )
     return wrap(<MemoryRouter><CheckoutPage user={CUSTOMER} currency="GHS" PaymentComponent={() => null} /></MemoryRouter>)
-  }, () => screen.findByText(/Kente Stole/)],
+  }, () => screen.findAllByText(/Kente Stole/), true],
   ['PaymentVerifyPage', () => {
     server.use(http.get(`${API}/api/payments/checkout-sessions/:ref/`, () => HttpResponse.json(SESSION)))
     return render(<MemoryRouter initialEntries={['/checkout/verify?reference=AH-3F2A9C1B']}><PaymentVerifyPage /></MemoryRouter>)
-  }, () => screen.findByText('Payment confirmed')],
-  ['AccountHub', () => hub('/my-account'), () => screen.findAllByTestId('account-tile')],
-  ['Your Payments / Overview', () => hub('/my-account/payments/overview'), null],
-  ['Your Payments / Wallet', () => hub('/my-account/payments/wallet'), null],
-  ['Your Payments / Transactions', () => hub('/my-account/payments/transactions'), null],
-  ['Your Payments / Settings', () => hub('/my-account/payments/settings'), null],
+  }, () => screen.findByText('Payment confirmed'), true],
+  ['AccountHub', () => hub('/my-account'), () => screen.findAllByTestId('account-tile'), false],
+  ['Your Payments / Overview', ...seeded('/my-account/payments/overview', 'Recent activity'), true],
+  ['Your Payments / Wallet', ...seeded('/my-account/payments/wallet', 'Your withdrawals'), true],
+  ['Your Payments / Transactions', ...seeded('/my-account/payments/transactions', 'Order payment'), true],
+  ['Your Payments / Settings', () => hub('/my-account/payments/settings'), () => screen.findByText('Your default purchase preference'), false],
 ]
 
 beforeEach(() => {
@@ -103,12 +119,12 @@ beforeEach(() => {
 afterEach(() => { delete window.IntersectionObserver; localStorage.clear() })
 
 describe('shopper pages conformance sweep', () => {
-  describe.each(scenarios)('%s', (name, mount, ready) => {
+  describe.each(scenarios)('%s', (name, mount, ready, priced) => {
     it('holds the no-invention and money rules', async () => {
       const { container } = mount()
-      if (ready) await ready()
-      else await new Promise((r) => setTimeout(r, 120))
-      await waitFor(() => expect(container.textContent.length).toBeGreaterThan(0))
+      await ready()
+      if (priced) await waitFor(() => expect(findPrices(container).length, 'page shows no price to check').toBeGreaterThan(0))
+      await new Promise((r) => setTimeout(r, 60))
       const html = container.innerHTML
       const text = container.textContent
       expect(container.querySelectorAll('a[href^="tel:"]').length).toBe(0)
@@ -118,19 +134,10 @@ describe('shopper pages conformance sweep', () => {
       expect(text).not.toMatch(/(^|[^\d.])0\.0([^\d]|$)/)
       expect(text).not.toMatch(/NaN|undefined/)
       container.querySelectorAll('*').forEach((el) => {
-        const own = Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim()
+        const own = ownText(el)
         if (!AMOUNT_TEXT.test(own)) return
         expect(el.closest('[style*="tabular-nums"]'), `price "${own}" needs tabular-nums`).not.toBeNull()
       })
-    })
-  })
-
-  it.each([1, 2, 3])('actually finds prices to check on money page %#', async (i) => {
-    const { container } = scenarios[i][1]()
-    await screen.findByText(/Kente Stole|Payment confirmed/)
-    await waitFor(() => {
-      const prices = Array.from(container.querySelectorAll('*')).filter((el) => AMOUNT_TEXT.test(Array.from(el.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim()))
-      expect(prices.length).toBeGreaterThan(0)
     })
   })
 })
