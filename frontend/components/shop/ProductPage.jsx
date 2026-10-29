@@ -221,6 +221,8 @@ export default function ProductPage({ id, onBack, user, currency = "GHS", onMess
         onOpenSeller={onOpenSeller}
         onShowDirect={onShowDirect}
         onSignIn={handleGuestAdd}
+        onAddToCart={onAddToCart}
+        onOpenListing={onOpenListing}
         onAdded={() => { setSelection({}); setPreview(null); setPickerRound((n) => n + 1); if (onAddedToCart) onAddedToCart(); }}
       />
       {guestNote && <div role="alert" style={note(false)}>{guestNote}</div>}

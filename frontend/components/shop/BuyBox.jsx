@@ -6,7 +6,9 @@ import { useCanBuy } from "../../hooks/useCanBuy.js";
 import { useCartGuard } from "../../hooks/useCartGuard.js";
 import { useStaffGate } from "../../hooks/useStaffGate.js";
 import StaffGateNotice from "../StaffGateNotice.jsx";
+import OtherSellersPanel from "./OtherSellersPanel.jsx";
 import PriceTag from "./PriceTag.jsx";
+import ShortfallPrompt from "./ShortfallPrompt.jsx";
 import { LOW_STOCK_AT, OPENS_SOON } from "./shopCopy.js";
 
 const cents = (amount) => Math.round((parseFloat(amount) || 0) * 100);
@@ -21,10 +23,10 @@ const money = (c) => (c / 100).toFixed(2);
 // Props: `item` (GET /api/listings/<id>/), `user`, `selection` ({[variantId]: quantity}, owned by the page and edited
 // in VariantPicker), `currency` (display only), `onMessage(item)`, `onSaveToList(item)`, `onOpenSeller(ownerId)`,
 // `onShowDirect()` (the "More from Ashanti Direct" link: the page applies the browse filter sold_by=direct, i.e. the
-// `directOnly` filter), `onSignIn()` (a signed-out visitor pressing Add to cart), `onAdded(response)` after a successful add.
+// `directOnly` filter), `onSignIn()` (a signed-out visitor pressing Add to cart), `onAdded(response)` after a successful add, `onAddToCart(item, qty)` and `onOpenListing(id)` (threaded to the Other sellers panel).
 // Add to cart is the one gold action; it is disabled with the exact reason (a business account, opening gate label from useCanBuy, out of stock,
 // no price, no options chosen, or the server's cart-guard message). Staff sessions get the staff notice instead of an add.
-export default function BuyBox({ item, user, selection = {}, currency = "GHS", onMessage, onSaveToList, onOpenSeller, onShowDirect, onSignIn, onAdded }) {
+export default function BuyBox({ item, user, selection = {}, currency = "GHS", onMessage, onSaveToList, onOpenSeller, onShowDirect, onSignIn, onAdded, onAddToCart, onOpenListing }) {
   const variants = Array.isArray(item?.variants) ? item.variants : [];
   const hasVariants = variants.length > 0;
   const { canBuy, label: opensLabel } = useCanBuy();
@@ -98,6 +100,7 @@ export default function BuyBox({ item, user, selection = {}, currency = "GHS", o
       <p style={{ margin: "6px 0 0", fontSize: "0.8rem", color: C.inkDim, lineHeight: 1.5 }}>You choose how to pay at checkout.</p>
 
       <div style={{ marginTop: 10, fontSize: "0.95rem", fontWeight: 800, color: stock === "out" ? C.danger : stock === "low" ? C.warnInk : C.trust }}>{stockText}</div>
+      {stock !== "in" && <ShortfallPrompt listingId={item.id} />}
 
       {ownerName && (
         <div style={{ marginTop: 10, fontSize: "0.82rem", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
@@ -168,8 +171,9 @@ export default function BuyBox({ item, user, selection = {}, currency = "GHS", o
         </div>
       )}
 
-      {/* Reserved for Plan 6F (other sellers of this product). */}
-      <section id="other-sellers" />
+      <section id="other-sellers">
+        <OtherSellersPanel listingId={item.id} user={user} onAddToCart={onAddToCart} onOpenListing={onOpenListing} />
+      </section>
     </aside>
   );
 }

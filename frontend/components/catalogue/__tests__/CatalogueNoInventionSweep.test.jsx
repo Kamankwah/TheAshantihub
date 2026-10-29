@@ -1,11 +1,13 @@
 // Conformance contract for the catalogue screens (Plan 6F). Add every new catalogue screen here
-// (OtherSellersPanel joins with 6F Task 10). Checks what no screen may ever show or link.
+// (OtherSellersPanel is covered by its own test below). Checks what no screen may ever show or link.
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it } from 'vitest'
 import { server } from '../../../mocks/server.js'
+import { C } from '../../../theme.js'
 import { D } from '../../dashboard/theme.js'
+import OtherSellersPanel from '../../shop/OtherSellersPanel.jsx'
 import CatalogueQueuePanel from '../../admin/panels/CatalogueQueuePanel.jsx'
 import GroupingCard from '../GroupingCard.jsx'
 import NeedsRestockingPanel from '../NeedsRestockingPanel.jsx'
@@ -121,5 +123,39 @@ describe('CatalogueNoInventionSweep', { timeout: 20000 }, () => {
     const { container } = await renderScreens(groupState(gReq({ status: 'rejected', rejection_reason: 'Different size' })))
     await screen.findByText(/Different size/)
     sweep(container)
+  })
+
+  it('test_other_sellers_panel_invents_nothing', async () => {
+    server.use(http.get(`${API}/api/catalogue/listings/:id/other-sellers/`, () => HttpResponse.json({
+      catalogue_product: product, featured_offer_id: 11, ordering: 'price',
+      offers: [offer(), offer({ listing_id: 12, business_name: 'Ama Shop', verified: false, available_quantity: null, price_now: '1300.00' })],
+    })))
+    const { container } = render(wrap(<OtherSellersPanel listingId={5} user={{ accountType: 'customer', id: 1 }} onAddToCart={() => {}} onOpenListing={() => {}} />))
+    await screen.findByText('Kofi Stores')
+    await screen.findByText('Ama Shop')
+    const text = document.body.textContent
+    expect(container.querySelectorAll('a[href^="tel:"], a[href^="mailto:"], a[href*="wa.me"]')).toHaveLength(0)
+    expect(container.innerHTML).not.toMatch(/wa\.me/)
+    expect(text).not.toMatch(/\bkm\b|metres|away/i)
+    expect(text).not.toMatch(/NaN|undefined|null/)
+    expect(text).not.toContain('Not yet verified')
+
+    const gold = (el) => {
+      const h = el.outerHTML.toLowerCase()
+      return /d4a017/.test(h) || /rgb\(\s*212,\s*160,\s*23\s*\)/.test(h) || (C.gold && h.includes(String(C.gold).toLowerCase()))
+    }
+    const prices = [...container.querySelectorAll('*')].filter((el) => /GH₵\s?[\d,]+/.test(ownText(el)))
+    expect(prices.length).toBe(2)
+    for (const el of prices) {
+      expect(el.style.fontVariantNumeric, el.outerHTML).toBe('tabular-nums')
+      expect(gold(el), el.outerHTML).toBeFalsy()
+    }
+    const featured = screen.getByText('Best price from a verified business')
+    expect(gold(featured)).toBeFalsy()
+    // Only the verified row carries the mark, in the shared VerifiedMark colours (not gold).
+    const marks = screen.getAllByRole('img', { name: 'Verified business' })
+    expect(marks).toHaveLength(1)
+    expect(marks[0].style.color).toBe(C.okInk)
+    expect(gold(marks[0])).toBeFalsy()
   })
 })
