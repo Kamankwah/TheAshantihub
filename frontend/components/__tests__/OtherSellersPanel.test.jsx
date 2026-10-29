@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { server } from '../../mocks/server.js'
 import { gatedOpening } from '../../mocks/opening.js'
+import { C } from '../../theme.js'
 import OtherSellersPanel from '../shop/OtherSellersPanel.jsx'
 import ShortfallPrompt from '../shop/ShortfallPrompt.jsx'
 
@@ -21,6 +22,7 @@ const serve = (body, spy) => server.use(http.get(`${API}/api/catalogue/listings/
   spy?.(new URL(request.url).searchParams)
   return HttpResponse.json(body)
 }))
+const isGold = (el) => /d4a017|rgb\(\s*212,\s*160,\s*23\s*\)/i.test(el.outerHTML) || (C.gold && el.outerHTML.toLowerCase().includes(String(C.gold).toLowerCase()))
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 60)) })
 const customer = { accountType: 'customer', id: 1 }
 
@@ -78,9 +80,14 @@ describe('OtherSellersPanel', () => {
     serve(payload([offer()]))
     renderPanel()
     const label = await screen.findByText('Best price from a verified business')
-    expect(label.outerHTML.toLowerCase()).not.toMatch(/d4a017|gold/)
+    expect(isGold(label)).toBe(false)
     const mark = screen.getByRole('img', { name: 'Verified business' })
-    expect(mark.outerHTML.toLowerCase()).not.toMatch(/d4a017|gold/)
+    expect(isGold(mark)).toBe(false)
+    expect(isGold(screen.getByText('GH₵ 1,250.00'))).toBe(false)
+    expect(isGold(screen.getByRole('button', { name: 'Add to cart' }))).toBe(false)
+    expect(isGold(document.createElement('i'))).toBe(false)
+    const probe = document.createElement('i'); probe.style.background = C.gold
+    expect(isGold(probe)).toBe(true)
     expect(screen.getByText('GH₵ 1,250.00').style.fontVariantNumeric).toBe('tabular-nums')
   })
 
@@ -191,6 +198,23 @@ describe('OtherSellersPanel', () => {
     ])))
     renderPanel()
     await waitFor(() => expect(seen).toContainEqual(['6.688400', '-1.624400']))
+    expect(seen[0]).toEqual(['6.688400', '-1.624400'])
+  })
+
+  test('test_a_business_account_cannot_add_and_is_told_why', async () => {
+    serve(payload([offer()]))
+    const onAddToCart = vi.fn()
+    renderPanel({ user: { accountType: 'business', id: 3 }, onAddToCart })
+    expect(await screen.findByText('Customer accounts only')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add to cart' })).toBeDisabled()
+    expect(onAddToCart).not.toHaveBeenCalled()
+  })
+
+  test('test_staff_sees_the_opening_label_before_opening', async () => {
+    server.use(gatedOpening({ opensAt: '2099-11-06T06:00:00Z' }))
+    serve(payload([offer()]))
+    renderPanel({ user: { accountType: 'staff', id: 2 } })
+    expect(await screen.findByText(/^Opens /)).toBeInTheDocument()
   })
 
   test('test_no_position_without_coordinates_or_for_a_signed_out_visitor', async () => {

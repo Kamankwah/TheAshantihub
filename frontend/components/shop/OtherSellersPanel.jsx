@@ -25,7 +25,7 @@ export default function OtherSellersPanel({ listingId, user, onAddToCart, onOpen
   const position = home && home.lat != null && home.lng != null ? { lat: home.lat, lng: home.lng } : null;
   const [ordering, setOrdering] = useState("price");
   const [all, setAll] = useState(false);
-  const { data } = useOtherSellers(listingId, { ordering, position });
+  const { data } = useOtherSellers(listingId, { ordering, position, enabled: !isCustomer || addresses.isFetched });
   const offers = Array.isArray(data?.offers) ? data.offers : [];
   if (!offers.length) return null;
 
@@ -76,8 +76,10 @@ function OfferRow({ row, featured, user, isCustomer, onAddToCart, onOpenListing 
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
 
+  // The same reason chain as BuyBox's Add to cart (a staff session is not a business account: its click shows the notice).
+  const isBusinessAccount = !!user && !staffGate.isStaff && !isCustomer;
   let reason = null;
-  if (staffGate.isStaff) reason = null;
+  if (isBusinessAccount) reason = "Customer accounts only";
   else if (!canBuy) reason = opensLabel || OPENS_SOON;
   else if (blocked) reason = blocked.detail;
   const disabled = busy || Boolean(reason);
@@ -124,7 +126,7 @@ function OfferRow({ row, featured, user, isCustomer, onAddToCart, onOpenListing 
         </div>
         <button type="button" disabled={disabled} onClick={add}
           style={{ minHeight: 38, borderRadius: 20, padding: "0 16px", fontFamily: "inherit", fontWeight: 900, fontSize: "0.82rem",
-            background: disabled ? C.surface3 : C.gold, color: disabled ? C.inkFaint : C.darkBrown, border: disabled ? `1px solid ${C.line}` : "none",
+            background: disabled ? C.surface3 : C.surface2, color: disabled ? C.inkFaint : C.ink, border: `1px solid ${C.line}`,
             cursor: disabled ? "not-allowed" : "pointer" }}>
           {busy ? "Adding…" : "Add to cart"}
         </button>
