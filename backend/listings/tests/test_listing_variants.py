@@ -135,11 +135,12 @@ class VariantTests(TestCase):
         self.assertFalse(body["has_variants"])
         self.assertEqual(body["variants"], [])
 
-    def test_removing_the_last_variant_keeps_values_and_ends_has_variants(self):
+    def test_removing_the_last_variant_keeps_the_price_zeroes_the_stock_and_ends_has_variants(self):
         only = self.add("Vanilla", "25.00", 5).json()
         self.client.delete(self.url(suffix=f"{only['id']}/"))
         listing = self.refresh()
-        self.assertEqual((listing.price_amount, listing.stock_quantity), (Decimal("25.00"), 5))
+        # The price stays; the stock is not the removed variant's 5 (final review: nobody set it), so the owner sets it.
+        self.assertEqual((listing.price_amount, listing.stock_quantity), (Decimal("25.00"), 0))
         self.assertFalse(variants.has_variants(listing))
 
     def live(self, variant_id, body, listing=None):
