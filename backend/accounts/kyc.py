@@ -108,12 +108,10 @@ def address_correction(owner):
 
 def address_decision_missing(owner):
     """The Ghana Post address decision is needed before KYC approval, on either
-    door, for a scout-registered business and for any business whose address a
-    field scout corrected (the correction cleared the decision, so someone
-    other than the corrector re-checks it). Other self-registered owners keep
-    the old behaviour."""
-    if owner.registration_channel != BusinessOwner.SCOUT and not _corrections(owner).exists():
-        return False
+    door, for every business: approval rests on the address alone (the Ghana
+    Card, certificate and TIN are optional). A business with no profile has no
+    decision. A field correction clears the decision, so someone other than the
+    corrector re-checks it before approval."""
     profile = getattr(owner, "profile", None)
     return profile is None or profile.address_verified_at is None
 

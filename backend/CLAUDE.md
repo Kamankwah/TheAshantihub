@@ -146,8 +146,9 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   who only confirmed it is not). A correction rewrites `gps_address` and clears the address
   decision, so someone else re-checks it - a lead through address-verify or another scout's later
   visit; `GET kyc/{id}/` and the review sheet show it as `address_correction`.
-  `kyc.address_decision_missing()` makes a scout-channel business, or any business with a field
-  correction, wait for the Ghana Post address decision before KYC approval through either door. A
+  `kyc.address_decision_missing()` makes every business (a missing profile counts) wait for the
+  Ghana Post address decision before KYC approval through either door; the Ghana Card, certificate
+  and TIN are optional and never gate it. A
   scout's `business.update` that changes `gps_address` clears that decision too (kept in
   `AppliedChange.result`; an undo puts it back with the address).
 - **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
