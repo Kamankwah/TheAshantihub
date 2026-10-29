@@ -192,6 +192,16 @@ describe('BuyBox', () => {
     expect(screen.queryByRole('button', { name: 'More from Ashanti Direct' })).toBeNull()
   })
 
+  test('test_verified_mark_follows_identity_verified_only', () => {
+    const { unmount } = renderBox({ item: plain({ business_owner: { ...owner, identity_verified: true } }) })
+    expect(screen.getByLabelText('Verified business')).toBeInTheDocument()
+    unmount()
+    // kyc_status 'verified' (address checked) without an approved identity shows no mark and no "unverified" label.
+    renderBox({ item: plain({ business_owner: { ...owner, kyc_status: 'verified', identity_verified: false } }) })
+    expect(screen.queryByLabelText('Verified business')).toBeNull()
+    expect(screen.queryByText(/unverified|not verified/i)).toBeNull()
+  })
+
   test('test_there_is_no_business_phone_or_whatsapp_link', () => {
     const { container } = renderBox({ item: plain({ business_owner: { ...owner, is_ashanti_direct: true } }) })
     expect(container.querySelector('a[href^="tel:"]')).toBeNull()

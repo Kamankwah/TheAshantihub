@@ -426,6 +426,9 @@ REST_FRAMEWORK = {
         "claim_link": "5/hour",
         # A business asking to change its name, sign-in phone or email (portfolio.detail_changes).
         "owner_detail_change": "10/hour",
+        # A business sending its Ghana Card for the verified mark (accounts.views.IdentitySubmissionView, POST only):
+        # keeps the generic duplicate-number answer from being an unlimited lookup of which numbers are on file.
+        "owner_identity": "10/hour",
         # The Hubtel webhook is a public, unauthenticated endpoint (Hubtel
         # calls it from the internet, not a logged-in app user) — generous
         # but not unlimited, since it's dark/unexercised until HUBTEL_* env

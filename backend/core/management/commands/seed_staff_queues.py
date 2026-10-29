@@ -285,7 +285,7 @@ class Command(BaseCommand):
     # ── KYC queue ───────────────────────────────────────────────────────────
 
     def _owner(self, phone, full_name, email, *, kind, ghana_card, gps, status=BusinessOwner.PENDING,
-               reason=None, created_ago_days=0):
+               reason=None, created_ago_days=0, identity=None):
         owner, was_created = BusinessOwner.objects.get_or_create(
             login_phone=phone,
             defaults={
@@ -317,6 +317,20 @@ class Command(BaseCommand):
                 payout_momo_name=full_name[:150],
                 terms_accepted_at=self.now,
             )
+            # Every seeded owner has the number and both photos. A KYC-verified one has the check mark (identity
+            # verified, as the 0068 backfill gives every KYC-verified business); `identity="pending"` puts one in the
+            # staff identity queue; the rest have not sent the card for the mark.
+            identity = identity or (
+                BusinessOwnerProfile.IDENTITY_VERIFIED if status == BusinessOwner.VERIFIED
+                else BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED
+            )
+            profile.identity_status = identity
+            if identity == BusinessOwnerProfile.IDENTITY_PENDING:
+                profile.identity_submitted_at = self.now - timedelta(days=max(created_ago_days, 1))
+            elif identity == BusinessOwnerProfile.IDENTITY_VERIFIED:
+                profile.identity_submitted_at = self.now
+                profile.identity_reviewed_by = self.reviewer
+                profile.identity_reviewed_at = self.now
             profile.ghana_card_front_image.save("seed-ghana-card-front.png", ContentFile(_png()), save=False)
             profile.ghana_card_back_image.save(
                 "seed-ghana-card-back.png", ContentFile(_png((26, 92, 56))), save=False
@@ -346,10 +360,12 @@ class Command(BaseCommand):
         self.pending_owner_2 = self._owner(
             "+233209100002", "Akua Pokuaa Sarpong", "akua.sarpong@example.com",
             kind="service", ghana_card="GHA-910000002-2", gps="AK-210-3345", created_ago_days=2,
+            identity=BusinessOwnerProfile.IDENTITY_PENDING,
         )
         self.pending_owner_3 = self._owner(
             "+233209100003", "Kofi Ampofo Bekoe", "kofi.bekoe@example.com",
             kind="product", ghana_card="GHA-910000003-3", gps="AK-077-1290", created_ago_days=1,
+            identity=BusinessOwnerProfile.IDENTITY_PENDING,
         )
         self._owner(
             "+233209100004", "Afia Konadu Mensah-Bonsu", "afia.konadu@example.com",

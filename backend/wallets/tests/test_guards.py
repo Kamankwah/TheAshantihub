@@ -156,12 +156,26 @@ class VerifiedNameTests(TestCase):
         self.assertEqual(names.verified_names(customer), ["Ama Owusu"])
         self.assertEqual(names.matching_name("AMA OWUSU", customer), "Ama Owusu")
 
-    def test_a_vendor_has_names_only_once_kyc_verified(self):
+    def test_business_without_identity_has_no_verified_names(self):
+        # Address checked (kyc_status verified) is not identity proven: no name to match a payout account against.
         owner = BusinessOwner.objects.create(full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x")
         BusinessOwnerProfile.objects.create(business_owner=owner, business_name="Adepa Ventures")
         self.assertEqual(names.verified_names(owner), [])
         owner.kyc_status = BusinessOwner.VERIFIED
         owner.save(update_fields=["kyc_status"])
+        self.assertEqual(names.verified_names(owner), [])
+        for status in (BusinessOwnerProfile.IDENTITY_PENDING, BusinessOwnerProfile.IDENTITY_REJECTED):
+            BusinessOwnerProfile.objects.filter(business_owner=owner).update(identity_status=status)
+            owner = BusinessOwner.objects.get(pk=owner.pk)
+            self.assertEqual(names.verified_names(owner), [], status)
+        self.assertIsNone(names.matching_name("KWAME MENSAH", owner))
+
+    def test_identity_verified_business_matches_owner_and_business_name(self):
+        owner = BusinessOwner.objects.create(full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x")
+        BusinessOwnerProfile.objects.create(
+            business_owner=owner, business_name="Adepa Ventures", identity_status=BusinessOwnerProfile.IDENTITY_VERIFIED,
+        )
         self.assertEqual(names.verified_names(owner), ["Kwame Mensah", "Adepa Ventures"])
         self.assertEqual(names.matching_name("ADEPA VENTURES LTD", owner), "Adepa Ventures")
+        self.assertEqual(names.matching_name("KWAME MENSAH", owner), "Kwame Mensah")
         self.assertIsNone(names.matching_name("KOFI BOATENG", owner))

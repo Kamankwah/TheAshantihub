@@ -20,7 +20,7 @@ from fraud.models import FraudFlag
 from fraud.services import open_flag_exists
 from notifications.services import notify_business_owner
 
-from .models import BusinessOwner, ScoutAssignment
+from .models import BusinessOwner, BusinessOwnerProfile, ScoutAssignment
 
 KYC_KIND = "business.kyc"
 TARGET_TYPE = "accounts.businessowner"
@@ -108,12 +108,10 @@ def address_correction(owner):
 
 def address_decision_missing(owner):
     """The Ghana Post address decision is needed before KYC approval, on either
-    door, for a scout-registered business and for any business whose address a
-    field scout corrected (the correction cleared the decision, so someone
-    other than the corrector re-checks it). Other self-registered owners keep
-    the old behaviour."""
-    if owner.registration_channel != BusinessOwner.SCOUT and not _corrections(owner).exists():
-        return False
+    door, for every business: approval rests on the address alone (the Ghana
+    Card, certificate and TIN are optional). A business with no profile has no
+    decision. A field correction clears the decision, so someone other than the
+    corrector re-checks it before approval."""
     profile = getattr(owner, "profile", None)
     return profile is None or profile.address_verified_at is None
 
@@ -177,7 +175,7 @@ def approve_owner(owner_id, staff, *, http_request=None, from_approval=None):
         owner.reviewed_at = timezone.now()
         owner.save(update_fields=["kyc_status", "kyc_rejection_reason", "reviewed_by", "reviewed_at"])
         notify_business_owner(
-            owner, "kyc_approved", "Your business is verified!",
+            owner, "kyc_approved", "Your business is approved!",
             body="Your KYC has been approved — you can now publish listings.",
             link="/business-dashboard", icon="✅",
         )
@@ -269,3 +267,123 @@ def pending_approval_id(owner):
         .values_list("pk", flat=True)
         .first()
     )
+
+
+# ── The owner's identity documents (optional identity documents) ───────────
+
+
+def submit_identity(profile, *, http_request=None):
+    """Put an owner's Ghana Card forward for the identity check: not_submitted
+    or rejected becomes pending, only when the number and both photos are on
+    file. A pending or verified identity is never touched. Returns whether it
+    moved; idempotent. One conditional UPDATE, so two requests at once cannot
+    both move it. A move records `identity-submitted` (the owner as actor,
+    never the number or the files), which refreshes the staff identity queue
+    live; call it last in the transaction (record() holds the chain lock)."""
+    if not profile.has_identity_documents():
+        return False
+    now = timezone.now()
+    moved = BusinessOwnerProfile.objects.filter(
+        pk=profile.pk,
+        identity_status__in=(BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED, BusinessOwnerProfile.IDENTITY_REJECTED),
+    ).update(
+        identity_status=BusinessOwnerProfile.IDENTITY_PENDING, identity_submitted_at=now, identity_rejection_reason=None,
+    )
+    if moved:
+        profile.identity_status = BusinessOwnerProfile.IDENTITY_PENDING
+        profile.identity_submitted_at = now
+        profile.identity_rejection_reason = None
+        owner = profile.business_owner
+        record(
+            owner, "identity-submitted", target=owner,
+            after={"identity_status": BusinessOwnerProfile.IDENTITY_PENDING}, request=http_request,
+        )
+    return bool(moved)
+
+
+# ── Staff review of the owner's identity documents ─────────────────────────
+#
+# A separate decision from the KYC above: it moves only
+# BusinessOwnerProfile.identity_status (the verified check mark) and never
+# touches kyc_status, the pending business.kyc request or the commission.
+# Lock order: the owner row (_locked_owner, which refuses a submitter), then
+# the profile row, then record() last. The owner's own profile PATCH and the
+# scout's KYC resubmit take the same order (owner row, then profile row, each
+# FOR UPDATE OF its own table). The owner's notices reuse the
+# kyc_approved / kyc_rejected kinds (the registry is not enforced and the
+# titles say which check).
+
+IDENTITY_NOT_PENDING = "This business's identity documents are not waiting for review."
+IDENTITY_ONLY_REJECTED = "Only rejected identity documents can be sent back for re-review."
+
+
+def _locked_identity(owner_id, staff, expected):
+    """Lock the owner, then its profile row, and require the identity to be in
+    `expected`. Returns (owner, profile). Raises KycError otherwise, and
+    MakerCannotDecide for a submitter."""
+    owner = _locked_owner(owner_id, staff)
+    profile = BusinessOwnerProfile.objects.select_for_update(of=("self",)).filter(business_owner=owner).first()
+    if profile is None or profile.identity_status != expected:
+        raise KycError(IDENTITY_NOT_PENDING if expected == BusinessOwnerProfile.IDENTITY_PENDING else IDENTITY_ONLY_REJECTED)
+    return owner, profile
+
+
+def approve_identity(owner_id, staff, *, http_request=None):
+    """Verify a pending identity: the owner's products now show the check mark."""
+    with transaction.atomic():
+        owner, profile = _locked_identity(owner_id, staff, BusinessOwnerProfile.IDENTITY_PENDING)
+        profile.identity_status = BusinessOwnerProfile.IDENTITY_VERIFIED
+        profile.identity_rejection_reason = None
+        profile.identity_reviewed_by = staff
+        profile.identity_reviewed_at = timezone.now()
+        profile.save(update_fields=[
+            "identity_status", "identity_rejection_reason", "identity_reviewed_by", "identity_reviewed_at",
+        ])
+        notify_business_owner(
+            owner, "kyc_approved", "You're verified!",
+            body="Your identity documents have been approved. Your products now show the verified check mark.",
+            link="/business-dashboard", icon="✅",
+        )
+        record(staff, "identity-approve", target=owner, after={"identity_status": profile.identity_status}, request=http_request)
+    return owner
+
+
+def reject_identity(owner_id, staff, reason, *, http_request=None):
+    """Reject a pending identity; the owner sees the reason."""
+    reason = (reason or "").strip()
+    if not reason:
+        raise KycError(REASON_REQUIRED)
+    with transaction.atomic():
+        owner, profile = _locked_identity(owner_id, staff, BusinessOwnerProfile.IDENTITY_PENDING)
+        profile.identity_status = BusinessOwnerProfile.IDENTITY_REJECTED
+        profile.identity_rejection_reason = reason[:500]
+        profile.identity_reviewed_by = staff
+        profile.identity_reviewed_at = timezone.now()
+        profile.save(update_fields=[
+            "identity_status", "identity_rejection_reason", "identity_reviewed_by", "identity_reviewed_at",
+        ])
+        notify_business_owner(
+            owner, "kyc_rejected", "Your identity documents need attention", body=reason,
+            link="/business-dashboard", icon="⚠️",
+        )
+        record(
+            staff, "identity-reject", target=owner,
+            after={"identity_status": profile.identity_status, "reason": reason}, request=http_request,
+        )
+    return owner
+
+
+def reopen_identity(owner_id, staff, *, http_request=None):
+    """Send rejected identity documents back to the queue: pending again, the
+    reason and the reviewer pair cleared (the moderated-queue contract)."""
+    with transaction.atomic():
+        owner, profile = _locked_identity(owner_id, staff, BusinessOwnerProfile.IDENTITY_REJECTED)
+        profile.identity_status = BusinessOwnerProfile.IDENTITY_PENDING
+        profile.identity_rejection_reason = None
+        profile.identity_reviewed_by = None
+        profile.identity_reviewed_at = None
+        profile.save(update_fields=[
+            "identity_status", "identity_rejection_reason", "identity_reviewed_by", "identity_reviewed_at",
+        ])
+        record(staff, "identity-reopen", target=owner, after={"identity_status": profile.identity_status}, request=http_request)
+    return owner

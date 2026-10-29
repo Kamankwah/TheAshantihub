@@ -1,4 +1,5 @@
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
@@ -32,6 +33,7 @@ class KYCModerationQueueTests(TestCase):
         )
         BusinessOwnerProfile.objects.create(
             business_owner=owner, gps_address="AK-039-5030",
+            address_verified=True, address_verified_by=self.admin, address_verified_at=timezone.now(),
             business_contact_phone=phone,
         )
         return owner

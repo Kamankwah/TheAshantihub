@@ -24,7 +24,7 @@ const LOAN_STATUS_META = {
 
 // ── Scores ────────────────────────────────────────────────────────────────
 // The signals the placeholder scorer really uses (credit/scoring.py); nothing else is claimed.
-const FACTOR_LABELS = { listings_published: "Published listings", account_tenure_months: "Months on AshantiHub", kyc_verified: "KYC verified", payout_verified: "Payout details verified" };
+const FACTOR_LABELS = { listings_published: "Published listings", account_tenure_months: "Months on AshantiHub", kyc_verified: "Identity verified", payout_verified: "Payout details verified" };
 const factorValue = (v) => (typeof v === "boolean" ? (v ? "yes" : "no") : String(v));
 const factorsLine = (factors) => Object.entries(factors || {}).filter(([key]) => FACTOR_LABELS[key]).map(([key, f]) => `${FACTOR_LABELS[key]}: ${factorValue(f.value)}`).join(" · ");
 

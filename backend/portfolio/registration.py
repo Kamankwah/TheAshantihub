@@ -10,12 +10,12 @@ import logging
 from decimal import Decimal
 
 from django.contrib.auth.hashers import make_password
-from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework import serializers
 
 from accounts import hours
+from accounts import files as stored_files
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Role
 from accounts.serializers import _strict_bool
 from activity.services import record
@@ -38,6 +38,8 @@ DUPLICATE_MESSAGE = "Already registered — ask Operations."
 PROSPECT_GONE_MESSAGE = "That prospect isn't on your list any more."
 NOT_WAITING_MESSAGE = "This business isn't waiting for KYC any more."
 ALREADY_WAITING_MESSAGE = "A KYC request for this business is already waiting for a decision."
+CARD_LOCKED_MESSAGE = "This business's Ghana Card is already in review or verified, so the photo can't be replaced here."
+IDENTITY_LOCKED_STATUSES = (BusinessOwnerProfile.IDENTITY_PENDING, BusinessOwnerProfile.IDENTITY_VERIFIED)
 
 
 class RegistrationError(Exception):
@@ -63,16 +65,6 @@ def _as_dict(data, files=None):
             for key in source.keys():
                 values[key] = source.get(key)
     return values
-
-
-def _delete_replaced(names):
-    """Delete photo files a resubmit replaced (after commit: a rollback keeps
-    them). A file that can't be deleted is logged, never raised."""
-    for name in names:
-        try:
-            default_storage.delete(name)
-        except Exception:
-            logger.exception("Couldn't delete replaced KYC photo %s", name)
 
 
 def _week(data):
@@ -182,7 +174,8 @@ def _create_business(registrar, values, identity):
                 location_is_manual=values.get("location_is_manual", False),
                 ghana_card_number=values.get("ghana_card_number"),
                 signboard_photo=values["signboard_photo"],
-                ghana_card_front_image=values["ghana_card_front"],
+                ghana_card_front_image=values.get("ghana_card_front"),
+                is_formal=values.get("is_formal", False),
             )
     except IntegrityError:
         # Another registration with the same phone or Ghana Card committed
@@ -278,7 +271,11 @@ def resubmit_kyc(owner, staff, data, files, *, http_request=None):
             raise RegistrationError(NOT_WAITING_MESSAGE, code="not_pending")
         if _pending_kyc_request(owner).exists():
             raise RegistrationError(ALREADY_WAITING_MESSAGE, code="already_pending")
-        profile = BusinessOwnerProfile.objects.get(business_owner=owner)
+        # Owner row, then profile row: the same order as the staff identity decisions.
+        profile = BusinessOwnerProfile.objects.select_for_update(of=("self",)).get(business_owner=owner)
+        if values.get("ghana_card_front") is not None and profile.identity_status in IDENTITY_LOCKED_STATUSES:
+            # The reviewed photo is what the verified mark (or the pending decision) rests on: never swapped here.
+            raise RegistrationError(CARD_LOCKED_MESSAGE, code="identity_locked")
         photos, fields, replaced = [], [], []
         # (request field, profile field): the activity log names what was sent.
         for sent, field in (("signboard_photo", "signboard_photo"), ("ghana_card_front", "ghana_card_front_image")):
@@ -292,8 +289,7 @@ def resubmit_kyc(owner, staff, data, files, *, http_request=None):
             fields.append(field)
         if fields:
             profile.save(update_fields=fields)
-        if replaced:
-            transaction.on_commit(lambda: _delete_replaced(replaced))
+        stored_files.delete_after_commit(replaced)
         name = profile.business_name or owner.full_name
         approval = _submit_kyc(
             staff, owner, name, maker_note=values.get("maker_note", ""), http_request=http_request, resubmitted=True,

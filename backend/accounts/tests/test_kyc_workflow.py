@@ -1,4 +1,5 @@
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
@@ -21,6 +22,7 @@ class KYCWorkflowTests(TestCase):
             business_owner=self.owner,
             ghana_card_number="GHA-999888777-6",
             gps_address="AK-039-5030",
+            address_verified=True, address_verified_by=self.admin, address_verified_at=timezone.now(),
             business_contact_phone="+233207778899",
             is_formal=False,
             default_payout_method="momo",

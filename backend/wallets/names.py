@@ -1,6 +1,6 @@
 """Is the name on a payout account the holder's own? (spec §8). A destination is accepted only when the name the
-network or bank returns matches a verified name: a customer's profile name; a KYC-verified vendor's owner name or
-registered business name. Names are compared as sets of words, accents and punctuation dropped and case ignored:
+network or bank returns matches a verified name: a customer's profile name; an identity-verified vendor's owner name or
+registered business name (staff have approved the owner's Ghana Card; an address check alone is not enough). Names are compared as sets of words, accents and punctuation dropped and case ignored:
 the account's name must contain every word of the verified name (so it may carry a middle name or "LTD" the verified
 name lacks, never the reverse), and the verified name needs at least two words of two letters or more.
 
@@ -32,7 +32,7 @@ def usable(verified_name):
 
 
 def verified_names(holder):
-    """The names a destination may match, or [] when there is none yet (a vendor not KYC-verified, a blank profile, a
+    """The names a destination may match, or [] when there is none yet (a vendor whose identity staff have not approved, a blank profile, a
     rider without an approved Ghana Card, AshantiHub's own riders and office staff)."""
     from accounts.models import BusinessOwner, Customer, StaffUser
 
@@ -47,7 +47,7 @@ def verified_names(holder):
     if isinstance(holder, Customer):
         return [holder.full_name] if (holder.full_name or "").strip() else []
     if isinstance(holder, BusinessOwner):
-        if holder.kyc_status != BusinessOwner.VERIFIED:
+        if not holder.identity_verified:  # address-checked (kyc_status) is not identity proven
             return []
         profile = getattr(holder, "profile", None)
         business = (profile.business_name or "").strip() if profile is not None else ""

@@ -150,10 +150,14 @@ class BusinessOwnerMiniSerializer(serializers.ModelSerializer):
     # names the business; `is_ashanti_direct` marks the company's own shop.
     name = serializers.CharField(source="display_name", read_only=True)
     is_ashanti_direct = serializers.SerializerMethodField()
+    # identity_verified (staff approved the owner's identity documents) is what drives the public verified mark;
+    # kyc_status stays for older clients. Querysets feeding this select_related("business_owner__profile"), and
+    # no Ghana Card detail is ever serialized here.
+    identity_verified = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = BusinessOwner
-        fields = ["id", "full_name", "name", "kyc_status", "is_ashanti_direct"]
+        fields = ["id", "full_name", "name", "kyc_status", "identity_verified", "is_ashanti_direct"]
 
     def get_is_ashanti_direct(self, obj):
         return direct.is_direct(obj)

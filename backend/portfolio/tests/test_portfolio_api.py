@@ -370,6 +370,16 @@ class BusinessReviewTests(PortfolioApiBase):
         profile.save()
         self.url = f"{URL}{self.owner.pk}/review/"
 
+    def test_review_sheet_says_whether_a_certificate_is_on_file_without_its_url(self):
+        from django.core.files.base import ContentFile
+
+        profile = self.owner.profile
+        profile.business_reg_certificate.save("cert.pdf", ContentFile(b"%PDF-1.4 test"), save=True)
+        self.auth(self.lead)
+        sheet = self.client.get(self.url).json()
+        self.assertIs(sheet["business"]["has_certificate"], True)
+        self.assertNotIn("cert.pdf", str(sheet))
+
     def test_operations_gets_the_review_sheet_with_checks_run_now(self):
         duplicate = make_business("Other Shop", phone="0241112223")  # the same phone, written the other way
         similar = make_business("Asafo Hair Studios")
@@ -400,6 +410,7 @@ class BusinessReviewTests(PortfolioApiBase):
         self.assertEqual(sheet["business"]["business_name"], "Asafo Hair Studio")
         self.assertEqual(sheet["business"]["zone"]["name"], "Bantama")
         self.assertFalse(sheet["business"]["tin_given"])
+        self.assertIs(sheet["business"]["has_certificate"], False)
         self.assertIsNotNone(sheet["photos"]["signboard"])
         self.assertIsNotNone(sheet["photos"]["ghana_card_front"])
         self.assertIsNone(sheet["photos"]["ghana_card_back"])

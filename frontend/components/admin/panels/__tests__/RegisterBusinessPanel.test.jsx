@@ -74,9 +74,9 @@ async function fillLocation() {
   fireEvent.click(screen.getByRole('button', { name: 'Next: Photos' }))
 }
 
-function takePhotos() {
+function takePhotos({ card = true } = {}) {
   fireEvent.change(screen.getByLabelText('Signboard photo'), { target: { files: [new File(['sign'], 'sign.jpg', { type: 'image/jpeg' })] } })
-  fireEvent.change(screen.getByLabelText('Ghana Card front photo'), { target: { files: [new File(['card'], 'card.jpg', { type: 'image/jpeg' })] } })
+  if (card) fireEvent.change(screen.getByLabelText('Ghana Card front photo'), { target: { files: [new File(['card'], 'card.jpg', { type: 'image/jpeg' })] } })
   fireEvent.click(screen.getByRole('button', { name: 'Next: Review' }))
 }
 
@@ -140,6 +140,7 @@ describe('RegisterBusinessPanel — the four steps', () => {
     expect(sent.signboard_photo.name).toBe('sign.jpg')
     expect(sent.ghana_card_front.name).toBe('card.jpg')
     expect(sent).not.toHaveProperty('ghana_card_number')
+    expect(sent.is_formal).toBe('false')
     expect(localStorage.getItem(DRAFT_KEY)).toBeNull()
     expect(screen.getByText(/The draft has been cleared from this phone/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hand the phone to Gifty' })).toBeInTheDocument()
@@ -161,6 +162,82 @@ describe('RegisterBusinessPanel — the four steps', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
     expect(screen.getByText("Add the owner's full name.")).toBeInTheDocument()
     expect(screen.getByLabelText("Owner's full name (as on Ghana Card)")).toBeInTheDocument()
+  })
+})
+
+describe('RegisterBusinessPanel — identity documents are optional', () => {
+  it('scout can submit without the card photo, and the card photo is not sent', async () => {
+    mockRegistration()
+    renderPanel()
+    await fillOwnerAndBusiness()
+    await fillLocation()
+    expect(screen.getByText(/Owner's Ghana Card · front \(optional\)/)).toBeInTheDocument()
+    takePhotos({ card: false })
+    await screen.findByText(/No exact match/)
+    expect(screen.getByText('Skipped — the owner can add it later')).toBeInTheDocument()
+    expect(screen.queryByText(/Not taken yet/)).not.toBeInTheDocument()
+    const append = vi.spyOn(FormData.prototype, 'append')
+    fireEvent.click(screen.getByRole('button', { name: 'Submit for KYC' }))
+    expect(await screen.findByText('Sent to Ama Boateng for KYC')).toBeInTheDocument()
+    const keys = append.mock.calls.map(([key]) => key)
+    expect(keys).toContain('signboard_photo')
+    expect(keys).not.toContain('ghana_card_front')
+  })
+
+  it('still needs the signboard photo', async () => {
+    renderPanel()
+    await fillOwnerAndBusiness()
+    await fillLocation()
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Review' }))
+    expect(screen.getByText('Take the signboard photo.')).toBeInTheDocument()
+  })
+
+  it('registered tick posts is_formal, and the draft keeps it', async () => {
+    mockRegistration()
+    renderPanel()
+    await fillOwnerAndBusiness()
+    await fillLocation()
+    const tick = screen.getByLabelText('The business says it is registered')
+    expect(tick).not.toBeChecked()
+    expect(screen.getByText("If they can't show a certificate right now, just tick it and move on.")).toBeInTheDocument()
+    fireEvent.click(tick)
+    expect(JSON.parse(localStorage.getItem(DRAFT_KEY)).form.is_formal).toBe(true)
+    takePhotos()
+    await screen.findByText(/No exact match/)
+    const append = vi.spyOn(FormData.prototype, 'append')
+    fireEvent.click(screen.getByRole('button', { name: 'Submit for KYC' }))
+    expect(await screen.findByText('Sent to Ama Boateng for KYC')).toBeInTheDocument()
+    expect(Object.fromEntries(append.mock.calls).is_formal).toBe('true')
+  })
+
+  it('an old draft without is_formal loads with the registered tick unchecked, and the hint does not promise the mark', async () => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 1, step: 2, form: { owner_full_name: 'Gifty Asantewaa' }, saved_at: '2026-10-08T10:00:00Z' }))
+    renderPanel()
+    expect(await screen.findByLabelText('The business says it is registered')).not.toBeChecked()
+    expect(screen.getByText(/The owner earns the verified check mark by uploading their Ghana Card \(number, front and back\)/)).toBeInTheDocument()
+    expect(screen.queryByText(/the back isn't needed/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/for the KYC check/)).not.toBeInTheDocument()
+  })
+
+  it('no certificate or TIN inputs', async () => {
+    renderPanel()
+    await fillOwnerAndBusiness()
+    await fillLocation()
+    expect(screen.queryByLabelText(/certificate/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/\bTIN\b/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/tax/i)).not.toBeInTheDocument()
+  })
+
+  it('a missing card photo does not force the retake prompt after a reload', async () => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 1, step: 2, form: { owner_full_name: 'Gifty Asantewaa' }, saved_at: '2026-10-08T10:00:00Z' }))
+    renderPanel()
+    expect(await screen.findByText(/Photos aren't kept in the draft/)).toBeInTheDocument()
+    // Only the signboard photo is needed, so a card photo alone does not end the prompt…
+    fireEvent.change(screen.getByLabelText('Ghana Card front photo'), { target: { files: [new File(['card'], 'card.jpg', { type: 'image/jpeg' })] } })
+    expect(screen.getByText(/Photos aren't kept in the draft/)).toBeInTheDocument()
+    // …and the signboard photo alone does.
+    fireEvent.change(screen.getByLabelText('Signboard photo'), { target: { files: [new File(['sign'], 'sign.jpg', { type: 'image/jpeg' })] } })
+    expect(screen.queryByText(/Photos aren't kept in the draft/)).not.toBeInTheDocument()
   })
 })
 

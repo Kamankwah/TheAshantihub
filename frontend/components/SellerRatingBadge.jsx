@@ -1,3 +1,4 @@
+import VerifiedMark from "./VerifiedMark.jsx";
 import { useState } from "react";
 import { C } from "../theme.js";
 import { useOwnerReviews } from "../hooks/useOwnerReviews.js";
@@ -49,6 +50,7 @@ export default function SellerRatingBadge({ businessOwner, user, tone = "dark" }
         ) : (
           <span>Sold by {businessOwner.name || businessOwner.full_name}</span>
         )}
+        <VerifiedMark verified={businessOwner.identity_verified} />
         <span style={{ color: t.mark }}>{expanded ? "▲" : "▼"}</span>
       </button>
       {expanded && (

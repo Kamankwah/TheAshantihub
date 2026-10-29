@@ -65,8 +65,10 @@ class ScoutRegistrationSerializer(serializers.Serializer):
     location_accuracy_m = FiniteFloatField(required=False, allow_null=True, min_value=0, max_value=100000)
     location_is_manual = serializers.BooleanField(required=False, default=False)
     signboard_photo = serializers.ImageField(validators=[validate_image_content_type])
-    ghana_card_front = serializers.ImageField(validators=[validate_image_content_type])
+    ghana_card_front = serializers.ImageField(required=False, validators=[validate_image_content_type])
     ghana_card_number = serializers.CharField(required=False, allow_blank=True, max_length=30)
+    # Ticked when the business says it is registered; no certificate or TIN is collected here.
+    is_formal = serializers.BooleanField(required=False, default=False)
     maker_note = serializers.CharField(required=False, allow_blank=True, max_length=1000)
     # The scout's own prospect this registration comes from (checked on submit).
     prospect_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
@@ -395,6 +397,8 @@ def business_review_sheet(owner, request):
             "hours": hours_payload(owner),
             "is_formal": bool(getattr(profile, "is_formal", False)),
             "tin_given": bool(getattr(profile, "tin", None)),
+            # Only whether a certificate is on file; the file itself is opened in the KYC queue's identity view.
+            "has_certificate": bool(getattr(profile, "business_reg_certificate", None)),
         },
         "photos": {
             "signboard": _portfolio_file_url(request, getattr(profile, "signboard_photo", None)),

@@ -106,11 +106,105 @@ describe('BusinessRegistrationFlow', () => {
     await waitFor(() => expect(setShowBizDash).toHaveBeenCalledWith(true))
   })
 
-  it('reveals certificate and TIN fields only when formally registered is checked', () => {
-    renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={makeAuth()} initialStep="business_info" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
-    expect(screen.queryByPlaceholderText('TIN')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByLabelText(/formally registered/i))
-    expect(screen.getByPlaceholderText('TIN')).toBeInTheDocument()
+  describe('optional identity documents', () => {
+    const GPS = 'Ghana Post GPS address (e.g. AK-039-5028)'
+    const PHONE = 'Business contact phone (AshantiHub support only, not shown to shoppers)'
+    const mountBusinessInfo = (auth) => renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="business_info" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+    const fillRequired = () => {
+      fireEvent.change(screen.getByPlaceholderText(GPS), { target: { value: 'AK-123-4567' } })
+      fireEvent.change(screen.getByPlaceholderText(PHONE), { target: { value: '+233201112233' } })
+    }
+    const submit = () => fireEvent.submit(screen.getByRole('button', { name: 'Continue' }).closest('form'))
+
+    it('submits the business step with no Ghana Card, certificate or TIN', async () => {
+      const auth = makeAuth({ refreshUser: vi.fn().mockResolvedValue({ registration_step: 'plan_selection' }) })
+      mountBusinessInfo(auth)
+      for (const el of [
+        screen.getByPlaceholderText('Ghana Card number'),
+        screen.getByLabelText(/Ghana Card — front/i),
+        screen.getByLabelText(/Ghana Card — back/i),
+      ]) expect(el).not.toBeRequired()
+      fillRequired()
+      submit()
+
+      await waitFor(() => expect(auth.submitBusinessInfo).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(screen.getByText(/Choose your plan/)).toBeInTheDocument())
+      expect(screen.queryByText(/Ghana Card number is required/)).not.toBeInTheDocument()
+    })
+
+    it('still requires the Ghana Post address', async () => {
+      const auth = makeAuth()
+      mountBusinessInfo(auth)
+      expect(screen.getByPlaceholderText(GPS)).toBeRequired()
+      fireEvent.change(screen.getByPlaceholderText(PHONE), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText(GPS), { target: { value: 'not an address' } })
+      submit()
+      expect(await screen.findByText(/valid Ghana Post GPS address/)).toBeInTheDocument()
+      expect(auth.submitBusinessInfo).not.toHaveBeenCalled()
+      expect(screen.getByPlaceholderText(PHONE)).toBeRequired()
+    })
+
+    it('shows the registered tick and optional certificate/TIN inputs only when ticked', () => {
+      mountBusinessInfo(makeAuth())
+      const tick = screen.getByLabelText(/This business is registered/i)
+      expect(tick).toHaveAttribute('type', 'checkbox')
+      expect(tick).not.toBeChecked()
+      expect(screen.queryByPlaceholderText('TIN')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText(/Business registration certificate/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/add these later from your dashboard/i)).not.toBeInTheDocument()
+
+      fireEvent.click(tick)
+      expect(screen.getByPlaceholderText('TIN')).not.toBeRequired()
+      expect(screen.getByLabelText(/Business registration certificate/i)).not.toBeRequired()
+      expect(screen.getByText(/add these later from your dashboard/i)).toBeInTheDocument()
+
+      fireEvent.click(tick)
+      expect(screen.queryByPlaceholderText('TIN')).not.toBeInTheDocument()
+    })
+
+    it('explains that the Ghana Card is optional and earns the verified check mark', () => {
+      mountBusinessInfo(makeAuth())
+      expect(screen.getByText(/Add your Ghana Card to earn the verified check mark/)).toBeInTheDocument()
+    })
+
+    it('does not send empty file fields', async () => {
+      const auth = makeAuth({ refreshUser: vi.fn().mockResolvedValue({ registration_step: 'plan_selection' }) })
+      mountBusinessInfo(auth)
+      fireEvent.change(screen.getByPlaceholderText('Ghana Card number'), { target: { value: '   ' } })
+      fillRequired()
+      fireEvent.click(screen.getByLabelText(/This business is registered/i))
+      submit()
+
+      await waitFor(() => expect(auth.submitBusinessInfo).toHaveBeenCalledTimes(1))
+      const sent = auth.submitBusinessInfo.mock.calls[0][0]
+      expect(sent).toEqual({
+        gps_address: 'AK-123-4567',
+        business_contact_phone: '+233201112233',
+        is_formal: true,
+      })
+    })
+
+    it('sends the Ghana Card, certificate and TIN when the owner filled them', async () => {
+      const auth = makeAuth({ refreshUser: vi.fn().mockResolvedValue({ registration_step: 'plan_selection' }) })
+      mountBusinessInfo(auth)
+      fireEvent.change(screen.getByPlaceholderText('Ghana Card number'), { target: { value: ' GHA-000000000-0 ' } })
+      uploadFile(/Ghana Card — front/i)
+      uploadFile(/Ghana Card — back/i)
+      fillRequired()
+      fireEvent.click(screen.getByLabelText(/This business is registered/i))
+      uploadFile(/Business registration certificate/i)
+      fireEvent.change(screen.getByPlaceholderText('TIN'), { target: { value: 'C0012345678' } })
+      submit()
+
+      await waitFor(() => expect(auth.submitBusinessInfo).toHaveBeenCalledTimes(1))
+      const sent = auth.submitBusinessInfo.mock.calls[0][0]
+      expect(sent.ghana_card_number).toBe('GHA-000000000-0')
+      expect(sent.ghana_card_front_image).toBeInstanceOf(File)
+      expect(sent.ghana_card_back_image).toBeInstanceOf(File)
+      expect(sent.business_reg_certificate).toBeInstanceOf(File)
+      expect(sent.tin).toBe('C0012345678')
+      expect(sent.is_formal).toBe(true)
+    })
   })
 
   describe('plan_selection step', () => {

@@ -391,6 +391,8 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
     login_phone = serializers.SerializerMethodField()
     # The business the owner is registering, to name the row ("Kofi Asamoah · Manhyia Tailoring").
     business_name = serializers.CharField(source="profile.business_name", read_only=True, default=None)
+    # The Ghana Card check (BusinessOwnerProfile.identity_status), separate from kyc_status; None without a profile.
+    identity_status = serializers.CharField(source="profile.identity_status", read_only=True, default=None)
 
     class Meta:
         model = BusinessOwner
@@ -398,6 +400,7 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
             "id", "full_name", "business_name", "login_phone", "kyc_status", "kyc_rejection_reason",
             "created_at", "reviewed_by_name", "reviewed_at",
             "registration_channel", "registered_by_name", "registered_by_role", "open_fraud_flags", "pending_approval_id",
+            "identity_status",
         ]
 
     def get_login_phone(self, obj):
@@ -414,6 +417,39 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
         from .kyc import pending_approval_id
 
         return pending_approval_id(obj)
+
+
+class IdentityQueueSerializer(serializers.ModelSerializer):
+    """A row of the staff identity queue. Every identity_* value is the owner's
+    profile's identity review, never the KYC review (reviewed_by_name,
+    reviewed_at and kyc_rejection_reason belong to the KYC queue)."""
+
+    business_name = serializers.CharField(source="profile.business_name", read_only=True, default=None)
+    registered_by_name = serializers.CharField(source="registered_by.full_name", read_only=True, default=None)
+    registered_by_role = serializers.CharField(source="registered_by.role.get_name_display", read_only=True, default=None)
+    login_phone = serializers.SerializerMethodField()
+    identity_status = serializers.CharField(source="profile.identity_status", read_only=True, default=None)
+    identity_submitted_at = serializers.DateTimeField(source="profile.identity_submitted_at", read_only=True, default=None)
+    identity_reviewed_at = serializers.DateTimeField(source="profile.identity_reviewed_at", read_only=True, default=None)
+    identity_reviewed_by_name = serializers.CharField(
+        source="profile.identity_reviewed_by.full_name", read_only=True, default=None,
+    )
+    identity_rejection_reason = serializers.CharField(
+        source="profile.identity_rejection_reason", read_only=True, default=None,
+    )
+
+    class Meta:
+        model = BusinessOwner
+        fields = [
+            "id", "full_name", "business_name", "login_phone", "registration_channel",
+            "registered_by_name", "registered_by_role", "kyc_status", "identity_status",
+            "identity_submitted_at", "identity_reviewed_at", "identity_reviewed_by_name", "identity_rejection_reason",
+        ]
+
+    def get_login_phone(self, obj):
+        from .phones import mask_phone
+
+        return mask_phone(obj.login_phone)
 
 
 class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
@@ -438,6 +474,7 @@ class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
             "gps_address", "business_contact_phone", "is_formal", "business_kind",
             "business_reg_certificate", "tin",
             "address_verified", "address_verified_by_name", "address_verified_at",
+            "identity_status", "identity_rejection_reason", "identity_submitted_at",
         ]
 
 
@@ -463,6 +500,7 @@ class BusinessOwnerKYCDetailSerializer(BusinessOwnerKYCSerializer):
             "registration_channel", "registered_by_name", "registered_by_role", "open_fraud_flags", "pending_approval_id",
             "business_name", "business_category_name", "zone_name", "lat", "lng",
             "location_accuracy_m", "location_is_manual", "signboard_photo", "address_correction",
+            "identity_status",
         ]
 
     def get_address_correction(self, obj):
@@ -500,7 +538,9 @@ class PayoutDetailSerializer(serializers.ModelSerializer):
         for field, value in validated_data.items():
             setattr(instance, field, value)
         instance.payout_verification_status = "pending"
-        instance.save()
+        # Only the payout fields: the row is not locked here, so a full-row save could write back a stale
+        # identity_status (or address) that staff changed after this request read the profile.
+        instance.save(update_fields=[*validated_data, "payout_verification_status"])
         return instance
 
 
@@ -548,6 +588,29 @@ class BusinessHoursSerializer(serializers.Serializer):
         return cleaned
 
 
+IDENTITY_LOCKED_STATUSES = (BusinessOwnerProfile.IDENTITY_PENDING, BusinessOwnerProfile.IDENTITY_VERIFIED)
+IDENTITY_LOCKED_MESSAGE = "Your documents are in review (or verified) and can't be changed here."
+DUPLICATE_CARD_MESSAGE = "We couldn't accept this Ghana Card number. Check it and try again, or contact support."
+
+
+def normalize_card_number(value):
+    """A Ghana Card number as stored: trimmed and upper-case (as the scout form stores it), or None when blank."""
+    return (value or "").strip().upper() or None
+
+
+def same_card_number(a, b):
+    """Two card numbers compared as stored (older rows may hold lower case)."""
+    return normalize_card_number(a) == normalize_card_number(b)
+
+
+def card_number_taken(value, *, exclude=None):
+    """Whether another business holds this number, in any case."""
+    taken = BusinessOwnerProfile.objects.filter(ghana_card_number__iexact=value)
+    if exclude is not None and exclude.pk is not None:
+        taken = taken.exclude(pk=exclude.pk)
+    return taken.exists()
+
+
 class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
     hours = serializers.SerializerMethodField()
     has_hours = serializers.SerializerMethodField()
@@ -566,14 +629,32 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
             "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image",
             "gps_address", "business_contact_phone", "is_formal",
             "business_reg_certificate", "tin", "business_kind", "hours", "has_hours",
+            "identity_status", "identity_rejection_reason",
         ]
-        extra_kwargs = {field: {"required": False} for field in fields if field not in ("hours", "has_hours")}
+        read_only_fields = ["identity_status", "identity_rejection_reason"]
+        extra_kwargs = {
+            field: {"required": False}
+            for field in fields
+            if field not in ("hours", "has_hours", "identity_status", "identity_rejection_reason")
+        }
         # business_kind is set at trial-start (billing.StartTrialSerializer) or, while
         # subscriptions are off, by billing.BusinessKindView, and
         # drives listing-category / subscription-plan gating on the frontend; it
         # is exposed here read-only so the owner's dashboard can read it, but
         # this KYC-edit endpoint must never let it be switched.
         extra_kwargs["business_kind"] = {"read_only": True}
+
+    # Declared, so DRF adds no UniqueValidator (whose "already exists" would say someone holds the number): the
+    # duplicate check below answers the generic DUPLICATE_CARD_MESSAGE, without case, as the identity POST does.
+    ghana_card_number = serializers.CharField(max_length=30, required=False, allow_blank=True, allow_null=True)
+
+    def validate_ghana_card_number(self, value):
+        # The column is unique, so "no card number" must be NULL, never "":
+        # a second business without one would collide on the empty string.
+        value = normalize_card_number(value)
+        if value and card_number_taken(value, exclude=self.instance):
+            raise serializers.ValidationError(DUPLICATE_CARD_MESSAGE)
+        return value
 
     def validate(self, data):
         owner = self.instance.business_owner
@@ -582,31 +663,33 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
                 {"kyc_status": "Cannot edit a verified KYC profile."}
             )
 
-        # Ghana Card number and a Ghana Post GPS address are mandatory for a
-        # business, and the GPS address must be in the Ashanti Region. Checked
-        # against the effective (post-update) values so a partial edit of an
-        # already-complete profile still passes.
-        ghana_card = data.get("ghana_card_number", self.instance.ghana_card_number)
-        if not (ghana_card or "").strip():
-            raise serializers.ValidationError(
-                {"ghana_card_number": "Your Ghana Card number is required."}
-            )
+        # Once the identity is pending or verified the documents are fixed: the check mark and the reviewer's
+        # decision rest on exactly what is stored. The same number may be sent again (the registration form
+        # resends it); anything else on the card is refused.
+        if self.instance.identity_status in IDENTITY_LOCKED_STATUSES:
+            errors = {}
+            for field in ("ghana_card_front_image", "ghana_card_back_image"):
+                if field in data:
+                    errors[field] = IDENTITY_LOCKED_MESSAGE
+            if "ghana_card_number" in data:
+                if same_card_number(data["ghana_card_number"], self.instance.ghana_card_number):
+                    data.pop("ghana_card_number")  # keep the reviewed number exactly as stored
+                else:
+                    errors["ghana_card_number"] = IDENTITY_LOCKED_MESSAGE
+            if errors:
+                raise serializers.ValidationError(errors)
+
+        # Only the Ghana Post GPS address is mandatory, and it must be in the
+        # Ashanti Region. The Ghana Card, certificate and TIN are optional:
+        # KYC rests on the address. Checked against the effective
+        # (post-update) value so a partial edit of an already-complete
+        # profile still passes.
         gps = data.get("gps_address", self.instance.gps_address)
         try:
             validate_ashanti_gps(gps)
         except serializers.ValidationError as exc:
             raise serializers.ValidationError({"gps_address": exc.detail})
 
-        is_formal = data.get("is_formal", self.instance.is_formal)
-        if is_formal:
-            cert = data.get("business_reg_certificate", self.instance.business_reg_certificate)
-            tin = data.get("tin", self.instance.tin)
-            if not cert:
-                raise serializers.ValidationError(
-                    {"business_reg_certificate": "Required for formally registered businesses."}
-                )
-            if not tin:
-                raise serializers.ValidationError({"tin": "Required for formally registered businesses."})
         return data
 
     def update(self, instance, validated_data):
@@ -620,6 +703,40 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
             owner.kyc_rejection_reason = None
             owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
         return instance
+
+
+class IdentitySubmissionSerializer(serializers.ModelSerializer):
+    """The owner's identity documents (POST .../business-owners/me/identity/): the
+    Ghana Card number and both photos are required; the certificate, TIN and
+    is_formal are optional. The number's uniqueness is checked here, in one
+    message that says nothing about who holds it."""
+
+    ghana_card_number = serializers.CharField(max_length=30)
+
+    class Meta:
+        model = BusinessOwnerProfile
+        fields = [
+            "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image",
+            "business_reg_certificate", "tin", "is_formal",
+        ]
+        extra_kwargs = {
+            "ghana_card_front_image": {"required": True, "allow_null": False},
+            "ghana_card_back_image": {"required": True, "allow_null": False},
+            "business_reg_certificate": {"required": False},
+            "tin": {"required": False, "allow_blank": True, "allow_null": True},
+            "is_formal": {"required": False},
+        }
+
+    def validate_ghana_card_number(self, value):
+        value = normalize_card_number(value)
+        if not value:
+            raise serializers.ValidationError("Enter your Ghana Card number.")
+        if card_number_taken(value, exclude=self.instance):
+            raise serializers.ValidationError(DUPLICATE_CARD_MESSAGE)
+        return value
+
+    def validate_tin(self, value):
+        return (value or "").strip() or None
 
 
 class CustomerLoginSerializer(serializers.Serializer):

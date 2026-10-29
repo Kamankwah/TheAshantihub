@@ -347,6 +347,19 @@ describe('ProductPage', () => {
     expect(onShowDirect).toHaveBeenCalledTimes(1)
   })
 
+  test('test_verified_mark_follows_identity_verified_only', async () => {
+    showListing({ ...GOODS, business_owner: { ...owner, identity_verified: true } })
+    const { unmount } = renderPage()
+    await screen.findByTestId('product-page')
+    expect(screen.getAllByLabelText('Verified business').length).toBeGreaterThan(0)
+    unmount()
+    showListing({ ...GOODS, business_owner: { ...owner, kyc_status: 'verified', identity_verified: false } })
+    renderPage()
+    await screen.findByTestId('product-page')
+    expect(screen.queryByLabelText('Verified business')).toBeNull()
+    expect(screen.queryByText(/unverified|not verified/i)).toBeNull()
+  })
+
   test('test_selection_drops_vanished_variants_and_clamps_to_stock_after_a_refetch', async () => {
     const posts = []
     server.use(http.post(`${API}/api/cart/items/bulk/`, async ({ request }) => {

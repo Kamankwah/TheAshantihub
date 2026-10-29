@@ -6,7 +6,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 
-from accounts.models import BusinessOwner, Customer, ScoutAssignment, StaffUser
+from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer, ScoutAssignment, StaffUser
 from billing.models import SubscriptionPlan, Transaction
 from contact.models import ContactMessage
 from credit.models import LendingPartner, LoanApplication
@@ -95,6 +95,22 @@ class SeedStaffQueuesTests(TestCase):
             Customer.objects.filter(email="verylongcustomeremailaddressfortesting@example-domain.com").exists()
         )
         self.assertTrue(Listing.objects.filter(name__regex=r"^.{70}$").exists())
+
+    @override_settings(DEBUG=True)
+    def test_kyc_verified_owners_have_the_mark_and_the_identity_queue_has_rows(self):
+        _seed()
+        verified = BusinessOwner.objects.filter(kyc_status=BusinessOwner.VERIFIED)
+        self.assertTrue(verified.exists())
+        self.assertEqual([o.login_phone for o in verified if not o.identity_verified], [])
+        pending = BusinessOwnerProfile.objects.filter(identity_status=BusinessOwnerProfile.IDENTITY_PENDING)
+        self.assertGreaterEqual(pending.count(), 1)
+        for profile in pending:
+            self.assertTrue(profile.has_identity_documents(), profile.business_owner.login_phone)
+            self.assertIsNotNone(profile.identity_submitted_at)
+        # A second run changes nothing.
+        before = sorted(BusinessOwnerProfile.objects.values_list("pk", "identity_status"))
+        _seed()
+        self.assertEqual(sorted(BusinessOwnerProfile.objects.values_list("pk", "identity_status")), before)
 
     @override_settings(DEBUG=True)
     def test_support_conversations_are_with_ashantihub_about_a_business(self):

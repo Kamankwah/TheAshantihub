@@ -8,16 +8,44 @@ import ProfilePanel from '../ProfilePanel.jsx'
 const URL = 'http://localhost:8000/api/accounts/business-owners/me/detail-changes/'
 const PROFILE = { ghana_card_number: 'GHA-1', gps_address: 'AK-1', business_contact_phone: '+233200000000', is_formal: false }
 
-function renderPanel(rows = []) {
+function renderPanel(rows = [], user = { fullName: 'Kofi', kycStatus: 'verified' }) {
   server.use(
     http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json(PROFILE)),
     http.get(URL, () => HttpResponse.json({ results: rows })),
   )
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(<QueryClientProvider client={queryClient}><ProfilePanel user={{ fullName: 'Kofi' }} /></QueryClientProvider>)
+  return render(<QueryClientProvider client={queryClient}><ProfilePanel user={user} /></QueryClientProvider>)
 }
 
+describe('ProfilePanel: the header chip follows the real KYC status', () => {
+  it.each([
+    ['verified', '✓ Business approved', ['Waiting for approval', 'Needs attention']],
+    ['pending', 'Waiting for approval', ['✓ Business approved', 'Needs attention']],
+    ['rejected', 'Needs attention', ['✓ Business approved', 'Waiting for approval']],
+  ])('kycStatus %s shows "%s" and no other chip', async (kycStatus, shown, hidden) => {
+    renderPanel([], { fullName: 'Kofi', kycStatus })
+    expect(await screen.findByText(shown)).toBeInTheDocument()
+    for (const text of hidden) expect(screen.queryByText(text)).not.toBeInTheDocument()
+  })
+
+  it('shows no chip when the status is unknown', async () => {
+    renderPanel([], { fullName: 'Kofi' })
+    await screen.findByText('Kofi')
+    for (const text of ['✓ Business approved', 'Waiting for approval', 'Needs attention']) {
+      expect(screen.queryByText(text)).not.toBeInTheDocument()
+    }
+  })
+})
+
 describe('ProfilePanel: request a change', () => {
+  it('shows Get verified, the approved chip and a footer that does not call documents mandatory', async () => {
+    renderPanel()
+    expect(await screen.findByText('Upload your Ghana Card to earn the verified check mark on your products. AshantiHub staff review it before the mark appears.')).toBeInTheDocument()
+    expect(screen.getByText('✓ Business approved')).toBeInTheDocument()
+    expect(screen.queryByText(/KYC Verified/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Your Ghana Card is managed under Get verified above\./)).toBeInTheDocument()
+  })
+
   it('says a scout will visit and two staff approve, and shows an honest empty list', async () => {
     renderPanel()
     expect(await screen.findByText(/scout will visit your business, then two AshantiHub staff approve/)).toBeInTheDocument()

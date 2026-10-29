@@ -9,7 +9,7 @@ const VALUES = [
   {
     emoji: "🤝",
     title: "Trust",
-    body: "Every business is verified. Ghana Card, digital address and physical confirmation. No exceptions.",
+    body: "Businesses can earn a verified check mark by showing their Ghana Card, and AshantiHub staff check every address.",
   },
   {
     emoji: "👑",
@@ -80,9 +80,10 @@ export function AboutPage() {
           <div className="space-y-4 text-muted-foreground leading-relaxed">
             <p>
               We give every business in the Ashanti Region — formal or
-              informal, large or small — a verified digital storefront with
-              photos, prices and reviews, and AshantiHub Support handling
-              every customer enquiry on their behalf.
+              informal, large or small — a trusted digital storefront with
+              photos, prices and reviews, an address our staff have checked,
+              and AshantiHub Support handling every customer enquiry on their
+              behalf.
             </p>
             <p>
               For businesses, we deliver customers from across Ghana and
@@ -94,8 +95,8 @@ export function AboutPage() {
             </p>
             <p>
               For customers, we offer the trusted way to discover, connect
-              and transact with verified Ashanti businesses — whether
-              you're in Ahodwo or Amsterdam, Santasi or Seattle.
+              and transact with Ashanti businesses whose addresses we check —
+              whether you're in Ahodwo or Amsterdam, Santasi or Seattle.
             </p>
           </div>
         </section>

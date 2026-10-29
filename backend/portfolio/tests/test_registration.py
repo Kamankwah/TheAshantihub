@@ -21,6 +21,7 @@ from fraud.models import FraudFlag
 from listings.models import Category, Zone
 from notifications.models import Notification
 from portfolio.models import AccountManagerAssignment
+from portfolio.registration import CARD_LOCKED_MESSAGE
 
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
 REGISTER_URL = "/api/portfolio/register/"
@@ -192,7 +193,6 @@ class RegistrationTests(RegistrationBase):
         for overrides, field in [
             ({"gps_address": "GA-543-0125"}, "gps_address"),  # Greater Accra, not Ashanti
             ({"signboard_photo": None}, "signboard_photo"),
-            ({"ghana_card_front": None}, "ghana_card_front"),
             ({"signboard_photo": SimpleUploadedFile("sign.png", b"not an image", content_type="image/png")}, "signboard_photo"),
         ]:
             with self.subTest(overrides=overrides):
@@ -349,6 +349,32 @@ class RegistrationFlagTests(RegistrationBase):
             "title": "Owner's phone matches staff member Esi",
         }])
 
+    def test_scout_registers_without_ghana_card_photo_or_number(self):
+        response = self.register(ghana_card_front=None, ghana_card_number=None)
+        self.assertEqual(response.status_code, 201, response.content)
+        profile = BusinessOwnerProfile.objects.get(business_owner_id=response.json()["id"])
+        self.assertFalse(profile.ghana_card_front_image)
+        self.assertIsNone(profile.ghana_card_number)
+        self.assertFalse(profile.is_formal)
+        self.assertIsNone(profile.tin)
+
+    def test_registered_tick_is_stored_without_certificate_or_tin(self):
+        response = self.register(ghana_card_front=None, ghana_card_number=None, is_formal="true")
+        self.assertEqual(response.status_code, 201, response.content)
+        profile = BusinessOwnerProfile.objects.get(business_owner_id=response.json()["id"])
+        self.assertTrue(profile.is_formal)
+        self.assertIsNone(profile.tin)
+        self.assertFalse(profile.business_reg_certificate)
+
+    def test_two_scout_registrations_without_card_numbers_do_not_collide(self):
+        first = self.register(ghana_card_front=None, ghana_card_number="")
+        second = self.register(
+            ghana_card_front=None, ghana_card_number="", owner_phone="0245550000", owner_email="two@example.com",
+            gps_address="AK-112-0385",
+        )
+        self.assertEqual((first.status_code, second.status_code), (201, 201), second.content)
+        self.assertEqual(BusinessOwnerProfile.objects.filter(ghana_card_number__isnull=True).count(), 2)
+
 
 class RegisterCheckTests(RegistrationBase):
     def test_the_review_step_check(self):
@@ -404,6 +430,18 @@ class KycResubmitTests(RegistrationBase):
             ("business.kyc_resubmitted", {"photos": ["signboard_photo"], "approval_id": new.pk}),
         )
 
+    def test_a_card_photo_can_be_added_when_none_was_registered(self):
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
+        profile.ghana_card_front_image = None
+        profile.save(update_fields=["ghana_card_front_image"])
+        reject(self.approval_id, self.lead, "Please add the card photo")
+        self.as_(self.scout)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.url, {"ghana_card_front": png("late-card.png")}, format="multipart")
+        self.assertEqual(response.status_code, 201, response.content)
+        profile.refresh_from_db()
+        self.assertIn("late-card", profile.ghana_card_front_image.name)
+
     def test_replaced_photos_are_deleted_once_the_request_is_saved(self):
         reject(self.approval_id, self.lead, "Both photos are blurry")
         profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
@@ -425,13 +463,52 @@ class KycResubmitTests(RegistrationBase):
         event = ActivityEvent.objects.order_by("-id").first()
         self.assertEqual(event.after["photos"], ["signboard_photo", "ghana_card_front"])
 
+    def test_a_card_photo_in_review_or_verified_cannot_be_replaced_here(self):
+        reject(self.approval_id, self.lead, "Blurry")
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
+        reviewed = profile.ghana_card_front_image.name
+        self.assertTrue(reviewed)
+        self.as_(self.scout)
+        for status in (BusinessOwnerProfile.IDENTITY_PENDING, BusinessOwnerProfile.IDENTITY_VERIFIED):
+            with self.subTest(status=status):
+                BusinessOwnerProfile.objects.filter(pk=profile.pk).update(identity_status=status)
+                with self.captureOnCommitCallbacks(execute=True):
+                    response = self.client.post(
+                        self.url, {"ghana_card_front": png("swap.png"), "signboard_photo": png("sign.png")},
+                        format="multipart",
+                    )
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertEqual(response.json()["detail"], CARD_LOCKED_MESSAGE)
+                profile.refresh_from_db()
+                self.assertEqual(profile.ghana_card_front_image.name, reviewed)
+                self.assertTrue(default_storage.exists(reviewed))
+                self.assertFalse(ApprovalRequest.objects.filter(status="pending").exists())
+        # Other fields still go through while the card is locked.
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.url, {"signboard_photo": png("sign.png")}, format="multipart")
+        self.assertEqual(response.status_code, 201, response.content)
+        profile.refresh_from_db()
+        self.assertEqual(profile.ghana_card_front_image.name, reviewed)
+        self.assertIn("sign", profile.signboard_photo.name)
+
+    def test_a_rejected_card_photo_can_still_be_replaced(self):
+        reject(self.approval_id, self.lead, "Blurry")
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
+        BusinessOwnerProfile.objects.filter(pk=profile.pk).update(identity_status=BusinessOwnerProfile.IDENTITY_REJECTED)
+        self.as_(self.scout)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.url, {"ghana_card_front": png("retake.png")}, format="multipart")
+        self.assertEqual(response.status_code, 201, response.content)
+        profile.refresh_from_db()
+        self.assertIn("retake", profile.ghana_card_front_image.name)
+
     def test_a_replaced_photo_that_cannot_be_deleted_is_logged(self):
         reject(self.approval_id, self.lead, "Blurry")
         self.as_(self.scout)
         storage = mock.Mock()
         storage.delete.side_effect = OSError("disk full")
-        with mock.patch("portfolio.registration.default_storage", storage), \
-                self.assertLogs("portfolio.registration", level="ERROR"), \
+        with mock.patch("accounts.files.default_storage", storage), \
+                self.assertLogs("accounts.files", level="ERROR"), \
                 self.captureOnCommitCallbacks(execute=True):
             response = self.client.post(self.url, {"signboard_photo": png("again.png")}, format="multipart")
         self.assertEqual(response.status_code, 201, response.content)

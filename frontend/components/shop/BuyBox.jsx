@@ -1,3 +1,4 @@
+import VerifiedMark from "../VerifiedMark.jsx";
 import { useEffect, useState } from "react";
 import { C, tint } from "../../theme.js";
 import { useAddToCartBulk } from "../../hooks/useAddToCartBulk.js";
@@ -112,6 +113,7 @@ export default function BuyBox({ item, user, selection = {}, currency = "GHS", o
               >{ownerName}</a>
             ) : <strong style={{ color: C.ink }}>{ownerName}</strong>}
           </span>
+          <VerifiedMark verified={owner?.identity_verified} />
           {owner?.is_ashanti_direct === true && (
             <>
               <span style={{ background: tint(C.gold, "22"), color: C.ink, border: `1px solid ${tint(C.gold, "66")}`, borderRadius: 20, padding: "2px 9px", fontSize: "0.68rem", fontWeight: 800 }}>Ashanti Direct</span>
