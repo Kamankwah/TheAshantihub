@@ -250,7 +250,7 @@ const ROLE_MENUS = {
     // Scheduled orders (paid orders held until their shops open, with Send now) sits beside Orders & deliveries:
     // Director ruling 7 (2026-10-20) added it to the canvas menu. Verification calls and Pickup desk (Plan 1F),
     // then Re-deliveries and Free delivery (wallet 5F, Director ruling 8) follow it.
-    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "catalogue", "delivery", "delivery-scheduled", "support-verification", "pickup-desk", "redeliveries", "mk-delivery-promos", "events-moderation", "hero", "disputes", "ashanti-direct"]],
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "kyc", "moderation", "catalogue", "delivery", "delivery-scheduled", "support-verification", "pickup-desk", "redeliveries", "mk-delivery-promos", "events-moderation", "hero", "disputes", "ashanti-direct"]],
     ["listing-for-clients", "Listing for clients", ["prospects", "register-business", "client-listings"]],
     ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation", "wallets", "withdrawals"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
@@ -267,7 +267,7 @@ const ROLE_MENUS = {
   general_manager: [
     ["home", "Home", ["approvals"]],
     ["people", "People", ["my-team", "leave"]],
-    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "catalogue", "delivery", "events-moderation", "hero"]],
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "kyc", "moderation", "catalogue", "delivery", "events-moderation", "hero"]],
     ["money", "Money (read only)", ["transactions", "commissions"]],
     ["insights", "Insights", ["analytics", "team-reports"]],
     ["security-audit", "Security & audit", ["activity", "fraud-cases", "security"]],

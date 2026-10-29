@@ -2984,6 +2984,27 @@ export default function AshantiHub() {
   // to sit below it rather than under it.
   const showStaffBar = staffSession && !onStaffDashboardPath;
 
+  // The one site header (see the render below): the marketplace StorefrontHeader.
+  const storefrontHeader = (
+    <StorefrontHeader
+      user={user}
+      onSignOut={staffSession ? staffSignOut : () => auth.logout()}
+      setAuthModal={setAuthModal}
+      setShowAccount={setShowAccount}
+      setShowBizDash={setShowBizDash}
+      setShowPayments={setShowPayments}
+      setShowCart={openCartPage}
+      setShowFavs={setShowFavs}
+      setShowNotifs={setShowNotifs}
+      cartCount={cartItemCount}
+      wishlistCount={favourites.length}
+      notifCount={unreadNotifs}
+      theme={theme} toggleTheme={toggleTheme}
+      onNavigate={navigate}
+      onLogoClick={()=>{handleLogoClick();setPage("home");}}
+    />
+  );
+
   return (
     <div style={{fontFamily:"'Georgia',serif",background:C.canvas,minHeight:"100vh",
       ...(showStaffBar ? {"--ah-top-offset":`${STAFF_VIEW_ONLY_BAR_HEIGHT}px`,paddingTop:STAFF_VIEW_ONLY_BAR_HEIGHT} : {})}}>
@@ -2998,25 +3019,10 @@ export default function AshantiHub() {
       {showFavs&&<FavsDrawer/>}
       {showCart&&isCustomer&&<CartDrawer onClose={()=>setShowCart(false)} onGoToCart={()=>{setShowCart(false);navigate("/cart");}}/>}
       {/* Referral feature hidden until it's built properly (see note below). */}
-      {/* On "/" the marketplace home's own StorefrontHeader replaces this bar
-          (it is passed to StorefrontHome below); every other page keeps it. */}
-      {page!=="home"&&<Navbar
-        page={page} setPage={setPage}
-        lang={lang} setLang={setLang}
-        user={user} auth={auth}
-        handleLogoClick={handleLogoClick}
-        setAuthModal={setAuthModal}
-        setShowNotifs={setShowNotifs}
-        setShowBizDash={setShowBizDash}
-        setShowPayments={setShowPayments}
-        setShowAccount={setShowAccount}
-        setShowCart={openCartPage}
-        cartCount={cartItemCount}
-        notifCount={unreadNotifs}
-        theme={theme} toggleTheme={toggleTheme}
-        T={T}
-        onSignOut={staffSession ? staffSignOut : undefined}
-      />}
+      {/* One header for the whole site: the marketplace StorefrontHeader. On "/"
+          it is passed into StorefrontHome (below) so it sits under the
+          opening countdown; every other page renders it here. */}
+      {page!=="home"&&storefrontHeader}
 
       {/* A staff session can't register a business — same notice the
           "Register Your Business" CTAs show, for a direct /register visit. */}
@@ -3037,25 +3043,7 @@ export default function AshantiHub() {
           retired from home; /business stays the browse page. */}
       {page==="home"&&(
         <StorefrontHome
-          header={
-            <StorefrontHeader
-              user={user}
-              onSignOut={staffSession ? staffSignOut : () => auth.logout()}
-              setAuthModal={setAuthModal}
-              setShowAccount={setShowAccount}
-              setShowBizDash={setShowBizDash}
-              setShowPayments={setShowPayments}
-              setShowCart={openCartPage}
-              setShowFavs={setShowFavs}
-              setShowNotifs={setShowNotifs}
-              cartCount={cartItemCount}
-              wishlistCount={favourites.length}
-              notifCount={unreadNotifs}
-              theme={theme} toggleTheme={toggleTheme}
-              onNavigate={navigate}
-              onLogoClick={()=>{handleLogoClick();setPage("home");}}
-            />
-          }
+          header={storefrontHeader}
           user={user}
           onNavigate={navigate}
           onOpenListing={(id)=>setSelectedListingId(id)}
