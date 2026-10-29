@@ -1075,7 +1075,7 @@ describe('ListingDetailPage — verified check mark', () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, business_owner: { ...LISTING.business_owner, identity_verified: false } })))
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(await screen.findByText('Sold by Ama Boateng')).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'Sold by Ama Boateng' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Verified business')).not.toBeInTheDocument()
     expect(screen.queryByText(/unverified|not verified/i)).not.toBeInTheDocument()
   })
