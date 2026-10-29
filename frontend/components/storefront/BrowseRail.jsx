@@ -106,7 +106,10 @@ export default function BrowseRail({
 
   const asideRef = useRef(null);
   const closeRef = useRef(null);
+  const collapseRef = useRef(null);
+  const expandRef = useRef(null);
   const focusOnExpand = useRef(null);
+  const focusOtherToggle = useRef(false);
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; });
 
@@ -121,12 +124,23 @@ export default function BrowseRail({
     focusOnExpand.current = id;
     setCollapsed(false);
   };
+  const toggleFromButton = (next) => {
+    focusOtherToggle.current = true;
+    setCollapsed(next);
+  };
 
-  // A collapsed icon lands the reader on its section's heading once expanded.
+  // The two layouts are separate subtrees, so the button that was pressed is
+  // gone after the switch. Focus goes to the section heading after a collapsed
+  // icon, or to the other layout's toggle after the toggle itself, never to
+  // <body>.
   useEffect(() => {
-    if (collapsed || !focusOnExpand.current) return;
-    document.getElementById(headingIdFor(uid, focusOnExpand.current))?.focus();
+    if (!collapsed && focusOnExpand.current) {
+      document.getElementById(headingIdFor(uid, focusOnExpand.current))?.focus();
+    } else if (focusOtherToggle.current) {
+      (collapsed ? expandRef : collapseRef).current?.focus();
+    }
     focusOnExpand.current = null;
+    focusOtherToggle.current = false;
   }, [collapsed, uid]);
 
   // Phone drawer: focus moves in on open, Escape closes, and focus goes back
@@ -203,7 +217,7 @@ export default function BrowseRail({
       >
         {collapsed ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "8px 0" }}>
-            <button type="button" className="ah-rail-hit ah-rail-icon" onClick={() => setCollapsed(false)} aria-label="Expand filters" aria-expanded={false} title="Expand filters" style={iconButton}>
+            <button ref={expandRef} type="button" className="ah-rail-hit ah-rail-icon" onClick={() => toggleFromButton(false)} aria-label="Expand filters" aria-expanded={false} title="Expand filters" style={iconButton}>
               <RailIcon name="expand" />
             </button>
             <ul aria-label="Filter sections" style={{ listStyle: "none", margin: 0, padding: "8px 0 0", width: "100%", borderTop: `1px solid ${C.line}`, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
@@ -228,7 +242,7 @@ export default function BrowseRail({
                   <RailIcon name="close" />
                 </button>
               ) : (
-                <button type="button" className="ah-rail-hit ah-rail-icon" onClick={() => setCollapsed(true)} aria-label="Collapse filters" aria-expanded={true} title="Collapse filters" style={iconButton}>
+                <button ref={collapseRef} type="button" className="ah-rail-hit ah-rail-icon" onClick={() => toggleFromButton(true)} aria-label="Collapse filters" aria-expanded={true} title="Collapse filters" style={iconButton}>
                   <RailIcon name="collapse" />
                 </button>
               )}

@@ -159,6 +159,33 @@ describe('BrowseRail collapse', () => {
     }
   })
 
+  it('Collapse filters hands keyboard focus to Expand filters', () => {
+    renderRail()
+    const collapse = screen.getByRole('button', { name: 'Collapse filters' })
+    collapse.focus()
+    fireEvent.click(collapse)
+    expect(screen.getByRole('button', { name: 'Expand filters' })).toHaveFocus()
+  })
+
+  it('Expand filters hands keyboard focus to Collapse filters', () => {
+    window.localStorage.setItem(KEY, '1')
+    renderRail()
+    const expand = screen.getByRole('button', { name: 'Expand filters' })
+    expand.focus()
+    fireEvent.click(expand)
+    expect(screen.getByRole('button', { name: 'Collapse filters' })).toHaveFocus()
+  })
+
+  it('a round trip through the toggle ends on Collapse filters, and an icon still lands on its heading', () => {
+    renderRail()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse filters' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Expand filters' }))
+    expect(screen.getByRole('button', { name: 'Collapse filters' })).toHaveFocus()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse filters' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Customer reviews' }))
+    expect(screen.getByRole('heading', { name: 'Customer reviews' })).toHaveFocus()
+  })
+
   it('a collapsed icon expands the rail and focuses that section heading', async () => {
     window.localStorage.setItem(KEY, '1')
     server.use(json(TREE_URL, TREE))
