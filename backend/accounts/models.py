@@ -629,7 +629,8 @@ class LocationCapture(models.Model):
 
 class BusinessOwnerCategory(models.Model):
     """One category a business chose, in the order it chose them. Position 0 is the main one, mirrored in
-    `BusinessOwnerProfile.business_category`; write the list only through `accounts.categories.set_categories`."""
+    `BusinessOwnerProfile.business_category`. Write the list through `accounts.categories.set_categories` (API use); the
+    only other writer is `resync_after_category_delete`, run when a Category is deleted."""
 
     profile = models.ForeignKey(BusinessOwnerProfile, on_delete=models.CASCADE, related_name="category_links")
     category = models.ForeignKey("listings.Category", on_delete=models.CASCADE, related_name="+")

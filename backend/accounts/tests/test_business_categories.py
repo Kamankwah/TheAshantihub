@@ -133,6 +133,91 @@ class SetCategoriesTests(TestCase):
         self.assertEqual(categories_of(make_profile(phone="+233208887766")), [])
 
 
+class FixRoundTests(TestCase):
+    def setUp(self):
+        self.profile = make_profile()
+        self.cats = [make_category(f"fr-{i}") for i in range(6)]
+
+    def ids(self, profile=None):
+        profile = BusinessOwnerProfile.objects.get(pk=(profile or self.profile).pk)
+        return [c.pk for c in categories_of(profile)]
+
+    def test_categories_of_honours_a_prefetch(self):
+        profiles = [self.profile] + [make_profile(phone=f"+23320222000{i}") for i in range(1, 4)]
+        for profile in profiles:
+            set_categories(profile, [c.pk for c in self.cats[:3]])
+        queryset = BusinessOwnerProfile.objects.filter(pk__in=[p.pk for p in profiles]).prefetch_related(
+            "category_links__category"
+        )
+        # Two prefetch queries plus the profiles themselves, then nothing per profile.
+        with self.assertNumQueries(3):
+            lists = [categories_of(p) for p in queryset]
+        self.assertEqual([len(x) for x in lists], [3, 3, 3, 3])
+        self.assertEqual([c.pk for c in lists[0]], [c.pk for c in self.cats[:3]])
+        # A fresh single-profile call is one query.
+        fresh = BusinessOwnerProfile.objects.get(pk=self.profile.pk)
+        with self.assertNumQueries(1):
+            self.assertEqual(len(categories_of(fresh)), 3)
+
+    def test_the_writer_costs_a_constant_number_of_queries(self):
+        def run(n_existing):
+            profile = make_profile(phone=f"+2332033300{n_existing}")
+            if n_existing:
+                set_categories(profile, [c.pk for c in self.cats[:n_existing]])
+            from django.db import connection
+            from django.test.utils import CaptureQueriesContext
+
+            with CaptureQueriesContext(connection) as ctx:
+                set_categories(profile, [c.pk for c in reversed(self.cats[:2])])
+            return len(ctx)
+
+        self.assertEqual(run(1), run(5))
+
+    def test_a_bulk_category_delete_leaves_every_list_consistent(self):
+        other = make_profile(phone="+233205550001")
+        set_categories(self.profile, [c.pk for c in self.cats[:4]])
+        set_categories(other, [self.cats[1].pk, self.cats[4].pk, self.cats[2].pk])
+        Category.objects.filter(pk__in=[self.cats[0].pk, self.cats[2].pk]).delete()
+        self.assertEqual(self.ids(), [self.cats[1].pk, self.cats[3].pk])
+        self.assertEqual(self.ids(other), [self.cats[1].pk, self.cats[4].pk])
+        for profile in (self.profile, other):
+            fresh = BusinessOwnerProfile.objects.get(pk=profile.pk)
+            self.assertEqual(
+                list(fresh.category_links.values_list("position", flat=True)), list(range(fresh.category_links.count()))
+            )
+            self.assertEqual(fresh.business_category_id, fresh.category_links.first().category_id)
+
+    def test_deleting_a_profile_or_its_owner_does_not_error(self):
+        set_categories(self.profile, [self.cats[0].pk, self.cats[1].pk])
+        owner = self.profile.business_owner
+        owner.delete()
+        self.assertFalse(BusinessOwnerCategory.objects.exists())
+        profile = make_profile(phone="+233205550002")
+        set_categories(profile, [self.cats[0].pk])
+        profile.delete()
+        self.assertFalse(BusinessOwnerCategory.objects.exists())
+
+    def test_string_ids_are_accepted_and_garbage_is_not_found(self):
+        result = set_categories(self.profile, [str(self.cats[1].pk), self.cats[0].pk])
+        self.assertEqual([c.pk for c in result], [self.cats[1].pk, self.cats[0].pk])
+        for bad in ("abc", "", None, True, 1.5, "1.5", -3, 0, 2**70, [1], {"id": 1}):
+            with self.assertRaises(InvalidCategories) as ctx:
+                set_categories(self.profile, [self.cats[2].pk, bad])
+            self.assertEqual(ctx.exception.message, "That category doesn't exist.", bad)
+        with self.assertRaises(InvalidCategories) as ctx:
+            set_categories(self.profile, [str(self.cats[2].pk), self.cats[2].pk])
+        self.assertEqual(ctx.exception.message, "Pick each category once.")
+        with self.assertRaises(InvalidCategories):
+            set_categories(self.profile, None)
+        self.assertEqual(self.ids(), [self.cats[1].pk, self.cats[0].pk])
+
+    def test_length_and_duplicates_are_checked_before_any_query(self):
+        with self.assertNumQueries(0):
+            for bad in ([], [1, 1], list(range(1, 12))):
+                with self.assertRaises(InvalidCategories):
+                    set_categories(self.profile, bad)
+
+
 class BackfillTests(TestCase):
     def test_backfill_gives_a_list_of_one_and_leaves_empty_for_none(self):
         migration = importlib.import_module("accounts.migrations.0077_business_categories")
