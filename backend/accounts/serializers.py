@@ -418,6 +418,39 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
         return pending_approval_id(obj)
 
 
+class IdentityQueueSerializer(serializers.ModelSerializer):
+    """A row of the staff identity queue. Every identity_* value is the owner's
+    profile's identity review, never the KYC review (reviewed_by_name,
+    reviewed_at and kyc_rejection_reason belong to the KYC queue)."""
+
+    business_name = serializers.CharField(source="profile.business_name", read_only=True, default=None)
+    registered_by_name = serializers.CharField(source="registered_by.full_name", read_only=True, default=None)
+    registered_by_role = serializers.CharField(source="registered_by.role.get_name_display", read_only=True, default=None)
+    login_phone = serializers.SerializerMethodField()
+    identity_status = serializers.CharField(source="profile.identity_status", read_only=True, default=None)
+    identity_submitted_at = serializers.DateTimeField(source="profile.identity_submitted_at", read_only=True, default=None)
+    identity_reviewed_at = serializers.DateTimeField(source="profile.identity_reviewed_at", read_only=True, default=None)
+    identity_reviewed_by_name = serializers.CharField(
+        source="profile.identity_reviewed_by.full_name", read_only=True, default=None,
+    )
+    identity_rejection_reason = serializers.CharField(
+        source="profile.identity_rejection_reason", read_only=True, default=None,
+    )
+
+    class Meta:
+        model = BusinessOwner
+        fields = [
+            "id", "full_name", "business_name", "login_phone", "registration_channel",
+            "registered_by_name", "registered_by_role", "kyc_status", "identity_status",
+            "identity_submitted_at", "identity_reviewed_at", "identity_reviewed_by_name", "identity_rejection_reason",
+        ]
+
+    def get_login_phone(self, obj):
+        from .phones import mask_phone
+
+        return mask_phone(obj.login_phone)
+
+
 class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
     # `tin` is shown to every kyc.approve session, unlike the business-owner
     # detail, where it is users.manage-only (user decision, 2026-10-04): a

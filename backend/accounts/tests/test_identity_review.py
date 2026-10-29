@@ -1,8 +1,11 @@
 from datetime import timedelta
 
 from django.core.cache import cache
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework.test import APIClient
 
 from accounts import kyc
@@ -14,7 +17,7 @@ from notifications.models import Notification
 QUEUE = "/api/accounts/kyc/identity/pending/"
 
 
-class IdentityReviewTests(TestCase):
+class IdentityBase(TestCase):
     _counter = 0
 
     def setUp(self):
@@ -59,6 +62,8 @@ class IdentityReviewTests(TestCase):
     def _reopen(self, owner):
         return self.client.post(f"/api/accounts/kyc/{owner.id}/identity/re-review/", {}, format="json")
 
+
+class IdentityReviewTests(IdentityBase):
     def test_approve_sets_verified_reviewer_and_notifies_owner(self):
         owner = self._owner()
         self.as_(self.reviewer)
@@ -271,3 +276,85 @@ class IdentityReviewTests(TestCase):
         response = self._approve(owner)
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["detail"], kyc.IDENTITY_NOT_PENDING)
+
+
+class IdentityQueueRowTests(IdentityBase):
+    """The rows carry the identity review, not the KYC review."""
+
+    def _row(self, owner, tab):
+        rows = self.client.get(QUEUE + f"?status={tab}").json()
+        return next(row for row in rows if row["id"] == owner.id)
+
+    def _kyc_reviewed(self, owner):
+        owner.reviewed_by = self.boss
+        owner.reviewed_at = timezone.now() - timedelta(days=30)
+        owner.kyc_rejection_reason = "KYC reason, not identity."
+        owner.save()
+
+    def test_approved_row_shows_the_identity_reviewer_not_the_kyc_reviewer(self):
+        reviewed_at = timezone.now() - timedelta(hours=2)
+        owner = self._owner("verified", identity_reviewed_by=self.reviewer, identity_reviewed_at=reviewed_at)
+        self._kyc_reviewed(owner)
+        self.as_(self.lead)
+        row = self._row(owner, "approved")
+        self.assertEqual(row["identity_reviewed_by_name"], self.reviewer.full_name)
+        self.assertEqual(parse_datetime(row["identity_reviewed_at"]), reviewed_at)
+        self.assertEqual(row["identity_status"], "verified")
+        for key in ("reviewed_by_name", "reviewed_at", "kyc_rejection_reason"):
+            self.assertNotIn(key, row)
+
+    def test_rejected_row_shows_the_identity_reason_not_the_kyc_reason(self):
+        owner = self._owner("rejected", identity_rejection_reason="Card photo blurred.",
+                            identity_reviewed_by=self.reviewer, identity_reviewed_at=timezone.now())
+        self._kyc_reviewed(owner)
+        self.as_(self.lead)
+        row = self._row(owner, "rejected")
+        self.assertEqual(row["identity_rejection_reason"], "Card photo blurred.")
+        self.assertNotIn("kyc_rejection_reason", row)
+
+    def test_pending_row_shows_when_it_was_submitted_and_the_owner(self):
+        submitted = timezone.now() - timedelta(days=1)
+        owner = self._owner(submitted_at=submitted, scout=self.scout)
+        self.as_(self.reviewer)
+        row = self._row(owner, "pending")
+        self.assertEqual(parse_datetime(row["identity_submitted_at"]), submitted)
+        self.assertIsNone(row["identity_reviewed_at"])
+        self.assertIsNone(row["identity_reviewed_by_name"])
+        self.assertEqual(row["registered_by_name"], self.scout.full_name)
+        self.assertEqual(row["business_name"], owner.profile.business_name)
+        self.assertEqual(row["kyc_status"], owner.kyc_status)
+        self.assertEqual(row["registration_channel"], "scout")
+
+    def test_login_phone_is_masked(self):
+        owner = self._owner()
+        self.as_(self.reviewer)
+        row = self._row(owner, "pending")
+        self.assertNotEqual(row["login_phone"], owner.login_phone)
+        self.assertIn("***", row["login_phone"])
+
+    def test_verified_history_is_newest_identity_decision_first(self):
+        now = timezone.now()
+        old = self._owner("verified", identity_reviewed_at=now - timedelta(days=5), identity_reviewed_by=self.lead)
+        new = self._owner("verified", identity_reviewed_at=now - timedelta(hours=1), identity_reviewed_by=self.lead)
+        mid = self._owner("verified", identity_reviewed_at=now - timedelta(days=1), identity_reviewed_by=self.lead)
+        # A recent KYC decision on the oldest identity must not move it up.
+        self._kyc_reviewed(old)
+        self.as_(self.reviewer)
+        rows = self.client.get(QUEUE + "?status=approved").json()
+        self.assertEqual([row["id"] for row in rows], [new.id, mid.id, old.id])
+
+    def test_a_page_of_rows_costs_a_bounded_number_of_queries(self):
+        def count():
+            with CaptureQueriesContext(connection) as ctx:
+                response = self.client.get(QUEUE + "?status=approved")
+            self.assertEqual(response.status_code, 200)
+            return len(ctx), len(response.json())
+
+        self._owner("verified", identity_reviewed_by=self.lead, identity_reviewed_at=timezone.now(), scout=self.scout)
+        self.as_(self.reviewer)
+        one_queries, one_rows = count()
+        for _ in range(4):
+            self._owner("verified", identity_reviewed_by=self.lead, identity_reviewed_at=timezone.now(), scout=self.scout)
+        five_queries, five_rows = count()
+        self.assertEqual((one_rows, five_rows), (1, 5))
+        self.assertEqual(five_queries, one_queries)

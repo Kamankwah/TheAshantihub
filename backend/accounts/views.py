@@ -59,6 +59,7 @@ from .serializers import (
     invite_state,
     BusinessOwnerKYCDetailSerializer,
     BusinessOwnerKYCSerializer,
+    IdentityQueueSerializer,
     BusinessOwnerListSerializer,
     BusinessOwnerLoginSerializer,
     BusinessOwnerRegistrationSerializer,
@@ -594,7 +595,7 @@ IDENTITY_STATUS_MAP = {
 
 class IdentityPendingQueueView(generics.ListAPIView):
     """GET /api/accounts/kyc/identity/pending/?status=pending|approved|rejected (unknown: pending)."""
-    serializer_class = BusinessOwnerKYCSerializer
+    serializer_class = IdentityQueueSerializer
 
     def get_permissions(self):
         return [HasRolePermission("kyc.approve")]
@@ -602,7 +603,9 @@ class IdentityPendingQueueView(generics.ListAPIView):
     def get_queryset(self):
         tab = self.request.query_params.get("status", "pending")
         identity_status = IDENTITY_STATUS_MAP.get(tab, BusinessOwnerProfile.IDENTITY_PENDING)
-        queryset = kyc.with_review_data(BusinessOwner.objects.filter(profile__identity_status=identity_status))
+        queryset = BusinessOwner.objects.filter(profile__identity_status=identity_status).select_related(
+            "profile__identity_reviewed_by", "registered_by__role",
+        )
         if identity_status == BusinessOwnerProfile.IDENTITY_PENDING:
             return queryset.order_by("profile__identity_submitted_at", "id")
         return queryset.order_by("-profile__identity_reviewed_at", "-profile__identity_submitted_at", "-id")
