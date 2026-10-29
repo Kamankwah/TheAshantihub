@@ -93,7 +93,9 @@ function SpecsEditor({ specs, onChange }) {
   );
 }
 
-export default function ListingsPanel({ user, PaymentComponent, showToast, businessKind, basePath = DEFAULT_LISTINGS_PATH }) {
+export default function ListingsPanel({ user, PaymentComponent, showToast, businessKind, basePath = DEFAULT_LISTINGS_PATH, direct = false }) {
+  // `direct` (Ashanti Direct's operators): no hero cards (Marketing owns Direct's hero ads) and no
+  // business-to-support WhatsApp button; a new listing says a second person must approve it.
   // A business owner registers as a "product" or "service" business
   // (BusinessOwnerProfile.business_kind). When set, the create form is locked to
   // that kind: only matching categories are selectable and only that kind's
@@ -124,7 +126,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   const [promoteListingId, setPromoteListingId] = useState(null);
 
   const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings(true, basePath);
-  const { data: heroSubmission, refetch: refetchHeroSubmission } = useMyHeroSubmission();
+  const { data: heroSubmission, refetch: refetchHeroSubmission } = useMyHeroSubmission(!direct);
   const { data: categories } = useCategories();
   const { data: zones } = useZones();
   const listingList = listings || [];
@@ -281,7 +283,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         <h2 style={{ margin: 0, color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>🏷️ Listings &amp; Prices</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={() => { setShowCreate(s => !s); setCreateError(null); }} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "7px 16px", fontSize: "0.72rem", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>{createButtonLabel}</button>
-          <a href="https://wa.me/233244000000?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>
+          {!direct && <a href="https://wa.me/233244000000?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>}
         </div>
       </div>
 
@@ -366,15 +368,15 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       )}
 
       {/* Dated, free homepage-slider slides (image, video or YouTube link). The one-photo Hero Spotlight below is the older flow and stays for existing submissions. */}
-      <div style={{ ...glassCard, padding: "12px 16px", marginBottom: 14 }}>
+      {!direct && <div style={{ ...glassCard, padding: "12px 16px", marginBottom: 14 }}>
         <button type="button" onClick={() => setShowSlides((v) => !v)} aria-expanded={showSlides} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontWeight: 800, fontSize: "0.82rem", color: D.text, fontFamily: "inherit" }}>🌟 Homepage slider slides {showSlides ? "▲" : "▼"}</button>
         {showSlides && <div style={{ marginTop: 10 }}><HeroSlideForm mode="business" /></div>}
-      </div>
+      </div>}
 
       {/* Discoverability: when the owner has no hero submission yet, explain the
           feature so it's obvious how to get featured (they were previously left
           to notice the small per-photo button on their own). */}
-      {!heroSubmission?.id && !heroSubmitPhoto && (
+      {!direct && !heroSubmission?.id && !heroSubmitPhoto && (
         <div style={{ ...glassCard, padding: "12px 16px", marginBottom: 14, borderLeft: `4px solid ${D.gold}` }}>
           <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text }}>🌟 Hero Spotlight</div>
           <div style={{ fontSize: "0.72rem", color: D.textDim, marginTop: 2, lineHeight: 1.5 }}>
@@ -406,7 +408,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       {promoteListingId && (
         <div style={{ ...glassCard, padding: "14px 16px", marginBottom: 14, border: `2px solid ${D.cardBorderStrong}` }}>
           <PromotionsHubPanel
-            basePath={basePath} promoteBase={basePath === DEFAULT_LISTINGS_PATH ? "/api/listings" : basePath} listingId={promoteListingId}
+            basePath={basePath} promoteBase={basePath === DEFAULT_LISTINGS_PATH ? "/api/listings" : basePath} listingId={promoteListingId} direct={direct}
             user={user} PaymentComponent={PaymentComponent} showToast={showToast} onChanged={refetchListings}
             onClose={() => setPromoteListingId(null)}
           />
@@ -471,6 +473,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                         </div>
                       </>
                     )}
+                    {direct && ["draft", "pending_review"].includes(item.status) && <div style={{ fontSize: "0.68rem", color: D.amber, fontWeight: 700, marginTop: 3 }}>Needs a second person to approve</div>}
                     {item.status === "rejected" && item.rejection_reason && <div style={{ fontSize: "0.65rem", color: D.red, marginTop: 3 }}>Rejected: {item.rejection_reason}</div>}
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -497,7 +500,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                   </div>
                 </div>
               )}
-              {item.photos.length > 0 ? (
+              {direct ? null : item.photos.length > 0 ? (
                 <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${D.divider}` }}>
                   <div style={{ fontSize: "0.66rem", fontWeight: 700, color: D.textDim, marginBottom: 6 }}>🌟 Feature a photo on the homepage — pick one to submit:</div>
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>

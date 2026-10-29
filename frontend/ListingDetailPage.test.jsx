@@ -868,3 +868,42 @@ describe('ListingDetailPage — videos and seller link', () => {
     expect(screen.queryByRole('link', { name: /Sold by/ })).toBeNull()
   })
 })
+
+describe('ListingDetailPage — Ashanti Direct (marketplace plan 2)', () => {
+  it('product page shows the Ashanti Direct badge only when the API says so', async () => {
+    showListing({ ...LISTING, business_owner: { id: 3, full_name: 'ops login', name: 'Ashanti Direct', kyc_status: 'verified', is_ashanti_direct: true } })
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.getByRole('link', { name: 'Sold by Ashanti Direct' })).toBeInTheDocument()
+    expect(screen.getByText('Ashanti Direct', { selector: 'span' })).toBeInTheDocument()
+  })
+
+  it('no badge for a partner', async () => {
+    showListing({ ...LISTING, business_owner: { id: 9, full_name: 'Ama Boateng', name: 'Ama Boateng Crafts', kyc_status: 'verified', is_ashanti_direct: false } })
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.getByRole('link', { name: 'Sold by Ama Boateng Crafts' })).toBeInTheDocument()
+    expect(screen.queryByText('Ashanti Direct')).not.toBeInTheDocument()
+  })
+
+  it('clears the variant quantities when the page switches to another listing', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(WITH_VARIANTS)),
+      http.get('http://localhost:8000/api/listings/2/', () => HttpResponse.json({ ...WITH_VARIANTS, id: 2, name: 'Second thing' })),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const tree = (id) => (
+      <QueryClientProvider client={queryClient}>
+        <ListingDetailPage id={id} onBack={vi.fn()} user={null} favourites={[]} onFavourite={vi.fn()} currency="GHS" onMessage={vi.fn()} onAddToCart={vi.fn()} CardComponent={StubCard} />
+      </QueryClientProvider>
+    )
+    const { rerender } = render(tree(1))
+    await screen.findByText('Royal Ashanti Lodge')
+    fireEvent.click(screen.getByRole('button', { name: 'One more Small' }))
+    expect(screen.getByText('Small').closest('[data-testid="variant-row"]')).toHaveTextContent('1')
+    rerender(tree(2))
+    await screen.findByText('Second thing')
+    const qty = within(screen.getByText('Small').closest('[data-testid="variant-row"]')).getByTestId('variant-qty')
+    expect(qty).toHaveTextContent('0')
+  })
+})

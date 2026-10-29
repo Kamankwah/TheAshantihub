@@ -40,6 +40,7 @@ export default function Sidebar({
   showSort = true,
   showVerifiedToggle = true,
   showKindFilter = false,
+  showDirectFilter = false,
   categoryOptions,
   search,
   onSearchChange,
@@ -202,6 +203,18 @@ export default function Sidebar({
               style={{ width: 18, height: 18, accentColor: C.gold, cursor: "pointer" }}
             />
             <span style={{ color: "white", fontSize: "0.78rem", fontWeight: 700 }}>Verified businesses only</span>
+          </label>
+        )}
+
+        {showDirectFilter && (
+          <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, cursor: "pointer", minHeight: 44 }}>
+            <input
+              type="checkbox"
+              checked={!!filters.directOnly}
+              onChange={(e) => { const checked = e.target.checked; setFilters((f) => ({ ...f, directOnly: checked || undefined })); }}
+              style={{ width: 18, height: 18, accentColor: C.gold, cursor: "pointer" }}
+            />
+            <span style={{ color: "white", fontSize: "0.78rem", fontWeight: 700 }}>Sold by Ashanti Direct</span>
           </label>
         )}
 

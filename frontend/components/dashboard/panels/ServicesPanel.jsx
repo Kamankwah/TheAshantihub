@@ -94,13 +94,15 @@ function RequestCard({ sr, onChanged }) {
   );
 }
 
-export default function ServicesPanel({ basePath = DEFAULT_LISTINGS_PATH }) {
-  const { data, isLoading, isError, refetch } = useIncomingServiceRequests();
+// `direct` (Ashanti Direct): the incoming-request queue is a business owner's own inbox, which a staff
+// operator does not have, so it is neither fetched nor shown; only the listings are.
+export default function ServicesPanel({ basePath = DEFAULT_LISTINGS_PATH, direct = false }) {
+  const { data, isLoading, isError, refetch } = useIncomingServiceRequests({ enabled: !direct });
   const listings = useMyListings(true, basePath);
   const categories = useCategories();
 
-  if (isLoading) return <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading your requests…</div>;
-  if (isError) return <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your service requests.</div>;
+  if (!direct && isLoading) return <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading your requests…</div>;
+  if (!direct && isError) return <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your service requests.</div>;
   const requests = data || [];
   const active = requests.filter(r => !["completed", "declined", "cancelled"].includes(r.status));
 
@@ -121,10 +123,12 @@ export default function ServicesPanel({ basePath = DEFAULT_LISTINGS_PATH }) {
       {!listings.isLoading && myServices.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem", marginBottom: 20 }}>No approved service listings yet. Once a service is approved it appears here.</div>}
       {myServices.map(l => <OwnerListingCard key={l.id} listing={l} onChanged={listings.refetch} variant="service" basePath={basePath} />)}
 
+      {!direct && <>
       <div style={{ ...sectionTitle, marginTop: 28, marginBottom: 4 }}>Service requests</div>
       <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>{active.length} active. Accept a request with a quote, then track it to completion once the customer pays.</div>
       {requests.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem" }}>No service requests yet. They'll appear here when a customer requests one of your services.</div>}
       {requests.map(r => <RequestCard key={r.id} sr={r} onChanged={refetch} />)}
+      </>}
     </div>
   );
 }

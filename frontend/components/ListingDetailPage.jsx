@@ -1,5 +1,5 @@
 import FlashPriceTag from "./FlashPriceTag.jsx";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { C, tint } from "../theme.js";
 import { apiPost } from "../apiClient.js";
 import { useListing } from "../hooks/useListing.js";
@@ -84,6 +84,8 @@ export default function ListingDetailPage({
   const [cartError, setCartError] = useState(null);
   // Variant picker: quantity wanted per variant id (rows with 0 are left out of the add).
   const [variantQty, setVariantQty] = useState({});
+  // Another listing (same page, new id) must not inherit the previous listing's variant quantities.
+  useEffect(() => { setVariantQty({}); }, [id]);
   // Service request flow (business item 2 / Wave H2) — for a service listing,
   // a customer sends a request instead of adding to cart; the owner accepts
   // with a quote before any payment.
@@ -240,8 +242,11 @@ export default function ListingDetailPage({
                 onClick={(e) => { if (onOpenSeller) { e.preventDefault(); onOpenSeller(item.business_owner.id); } }}
                 style={{ color: C.lightGold, fontSize: "0.8rem", fontWeight: 700 }}
               >
-                Sold by {item.business_owner.full_name}
+                Sold by {item.business_owner.name || item.business_owner.full_name}
               </a>
+              {item.business_owner.is_ashanti_direct === true && (
+                <span style={{ marginLeft: 8, background: `${C.gold}22`, color: C.lightGold, border: `1px solid ${C.gold}66`, borderRadius: 20, padding: "2px 9px", fontSize: "0.65rem", fontWeight: 800 }}>Ashanti Direct</span>
+              )}
             </div>
           )}
           {item.tag && (
@@ -783,9 +788,9 @@ function SellerRatingBadge({ businessOwner, user }) {
         style={{ background: "none", border: "none", color: "white", fontSize: "0.82rem", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 8, fontFamily: "inherit" }}
       >
         {reviewCount > 0 ? (
-          <span>⭐ {avgRating} · Sold by {businessOwner.full_name} · {reviewCount} seller review{reviewCount === 1 ? "" : "s"}</span>
+          <span>⭐ {avgRating} · Sold by {businessOwner.name || businessOwner.full_name} · {reviewCount} seller review{reviewCount === 1 ? "" : "s"}</span>
         ) : (
-          <span>Sold by {businessOwner.full_name}</span>
+          <span>Sold by {businessOwner.name || businessOwner.full_name}</span>
         )}
         <span style={{ color: C.gold }}>{expanded ? "▲" : "▼"}</span>
       </button>

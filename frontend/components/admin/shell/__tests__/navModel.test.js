@@ -502,7 +502,7 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
       ['Home', ['My approvals']],
       ['People', ['Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays']],
       ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
-      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Scheduled orders', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
+      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Scheduled orders', 'Events & tickets', 'Homepage slider', 'Disputes & returns', 'Ashanti Direct']],
       ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets', 'Withdrawals']],
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
       ['Security & audit', ['Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings']],
@@ -602,5 +602,22 @@ describe('Marketing menu (canvas 2026-10-13)', () => {
 
   it('reads the promotions badge from the new staff-badges key', () => {
     expect(makeBadgeFor({ promotions_pending: 3, hero: 2, events: 1 }, 'marketing')('promotions')).toBe(3)
+  })
+})
+
+describe('Ashanti Direct (marketplace plan 2)', () => {
+  const idsFor = (role, perms) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
+
+  it('panel shows only to staff holding direct.operate', () => {
+    expect(idsFor('operations', ['direct.operate'])).toContain('ashanti-direct')
+    expect(idsFor('super_admin', ['direct.operate'])).toContain('ashanti-direct')
+    expect(idsFor('operations', ['listings.moderate'])).not.toContain('ashanti-direct')
+    expect(idsFor('support', ['messaging.manage'])).not.toContain('ashanti-direct')
+  })
+
+  it('sits beside Moderation in Operations and in the Marketplace group for Super Admin', () => {
+    const groupOfId = (role) => buildNavGroups({ user: { role }, hasPermission: () => true }).find((g) => g.items.some((i) => i.id === 'ashanti-direct'))?.label
+    expect(groupOfId('operations')).toBe('Moderation')
+    expect(groupOfId('super_admin')).toBe('Marketplace')
   })
 })

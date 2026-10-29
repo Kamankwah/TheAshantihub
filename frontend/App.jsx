@@ -3390,6 +3390,7 @@ export default function AshantiHub() {
               search={searchInput}
               onSearchChange={setSearchInput}
               showKindFilter={true}
+              showDirectFilter={true}
             />
             <div style={{flex:1,minWidth:0}}>
             {filters.category==="grocery"?(
