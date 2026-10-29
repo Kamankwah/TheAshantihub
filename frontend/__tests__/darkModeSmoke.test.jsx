@@ -214,15 +214,25 @@ describe('dark mode smoke: cart drawer', () => {
 describe('dark mode smoke: account', () => {
   it('every account tab renders with theme tokens and no light-only surfaces', async () => {
     withClient(
-      <UserPanel user={{ fullName: 'Ama Boateng', accountType: 'customer', id: 1, avatar: null }} auth={{ updateProfile: vi.fn(), refreshUser: vi.fn() }}
-        favourites={[]} toggleFav={vi.fn()} onExit={vi.fn()} PaymentComponent={() => null} theme="dark" toggleTheme={vi.fn()} />,
+      <MemoryRouter initialEntries={['/my-account']}>
+        <UserPanel user={{ fullName: 'Ama Boateng', accountType: 'customer', id: 1, avatar: null }} auth={{ updateProfile: vi.fn(), refreshUser: vi.fn() }}
+          favourites={[]} toggleFav={vi.fn()} onExit={vi.fn()} PaymentComponent={() => null} theme="dark" toggleTheme={vi.fn()} />
+      </MemoryRouter>,
     )
     await screen.findByText('Total Orders')
     expect(screen.getByRole('button', { name: 'Toggle theme' })).toBeInTheDocument()
     expect(usesThemeTokens()).toBe(true)
     expect(lightOnlyStyles()).toEqual([])
-    for (const tab of ['Orders & Delivery', 'Saved Businesses', 'Messages', 'My Events', 'My Tickets', 'Profile', 'Settings']) {
-      fireEvent.click(screen.getAllByText(tab)[0])
+    // The hub's eight sections (each opened from its tile), then the Orders section's tabs.
+    for (const tile of ['Your Orders', 'Login & security', 'Your Addresses', 'Your Payments', 'Your Lists', 'Customer Service', 'Your Messages', 'Sell on AshantiHub']) {
+      fireEvent.click(screen.getByRole('link', { name: new RegExp(tile) }))
+      await new Promise((r) => setTimeout(r, 30))
+      expect(lightOnlyStyles(), tile).toEqual([])
+      fireEvent.click(screen.getByRole('button', { name: 'Your Account home' }))
+    }
+    fireEvent.click(screen.getByRole('link', { name: /Your Orders/ }))
+    for (const tab of ['Bookings', 'Service requests', 'Tickets', 'My events']) {
+      fireEvent.click(screen.getByRole('tab', { name: tab }))
       await new Promise((r) => setTimeout(r, 30))
       expect(lightOnlyStyles(), tab).toEqual([])
     }

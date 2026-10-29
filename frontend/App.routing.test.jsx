@@ -363,6 +363,28 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
     8000,
   )
 
+  it.each(['/my-account/orders', '/my-account/payments/wallet', '/my-account/not-a-section'])(
+    'mounting directly at %s as a signed-in customer shows Your Account, never the 404 page',
+    async (path) => {
+      setStoredAuth({ token: 'test-token', account_type: 'customer', id: 1, full_name: 'Ama Owusu' })
+      server.use(
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
+          account_type: 'customer', id: 1, full_name: 'Ama Owusu', registration_step: 'complete',
+        })),
+        http.get('http://localhost:8000/api/orders/', () => HttpResponse.json([])),
+        http.get('http://localhost:8000/api/events/tickets/mine/', () => HttpResponse.json([])),
+      )
+      try {
+        renderAtPath(path)
+        expect(await screen.findByText('My Account', {}, { timeout: 3000 })).toBeInTheDocument()
+        expect(screen.queryByText(/page not found/i)).not.toBeInTheDocument()
+      } finally {
+        setStoredAuth(null)
+      }
+    },
+    8000,
+  )
+
   it(
     'mounting directly at /business/123 renders the Business tab AND opens ListingDetailPage for id 123',
     async () => {

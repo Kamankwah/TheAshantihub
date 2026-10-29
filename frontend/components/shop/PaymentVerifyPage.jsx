@@ -155,7 +155,7 @@ export default function PaymentVerifyPage() {
                 <button type="button" onClick={go("/")} style={btn(false)}>Continue shopping</button>
               </>}
               {status === "success" && !isOrder && kind === "wallet_topup" && (
-                <button type="button" onClick={go("/my-account")} style={btn(true)}>Back to your account</button>
+                <button type="button" onClick={go("/my-account/payments/overview")} style={btn(true)}>Back to your account</button>
               )}
               {status === "success" && !isOrder && kind !== "wallet_topup" && (
                 <button type="button" onClick={go("/")} style={btn(true)}>Back to AshantiHub</button>

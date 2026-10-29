@@ -38,6 +38,8 @@ import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
 import { C } from "./theme.js";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 import Flag from "./components/Flag.jsx";
+import AccountHub from "./components/account/AccountHub.jsx";
+import { ACCOUNT_ROOT, isAccountPath } from "./components/account/accountNav.js";
 import { formatAccraDayTime } from "./lib/accraTime.js";
 import OrderTrackingMap from "./components/OrderTrackingMap.jsx";
 import DeliveryCodeBox from "./components/DeliveryCodeBox.jsx";
@@ -1663,35 +1665,10 @@ export function BusinessDashboard({ onExit, user, auth }) {
 // imports back into App.jsx. Follows the site's light/dark theme through `D`
 // (theme tokens), with a toggle in its header like the business and staff
 // shells. EventSubmissionPanel (My Events) keeps its own fixed-dark palette.
-const ACCOUNT_NAV_ITEMS = [
-  { id: "overview", icon: "📊", label: "Overview", group: "main" },
-  { id: "orders", icon: "📦", label: "Orders & Delivery", group: "main" },
-  { id: "requests", icon: "🛠️", label: "My Requests", group: "main" },
-  { id: "bookings", icon: "🏨", label: "My Bookings", group: "main" },
-  { id: "saved", icon: "❤️", label: "Saved Businesses", group: "main" },
-  { id: "messages", icon: "💬", label: "Messages", group: "main" },
-  { id: "events", icon: "🎉", label: "My Events", group: "main" },
-  { id: "tickets", icon: "🎟️", label: "My Tickets", group: "main" },
-  { id: "profile", icon: "👤", label: "Profile", group: "system" },
-  { id: "settings", icon: "⚙️", label: "Settings", group: "system" },
-];
-const ACCOUNT_NAV_GROUPS = [
-  { id: "main", label: "Main" },
-  { id: "system", label: "System" },
-];
-
-// Orders (order id / item name) and Tickets (event name / ticket code) are the
-// only two tabs whose already-loaded data is cheaply client-side filterable —
-// the topbar search box only renders for these rather than sitting inert
-// (non-functional) on every other tab.
-const ACCOUNT_SEARCHABLE_TABS = new Set(["orders", "tickets"]);
-
 const accountMenuItemStyle = { display: "block", width: "100%", textAlign: "left", background: "none", border: "none", color: D.textDim, padding: "8px 10px", borderRadius: 8, fontSize: "0.76rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
 
-export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, setLang, PaymentComponent, theme, toggleTheme }) {
-  const [activeTab, setActiveTab] = useState("overview");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, setLang, PaymentComponent, theme, toggleTheme, onOpenPage, onRegisterBusiness }) {
+  const navigate = useNavigate();
   const [showNotifs, setShowNotifs] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const { data: categories } = useCategories();
@@ -1699,9 +1676,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
 
   // "Contact AshantiHub Support" on a booking opens Messages about that listing or event (never the business).
   const [supportAbout, setSupportAbout] = useState(null); // null | { name }
-  const goTab = (id) => { setActiveTab(id); setSearchQuery(""); setSidebarOpen(false); setSupportAbout(null); };
-  const contactSupport = (about) => { setSupportAbout(about || null); setActiveTab("messages"); setSearchQuery(""); setSidebarOpen(false); };
-  const activeItem = ACCOUNT_NAV_ITEMS.find(i=>i.id===activeTab);
+  const contactSupport = (about) => { setSupportAbout(about || null); navigate(`${ACCOUNT_ROOT}/messages`); };
   const signOut = () => { auth.logout(); onExit(); };
 
   // /my-account is a real URL anyone can hit directly, and AshantiHub's own
@@ -1715,7 +1690,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
   // that's who this page is for (Navbar sends a business owner to
   // BusinessCommandCenter instead) and who those endpoints admit.
   // Placed below this component's own hooks so the rules of hooks still
-  // hold; the queries live in the tab panels below, which never mount.
+  // hold; the queries live in the sections below, which never mount.
   const isCustomer = user?.accountType === "customer";
   if (auth.isLoading) {
     return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:D.pageBg,color:D.textDim}}>Loading…</div>;
@@ -1729,119 +1704,68 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     );
   }
 
-  return <div className="shadcn-scope command-center account-grid" style={{minHeight:"100vh",display:"flex"}}>
-    <div className="ah-account-backdrop" onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:190,display:sidebarOpen?"block":"none"}}/>
+  // App-owned pieces, handed to the hub as render functions (components/** never import App.jsx).
+  const render = {
+    overview: () => <OverviewPanel favourites={favourites} user={user}/>,
+    orders: (searchQuery) => <OrdersDeliveryTab searchQuery={searchQuery}/>,
+    requests: () => <ServiceRequestsTab PaymentComponent={PaymentComponent} onContactSupport={contactSupport}/>,
+    bookings: () => <MyBookingsTab onContactSupport={contactSupport}/>,
+    saved: () => <SavedBusinessesTab favourites={favourites} toggleFav={toggleFav}/>,
+    messages: () => (
+      <div>
+        <div style={{color:D.textDim,fontSize:"0.82rem",marginBottom:12}}>Messages with AshantiHub Support</div>
+        <MessagingCenter key={supportAbout?.name ?? ""} user={user} onClose={()=>navigate(ACCOUNT_ROOT)} initialBusiness={supportAbout} embedded/>
+      </div>
+    ),
+    events: () => <MyEventsTab user={user} categories={categories} zones={zones}/>,
+    tickets: (searchQuery) => <TicketsTab searchQuery={searchQuery} onContactSupport={contactSupport}/>,
+    profile: () => <AccountProfileCard user={user} auth={auth}/>,
+    settings: () => <SettingsTab user={user} auth={auth} lang={lang} setLang={setLang} onSignOut={signOut}/>,
+  };
 
-    <div className={`ah-account-sidebar${sidebarOpen?" ah-account-sidebar-open":""}`} style={{background:D.panelSolid,borderRight:`1px solid ${D.cardBorder}`,display:"flex",flexDirection:"column"}}>
-      <div style={{padding:"18px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${D.divider}`}}>
+  return <div className="shadcn-scope command-center account-grid" style={{minHeight:"100vh",display:"flex",flexDirection:"column"}}>
+    <div style={{background:tint(D.pageBg, "e6"),backdropFilter:"blur(8px)",borderBottom:`1px solid ${D.divider}`,padding:"0 16px",display:"flex",alignItems:"center",gap:12,height:64,position:"sticky",top:0,zIndex:80}}>
+      <button onClick={()=>navigate(ACCOUNT_ROOT)} aria-label="Your Account home" style={{display:"flex",alignItems:"center",gap:10,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>
         <Flag w={30} h={20}/>
-        <div>
+        <div style={{textAlign:"left"}}>
           <div style={{color:D.gold,fontWeight:900,fontSize:"0.88rem",lineHeight:1}}>AshantiHub</div>
           <div style={{color:D.textFaint,fontSize:"0.6rem",letterSpacing:"0.06em",textTransform:"uppercase"}}>My Account</div>
         </div>
-      </div>
-
-      <nav style={{flex:1,overflowY:"auto",padding:"14px 10px"}}>
-        {ACCOUNT_NAV_GROUPS.map(group=>(
-          <div key={group.id} style={{marginBottom:14}}>
-            <div style={{padding:"0 8px 6px",fontSize:"0.62rem",fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",color:D.textFaint}}>{group.label}</div>
-            {ACCOUNT_NAV_ITEMS.filter(i=>i.group===group.id).map(item=>{
-              const active = activeTab===item.id;
-              return (
-                <button key={item.id} onClick={()=>goTab(item.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:active?D.goldSoft:"none",border:"none",borderLeft:active?`3px solid ${D.gold}`:"3px solid transparent",borderRadius:"0 10px 10px 0",color:active?D.gold:D.textDim,padding:"9px 10px",fontSize:"0.78rem",fontWeight:active?800:600,cursor:"pointer",textAlign:"left",fontFamily:"inherit",marginBottom:2}}>
-                  <span>{item.icon}</span><span>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </nav>
-
-      <button onClick={()=>goTab("profile")} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",borderTop:`1px solid ${D.divider}`,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",width:"100%",textAlign:"left"}}>
-        <div style={{width:36,height:36,borderRadius:"50%",overflow:"hidden",background:D.gold,color:"#1a1205",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.9rem",flexShrink:0}}>
-          {user?.avatar ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (user?.fullName?.[0]?.toUpperCase()||"U")}
-        </div>
-        <div style={{minWidth:0,flex:1}}>
-          <div style={{color:D.text,fontWeight:700,fontSize:"0.78rem",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user?.fullName||"Customer"}</div>
-          <div style={{color:D.textFaint,fontSize:"0.64rem"}}>Customer Account</div>
-        </div>
       </button>
-    </div>
 
-    <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
-      <div style={{background:tint(D.pageBg, "e6"),backdropFilter:"blur(8px)",borderBottom:`1px solid ${D.divider}`,padding:"0 16px",display:"flex",alignItems:"center",gap:12,height:64,position:"sticky",top:0,zIndex:80}}>
-        <button className="ah-account-hamburger" onClick={()=>setSidebarOpen(true)} style={{display:"none",background:"none",border:`1px solid ${D.divider}`,borderRadius:8,color:D.text,width:34,height:34,cursor:"pointer",fontSize:"1rem",flexShrink:0}}>☰</button>
+      <div style={{flex:1}}/>
 
-        {/* Label only (no icon) — MessagingCenter renders its own "💬 Messages"
-            header when that tab is active, so icon+label here would duplicate
-            it verbatim on screen. */}
-        <div style={{color:D.text,fontWeight:800,fontSize:"0.92rem",whiteSpace:"nowrap"}}>{activeItem?.label}</div>
+      <div style={{position:"relative"}}>
+        <button onClick={()=>setShowNotifs(v=>!v)} title="Notifications" style={{background:"none",border:`1px solid ${D.divider}`,borderRadius:10,width:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text}}>🔔</button>
+        {showNotifs && <NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
+      </div>
 
-        {ACCOUNT_SEARCHABLE_TABS.has(activeTab) && (
-          <input
-            value={searchQuery}
-            onChange={e=>setSearchQuery(e.target.value)}
-            placeholder={activeTab==="orders" ? "Search orders…" : "Search tickets…"}
-            style={{flex:1,maxWidth:320,marginLeft:8,background:D.panelBg2,border:`1px solid ${D.divider}`,borderRadius:10,padding:"7px 12px",fontSize:"0.76rem",color:D.text,fontFamily:"inherit"}}
-          />
+      <div style={{position:"relative"}}>
+        <button onClick={()=>setShowProfileMenu(v=>!v)} aria-label="Account menu" style={{display:"flex",alignItems:"center",gap:6,background:"none",border:`1px solid ${D.divider}`,borderRadius:20,padding:"4px 10px 4px 4px",cursor:"pointer"}}>
+          <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",background:D.gold,color:"#1a1205",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.72rem"}}>
+            {user?.avatar ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (user?.fullName?.[0]?.toUpperCase()||"U")}
+          </div>
+          <span style={{color:D.text,fontSize:"0.7rem"}}>▾</span>
+        </button>
+        {showProfileMenu && (
+          <div onClick={()=>setShowProfileMenu(false)} style={{position:"fixed",inset:0,zIndex:98}}>
+            <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:44,right:0,width:200,...glassCard,padding:6,zIndex:99}}>
+              <div style={{padding:"6px 10px",color:D.text,fontWeight:700,fontSize:"0.78rem",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user?.fullName||"Customer"}</div>
+              <button onClick={()=>{navigate(`${ACCOUNT_ROOT}/security`);setShowProfileMenu(false);}} style={accountMenuItemStyle}>🔒 Login &amp; security</button>
+              <div style={{height:1,background:D.divider,margin:"4px 6px"}}/>
+              <button onClick={signOut} style={{...accountMenuItemStyle,color:D.red}}>🚪 Sign Out</button>
+            </div>
+          </div>
         )}
-
-        <div style={{flex:1}}/>
-
-        <div style={{position:"relative"}}>
-          <button onClick={()=>setShowNotifs(v=>!v)} title="Notifications" style={{background:"none",border:`1px solid ${D.divider}`,borderRadius:10,width:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text}}>🔔</button>
-          {showNotifs && <NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
-        </div>
-
-        <div style={{position:"relative"}}>
-          <button onClick={()=>setShowProfileMenu(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,background:"none",border:`1px solid ${D.divider}`,borderRadius:20,padding:"4px 10px 4px 4px",cursor:"pointer"}}>
-            <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",background:D.gold,color:"#1a1205",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.72rem"}}>
-              {user?.avatar ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (user?.fullName?.[0]?.toUpperCase()||"U")}
-            </div>
-            <span style={{color:D.text,fontSize:"0.7rem"}}>▾</span>
-          </button>
-          {showProfileMenu && (
-            <div onClick={()=>setShowProfileMenu(false)} style={{position:"fixed",inset:0,zIndex:98}}>
-              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:44,right:0,width:180,...glassCard,padding:6,zIndex:99}}>
-                <button onClick={()=>{goTab("profile");setShowProfileMenu(false);}} style={accountMenuItemStyle}>👤 Profile</button>
-                <button onClick={()=>{goTab("settings");setShowProfileMenu(false);}} style={accountMenuItemStyle}>⚙️ Settings</button>
-                <div style={{height:1,background:D.divider,margin:"4px 6px"}}/>
-                <button onClick={signOut} style={{...accountMenuItemStyle,color:D.red}}>🚪 Sign Out</button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <ThemeToggle theme={theme} onToggle={toggleTheme}/>
-        <button onClick={onExit} style={{background:"none",border:`1px solid ${D.divider}`,color:D.textDim,borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← Exit</button>
       </div>
 
-      <div style={{padding:"22px 20px 60px",flex:1}}>
-        {activeTab==="overview"&&<OverviewPanel favourites={favourites} user={user}/>}
-        {activeTab==="orders"&&<OrdersDeliveryTab searchQuery={searchQuery}/>}
-        {activeTab==="requests"&&<ServiceRequestsTab PaymentComponent={PaymentComponent} onContactSupport={contactSupport}/>}
-        {activeTab==="bookings"&&<MyBookingsTab onContactSupport={contactSupport}/>}
-        {activeTab==="saved"&&<SavedBusinessesTab favourites={favourites} toggleFav={toggleFav}/>}
-        {activeTab==="messages"&&<MessagingCenter key={supportAbout?.name ?? ""} user={user} onClose={()=>goTab("profile")} initialBusiness={supportAbout} embedded/>}
-        {activeTab==="events"&&<MyEventsTab user={user} categories={categories} zones={zones}/>}
-        {activeTab==="tickets"&&<TicketsTab searchQuery={searchQuery} onContactSupport={contactSupport}/>}
-        {activeTab==="profile"&&<AccountProfileCard user={user} auth={auth}/>}
-        {activeTab==="settings"&&<SettingsTab user={user} auth={auth} lang={lang} setLang={setLang} onSignOut={signOut}/>}
-      </div>
+      <ThemeToggle theme={theme} onToggle={toggleTheme}/>
+      <button onClick={onExit} style={{background:"none",border:`1px solid ${D.divider}`,color:D.textDim,borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← Exit</button>
     </div>
 
-    <style>{`
-      .ah-account-sidebar{ width:260px; height:100vh; position:sticky; top:0; flex-shrink:0; transition:transform .25s ease-out; }
-      @media (max-width:760px){
-        .ah-account-sidebar{ position:fixed; top:0; left:0; bottom:0; width:82vw; max-width:280px; z-index:200; transform:translateX(-100%); }
-        .ah-account-sidebar.ah-account-sidebar-open{ transform:translateX(0); }
-        .ah-account-hamburger{ display:inline-flex !important; }
-      }
-      @media (min-width:761px){
-        .ah-account-backdrop{ display:none !important; }
-        .ah-account-hamburger{ display:none; }
-      }
-    `}</style>
+    <div style={{padding:"22px 20px 60px",flex:1,width:"100%",maxWidth:1100,margin:"0 auto",boxSizing:"border-box"}}>
+      <AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport()} onOpenPage={onOpenPage} onRegisterBusiness={onRegisterBusiness}/>
+    </div>
   </div>;
 }
 
@@ -1969,7 +1893,7 @@ function DeliveryStepper({ status }) {
 // is only rendered for a paid order (delivery_status is otherwise still
 // "processing" by default but meaningless until payment clears). `searchQuery`
 // filters client-side by order id or an item's listing_name (see
-// ACCOUNT_SEARCHABLE_TABS above).
+// the Orders section's search box in AccountHub).
 // The customer's service requests (business item 2 / Wave H2). Shows each
 // request's status; an accepted request gets a "Pay to start" button that runs
 // the simulated payment then POSTs the pay endpoint (moving it to in_progress).
@@ -2166,7 +2090,7 @@ function MyEventsTab({ user, categories, zones }) {
 // mirrors that component's own ticketStatus() exactly (TicketSerializer has
 // no single status field): refunded takes priority, then delivered, then the
 // raw escrow_status. `searchQuery` filters client-side by event name or
-// ticket code (see ACCOUNT_SEARCHABLE_TABS above).
+// ticket code (see the Orders section's search box in AccountHub).
 function accountTicketStatus(t) {
   if (t.refunded_at) return { label: "Refunded", color: D.red };
   if (t.delivered_at) return { label: "Delivered", color: D.green };
@@ -2662,7 +2586,7 @@ export default function AshantiHub() {
     const path = PAGE_TO_PATH[id] ?? "/";
     if (location.pathname !== path) navigate(path);
   };
-  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !sellerMatch && !unsubscribeMatch && !trackedLinkMatch && !notifyStopMatch && !onStaffDashboardPath;
+  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !sellerMatch && !unsubscribeMatch && !trackedLinkMatch && !notifyStopMatch && !onStaffDashboardPath && !isAccountPath(location.pathname);
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
   const queryClient=useQueryClient();
@@ -2695,7 +2619,7 @@ export default function AshantiHub() {
     const path = val ? FLAG_TO_DASH_PATH.showCredit : "/";
     if (val ? !showCredit : showCredit) navigate(path);
   };
-  const showAccount = location.pathname === FLAG_TO_DASH_PATH.showAccount;
+  const showAccount = isAccountPath(location.pathname);
   const setShowAccount = (val) => {
     const path = val ? FLAG_TO_DASH_PATH.showAccount : "/";
     if (val ? !showAccount : showAccount) navigate(path);
@@ -3095,7 +3019,7 @@ export default function AshantiHub() {
       theme={theme} toggleTheme={toggleTheme}
       onViewSite={isStandaloneDisplay() ? undefined : ()=>navigate("/")}/>;
   }
-  if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment} theme={theme} toggleTheme={toggleTheme}/>;
+  if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment} theme={theme} toggleTheme={toggleTheme} onOpenPage={setPage} onRegisterBusiness={openRegister}/>;
   if(showBizDash||showPayments||showCredit) return <BusinessCommandCenter
     initialTab={showPayments?"payments":showCredit?"credit":"analytics"}
     onExit={()=>{setShowBizDash(false);setShowPayments(false);setShowCredit(false);}}

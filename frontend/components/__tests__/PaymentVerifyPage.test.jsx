@@ -126,7 +126,7 @@ describe('PaymentVerifyPage', () => {
     renderAt('/payment/return?reference=R')
     await flush()
     fireEvent.click(screen.getByRole('button', { name: 'Back to your account' }))
-    expect(screen.getByTestId('loc')).toHaveTextContent('/my-account')
+    expect(screen.getByTestId('loc').textContent).toBe('/my-account/payments/overview')
   })
 
   test('timeout after 60 seconds shows the honest wait message', async () => {
