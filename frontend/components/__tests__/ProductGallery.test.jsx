@@ -177,4 +177,28 @@ describe('ProductGallery', () => {
     fireEvent.keyDown(document.body, { key: 'Tab' })
     expect(dialog.contains(document.activeElement)).toBe(true)
   })
+
+  test('test_a_phone_listing_with_videos_but_no_photos_shows_the_no_photo_tile_and_keeps_the_videos_button', () => {
+    mm = installMatchMedia(400)
+    const { container } = render(<ProductGallery media={[upload]} title="Kente" />)
+    expect(container.querySelector('img')).toBeNull()
+    expect(screen.getByText('No photo yet')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Videos \(1\)/ })).toBeInTheDocument()
+  })
+
+  test('test_lightbox_arrow_keys_leave_a_focused_video_alone_and_the_page_scroll_is_locked_while_open', () => {
+    document.body.style.overflow = ''
+    const { unmount } = render(<ProductGallery media={[upload, { ...upload, id: 22, url: 'https://x/v2.mp4' }]} title="Kente" />)
+    fireEvent.click(screen.getByRole('button', { name: /Videos \(2\)/ }))
+    expect(document.body.style.overflow).toBe('hidden')
+    const video = screen.getByRole('dialog').querySelector('video')
+    expect(video).toHaveAttribute('src', 'https://x/v.mp4')
+    fireEvent.keyDown(video, { key: 'ArrowRight' })
+    expect(screen.getByRole('dialog').querySelector('video')).toHaveAttribute('src', 'https://x/v.mp4')
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Next' }), { key: 'ArrowRight' })
+    expect(screen.getByRole('dialog').querySelector('video')).toHaveAttribute('src', 'https://x/v2.mp4')
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(document.body.style.overflow).toBe('')
+    unmount()
+  })
 })

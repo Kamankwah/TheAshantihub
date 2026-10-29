@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { C, tint } from "../../theme.js";
+import { TABULAR } from "../storefront/storefrontType.js";
 import PriceTag from "./PriceTag.jsx";
 
 // A chip row per option axis (Colour, Size, ...) and, below, "Your selection": one row per chosen variant, each with its
@@ -8,7 +9,6 @@ import PriceTag from "./PriceTag.jsx";
 // variant it would be through `onPreview({variantId, price, wasPrice, discountPercent, image})` without adding it —
 // `image` is the variant's own image when it has one, else null (the API has none today; nothing is invented).
 // `selection` is {[variantId]: quantity} and is owned by the parent; every change goes out through `onChange(next)`.
-const TABULAR = { fontVariantNumeric: "tabular-nums", fontFeatureSettings: '"tnum" 1' };
 
 const previewOf = (v) => v && ({
   variantId: v.id,
@@ -18,7 +18,7 @@ const previewOf = (v) => v && ({
   image: v.image ?? v.image_url ?? null,
 });
 
-export default function VariantPicker({ axes, variants = [], onPreview, selection = {}, onChange }) {
+export default function VariantPicker({ axes, variants = [], onPreview, selection = {}, onChange, currency = "GHS" }) {
   const [chosen, setChosen] = useState({});
   // Variants without declared axes still need to be pickable: one axis made of their labels.
   const useLabels = !Array.isArray(axes) || axes.length === 0;
@@ -117,7 +117,7 @@ export default function VariantPicker({ axes, variants = [], onPreview, selectio
                   {image && <img src={image} alt="" width={40} height={40} style={{ objectFit: "cover", borderRadius: 8 }} />}
                   <div style={{ flex: 1, minWidth: 120 }}>
                     <div style={{ fontSize: "0.85rem", fontWeight: 700, color: C.ink }}>{v.label}</div>
-                    <PriceTag price={v.effective_price ?? v.price_amount} wasPrice={v.was_price} discountPercent={v.discount_percent} size="1rem" />
+                    <PriceTag price={v.effective_price ?? v.price_amount} wasPrice={v.was_price} discountPercent={v.discount_percent} currency={currency} size="1rem" />
                     {atMax && <div style={{ fontSize: "0.72rem", color: C.warnInk, fontWeight: 700 }}>Only {max} left</div>}
                   </div>
                   <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>

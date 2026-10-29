@@ -1,13 +1,12 @@
-import { useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { C } from "../../theme.js";
-import { apiPost } from "../../apiClient.js";
 import { apiErrorMessage } from "../../lib/apiErrorMessage.js";
 import { mediaOf } from "../../lib/listingMedia.js";
 import { aboutBullets, attributeRows } from "../../lib/listingFacts.js";
 import { useListing } from "../../hooks/useListing.js";
 import { useListingReviews } from "../../hooks/useListingReviews.js";
 import { useAlsoViewed } from "../../hooks/useAlsoViewed.js";
+import { useWishlist } from "../../hooks/useWishlist.js";
 import { useSponsored } from "../../hooks/useSponsored.js";
 import { useRecordView } from "../../hooks/useRecordView.js";
 import { useSiteSettings } from "../../hooks/useSiteSettings.js";
@@ -24,6 +23,7 @@ import ProductGallery from "./ProductGallery.jsx";
 import VariantPicker from "./VariantPicker.jsx";
 import BuyBox from "./BuyBox.jsx";
 import PriceTag from "./PriceTag.jsx";
+import { cheapestPrice } from "./cheapestPrice.js";
 import ReviewHistogram from "./ReviewHistogram.jsx";
 import ProductCarousel, { AlsoViewedCarousel, ProductTile } from "./ProductCarousel.jsx";
 
@@ -68,8 +68,8 @@ export default function ProductPage({ id, onBack, user, currency = "GHS", onMess
   const settings = useSiteSettings();
   const breakpoint = useBreakpoint();
   const reducedMotion = usePrefersReducedMotion();
-  const queryClient = useQueryClient();
   const listGate = useStaffGate(user);
+  const wishlist = useWishlist({ enabled: user?.accountType === "customer" });
   const [selection, setSelection] = useState({});
   const [preview, setPreview] = useState(null);
   const [guestNote, setGuestNote] = useState(null);
@@ -78,6 +78,8 @@ export default function ProductPage({ id, onBack, user, currency = "GHS", onMess
   const [pickerRound, setPickerRound] = useState(0);
   const saving = useRef(false);
   useRecordView(id, user);
+  // A note about the previous session (sign in to buy / save) must not outlive it.
+  useEffect(() => { setGuestNote(null); setListNote(null); }, [user?.id]);
 
   const variants = useMemo(() => (Array.isArray(item?.variants) ? item.variants : []), [item?.variants]);
   const picked = useMemo(() => reconcileSelection(selection, variants), [selection, variants]);
@@ -110,7 +112,8 @@ export default function ProductPage({ id, onBack, user, currency = "GHS", onMess
   const alsoItems = Array.isArray(alsoViewed.data?.results) ? alsoViewed.data.results : [];
   const hasSimilar = alsoItems.length > 0 || moreSponsored.length > 0;
 
-  const unitPrice = item.effective_price ?? item.price_amount ?? null;
+  // With options the headline reads "From": the cheapest option, not whatever price the listing row carries.
+  const unitPrice = variants.length > 0 ? cheapestPrice(item) : item.effective_price ?? item.price_amount ?? null;
   const shown = preview || { price: unitPrice, wasPrice: item.was_price ?? null, discountPercent: item.discount_percent ?? null };
   const media = mediaOf(item);
   const thumb = media.find((m) => m.kind === "image")?.url || null;
@@ -135,9 +138,8 @@ export default function ProductPage({ id, onBack, user, currency = "GHS", onMess
     if (isBusinessAccount) { setListNote({ ok: false, text: "Lists are for customer accounts. Sign in with a customer account to save this." }); return; }
     saving.current = true;
     try {
-      await apiPost("/api/wishlist/", { listing: item.id });
+      await wishlist.add(item.id);
       setListNote({ ok: true, text: "Saved to Your Lists." });
-      queryClient.invalidateQueries({ queryKey: ["wishlist"] });
     } catch (err) {
       setListNote({ ok: false, text: apiErrorMessage(err, "Could not save this to Your Lists.") });
     } finally {
@@ -176,7 +178,7 @@ export default function ProductPage({ id, onBack, user, currency = "GHS", onMess
       <FlashPriceTag listingId={item.id} />
       {variants.length > 0 && (
         <div style={{ margin: "12px 0" }}>
-          <VariantPicker key={pickerRound} axes={item.variant_axes} variants={variants} selection={picked} onChange={setSelection} onPreview={setPreview} />
+          <VariantPicker key={pickerRound} axes={item.variant_axes} variants={variants} selection={picked} onChange={setSelection} onPreview={setPreview} currency={currency} />
         </div>
       )}
       {facts.length > 0 && (
@@ -325,7 +327,14 @@ export default function ProductPage({ id, onBack, user, currency = "GHS", onMess
           <div style={{ minWidth: 0 }}>
             {reviewsQuery.isLoading
               ? <p style={{ ...paragraph, color: C.inkDim }}>Loading reviews…</p>
-              : <ReviewsList reviews={reviewsData?.results || []} tone="theme" />}
+              : reviewsQuery.isError
+                ? (
+                  <div role="alert" style={note(false)}>
+                    {"We couldn't load the reviews."}{" "}
+                    <button type="button" onClick={() => reviewsQuery.refetch()} style={{ background: "none", border: "none", padding: 0, color: C.errInk, textDecoration: "underline", cursor: "pointer", fontFamily: "inherit", fontSize: "inherit" }}>Try again</button>
+                  </div>
+                )
+                : <ReviewsList reviews={reviewsData?.results || []} tone="theme" />}
           </div>
         </div>
       );

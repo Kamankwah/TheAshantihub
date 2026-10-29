@@ -47,6 +47,13 @@ export default function GalleryLightbox({ media = [], startIndex = 0, title = ""
   const step = (d) => { if (list.length) go((idx + d + list.length) % list.length); };
   const switchTab = (t) => { pause(); setTab(t); setIdx(0); };
 
+  // The page behind does not scroll while the viewer is open (MobileGallery does the same).
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
   useEffect(() => {
     closeBtn.current?.focus();
     const back = returnTo.current;
@@ -57,8 +64,10 @@ export default function GalleryLightbox({ media = [], startIndex = 0, title = ""
 
   const onKeyDown = (e) => {
     if (e.key === "Escape") { e.stopPropagation(); pause(); onClose?.(); }
-    else if (e.key === "ArrowRight") step(1);
-    else if (e.key === "ArrowLeft") step(-1);
+    else if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && !(e.target instanceof Element && e.target.closest("video, audio"))) {
+      // On a focused <video controls> the arrows seek; they only change slides everywhere else.
+      step(e.key === "ArrowRight" ? 1 : -1);
+    }
     else if (e.key === "Tab" && dialog.current) {
       const nodes = [...dialog.current.querySelectorAll(FOCUSABLE)];
       if (!nodes.length) return;

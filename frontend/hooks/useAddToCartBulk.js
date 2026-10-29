@@ -40,6 +40,7 @@ export function useAddToCartBulk() {
       else await apiPost('/api/cart/items/', { listing: listingId, quantity: 1 })
       queryClient.invalidateQueries({ queryKey: ['cart'] })
       queryClient.invalidateQueries({ queryKey: ['cart-guard'] })
+      queryClient.invalidateQueries({ queryKey: ['listings'] }) // browse cart tiers read the cart
       return true
     } catch (err) {
       setActionError(bulkErrorMessage(err))

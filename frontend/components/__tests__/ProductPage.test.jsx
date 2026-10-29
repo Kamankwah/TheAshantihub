@@ -489,4 +489,62 @@ describe('ProductPage', () => {
     })
     expect(fixedDark.map((el) => el.outerHTML.slice(0, 120))).toEqual([])
   })
+
+  test('test_a_failed_reviews_read_says_so_with_a_retry_not_no_reviews_yet', async () => {
+    let reads = 0
+    server.use(http.get(`${API}/api/reviews/listing/12/`, () => {
+      reads += 1
+      if (reads === 1) return new HttpResponse(null, { status: 500 })
+      return HttpResponse.json({ count: 0, next: null, previous: null, results: [], avg_rating: 4.5, review_count: 8, distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } })
+    }))
+    showListing(GOODS)
+    renderPage()
+    expect(await screen.findByText("We couldn't load the reviews.")).toBeInTheDocument()
+    expect(screen.queryByText('No reviews yet.')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('No reviews yet.')).toBeInTheDocument()
+  })
+
+  test('test_the_seller_rating_is_shown_to_one_decimal', async () => {
+    server.use(http.get(`${API}/api/reviews/seller/9/`, () => HttpResponse.json({ count: 3, next: null, previous: null, results: [], avg_rating: 4.333333333333333, review_count: 3 })))
+    showListing(GOODS)
+    renderPage()
+    expect(await screen.findByText(/⭐ 4\.3 · Sold by/)).toBeInTheDocument()
+    expect(screen.queryByText(/4\.3333/)).toBeNull()
+  })
+
+  test('test_from_shows_the_cheapest_option_not_the_listings_headline_price', async () => {
+    showListing({ ...WITH_VARIANTS, effective_price: '150.00', variants: [variant(41, 'Large'), variant(42, 'Small', { price_amount: '120.00', effective_price: '120.00' })] })
+    renderPage()
+    const price = await screen.findByTestId('product-price')
+    expect(price).toHaveTextContent('From')
+    expect(price).toHaveTextContent('GHS 120.00')
+  })
+
+  test('test_sign_in_and_list_notes_clear_when_the_session_changes', async () => {
+    showListing(GOODS)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const page = (user) => (
+      <QueryClientProvider client={client}>
+        <ListingDetailPage id={12} onBack={vi.fn()} user={user} favourites={[]} onFavourite={vi.fn()} currency="GHS" onMessage={vi.fn()}
+          onOpenListing={vi.fn()} onOpenSeller={vi.fn()} onAddToCart={vi.fn().mockResolvedValue(undefined)} CardComponent={() => null} />
+      </QueryClientProvider>
+    )
+    const { rerender } = render(page(null))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to list' }))
+    expect(await screen.findByText('Sign in to save this to Your Lists.')).toBeInTheDocument()
+    rerender(page(CUSTOMER))
+    await waitFor(() => expect(screen.queryByText('Sign in to save this to Your Lists.')).toBeNull())
+  })
+
+  test('test_add_to_list_goes_through_the_one_wishlist_path_and_refreshes_it', async () => {
+    let reads = 0
+    server.use(http.get(`${API}/api/wishlist/`, () => { reads += 1; return HttpResponse.json([]) }))
+    showListing(GOODS)
+    renderPage({ user: CUSTOMER })
+    await waitFor(() => expect(reads).toBe(1))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to list' }))
+    expect(await screen.findByText('Saved to Your Lists.')).toBeInTheDocument()
+    await waitFor(() => expect(reads).toBeGreaterThan(1))
+  })
 })

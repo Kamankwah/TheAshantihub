@@ -83,4 +83,11 @@ describe('ProductCarousel', () => {
     expect(bag).toHaveTextContent('Was GHS 120.00')
     expect(screen.getByRole('button', { name: /Smock/ })).toHaveTextContent('Rated 4.0 out of 5')
   })
+
+  test('test_a_tile_with_options_shows_the_cheapest_option_after_from', () => {
+    const variants = [{ id: 1, effective_price: '150.00', available: true }, { id: 2, effective_price: '95.00', available: true }]
+    render(<ProductCarousel title="More" items={[card(1, 'Stole', { has_variants: true, effective_price: '150.00', variants })]} onOpen={vi.fn()} />)
+    expect(screen.getByText('From')).toBeInTheDocument()
+    expect(screen.getByText('GHS 95.00')).toBeInTheDocument()
+  })
 })

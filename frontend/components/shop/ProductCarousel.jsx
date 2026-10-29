@@ -6,9 +6,10 @@ import { useAlsoViewed } from "../../hooks/useAlsoViewed.js";
 import { starString } from "../ReviewComponents.jsx";
 import { BODY_FONT, HEADING_FONT, TABULAR } from "../storefront/storefrontType.js";
 import PriceTag from "./PriceTag.jsx";
+import { cheapestPrice } from "./cheapestPrice.js";
+import { SR_ONLY } from "./shopCopy.js";
 
 const GAP = 14;
-const SR_ONLY = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" };
 
 // The honest heading for the also-viewed row: "Customers also viewed" only when
 // the server built it from real co-views, otherwise what it really is.
@@ -21,7 +22,7 @@ export function alsoViewedTitle(basis) {
 // Drawn with theme tokens; App's Card is fixed-dark and unreadable here.
 export function ProductTile({ item, currency = "GHS", onOpen }) {
   const photo = item.main_photo || item.photos?.[0]?.image || null;
-  const price = item.effective_price ?? item.price_amount ?? null;
+  const price = item.has_variants ? cheapestPrice(item) : item.effective_price ?? item.price_amount ?? null;
   const rated = item.review_count > 0 && item.avg_rating != null;
   return (
     <button

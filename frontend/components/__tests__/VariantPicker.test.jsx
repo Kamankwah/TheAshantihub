@@ -20,9 +20,9 @@ const variants = [
 ]
 
 // A tiny host that owns the selection, as the product page does.
-function Host({ onPreview, initial = {}, items = variants, ax = axes }) {
+function Host({ onPreview, initial = {}, items = variants, ax = axes, currency }) {
   const [selection, setSelection] = useState(initial)
-  return <VariantPicker axes={ax} variants={items} onPreview={onPreview} selection={selection} onChange={setSelection} />
+  return <VariantPicker axes={ax} variants={items} onPreview={onPreview} selection={selection} onChange={setSelection} currency={currency} />
 }
 const chip = (name) => screen.getByRole('button', { name })
 
@@ -134,5 +134,12 @@ describe('VariantPicker', () => {
     fireEvent.click(chip('Gold'))
     fireEvent.mouseEnter(chip('Small'))
     expect(onPreview).toHaveBeenLastCalledWith(expect.objectContaining({ variantId: 42, image: null, price: '120.00' }))
+  })
+
+  test('test_the_selection_rows_convert_with_the_page_currency', () => {
+    render(<Host currency="USD" initial={{ 41: 1 }} />)
+    const row = screen.getByTestId('selection-row')
+    expect(row).toHaveTextContent('USD 8') // 120 x 0.067, whole units, like the page price
+    expect(row).not.toHaveTextContent('GHS')
   })
 })

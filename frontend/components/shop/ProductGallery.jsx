@@ -57,6 +57,24 @@ export default function ProductGallery({ media = [], title = "", activeVariantIm
     ? <MobileGallery media={media} startIndex={lightbox} title={title} onClose={() => setLightbox(null)} />
     : <GalleryLightbox media={media} startIndex={lightbox} title={title} onClose={() => setLightbox(null)} />;
 
+  if (phone && images.length === 0 && !activeVariantImage) {
+    // Videos but no photos: the tile, not a broken <img>; the Videos button opens the viewer.
+    return (
+      <div>
+        <div style={{ aspectRatio: "1 / 1", background: C.surface2, border: `1px solid ${C.line}`, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", color: C.inkDim, fontSize: 14 }}>
+          No photo yet
+        </div>
+        {videos.length > 0 && (
+          <button onClick={() => setLightbox(media.indexOf(videos[0]))} aria-label={`Videos (${videos.length})`}
+            style={{ marginTop: 8, padding: "10px 14px", minHeight: 44, borderRadius: 8, border: `1px solid ${C.line}`, background: C.surface2, color: C.ink, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+            ▶ Videos ({videos.length})
+          </button>
+        )}
+        {viewer}
+      </div>
+    );
+  }
+
   if (phone) {
     const slides = images.length ? images.map((m, i) => ({ m, src: i === 0 && activeVariantImage ? activeVariantImage : m.url })) : [{ m: null, src: activeVariantImage }];
     return (

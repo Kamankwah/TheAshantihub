@@ -1,8 +1,7 @@
 import { C } from "../../theme.js";
 import { convertAmount } from "../PriceLine.jsx";
-
-const TABULAR = { fontVariantNumeric: "tabular-nums", fontFeatureSettings: '"tnum" 1' };
-const SR_ONLY = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" };
+import { TABULAR } from "../storefront/storefrontType.js";
+import { SR_ONLY } from "./shopCopy.js";
 
 // The code, whole part and (for GHS) pesewas of a money string, via PriceLine's one converter.
 function parts(amount, currency) {

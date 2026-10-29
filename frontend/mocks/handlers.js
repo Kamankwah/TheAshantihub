@@ -358,9 +358,6 @@ export const handlers = [
   http.post('http://localhost:8000/api/reviews/moderation/:id/re-review/', () => {
     return HttpResponse.json({ id: 1, status: 'pending' })
   }),
-  http.get('http://localhost:8000/api/qa/questions/listing/:id/', () => {
-    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
-  }),
   http.get('http://localhost:8000/api/qa/questions/event/:id/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),

@@ -46,7 +46,7 @@ export default function SellerRatingBadge({ businessOwner, user, tone = "dark" }
         style={{ background: "none", border: "none", color: t.ink, fontSize: "0.82rem", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 8, fontFamily: "inherit", textAlign: t.align }}
       >
         {reviewCount > 0 ? (
-          <span>⭐ {avgRating} · Sold by {businessOwner.name || businessOwner.full_name} · {reviewCount} seller review{reviewCount === 1 ? "" : "s"}</span>
+          <span>⭐ {Number(avgRating).toFixed(1)} · Sold by {businessOwner.name || businessOwner.full_name} · {reviewCount} seller review{reviewCount === 1 ? "" : "s"}</span>
         ) : (
           <span>Sold by {businessOwner.name || businessOwner.full_name}</span>
         )}
