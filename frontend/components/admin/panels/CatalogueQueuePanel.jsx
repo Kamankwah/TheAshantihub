@@ -31,7 +31,7 @@ function choicesOf(request) {
   return list;
 }
 
-function CatalogueRow({ request, state, onDone }) {
+function CatalogueRow({ request, state, onDone, onRefusal }) {
   const listing = request.listing;
   const choices = choicesOf(request);
   const [choice, setChoice] = useState(request.catalogue_product ? String(request.catalogue_product.id) : NEW);
@@ -48,6 +48,7 @@ function CatalogueRow({ request, state, onDone }) {
   // listing has usually changed under us (not_pending, already_grouped, ...); match_exists is a prompt, not a refusal.
   const act = async (path, body, { after } = {}) => {
     setError(null);
+    onRefusal(null);
     setBusy(true);
     try {
       await apiPost(path, body);
@@ -57,7 +58,8 @@ function CatalogueRow({ request, state, onDone }) {
       if (err?.body?.code === "match_exists" && Array.isArray(err.body.matches)) {
         setConflict({ detail: err.body.detail, matches: err.body.matches });
       } else {
-        setError(apiErrorMessage(err, "Could not complete this. Please try again."));
+        // Held by the panel: the refetch usually drops this row, and a message inside it would vanish with it.
+        onRefusal(apiErrorMessage(err, "Could not complete this. Please try again."));
         onDone();
       }
     } finally {
@@ -173,7 +175,9 @@ function CatalogueRow({ request, state, onDone }) {
 
 export default function CatalogueQueuePanel() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("pending");
+  const [tab, setTabState] = useState("pending");
+  const [refusal, setRefusal] = useState(null);
+  const setTab = (next) => { setRefusal(null); setTabState(next); };
   const [pages, setPages] = useState({ pending: 1, approved: 1, rejected: 1 });
   const pending = useCatalogueQueue({ status: "pending", page: pages.pending });
   const approved = useCatalogueQueue({ status: "approved", page: pages.approved });
@@ -187,12 +191,13 @@ export default function CatalogueQueuePanel() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={dim}>Businesses ask to group a listing with a catalogue product. Nothing is grouped until you approve it here.</div>
+      {refusal && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", fontWeight: 700 }}>{refusal}</div>}
       <ModerationQueueTabs
         tab={tab}
         onTab={setTab}
         queries={queries}
         title="Product grouping"
-        renderRow={(request, state) => <CatalogueRow request={request} state={state} onDone={refetchAll} />}
+        renderRow={(request, state) => <CatalogueRow request={request} state={state} onDone={refetchAll} onRefusal={setRefusal} />}
       />
       {active && !Array.isArray(active) && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

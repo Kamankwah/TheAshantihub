@@ -199,16 +199,25 @@ describe('CatalogueQueuePanel', () => {
   })
 
   it('test_not_pending_conflict_shows_detail_and_refetches', async () => {
-    const calls = mockQueue({ pending: page([row()]) })
-    server.use(http.post(`${API}/requests/1/approve/`, () => HttpResponse.json({ detail: 'Someone else already decided this request.', code: 'not_pending' }, { status: 409 })))
+    let decided = false
+    const calls = []
+    server.use(http.get(`${API}/requests/pending/`, ({ request }) => {
+      const url = new URL(request.url)
+      const status = url.searchParams.get('status')
+      calls.push(status)
+      return HttpResponse.json(status === 'pending' && !decided ? page([row()]) : page([]))
+    }))
+    server.use(http.post(`${API}/requests/1/approve/`, () => {
+      decided = true
+      return HttpResponse.json({ detail: 'Someone else already decided this request.', code: 'not_pending' }, { status: 409 })
+    }))
     renderPanel()
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
-    expect(await screen.findByText('Someone else already decided this request.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('Milo tin')).not.toBeInTheDocument())
+    expect(screen.getByRole('alert')).toHaveTextContent('Someone else already decided this request.')
     await waitFor(() => {
-      for (const status of ['pending', 'approved', 'rejected']) expect(calls.filter((c) => c.status === status).length).toBeGreaterThanOrEqual(status === 'pending' ? 2 : 1)
+      for (const status of ['pending', 'approved', 'rejected']) expect(calls.filter((c) => c === status).length).toBeGreaterThanOrEqual(2)
     })
-    await waitFor(() => expect(calls.filter((c) => c.status === 'approved').length).toBeGreaterThanOrEqual(2))
-    expect(calls.filter((c) => c.status === 'rejected').length).toBeGreaterThanOrEqual(2)
   })
 
   it('test_next_page_follows_the_envelope', async () => {
