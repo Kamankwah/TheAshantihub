@@ -35,7 +35,7 @@ const BLANK = {
   business_name: "", business_kind: "", business_category: "",
   zone: "", gps_address: "",
   lat: "", lng: "", location_accuracy_m: "", location_is_manual: false, location_at: "",
-  ghana_card_number: "", maker_note: "",
+  ghana_card_number: "", is_formal: false, maker_note: "",
   hours: null, // the weekly hours the owner gave: [{weekday, closed, opens, closes}] x7, null until entered
   prospect_id: "", prospect_name: "", // set when the scout starts from the prospect list
 };
@@ -259,13 +259,19 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
   const categoryName = options.categories.find((c) => String(c.id) === String(form.business_category))?.label || "";
   const zoneName = options.zones.find((z) => String(z.id) === String(form.zone))?.name || "";
   const exact = check.result?.exact || [];
-  const canSubmit = check.state === "done" && exact.length === 0 && !submitting && Boolean(photos.signboard_photo && photos.ghana_card_front);
+  const canSubmit = check.state === "done" && exact.length === 0 && !submitting && Boolean(photos.signboard_photo);
 
   const update = (key) => (e) => {
     const value = e.target.value;
     dirty.current = true;
     setSavedForLater(false);
     setForm((f) => ({ ...f, [key]: value, ...(key === "business_kind" && value !== f.business_kind ? { business_category: "" } : {}) }));
+  };
+  const toggleFormal = (e) => {
+    const checked = e.target.checked;
+    dirty.current = true;
+    setSavedForLater(false);
+    setForm((f) => ({ ...f, is_formal: checked }));
   };
   const placeByHand = () => {
     dirty.current = true;
@@ -329,7 +335,6 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
     }
     if (n === 2) {
       if (!photos.signboard_photo) return "Take the signboard photo.";
-      if (!photos.ghana_card_front) return "Take the photo of the front of the owner's Ghana Card.";
     }
     return null;
   };
@@ -388,7 +393,8 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
     if (!form.location_is_manual) put("location_accuracy_m", form.location_accuracy_m);
     fd.append("location_is_manual", form.location_is_manual ? "true" : "false");
     fd.append("signboard_photo", photos.signboard_photo.file);
-    fd.append("ghana_card_front", photos.ghana_card_front.file);
+    if (photos.ghana_card_front) fd.append("ghana_card_front", photos.ghana_card_front.file);
+    fd.append("is_formal", form.is_formal ? "true" : "false");
     put("ghana_card_number", form.ghana_card_number.trim());
     put("maker_note", form.maker_note.trim());
     put("prospect_id", form.prospect_id);
@@ -507,7 +513,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
             <button type="button" onClick={() => { dirty.current = true; setForm((f) => ({ ...f, prospect_id: "", prospect_name: "" })); }} style={linkButton}>Not from the list</button>
           </div>
         )}
-        {retakePhotos && !photos.signboard_photo && !photos.ghana_card_front && (
+        {retakePhotos && !photos.signboard_photo && (
           <div style={callout(D.amber)}>Photos aren't kept in the draft — take them again on step 3.</div>
         )}
         {stepError && <div role="alert" style={callout(D.red)}>{stepError}</div>}
@@ -621,12 +627,19 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
           <>
             <PhotoSlot title="Signboard" inputLabel="Signboard photo" photo={photos.signboard_photo} onTake={takePhoto("signboard_photo")}
               tips={["Whole board in the frame, name readable", "Stand straight in front, not at an angle", "Include the shopfront if you can"]} />
-            <PhotoSlot title="Owner's Ghana Card · front" inputLabel="Ghana Card front photo" photo={photos.ghana_card_front} onTake={takePhoto("ghana_card_front")}
+            <PhotoSlot title="Owner's Ghana Card · front (optional)" inputLabel="Ghana Card front photo" photo={photos.ghana_card_front} onTake={takePhoto("ghana_card_front")} emptyLabel="Optional"
               tips={["Lay the card flat on a dark surface", "All four corners in the frame, no glare", "Front only — the back isn't needed"]} />
-            <div style={hintStyle}>Only Operations sees the Ghana Card photo, for the KYC check. Photos stay on this screen until you submit — they aren't kept in the draft.</div>
+            <div style={hintStyle}>Skip the card photo if the owner can't show the card right now — it's only needed for the verified check mark, and the owner can add it later. Only Operations sees it, for the KYC check. Photos stay on this screen until you submit — they aren't kept in the draft.</div>
             <Field label="Ghana Card number (optional)">
               <input value={form.ghana_card_number} onChange={update("ghana_card_number")} autoComplete="off" autoCapitalize="characters" maxLength={20} style={input} />
             </Field>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, minHeight: 44 }}>
+                <input type="checkbox" checked={Boolean(form.is_formal)} onChange={toggleFormal} aria-describedby="is-formal-hint" />
+                The business says it is registered
+              </label>
+              <div id="is-formal-hint" style={hintStyle}>If they can't show a certificate right now, just tick it and move on.</div>
+            </div>
             <div style={actions}>
               <button type="button" onClick={back} style={button(D.panelBg, D.text)}>Back</button>
               <button type="button" onClick={next} style={button(D.gold, D.text)}>Next: Review</button>
@@ -648,8 +661,9 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
             ]} />
             <ReviewGroup title="Photos" editLabel="Edit photos" onEdit={() => goTo(2)} rows={[
               ["Signboard", photos.signboard_photo ? `Taken ${hhmm(photos.signboard_photo.at)}` : "Not taken yet"],
-              ["Ghana Card", photos.ghana_card_front ? `Front, taken ${hhmm(photos.ghana_card_front.at)}` : "Not taken yet"],
+              ["Ghana Card", photos.ghana_card_front ? `Front, taken ${hhmm(photos.ghana_card_front.at)}` : "Skipped — the owner can add it later"],
               ["Ghana Card number", form.ghana_card_number],
+              ["Registered", form.is_formal ? "The business says it is registered" : "Not ticked"],
             ]} />
             <div style={labelStyle}>Checks</div>
             {check.state === "checking" && <div role="status" style={dim}>Checking for duplicates…</div>}
