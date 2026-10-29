@@ -438,8 +438,9 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   against today's rules (the listing may have changed since). One open revision per listing. Maker-checker: the
   creator, and for Ashanti Direct any `staff_contributors` member (original `created_by_staff` is never overwritten),
   cannot decide (`revisions.cannot_decide`, also called by `ModerationApproveView`).
-- **Variants** are goods/food only. Stock reservation order: listing rows by pk, then variant rows by pk. Checkout,
-  `_fail_order_checkout` and `orders.support.return_stock` all return stock per variant; the listing's price and stock are
+- **Variants** are goods/food only. Stock reservation order: listing rows by pk, then variant rows by pk. Checkout
+  reserves variant stock; stock goes back per variant through `payments.services._fail_order_checkout` and
+  `orders.support.return_stock` (the latter used by ledger refunds and pickup verification); the listing's price and stock are
   derived by `variants.sync_listing` (a variant listing has no listing-level sale price). A plain cart line on a listing
   that later gained variants is refused `choose_variant` before any stock work.
 - **Drop / Discontinue.** `dropped` is reversible without re-approval (restore respects the plan active-listing cap);
