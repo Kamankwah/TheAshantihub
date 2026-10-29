@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import ProductGallery from '../shop/ProductGallery.jsx'
 import { installMatchMedia } from '../../test/matchMedia.js'
@@ -9,6 +9,10 @@ const yt = { id: 21, kind: 'youtube', url: null, thumb_url: null, youtube_id: 'd
 const three = [img(1), img(2), img(3)]
 
 let mm
+beforeEach(() => {
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve())
+})
 afterEach(() => { mm?.restore(); mm = null; vi.restoreAllMocks() })
 
 const mainImg = () => screen.getByTestId('gallery-main-image')
@@ -122,7 +126,7 @@ describe('ProductGallery', () => {
   })
 
   test('test_changing_slide_pauses_the_playing_video', () => {
-    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    const pause = HTMLMediaElement.prototype.pause
     render(<ProductGallery media={[upload, { ...upload, id: 22, url: 'https://x/v2.mp4' }]} title="Kente" />)
     fireEvent.click(screen.getByRole('button', { name: /Videos \(2\)/ }))
     pause.mockClear()
@@ -148,5 +152,29 @@ describe('ProductGallery', () => {
     expect(container.querySelector('img')).toBeNull()
     expect(screen.getByText('No photo yet')).toBeInTheDocument()
     expect(screen.queryByText('Click to see full view')).toBeNull()
+  })
+
+  test('focused tab stays focused after selection', () => {
+    render(<ProductGallery media={[...three, upload]} title="Kente" />)
+    fireEvent.click(screen.getByRole('button', { name: /full view/i }))
+    const tab = screen.getByRole('tab', { name: /^Videos/ })
+    tab.focus()
+    fireEvent.click(tab)
+    expect(screen.getByRole('tab', { name: /^Videos/ })).toHaveFocus()
+  })
+
+  test('Tab and Shift+Tab stay inside the dialog', () => {
+    render(<ProductGallery media={three} title="Kente" />)
+    fireEvent.click(screen.getByRole('button', { name: /full view/i }))
+    const dialog = screen.getByRole('dialog')
+    const nodes = [...dialog.querySelectorAll('button:not([disabled])')]
+    nodes[nodes.length - 1].focus()
+    fireEvent.keyDown(document.activeElement, { key: 'Tab' })
+    expect(nodes[0]).toHaveFocus()
+    fireEvent.keyDown(document.activeElement, { key: 'Tab', shiftKey: true })
+    expect(nodes[nodes.length - 1]).toHaveFocus()
+    document.body.focus()
+    fireEvent.keyDown(document.body, { key: 'Tab' })
+    expect(dialog.contains(document.activeElement)).toBe(true)
   })
 })

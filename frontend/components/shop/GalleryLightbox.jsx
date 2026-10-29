@@ -11,6 +11,16 @@ const navBtn = {
   border: `1px solid ${C.border}`, background: C.surface, color: C.ink, fontSize: 22, cursor: "pointer", zIndex: 2,
 };
 
+function TabButton({ selected, label, n, onSelect }) {
+  return (
+    <button role="tab" aria-selected={selected} onClick={onSelect}
+      style={{ padding: "8px 16px", borderRadius: 20, border: `1px solid ${selected ? C.gold : C.line}`, cursor: "pointer",
+        background: selected ? C.gold : "transparent", color: selected ? C.darkBrown : C.ink, fontWeight: 700, fontSize: 13 }}>
+      {label} ({n})
+    </button>
+  );
+}
+
 // Modal viewer: images and videos in tabs, one slide at a time.
 export default function GalleryLightbox({ media = [], startIndex = 0, title = "", onClose }) {
   const reduced = usePrefersReducedMotion();
@@ -53,7 +63,9 @@ export default function GalleryLightbox({ media = [], startIndex = 0, title = ""
       const nodes = [...dialog.current.querySelectorAll(FOCUSABLE)];
       if (!nodes.length) return;
       const first = nodes[0], last = nodes[nodes.length - 1];
-      if (e.shiftKey && (document.activeElement === first || !dialog.current.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+      const inside = dialog.current.contains(document.activeElement);
+      if (!inside) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     }
   };
@@ -66,13 +78,6 @@ export default function GalleryLightbox({ media = [], startIndex = 0, title = ""
   useEffect(() => () => pause(), []);
 
   const cur = list[Math.min(idx, list.length - 1)];
-  const Tab = ({ id, label, n }) => (
-    <button role="tab" aria-selected={tab === id} onClick={() => switchTab(id)}
-      style={{ padding: "8px 16px", borderRadius: 20, border: `1px solid ${tab === id ? C.gold : C.line}`, cursor: "pointer",
-        background: tab === id ? C.gold : "transparent", color: tab === id ? C.darkBrown : C.ink, fontWeight: 700, fontSize: 13 }}>
-      {label} ({n})
-    </button>
-  );
 
   const slide = !cur ? null : cur.kind === "image" ? (
     <img key={cur.id} data-testid="lightbox-slide" className="gl-slide" src={cur.url} alt={title}
@@ -105,8 +110,8 @@ export default function GalleryLightbox({ media = [], startIndex = 0, title = ""
           width: "min(1100px, 100%)", maxHeight: "100%", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div role="tablist" style={{ display: "flex", gap: 8, flex: 1 }}>
-            {images.length > 0 && <Tab id="images" label="Images" n={images.length} />}
-            {videos.length > 0 && <Tab id="videos" label="Videos" n={videos.length} />}
+            {images.length > 0 && <TabButton selected={tab === "images"} label="Images" n={images.length} onSelect={() => switchTab("images")} />}
+            {videos.length > 0 && <TabButton selected={tab === "videos"} label="Videos" n={videos.length} onSelect={() => switchTab("videos")} />}
           </div>
           <button ref={closeBtn} onClick={onClose} aria-label="Close"
             style={{ width: 36, height: 36, borderRadius: 18, border: `1px solid ${C.line}`, background: C.surface2, color: C.ink, fontSize: 18, cursor: "pointer" }}>×</button>
