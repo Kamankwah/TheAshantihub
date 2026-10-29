@@ -66,7 +66,8 @@ class MultiStopCheckoutTests(EngineCase):
         for listing in listings:
             CartItem.objects.create(cart=cart, listing=listing, quantity=1, unit_price_snapshot="10.00")
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.customer, 'customer')}")
-        body = {"delivery_method": method, "delivery_address": "1 Road", "delivery_phone": "+233200000000"}
+        body = {"delivery_method": method, "delivery_address": "1 Road", "delivery_phone": "+233200000000",
+                "delivery_gps_address": "AK-039-5028", "delivery_landmark": "Blue gate"}
         if drop:
             body.update({"delivery_lat": drop[0], "delivery_lng": drop[1]})
         response = self.client.post("/api/orders/checkout/", body, format="json")

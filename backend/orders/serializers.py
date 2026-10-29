@@ -17,7 +17,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 DELIVERY_FIELDS = [
-    "delivery_method", "delivery_address", "delivery_phone", "delivery_lat", "delivery_lng",
+    "delivery_method", "delivery_address", "delivery_gps_address", "delivery_landmark", "delivery_phone",
+    "delivery_lat", "delivery_lng",
 ]
 # A business owner gets the customer's name and address but never their phone:
 # AshantiHub's delivery team runs door-to-door fulfilment, and a phone number
