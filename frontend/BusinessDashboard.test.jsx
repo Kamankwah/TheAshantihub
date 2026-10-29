@@ -859,6 +859,11 @@ describe('BusinessDashboard Products tab (business item 2)', () => {
       http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
       http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
       http.get('http://localhost:8000/api/hero/mine/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/catalogue/stock/', () => HttpResponse.json({
+        count: 1, next: null, previous: null, tracked_offers: 1, untracked_offers: 0,
+        settings: { cover_days: 7, fallback_units: 5, window_days: 28, alerts_enabled: false, sold_out_hidden: false },
+        results: [{ listing_id: 5, name: 'Kente Cloth', low: true, sold_out: false, basis: 'fallback', stock: 2, line: 5, days_of_cover: null }],
+      })),
       http.patch('http://localhost:8000/api/listings/mine/5/manage/', async ({ request }) => {
         manageBody = await request.json()
         return HttpResponse.json({ id: 5, ...manageBody })

@@ -13,6 +13,7 @@ import ListingsDonut from "../charts/ListingsDonut.jsx";
 import CreditRadialGauge from "../charts/CreditRadialGauge.jsx";
 import FactorBars from "../charts/FactorBars.jsx";
 import UsageMeters from "../charts/UsageMeters.jsx";
+import RestockSummaryCard from "../../catalogue/RestockSummaryCard.jsx";
 import ActivityFeed from "../widgets/ActivityFeed.jsx";
 import QuickActionGrid from "../widgets/QuickActionGrid.jsx";
 
@@ -41,7 +42,7 @@ function buildSpendSeries(transactions, now) {
   return buckets;
 }
 
-export default function AnalyticsPanel({ user, onNavigate }) {
+export default function AnalyticsPanel({ user, onNavigate, businessKind }) {
   const now = new Date();
   const { data: listings } = useMyListings();
   const { data: transactions } = useMyTransactions();
@@ -104,6 +105,7 @@ export default function AnalyticsPanel({ user, onNavigate }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {businessKind === "product" && <RestockSummaryCard onOpen={() => onNavigate("products", { view: "restock" })} />}
       {/* Welcome strip */}
       <div style={{
         ...glassCard,

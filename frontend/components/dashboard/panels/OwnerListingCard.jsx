@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { apiPatch, apiPost, apiPut } from "../../../apiClient.js";
 import { useListingRevision } from "../../../hooks/useListingRevision.js";
+import { useNeedsRestocking } from "../../../hooks/useCatalogueStock.js";
+import StockLineEditor from "../../catalogue/StockLineEditor.jsx";
 import { D, glassCard, sectionTitle, tint } from "../theme.js";
 import ListingChangesBanner from "./ListingChangesBanner.jsx";
 import MediaManager from "./MediaManager.jsx";
@@ -168,10 +170,18 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
   const [confirm, setConfirm] = useState(null); // "drop" | "discontinue" | null
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState(null);
+  const [lineOpen, setLineOpen] = useState(false);
+
+  // The low/sold-out call is the server's (Needs restocking list), never a client count rule.
+  // Ashanti Direct mounts this card on its own tree, where the owner-only catalogue API is off limits.
+  const catalogueOn = variant === "product" && (!basePath || basePath === DEFAULT_LISTINGS_PATH);
+  const stock = useNeedsRestocking({ enabled: catalogueOn });
+  const stockRow = catalogueOn ? (stock.data?.pages ?? []).flatMap(p => p.results ?? []).find(r => r.listing_id === listing.id) : null;
+  const soldOut = Boolean(stockRow?.sold_out);
+  const low = Boolean(stockRow?.low) && !soldOut;
 
   const dropped = listing.status === "dropped";
   const discontinued = listing.status === "discontinued";
-  const lowStock = isProduct && listing.stock_quantity != null && listing.stock_quantity <= 3;
   const base = `${basePath}/${listing.id}`;
 
   const run = async (call, fallback, after) => {
@@ -199,10 +209,12 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
           {discontinued && <Chip color={D.textFaint}>Discontinued</Chip>}
           <ExpiryBadge listing={listing} />
           {isProduct && (
-            <span style={{ background: lowStock ? tint(D.red, "22") : tint(D.green, "22"), color: lowStock ? D.red : D.green, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>
-              {listing.stock_quantity == null ? "Stock not tracked" : `${listing.stock_quantity} in stock`}
+            <span style={{ background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>
+              {listing.stock_quantity == null ? "Stock not counted" : `${listing.stock_quantity} in stock`}
             </span>
           )}
+          {soldOut && <Chip color={D.red}>Sold out</Chip>}
+          {low && <Chip color={D.amber}>Low stock</Chip>}
         </div>
       </div>
 
@@ -213,7 +225,8 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
       )}
 
       {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
-      {lowStock && !restockOpen && <div style={{ color: D.red, fontSize: "0.7rem", marginTop: 6 }}>Running low — restock soon.</div>}
+      {soldOut && !restockOpen && <div style={{ color: D.red, fontSize: "0.7rem", marginTop: 6 }}>Sold out — restock to keep selling.</div>}
+      {low && !restockOpen && <div style={{ color: D.amber, fontSize: "0.7rem", marginTop: 6 }}>Running low — restock soon.</div>}
 
       {!discontinued && !hasVariants && isProduct && (
         <div style={{ marginTop: 12 }}>
@@ -234,6 +247,9 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
 
       {!discontinued && (
         <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+          {catalogueOn && listing.stock_quantity != null && (
+            <button type="button" aria-expanded={lineOpen} onClick={() => setLineOpen(o => !o)} style={quietBtn}>Low-stock line</button>
+          )}
           {variantsAllowed && !hasVariants && !variantsOpen && (
             <button type="button" onClick={() => setVariantsOpen(true)} style={quietBtn}>＋ Add variants</button>
           )}
@@ -243,6 +259,10 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
             : <button type="button" disabled={busy} onClick={() => setConfirm("drop")} style={quietBtn}>Drop</button>}
           <button type="button" disabled={busy} onClick={() => setConfirm("discontinue")} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>Discontinue</button>
         </div>
+      )}
+
+      {lineOpen && catalogueOn && listing.stock_quantity != null && (
+        <div style={{ marginTop: 10 }}><StockLineEditor listingId={listing.id} /></div>
       )}
 
       {confirm && (

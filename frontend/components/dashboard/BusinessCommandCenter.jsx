@@ -73,6 +73,7 @@ function buildTabs(businessKind) {
 
 export default function BusinessCommandCenter({ initialTab = "analytics", onExit, user, auth, PaymentComponent, theme, toggleTheme }) {
   const [tab, setTab] = useState(TABS.some(t => t.id === initialTab) ? initialTab : "analytics");
+  const [tabView, setTabView] = useState(null);
   const [saved, setSaved] = useState(false);
   const [resubmitting, setResubmitting] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -113,7 +114,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
   const tabs = buildTabs(profile?.business_kind).filter(t => !(t.id === "subscription" && plansGone && subscriptionLoaded && !subscription?.id));
   const activeLabel = tabs.find(t => t.id === tab)?.label || "Overview";
 
-  const selectTab = (id) => { if (!isVerified) return; setTab(id); setMobileNavOpen(false); setShowProfile(false); };
+  const selectTab = (id, { view } = {}) => { if (!isVerified) return; setTabView(view || null); setTab(id); setMobileNavOpen(false); setShowProfile(false); };
 
   if (auth.isLoading) {
     return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: D.pageBg, color: D.textDim }}>Loading…</div>;
@@ -261,9 +262,9 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                 )}
                 {!plansGone && <RenewBanner subscription={subscription} onRenew={() => selectTab("subscription")} />}
                 <ManagerChangesCard />
-                {tab === "analytics" && <AnalyticsPanel user={user} onNavigate={selectTab} />}
+                {tab === "analytics" && <AnalyticsPanel user={user} onNavigate={selectTab} businessKind={profile?.business_kind} />}
                 {tab === "listings" && <ListingsPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
-                {tab === "products" && <ProductsPanel />}
+                {tab === "products" && <ProductsPanel initialView={tabView || "list"} key={tabView || "list"} />}
                 {tab === "services" && <ServicesPanel />}
                 {tab === "bookings" && <BookingsPanel />}
                 {tab === "events" && <EventsPanel user={user} PaymentComponent={PaymentComponent} />}
