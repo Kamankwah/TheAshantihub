@@ -486,8 +486,11 @@ class PaymentClearsTheClockTests(TestCase):
         self.assertFalse(ActivityEvent.objects.filter(verb="subscription.resumed").exists())
 
     def test_the_trial_path_never_lifts_the_pause_either(self):
+        category = Category.objects.create(
+            slug="clk-fabrics", icon="🧵", label="Fabrics", color="#7c3aed", kind="product",
+        )
         serializer = StartTrialSerializer(
-            data={"business_kind": "product", "plan": "product_basic", "cycle_months": 1}
+            data={"business_kind": "product", "plan": "product_basic", "cycle_months": 1, "categories": [category.pk]}
         )
         self.assertTrue(serializer.is_valid(), serializer.errors)
         serializer.save(business_owner=self.owner)

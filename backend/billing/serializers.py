@@ -1,9 +1,11 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from accounts.categories import InvalidCategories, set_categories
 from accounts.models import BusinessOwnerProfile
 
 from .clock import subscription_state
@@ -153,6 +155,8 @@ class StartTrialSerializer(serializers.Serializer):
         queryset=SubscriptionPlan.objects.filter(status=SubscriptionPlan.ACTIVE_STATUS),
     )
     cycle_months = serializers.ChoiceField(choices=Subscription.CYCLE_CHOICES)
+    # Required (checked in save(), where the owner is known) only when this call sets the kind; ignored otherwise.
+    categories = serializers.ListField(child=serializers.IntegerField(), required=False)
 
     def validate(self, attrs):
         if attrs["plan"].kind != attrs["business_kind"]:
@@ -169,27 +173,38 @@ class StartTrialSerializer(serializers.Serializer):
         period_length = timedelta(days=30 * cycle_months)
 
         profile = business_owner.profile
-        if profile.business_kind and profile.business_kind != plan.kind:
-            raise serializers.ValidationError({
-                "plan": [
-                    f"This plan is for {plan.get_kind_display().lower()} businesses, and yours is "
-                    f"registered as a {profile.get_business_kind_display().lower()} business."
-                ]
-            })
-        profile.business_kind = business_kind
-        profile.save(update_fields=["business_kind"])
+        # One transaction: a refused category list, or any later failure, leaves the kind unset so the owner can retry.
+        with transaction.atomic():
+            locked = BusinessOwnerProfile.objects.select_for_update(of=("self",)).get(pk=profile.pk)
+            profile.business_kind = locked.business_kind  # the cached profile feeds compute_registration_step()
+            if locked.business_kind and locked.business_kind != plan.kind:
+                raise serializers.ValidationError({
+                    "plan": [
+                        f"This plan is for {plan.get_kind_display().lower()} businesses, and yours is "
+                        f"registered as a {locked.get_business_kind_display().lower()} business."
+                    ]
+                })
+            if not locked.business_kind:
+                locked.business_kind = business_kind
+                locked.save(update_fields=["business_kind"])
+                try:
+                    set_categories(locked, self.validated_data.get("categories", []))
+                except InvalidCategories as error:
+                    raise serializers.ValidationError({"categories": [error.message]})
+                profile.business_kind = business_kind
+                profile.business_category = locked.business_category
 
-        subscription, _ = Subscription.objects.update_or_create(
-            business_owner=business_owner,
-            defaults={
-                "plan": plan,
-                "cycle_months": cycle_months,
-                "is_trial": True,
-                "status": Subscription.ACTIVE,
-                "current_period_start": now,
-                "current_period_end": now + period_length,
-            },
-        )
+            subscription, _ = Subscription.objects.update_or_create(
+                business_owner=business_owner,
+                defaults={
+                    "plan": plan,
+                    "cycle_months": cycle_months,
+                    "is_trial": True,
+                    "status": Subscription.ACTIVE,
+                    "current_period_start": now,
+                    "current_period_end": now + period_length,
+                },
+            )
         return subscription
 
 

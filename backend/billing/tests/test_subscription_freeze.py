@@ -5,6 +5,7 @@ from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile
 from billing import clock, switch
 from billing.models import Subscription, SubscriptionPlan
+from listings.models import Category
 
 
 class SwitchTests(TestCase):
@@ -20,6 +21,9 @@ class FrozenTests(TestCase):
         self.client = APIClient()
         self.owner = BusinessOwner.objects.create(full_name="Kofi", login_phone="+233207880001", password_hash="x")
         BusinessOwnerProfile.objects.create(business_owner=self.owner, business_name="Kofi Shop")
+        self.category = Category.objects.create(
+            slug="frz-fabrics", icon="🧵", label="Fabrics", color="#7c3aed", kind="product",
+        )
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.owner, 'business_owner')}")
 
     def test_the_public_plan_list_is_empty(self):
@@ -42,7 +46,9 @@ class FrozenTests(TestCase):
         self.assertEqual(refused.status_code, 409)
 
     def test_business_kind_endpoint_sets_the_kind_once(self):
-        response = self.client.post("/api/billing/business-kind/", {"business_kind": "product"}, format="json")
+        response = self.client.post(
+            "/api/billing/business-kind/", {"business_kind": "product", "categories": [self.category.pk]}, format="json",
+        )
         self.assertEqual(response.status_code, 200, response.content)
         self.owner.profile.refresh_from_db()
         self.assertEqual(self.owner.profile.business_kind, "product")
