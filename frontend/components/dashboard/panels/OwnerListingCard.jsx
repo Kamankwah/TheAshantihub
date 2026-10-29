@@ -3,6 +3,8 @@ import { apiPatch, apiPost, apiPut } from "../../../apiClient.js";
 import { useListingRevision } from "../../../hooks/useListingRevision.js";
 import { useNeedsRestocking } from "../../../hooks/useCatalogueStock.js";
 import StockLineEditor from "../../catalogue/StockLineEditor.jsx";
+import BarcodeField from "../../catalogue/BarcodeField.jsx";
+import { displayBarcode } from "../../catalogue/catalogueFormat.js";
 import { D, glassCard, sectionTitle, tint } from "../theme.js";
 import ListingChangesBanner from "./ListingChangesBanner.jsx";
 import MediaManager from "./MediaManager.jsx";
@@ -72,7 +74,9 @@ const normalise = (field, value) => {
   if (field === "tag") return value || null;
   return value ?? "";
 };
-const toForm = (field, value) => (BOOLEAN_FIELDS.includes(field) ? (value ? "yes" : "no") : value ?? "");
+const toForm = (field, value) => (BOOLEAN_FIELDS.includes(field) ? (value ? "yes" : "no") : field === "barcode" ? displayBarcode(value) : value ?? "");
+// What the live listing holds, worded like the form so an untouched barcode compares equal.
+const liveValue = (field, listing) => (field === "barcode" ? displayBarcode(listing.barcode) : listing[field]);
 
 function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCancel }) {
   const fields = ["name", "description", "tag", "contact_phone", ...(kind === "product" ? PRODUCT_FIELDS : kind === "stay" ? STAY_FIELDS : SERVICE_FIELDS)];
@@ -80,18 +84,19 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
   const [form, setForm] = useState(() => Object.fromEntries(fields.map(f => [f, toForm(f, staged[f] !== undefined ? staged[f] : listing[f])])));
   const [specs, setSpecs] = useState((staged.specs !== undefined ? staged.specs : listing.specs) || []);
   const [error, setError] = useState(null);
+  const [barcodeError, setBarcodeError] = useState(null);
   const update = (field, value) => setForm(f => ({ ...f, [field]: value }));
   const setSpec = (i, key, val) => setSpecs(prev => prev.map((s, idx) => idx === i ? { ...s, [key]: val } : s));
   const label = { fontSize: "0.72rem", fontWeight: 700, color: D.text, display: "block", marginBottom: 4 };
 
   const save = async () => {
-    setError(null);
+    setError(null); setBarcodeError(null);
     const cleanSpecs = specs.filter(s => s.label || s.value);
     const changes = {};
     if (!waiting) {
       for (const f of fields) {
-        const wanted = normalise(f, form[f]);
-        if (JSON.stringify(wanted) !== JSON.stringify(normalise(f, listing[f]))) changes[f] = wanted;
+        const wanted = normalise(f, f === "barcode" ? form[f].trim() : form[f]);
+        if (JSON.stringify(wanted) !== JSON.stringify(normalise(f, liveValue(f, listing)))) changes[f] = wanted;
       }
       if (JSON.stringify(cleanSpecs) !== JSON.stringify(listing.specs || [])) changes.specs = cleanSpecs;
     }
@@ -103,7 +108,11 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
       if (Object.keys(changes).length > 0) await apiPut(`${basePath}/${listing.id}/revision/`, { changes });
       onSaved();
     } catch (err) {
-      const words = serverMessage(err, "Could not save your changes. Please try again.");
+      // A barcode refusal sits under its field; any other refusal keeps the general message.
+      const { barcode, ...others } = err?.body && typeof err.body === "object" ? err.body : {};
+      if (barcode != null) setBarcodeError(barcode);
+      if (barcode != null && Object.keys(others).length === 0) { if (priceSaved) setError("Price saved; the other changes were not."); return; }
+      const words = serverMessage(barcode != null ? { body: others } : err, "Could not save your changes. Please try again.");
       setError(priceSaved ? `Price saved; the other changes were not. ${words}` : words);
     }
   };
@@ -134,10 +143,7 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
       <input value={form.contact_phone} onChange={e => update("contact_phone", e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
       <DecisionFields kind={kind === "product" ? "product" : "service"} isAccommodation={kind === "stay"} form={form} update={update} hideStock />
       {kind === "product" && (
-        <div style={{ marginBottom: 8 }}>
-          <label style={label}>Barcode</label>
-          <input value={form.barcode} onChange={e => update("barcode", e.target.value)} style={{ ...inputStyle, width: "100%" }} />
-        </div>
+        <BarcodeField id={`barcode-${listing.id}`} value={form.barcode} onChange={v => update("barcode", v)} error={barcodeError} savedKey={listing.barcode} />
       )}
       <div style={{ ...sectionTitle, fontSize: "0.72rem", marginBottom: 6 }}>Specs</div>
       {specs.map((s, i) => (
