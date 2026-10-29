@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../apiClient.js";
+import { bulkErrorMessage } from "../../hooks/useAddToCartBulk.js";
 import { useOrders } from "../../hooks/useOrders.js";
 import { useCanBuy } from "../../hooks/useCanBuy.js";
 import { useStaffGate } from "../../hooks/useStaffGate.js";
@@ -65,6 +66,18 @@ function withinMonths(iso, months) {
   return t >= cutoff.getTime();
 }
 
+// A 400 that names a bad/hidden listing or a version that is gone means "no longer available"; every other refusal
+// (stock caps, cart guard, sign-in) is the server's own message, never relabelled.
+function isUnavailable(err) {
+  const body = err?.body;
+  if (err?.status === 400 && body) {
+    if (body.listing) return true;
+    if (Array.isArray(body.lines)) return body.lines.some((l) => /not available/i.test(typeof l === "string" ? l : l?.detail || ""));
+  }
+  return err?.status === 404;
+}
+const refusalText = (err) => bulkErrorMessage(err);
+
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 // The customer's orders (moved here from App.jsx's OrdersDeliveryTab; same tracking, confirm-receipt and dispute
@@ -96,7 +109,7 @@ export default function OrdersPanel({ user }) {
   const buyAgain = async (o) => {
     if (gate.blocked(o.id)) return;
     if (again[o.id]?.busy) return;
-    setAgain((cur) => ({ ...cur, [o.id]: { busy: true, added: 0, missing: [], failed: [] } }));
+    setAgain((cur) => ({ ...cur, [o.id]: { busy: true, added: 0, missing: [], refused: [], partial: [] } }));
     const groups = new Map();
     for (const it of o.items || []) {
       if (it.listing == null) { groups.set(`gone-${it.id}`, { gone: true, name: it.listing_name }); continue; }
@@ -107,23 +120,26 @@ export default function OrdersPanel({ user }) {
     }
     let added = 0;
     const missing = [];
-    const failed = [];
+    const refused = []; // server refusals shown in the server's own words (stock caps, cart guard, ...)
+    const partial = []; // a listing whose variant lines were added but whose plain lines were refused
     for (const g of groups.values()) {
       if (g.gone) { missing.push(g.name); continue; }
+      let didVariants = false;
       try {
-        if (g.variants.length > 0) await apiPost("/api/cart/items/bulk/", { listing: g.listing, lines: g.variants });
+        if (g.variants.length > 0) { await apiPost("/api/cart/items/bulk/", { listing: g.listing, lines: g.variants }); didVariants = true; }
         if (g.plain > 0) await apiPost("/api/cart/items/", { listing: g.listing, quantity: g.plain });
         added += 1;
       } catch (err) {
-        if (err?.status >= 400 && err?.status < 500) missing.push(g.name);
-        else failed.push(g.name);
+        if (didVariants) { added += 1; partial.push(`${g.name}: the versions were added, the rest was not. ${refusalText(err)}`); }
+        else if (isUnavailable(err)) missing.push(g.name);
+        else refused.push(`${g.name}: ${refusalText(err)}`);
       }
     }
     if (added > 0) {
       queryClient.invalidateQueries({ queryKey: ["cart"] });
       queryClient.invalidateQueries({ queryKey: ["cart-guard"] });
     }
-    setAgain((cur) => ({ ...cur, [o.id]: { busy: false, added, missing, failed } }));
+    setAgain((cur) => ({ ...cur, [o.id]: { busy: false, added, missing, refused, partial } }));
   };
 
   if (isLoading) return <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>;
@@ -207,7 +223,8 @@ export default function OrdersPanel({ user }) {
                 <div role="status" style={{ marginTop: 10, fontSize: "0.76rem", display: "grid", gap: 3 }}>
                   {result.added > 0 && <div style={{ color: D.green, fontWeight: 700 }}>Added {plural(result.added, "product")} to your cart.</div>}
                   {result.missing.map((name) => <div key={`m-${name}`} style={{ color: D.red }}>{name} is no longer available</div>)}
-                  {result.failed.map((name) => <div key={`f-${name}`} style={{ color: D.red }}>Could not add {name}. Please try again.</div>)}
+                  {result.partial.map((t) => <div key={`p-${t}`} style={{ color: D.red }}>{t}</div>)}
+                  {result.refused.map((t) => <div key={`f-${t}`} style={{ color: D.red }}>{t}</div>)}
                 </div>
               )}
 

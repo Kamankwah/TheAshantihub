@@ -310,6 +310,39 @@ describe('Your Orders (the Orders tab)', () => {
     expect(calls).toEqual([12, 13])
   })
 
+  it('a cart-guard refusal and a stock refusal show the server words, not "no longer available"', async () => {
+    server.use(
+      http.post('http://localhost:8000/api/cart/items/bulk/', () => HttpResponse.json({ lines: [{ index: 0, detail: 'Large: only 3 in stock, 2 already in your cart.' }] }, { status: 400 })),
+      http.post('http://localhost:8000/api/cart/items/', () => HttpResponse.json({ detail: 'You can only order from 4 shops at once.', code: 'shop_limit' }, { status: 400 })),
+    )
+    renderOrders([order({
+      items: [
+        { id: 1, listing: 12, listing_name: 'Kente Stole', variant: 41, variant_label: 'Large', quantity: 2, line_total: '260.00' },
+        { id: 3, listing: 50, listing_name: 'Shea Butter', variant: null, variant_label: '', quantity: 3, line_total: '90.00' },
+      ],
+    })])
+    fireEvent.click(await screen.findByRole('button', { name: 'Buy it again' }))
+    expect(await screen.findByText(/Kente Stole: Large: only 3 in stock, 2 already in your cart\./)).toBeInTheDocument()
+    expect(screen.getByText(/Shea Butter: You can only order from 4 shops at once\./)).toBeInTheDocument()
+    expect(screen.queryByText(/no longer available/)).not.toBeInTheDocument()
+  })
+
+  it('a listing whose variant lines were added but plain line refused is reported as a partial add', async () => {
+    server.use(
+      http.post('http://localhost:8000/api/cart/items/bulk/', () => HttpResponse.json({ id: 1, items: [] }, { status: 201 })),
+      http.post('http://localhost:8000/api/cart/items/', () => HttpResponse.json({ detail: 'Sold out.' }, { status: 400 })),
+    )
+    renderOrders([order({
+      items: [
+        { id: 1, listing: 12, listing_name: 'Kente Stole', variant: 41, variant_label: 'Large', quantity: 1, line_total: '130.00' },
+        { id: 2, listing: 12, listing_name: 'Kente Stole', variant: null, variant_label: '', quantity: 1, line_total: '130.00' },
+      ],
+    })])
+    fireEvent.click(await screen.findByRole('button', { name: 'Buy it again' }))
+    expect(await screen.findByText(/Kente Stole: the versions were added, the rest was not\. Sold out\./)).toBeInTheDocument()
+    expect(screen.queryByText(/no longer available/)).not.toBeInTheDocument()
+  })
+
   it('Buy it again is disabled with the opening label before the marketplace opens', async () => {
     server.use(gatedOpening({ opensAt: '2099-11-06T06:00:00Z' }))
     renderOrders([order()])
