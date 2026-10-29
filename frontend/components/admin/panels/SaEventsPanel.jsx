@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useSaEventCounts, useSaEvents } from "../../../hooks/useMarketplace.js";
 import { D } from "../theme.js";
 import { button, callout, dim } from "./panelStyles.js";
-import { Chip, ExportButton, FilterBar, KpiStrip, LoadState, Pager, ScreenHeader, SimulatedBanner, col, dateOnly, dateTime, showing, tableStyle, td, th } from "./marketplaceParts.jsx";
+import { Chip, CountCell, CountHead, ExportButton, FilterBar, KpiStrip, LoadState, Pager, ScreenHeader, SimulatedBanner, col, dateOnly, dateTime, showing, tableStyle, td, th } from "./marketplaceParts.jsx";
 import { card, h3, money, useDebounced } from "./portfolioParts.jsx";
 
 // Super Admin > Events & tickets (screen 21): real ticket and escrow records.
@@ -94,8 +94,8 @@ export default function SaEventsPanel() {
         {!list.isLoading && !list.isError && rows.length === 0 && <div style={dim}>No event matches.</div>}
         {rows.length > 0 && (
           <div style={{ overflowX: "auto" }}>
-            <table aria-label="Events" style={{ ...tableStyle, minWidth: 940 }}>
-              <thead><tr><th style={th}>Event</th><th style={th}>When · where</th><th style={th}>Tickets sold</th><th style={th}>Price</th><th style={th}>Sales</th><th style={th}>Money</th><th style={th}>Status</th><th style={th} /></tr></thead>
+            <table aria-label="Events" style={{ ...tableStyle, minWidth: 1040 }}>
+              <thead><tr><th style={th}>Event</th><th style={th}>When · where</th><th style={th}>Tickets sold</th><th style={th}>Price</th><th style={th}>Sales</th><th style={th}>Money</th><CountHead tip="Tickets bought, each counted once. Refunded ones are included here, so this can be more than Tickets sold.">Paid</CountHead><CountHead tip="Of the tickets sold, how many were refunded.">Refunded</CountHead><th style={th}>Status</th><th style={th} /></tr></thead>
               <tbody>
                 {rows.map((e) => (
                   <tr key={e.id}>
@@ -110,6 +110,8 @@ export default function SaEventsPanel() {
                       {Number(e.refunded) > 0 && <div>{`Refunded ${money(e.refunded)}`}</div>}
                       {!Number(e.held) && !Number(e.released) && !Number(e.refunded) && <span style={dim}>Nothing collected</span>}
                     </td>
+                    <CountCell value={e.paid_count} />
+                    <CountCell value={e.refunded_count} />
                     <td style={td}><Chip color={STATE_COLOR[e.state] || D.textFaint}>{e.state_label}</Chip></td>
                     <td style={td}><button type="button" aria-label={`Open ${e.name}`} onClick={() => setOpen(e)} style={button(D.panelBg, D.text)}>Open</button></td>
                   </tr>

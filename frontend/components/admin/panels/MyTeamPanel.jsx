@@ -6,7 +6,7 @@ import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D, glassCard } from "../theme.js";
 import { LastSignIn } from "./sessionParts.jsx";
 
-const ROLE_LABELS = { super_admin: "Super Admin", operations: "Operations", accountant: "Accountant", marketing: "Marketing", support: "Support", scout: "Scout", delivery_manager: "Delivery Manager", dispatch: "Dispatch" };
+const ROLE_LABELS = { super_admin: "Super Admin", general_manager: "General Manager", operations: "Operations", accountant: "Accountant", marketing: "Marketing", support: "Support", scout: "Scout", delivery_manager: "Delivery Manager", dispatch: "Dispatch" };
 const field = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", color: D.text, background: D.panelBg };
 const labelStyle = { display: "flex", flexDirection: "column", gap: 4, fontSize: "0.72rem", fontWeight: 700, color: D.text };
 const smallBtn = (bg, color) => ({ background: bg, color, border: bg === D.panelBg ? `1px solid ${D.cardBorder}` : "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" });

@@ -288,7 +288,7 @@ describe('ReportsPanel', () => {
       staff: { id: 2, full_name: 'Ama Boateng', role: 'operations' },
       system: [
         { key: 'team_targets', title: 'Team against target', rows: [{ label: 'Registrations', value: 12, target: 13 }] },
-        { key: 'team_scouts', title: 'Scouts', columns: ['Registrations', 'Visits', 'Calls', 'Renewals', 'Day reports'], rows: [{ label: 'Kwame', value: '3 / 3', cells: ['3 / 3', '8 / 8', '10 / 10', '1 / 1', 'Submitted'] }] },
+        { key: 'team_scouts', title: 'Scouts', columns: ['Registrations', 'Visits', 'Calls', 'Listings', 'Day reports'], rows: [{ label: 'Kwame', value: '3 / 3', cells: ['3 / 3', '8 / 8', '10 / 10', '1 / 1', 'Submitted'] }] },
         { key: 'ops_approvals', title: 'Approvals you decided', rows: [{ label: 'Decided', value: 9 }, { label: 'Median time to decide (clock time)', value: '2 h 10 min' }] },
       ],
     })))

@@ -4,6 +4,7 @@ reserve held until the end of the day (read-only), what each delivery earned, ea
 statement of their ledger lines. Over the ledger and the RiderEarning / RiderCommissionPosting rows ledger.riders writes.
 Integer pesewas inside, GH₵ strings at the edge; reading never opens an account."""
 from django.db.models import Sum
+from django.utils import timezone
 
 from accounts.models import StaffUser
 from delivery import employment
@@ -11,6 +12,7 @@ from delivery.models import RiderCommissionPosting, RiderEarning
 from ledger import posting, settings_store
 from ledger.models import Account, JournalLine
 
+from .models import Withdrawal
 from .services import money
 
 LABELS = {
@@ -29,16 +31,28 @@ STATUS_LABELS = {
 }
 
 
-def summary(rider):
+def summary(rider, now=None):
+    """The rider's wallet figures. `withdrawals_today` counts what counts against the daily limit (not cancelled or failed
+    ones) since 00:00 Accra; `withdrawals_reset_at` is the next 00:00 Accra, when the count starts again."""
+    from . import withdrawals  # imported here: withdrawals imports this app's modules
+
+    now = now or timezone.now()
     staff = rider.staff
+    balance = posting.balance_of(Account.RIDER_BALANCE, staff)
     return {
         "kind": "rider",
-        "balance": money(posting.balance_of(Account.RIDER_BALANCE, staff)),
+        "balance": money(balance),
         "reserve": money(posting.balance_of(Account.RIDER_RESERVE, staff)),
         "reserve_note": "AshantiHub's commission, held until it is taken after midnight. It cannot be withdrawn.",
+        "balance_note": withdrawals.NEGATIVE[Account.RIDER_BALANCE] if balance < 0 else None,
         "commission_bp": settings_store.current("rider_commission_bp"),
         "company_name": rider.company_name,
         "awaiting_release": employment.unreleased_deliveries(rider).count(),
+        "withdrawals_per_day": settings_store.current("rider_withdrawals_per_day", now),
+        "withdrawals_today": withdrawals.mine(staff).filter(
+            status__in=Withdrawal.COUNTED, created_at__gte=withdrawals.start_of_day(now),
+        ).count(),
+        "withdrawals_reset_at": withdrawals.next_reset(now),
     }
 
 

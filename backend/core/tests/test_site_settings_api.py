@@ -65,6 +65,7 @@ class SiteSettingsAPITests(TestCase):
                 # integration, plan Workstream E) — "simulated" here since
                 # the test settings have no HUBTEL_CLIENT_ID configured.
                 "payments_provider": "simulated",
+                "pickup_office_address": "",
             },
         )
 
@@ -94,6 +95,21 @@ class SiteSettingsAPITests(TestCase):
         response = self.client.patch(URL, {"contact_email": "new@example.com"}, format="json")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(SiteSettings.load().contact_email, "new@example.com")
+
+    def test_a_general_patch_never_writes_back_a_stale_pickup_address(self):
+        from unittest import mock
+
+        from core.views import SiteSettingsView
+
+        stale = SiteSettings.load()  # loaded before the address was set
+        SiteSettings.objects.filter(pk=1).update(pickup_office_address="12 Adum Road")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('operations', 1)}")
+        with mock.patch.object(SiteSettingsView, "get_object", return_value=stale):
+            response = self.client.patch(URL, {"contact_email": "new@example.com"}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        row = SiteSettings.load()
+        self.assertEqual(row.contact_email, "new@example.com")
+        self.assertEqual(row.pickup_office_address, "12 Adum Road")
 
     def test_patch_super_admin_succeeds(self):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('super_admin', 1)}")

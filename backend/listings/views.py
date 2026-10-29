@@ -32,6 +32,7 @@ from .moderation_checks import (
     open_fraud_flag,
     open_fraud_flags,
 )
+from . import hero_rules
 from .category_tree import build_tree
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, ListingVariant, Promotion, Zone
 from .permissions import IsHeroMediaOwner, IsListingOwnerOrDirectOperator, IsListingPhotoOwner
@@ -906,6 +907,9 @@ class ModerationListingDetailView(generics.RetrieveAPIView):
         return [HasRolePermission("listings.moderate")]
 
 
+OWN_LISTING = "You made this listing for the client, so someone else has to decide it."
+
+
 class ModerationApproveView(APIView):
     def get_permissions(self):
         return [HasRolePermission("listings.moderate")]
@@ -913,7 +917,7 @@ class ModerationApproveView(APIView):
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
         if revisions.cannot_decide(request.user, listing):
-            return Response({"detail": revisions.OWN_APPROVAL_MESSAGE}, status=403)
+            return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
         if listing.business_owner.kyc_status != BusinessOwner.VERIFIED:
             return Response(
                 {"detail": "Cannot publish a listing whose owner is not KYC-verified."}, status=400
@@ -940,6 +944,8 @@ class ModerationRejectView(APIView):
         if not reason:
             return Response({"reason": "A rejection reason is required."}, status=400)
         listing = generics.get_object_or_404(Listing, pk=pk)
+        if revisions.cannot_decide(request.user, listing):
+            return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
         listing.status = Listing.REJECTED
         listing.rejection_reason = reason
         listing.reviewed_by = request.user
@@ -983,16 +989,15 @@ class ModerationReReviewView(APIView):
 
 
 def _hero_days_for(business_owner):
-    """The business's current plan's hero_days entitlement, i.e. the visibility
-    window an approved hero-media submission gets. 0 if the business has no
-    active subscription — mirrors how Subscription is an optional OneToOne on
-    BusinessOwner (see billing.SubscriptionMeView's "no subscription yet"
-    handling).
+    """The visibility window an approved hero-media submission gets: the current
+    plan's hero_days, or hero_rules.HERO_DAYS_WITHOUT_PLAN when the business has
+    no subscription (Subscription is an optional OneToOne on BusinessOwner, see
+    billing.SubscriptionMeView's "no subscription yet" handling). Never more than
+    hero_rules.MAX_DAYS.
     """
     subscription = getattr(business_owner, "subscription", None)
-    if subscription is None:
-        return 0
-    return subscription.plan.hero_days
+    days = hero_rules.HERO_DAYS_WITHOUT_PLAN if subscription is None else subscription.plan.hero_days
+    return min(days, hero_rules.MAX_DAYS)
 
 
 def _hero_slots_for(business_owner):

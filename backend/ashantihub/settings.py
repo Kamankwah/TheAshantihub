@@ -419,6 +419,8 @@ REST_FRAMEWORK = {
         "password_reset_request": "5/min",
         # Public claim page and the scout's hand-over (preview + claim).
         "owner_claim": "10/min",
+        # The owner answering a staff-made registration or listing from a texted link (portfolio.views_confirm).
+        "owner_confirm": "10/min",
         # A staff member emailing owners claim links (portfolio.views.ClaimLinkView).
         "claim_link": "5/hour",
         # A business asking to change its name, sign-in phone or email (portfolio.detail_changes).
@@ -590,6 +592,10 @@ CELERY_BEAT_SCHEDULE = {
     "staffsecurity-purge-sign-in-history": {
         "task": "staffsecurity.tasks.purge_old_sign_in_records",
         "schedule": crontab(hour=3, minute=45),
+    },
+    "portfolio-notify-lapsed-confirmations": {
+        "task": "portfolio.tasks.notify_lapsed_confirmations",
+        "schedule": crontab(minute=35),  # hourly, at thirty-five past: tell staff an owner link lapsed (once per link)
     },
     "portfolio-purge-staged-photos": {
         "task": "portfolio.tasks.purge_staged_photos",

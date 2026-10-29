@@ -91,6 +91,19 @@ export function SimulatedBanner({ children }) {
   return <div role="note" style={callout(D.amber)}>{`Payments are simulated until Hubtel is connected.${children ? ` ${children}` : ""}`}</div>;
 }
 
+// The Paid and Refunded columns of the listings and events tables. The head's tooltip says what is counted; a count the
+// server did not send is a skeleton bar, never a dash that reads as "no data" or a 0 that reads as "none".
+export function CountHead({ children, tip }) {
+  return <th style={th} title={tip}>{children}<span aria-hidden="true" style={{ marginLeft: 4, color: D.textFaint, cursor: "help" }}>ⓘ</span></th>;
+}
+
+export function CountCell({ value }) {
+  if (value === null || value === undefined) {
+    return <td style={td}><span role="status" aria-label="Loading" style={{ display: "inline-block", width: 22, height: 10, borderRadius: 4, background: D.panelBg2, verticalAlign: "middle" }} /></td>;
+  }
+  return <td style={{ ...td, textAlign: "right" }}>{Number(value).toLocaleString("en-GH")}</td>;
+}
+
 export function LoadState({ query, what }) {
   if (query.isLoading) return <div style={dim}>Loading…</div>;
   if (query.isError) return <div role="alert" style={errorStyle}>{`Could not load ${what}.`}</div>;

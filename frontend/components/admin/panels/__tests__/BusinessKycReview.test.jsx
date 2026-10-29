@@ -189,4 +189,18 @@ describe('BusinessKycReview', () => {
     renderReview()
     expect(await screen.findByText('The KYC review sheet is for Operations and Super Admin.')).toBeInTheDocument()
   })
+
+  it('offers to ask the owner again on the review when the link lapsed, and not for a live one (F1)', async () => {
+    serve(sheet({ owner_confirmation: { confirmed: false, line: 'Declined 5 Oct', state: 'declined', can_ask_again: true } }))
+    renderReview()
+    expect(await screen.findByRole('button', { name: 'Ask the owner to confirm again' })).toBeInTheDocument()
+    expect(screen.getByText('Declined 5 Oct')).toBeInTheDocument()
+  })
+
+  it('shows no ask-again action while the link is live', async () => {
+    serve(sheet({ owner_confirmation: { confirmed: false, line: 'Waiting — text sent', state: 'waiting', can_ask_again: false } }))
+    renderReview()
+    await screen.findByText('Waiting — text sent')
+    expect(screen.queryByRole('button', { name: 'Ask the owner to confirm again' })).toBeNull()
+  })
 })

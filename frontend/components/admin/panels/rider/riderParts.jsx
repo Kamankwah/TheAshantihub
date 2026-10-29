@@ -27,6 +27,14 @@ export function Warn({ children }) {
 export function Info({ children }) {
   return <div role="note" style={{ background: D.panelBg2, borderRadius: 10, padding: "10px 12px", fontSize: "0.8rem", lineHeight: 1.5, color: D.text }}>{children}</div>;
 }
+export function Tabs({ value, onChange, options, label }) {
+  return (
+    <div role="tablist" aria-label={label} style={{ display: "flex", gap: 4, borderBottom: `1px solid ${D.cardBorder}` }}>
+      {options.map(([id, text]) => <button key={id} type="button" role="tab" aria-selected={value === id} onClick={() => onChange(id)} style={{ flex: 1, minHeight: 44, border: 0, borderBottom: `3px solid ${value === id ? D.text : "transparent"}`, background: "transparent", color: D.text, fontWeight: value === id ? 800 : 600, fontFamily: "inherit", cursor: "pointer" }}>{text}</button>)}
+    </div>
+  );
+}
+
 export function Err({ children }) {
   return children ? <div role="alert" style={{ color: D.red, fontWeight: 700, fontSize: "0.84rem" }}>{children}</div> : null;
 }

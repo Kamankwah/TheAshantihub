@@ -4,7 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
-import { useCanBuy } from "./hooks/useCanBuy.js";
 import CartTieredResults from "./components/CartTieredResults.jsx";
 import { addGhs } from "./components/wallet/walletMoney.js";
 import { useListing } from "./hooks/useListing.js";
@@ -24,6 +23,10 @@ import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
 import { useOrders } from "./hooks/useOrders.js";
 import ServiceAcceptBar from "./components/ServiceAcceptBar.jsx";
 import BookingTermsNote from "./components/BookingTermsNote.jsx";
+import ServiceRequestPay from "./components/ServiceRequestPay.jsx";
+import BookingMoneyBar from "./components/bookings/BookingMoneyBar.jsx";
+import CancelBookingDialog from "./components/bookings/CancelBookingDialog.jsx";
+import { groupTicketsByPurchase } from "./components/bookings/bookingMoney.js";
 import { useMyServiceRequests } from "./hooks/useMyServiceRequests.js";
 import { useMyBookings } from "./hooks/useMyBookings.js";
 import { useMyConversations, getGuestToken } from "./hooks/useMyConversations.js";
@@ -61,6 +64,7 @@ import { AboutFaqSection } from "./components/ui/about-faq-section.tsx";
 import { ContactPage } from "./components/ui/contact-page.tsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 import BusinessClaimPage from "./components/BusinessClaimPage.jsx";
+import OwnerConfirmPage from "./components/OwnerConfirmPage.jsx";
 import MarketingConsentCard from "./components/MarketingConsentCard.jsx";
 import AccountSecurityCard from "./components/security/AccountSecurityCard.jsx";
 import UnsubscribePage from "./components/UnsubscribePage.jsx";
@@ -92,6 +96,7 @@ import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
 import RaiseDisputeForm from "./components/RaiseDisputeForm.jsx";
 import TicketQr from "./components/TicketQr.jsx";
 import StaffGateNotice from "./components/StaffGateNotice.jsx";
+import PickupCollectionNote from "./components/PickupCollectionNote.jsx";
 import StaffViewOnlyBar, { STAFF_VIEW_ONLY_BAR_HEIGHT } from "./components/StaffViewOnlyBar.jsx";
 import { isStaffSession } from "./lib/staffSession.js";
 import { useStaffGate } from "./hooks/useStaffGate.js";
@@ -514,6 +519,9 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
     if (hasAutoSelectedRef.current || conversations.length === 0) return;
     hasAutoSelectedRef.current = true;
     const bySubject = initialBusiness && conversations.find(c => c.subject?.includes(initialBusiness.name));
+    // Opened for a business or listing with no conversation about it: leave the new-conversation pane open so the
+    // "Re: <name>" subject is used, rather than landing in an unrelated conversation.
+    if (initialBusiness && !bySubject) return;
     setActiveConvId((bySubject || conversations[0]).id);
   }, [conversations, initialBusiness]);
 
@@ -1775,7 +1783,10 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
   const { data: categories } = useCategories();
   const { data: zones } = useZones();
 
-  const goTab = (id) => { setActiveTab(id); setSearchQuery(""); setSidebarOpen(false); };
+  // "Contact AshantiHub Support" on a booking opens Messages about that listing or event (never the business).
+  const [supportAbout, setSupportAbout] = useState(null); // null | { name }
+  const goTab = (id) => { setActiveTab(id); setSearchQuery(""); setSidebarOpen(false); setSupportAbout(null); };
+  const contactSupport = (about) => { setSupportAbout(about || null); setActiveTab("messages"); setSearchQuery(""); setSidebarOpen(false); };
   const activeItem = ACCOUNT_NAV_ITEMS.find(i=>i.id===activeTab);
   const signOut = () => { auth.logout(); onExit(); };
 
@@ -1894,12 +1905,12 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
       <div style={{padding:"22px 20px 60px",flex:1}}>
         {activeTab==="overview"&&<OverviewPanel favourites={favourites} user={user}/>}
         {activeTab==="orders"&&<OrdersDeliveryTab searchQuery={searchQuery}/>}
-        {activeTab==="requests"&&<ServiceRequestsTab PaymentComponent={PaymentComponent}/>}
-        {activeTab==="bookings"&&<MyBookingsTab/>}
+        {activeTab==="requests"&&<ServiceRequestsTab PaymentComponent={PaymentComponent} onContactSupport={contactSupport}/>}
+        {activeTab==="bookings"&&<MyBookingsTab onContactSupport={contactSupport}/>}
         {activeTab==="saved"&&<SavedBusinessesTab favourites={favourites} toggleFav={toggleFav}/>}
-        {activeTab==="messages"&&<MessagingCenter user={user} onClose={()=>goTab("profile")} embedded/>}
+        {activeTab==="messages"&&<MessagingCenter key={supportAbout?.name ?? ""} user={user} onClose={()=>goTab("profile")} initialBusiness={supportAbout} embedded/>}
         {activeTab==="events"&&<MyEventsTab user={user} categories={categories} zones={zones}/>}
-        {activeTab==="tickets"&&<TicketsTab searchQuery={searchQuery}/>}
+        {activeTab==="tickets"&&<TicketsTab searchQuery={searchQuery} onContactSupport={contactSupport}/>}
         {activeTab==="profile"&&<AccountProfileCard user={user} auth={auth}/>}
         {activeTab==="settings"&&<SettingsTab user={user} auth={auth} lang={lang} setLang={setLang} onSignOut={signOut}/>}
       </div>
@@ -2057,32 +2068,17 @@ const SR_STATUS_META = {
   cancelled: { label: "Cancelled", color: D.textFaint },
 };
 
-export function ServiceRequestsTab({ PaymentComponent }) {
+export function ServiceRequestsTab({ PaymentComponent, onContactSupport }) {
   const { data, isLoading, isError, refetch } = useMyServiceRequests();
-  const [payingFor, setPayingFor] = useState(null); // the request being paid
-  const [payError, setPayError] = useState(null);
-  // Before the marketplace opens, Pay is greyed with "Opens <D Mon>" unless
-  // this account may buy (ruling R35, same rule as every buy surface).
-  const { canBuy, label: opensLabel } = useCanBuy();
+  // The server's pay answer per request id: the card keeps its paid line after the refetch moves it past "accepted".
+  const [paidAnswers, setPaidAnswers] = useState({});
 
   const requests = data || [];
   if (isLoading) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>Loading…</div>;
   if (isError) return <div style={{color:D.red,fontSize:"0.8rem"}}>Could not load your requests.</div>;
   if (requests.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>You haven't requested any services yet.</div>;
 
-  const onPaid = async () => {
-    setPayError(null);
-    try { await apiPost(`/api/services/requests/${payingFor.id}/pay/`, {}); setPayingFor(null); refetch(); }
-    catch (err) {
-      // The server refuses a shopper's buy before opening (403 code not_open) —
-      // show its own message rather than claiming the payment went through.
-      if (err?.status===403 && err?.body?.code==="not_open") { setPayingFor(null); setPayError(err.body.detail || "The marketplace is not open yet."); }
-      else setPayError("Payment went through but we couldn't start the job — please contact support.");
-    }
-  };
-
   return <div style={{display:"flex",flexDirection:"column",gap:14}}>
-    {payError && <div style={{color:D.red,fontSize:"0.78rem"}}>{payError}</div>}
     {requests.map(sr=>{
       const meta = SR_STATUS_META[sr.status]||{label:sr.status,color:D.textDim};
       return (
@@ -2097,17 +2093,18 @@ export function ServiceRequestsTab({ PaymentComponent }) {
             {sr.progress_note && sr.status==="in_progress" && <> · Update: {sr.progress_note}</>}
             {sr.decline_reason && <> · {sr.decline_reason}</>}
           </div>
-          <ServiceAcceptBar request={sr} onChanged={refetch} />
+          <ServiceAcceptBar request={sr} onChanged={refetch} onContactSupport={onContactSupport} />
           {sr.status==="accepted" && <BookingTermsNote kind="service" tone="light" />}
-          {sr.status==="accepted" && (
-            <button onClick={()=>{ if (canBuy) setPayingFor(sr); }} disabled={!canBuy} aria-disabled={!canBuy} style={{marginTop:10,background:canBuy?D.green:D.divider,color:canBuy?"#fff":D.textDim,border:"none",borderRadius:20,padding:"8px 16px",fontWeight:800,fontSize:"0.76rem",cursor:canBuy?"pointer":"not-allowed",fontFamily:"inherit"}}>{canBuy ? <>💳 Pay GHS {sr.agreed_price} to start</> : opensLabel}</button>
+          {sr.status==="accepted" && <ServiceRequestPay sr={sr} PaymentComponent={PaymentComponent} onPaid={(res)=>{ setPaidAnswers(m=>({...m,[sr.id]:res||{}})); refetch(); }} />}
+          {paidAnswers[sr.id] && (
+            <div role="status" style={{marginTop:10,color:D.textDim,fontSize:"0.78rem"}}>
+              <div>Paid. The job can start.</div>
+              {paidAnswers[sr.id].payment_processing && paidAnswers[sr.id].payment_processing!=="0.00" && <div>Payment processing GH₵ {paidAnswers[sr.id].payment_processing}</div>}
+            </div>
           )}
         </div>
       );
     })}
-    {payingFor && PaymentComponent && (
-      <PaymentComponent amount={parseFloat(payingFor.agreed_price)||0} onSuccess={onPaid} onClose={()=>setPayingFor(null)} />
-    )}
   </div>;
 }
 
@@ -2121,22 +2118,15 @@ const BK_STATUS_META = {
   cancelled: { label: "Cancelled", color: D.red },
 };
 
-function MyBookingsTab() {
+function MyBookingsTab({ onContactSupport }) {
   const { data, isLoading, isError, refetch } = useMyBookings();
-  const [actionError, setActionError] = useState(null);
+  const [cancelling, setCancelling] = useState(null); // booking id with the ledger-off confirmation open
   const bookings = data || [];
   if (isLoading) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>Loading…</div>;
   if (isError) return <div style={{color:D.red,fontSize:"0.8rem"}}>Could not load your bookings.</div>;
   if (bookings.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>No bookings yet.</div>;
 
-  const cancel = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/bookings/${id}/cancel/`, {}); refetch(); }
-    catch { setActionError("Could not cancel this booking."); }
-  };
-
   return <div style={{display:"flex",flexDirection:"column",gap:14}}>
-    {actionError && <div style={{color:D.red,fontSize:"0.78rem"}}>{actionError}</div>}
     {bookings.map(b=>{
       const meta = BK_STATUS_META[b.status]||{label:b.status,color:D.textDim};
       const cancellable = b.status==="confirmed"||b.status==="pending";
@@ -2147,7 +2137,14 @@ function MyBookingsTab() {
             <span style={{background:tint(meta.color, "22"),color:meta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{meta.label}</span>
           </div>
           <div style={{color:D.textDim,fontSize:"0.74rem",marginTop:6}}>{b.check_in} → {b.check_out} · {b.nights} night{b.nights===1?"":"s"} · {b.units} unit{b.units===1?"":"s"} · GHS {b.total_price}</div>
-          {cancellable && <button onClick={()=>cancel(b.id)} style={{marginTop:10,background:tint(D.red, "22"),color:D.red,border:"none",borderRadius:20,padding:"7px 14px",fontWeight:700,fontSize:"0.74rem",cursor:"pointer",fontFamily:"inherit"}}>Cancel booking</button>}
+          {b.money ? (
+            <BookingMoneyBar kind="stay" money={b.money} cancelPath={`/api/bookings/${b.id}/cancel/`} reportPath={`/api/ledger/bookings/${b.money.sale}/report-problem/`} about={{ name: b.listing_name }} onChanged={refetch} onContactSupport={onContactSupport} />
+          ) : (
+            <>
+              {cancellable && cancelling!==b.id && <button onClick={()=>setCancelling(b.id)} style={{marginTop:10,background:tint(D.red, "22"),color:D.red,border:"none",borderRadius:20,padding:"7px 14px",fontWeight:700,fontSize:"0.74rem",cursor:"pointer",fontFamily:"inherit"}}>Cancel booking</button>}
+              {cancelling===b.id && <CancelBookingDialog kind="stay" money={null} paid={!!b.paid_at} cancelPath={`/api/bookings/${b.id}/cancel/`} onDone={()=>{ setCancelling(null); refetch(); }} onClose={()=>setCancelling(null)} />}
+            </>
+          )}
         </div>
       );
     })}
@@ -2200,6 +2197,7 @@ function OrdersDeliveryTab({ searchQuery }) {
             {o.delivery_method==="door_to_door" ? `🚚 Door-to-door${o.delivery_address ? ` — ${o.delivery_address}` : ""}` : "🏬 Store pickup"}
           </div>
         )}
+        {o.delivery_method==="store_pickup" && o.collection_code && <div style={{marginTop:8}}><PickupCollectionNote code={o.collection_code ?? null} collectBy={o.collect_by ?? null} tone="dark"/></div>}
         {o.status==="paid" && o.delivery_method==="door_to_door" && o.ready_not_before && new Date(o.ready_not_before) > new Date() && !["delivered","confirmed"].includes(o.delivery_assignment_status) && o.delivery_status!=="delivered" && formatAccraDayTime(o.ready_not_before) && (
           <div data-testid="order-scheduled-start" style={{marginTop:6,color:D.textDim,fontSize:"0.72rem",fontWeight:700}}>Delivery scheduled to start {formatAccraDayTime(o.ready_not_before)}</div>
         )}
@@ -2262,14 +2260,16 @@ function accountTicketStatus(t) {
   return { label: "Held", color: D.gold };
 }
 
-function TicketsTab({ searchQuery }) {
+function TicketsTab({ searchQuery, onContactSupport }) {
   const { data, isLoading, isError, refetch } = useMyTickets();
   const [copiedId, setCopiedId] = useState(null);
   const tickets = data || [];
   const q = (searchQuery||"").trim().toLowerCase();
-  const filtered = q
-    ? tickets.filter(t => t.event?.name?.toLowerCase().includes(q) || t.code?.toLowerCase().includes(q))
-    : tickets;
+  // A purchase is cancelled and reported as a whole, so the list is grouped by purchase and a search keeps a group
+  // (all of its tickets) when any one ticket matches.
+  const groups = groupTicketsByPurchase(tickets);
+  const matches = (t) => t.event?.name?.toLowerCase().includes(q) || t.code?.toLowerCase().includes(q);
+  const filtered = q ? groups.filter(g => g.tickets.some(matches)) : groups;
 
   const copyCode = (t) => {
     navigator.clipboard?.writeText(t.code);
@@ -2283,10 +2283,11 @@ function TicketsTab({ searchQuery }) {
   if (filtered.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>No tickets match "{searchQuery}".</div>;
 
   return <div style={{display:"flex",flexDirection:"column",gap:14}}>
-    {filtered.map(t=>{
+    {filtered.map(g=><div key={g.key} style={{display:"flex",flexDirection:"column",gap:0}}>
+      {g.tickets.map(t=>{
       const status = accountTicketStatus(t);
       return (
-        <div key={t.id} style={{...glassCard,padding:16}}>
+        <div key={t.id} style={{...glassCard,padding:16,marginBottom:g.tickets.length>1?8:0}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
             <div>
               <div style={{fontWeight:800,fontSize:"0.82rem",color:D.text}}>{t.event?.name}</div>
@@ -2304,7 +2305,11 @@ function TicketsTab({ searchQuery }) {
           <div style={{marginTop:10}}><TicketQr code={t.code} size={110}/></div>
         </div>
       );
-    })}
+      })}
+      {g.money && (
+        <BookingMoneyBar kind="tickets" money={g.money} cancelPath={`/api/events/tickets/purchases/${g.money.sale}/cancel/`} reportPath={`/api/ledger/bookings/${g.money.sale}/report-problem/`} ticketCount={g.tickets.filter(t=>!t.refunded_at).length} about={{ name: g.tickets[0].event?.name }} onChanged={refetch} onContactSupport={onContactSupport} />
+      )}
+    </div>)}
   </div>;
 }
 
@@ -2638,6 +2643,8 @@ const PATH_TO_PAGE = {
   // early return like the pages above, and never a listing (see
   // businessDetailMatch below).
   "/business/claim": "business-claim",
+  // The owner's texted confirmation link (staff listing pipeline): public, token in the #fragment. Never a listing.
+  "/business/confirm": "business-confirm",
 };
 const PAGE_TO_PATH = {
   home: "/",
@@ -2651,6 +2658,7 @@ const PAGE_TO_PATH = {
   "reset-password": "/reset-password",
   "payment-return": "/payment/return",
   "business-claim": "/business/claim",
+  "business-confirm": "/business/confirm",
 };
 // Full-page dashboard "routes" (isAdmin/showBizDash-style early returns) that
 // now have real URLs too. Same two-map convention as PATH_TO_PAGE/
@@ -2689,7 +2697,8 @@ export default function AshantiHub() {
   // /business/claim is the owner claim page (PATH_TO_PAGE), so "claim" is
   // never read as a listing id.
   const businessPathMatch = useMatch("/business/:id");
-  const businessDetailMatch = businessPathMatch?.params.id === "claim" ? null : businessPathMatch;
+  // Likewise /business/confirm, the owner's texted confirmation page.
+  const businessDetailMatch = ["claim", "confirm"].includes(businessPathMatch?.params.id) ? null : businessPathMatch;
   const eventDetailMatch = useMatch("/events/:id");
   // /seller/:id — a business's public page (SellerPage), a standalone early return like the pages below.
   const sellerMatch = useMatch("/seller/:id");
@@ -3173,6 +3182,7 @@ export default function AshantiHub() {
   if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
   if(page==="payment-return") return <PaymentReturnPage setPage={setPage}/>;
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
+  if(page==="business-confirm") return <OwnerConfirmPage/>;
   if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
   if(unsubscribeMatch) return <UnsubscribePage token={unsubscribeMatch.params.token} onHome={()=>navigate("/")}/>;
   if(notifyStopMatch) return <NotifyStopPage token={notifyStopMatch.params.token} onHome={()=>navigate("/")}/>;
@@ -3365,6 +3375,7 @@ export default function AshantiHub() {
               onOpenSeller={(sellerId)=>navigate(`/seller/${sellerId}`)}
               onAddToCart={handleAddToCart}
               CardComponent={Card}
+              PaymentComponent={MoMoPayment}
             />
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>

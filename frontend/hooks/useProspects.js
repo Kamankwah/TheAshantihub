@@ -3,12 +3,16 @@ import { apiFetch } from '../apiClient.js'
 
 // GET /api/field/prospects/?status= — the scout's own, not yet registered:
 // {counts: {all, new, interested, follow_up, not_interested, registered},
-//  signed_up_this_month, results: [...]}. status "all" (default) leaves out
+//  signed_up_this_month, listings_live_this_month, results: [...]}; each result carries
+// pipeline: {stage, listings: {drafts, awaiting_owner, lapsed, pending_approval, live}}. status "all" (default) leaves out
 // the registered ones.
-export function useProspects(status = 'all', { enabled = true } = {}) {
+//
+// Operations and Super Admin get every scout's prospects (each result carries scout_id and scout_name); `scout` narrows to
+// one (?scout=<id>). A scout's own list ignores it. listings_live_this_month is present only when the list is one scout's.
+export function useProspects(status = 'all', { enabled = true, scout = '' } = {}) {
   return useQuery({
-    queryKey: ['prospects', status],
-    queryFn: () => apiFetch(`/api/field/prospects/?status=${encodeURIComponent(status)}`),
+    queryKey: ['prospects', status, scout ? String(scout) : ''],
+    queryFn: () => apiFetch(`/api/field/prospects/?status=${encodeURIComponent(status)}${scout ? `&scout=${encodeURIComponent(scout)}` : ''}`),
     enabled,
   })
 }

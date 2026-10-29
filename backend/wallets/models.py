@@ -126,16 +126,19 @@ class ReconciliationRun(models.Model):
 
 class VendorText(models.Model):
     """A text to a business about its money (spec §6; vendor plan 4): one per paid order and business, one per release
-    and business, one daily digest. Queued in the transaction that moved the money (so it exists only if that committed),
+    and business, one daily digest, one per refund, withdrawal or balance warning, and (plan 4F) one per booking sale
+    paid, released or put on hold (`ledger.BookingSale`; `order` is empty for those). Queued in the transaction that moved the money (so it exists only if that committed),
     sent after commit through otp.senders and retried by wallets.tasks.send_due_vendor_texts. Holds no customer's name,
     phone or address and never the business's whole number (`to_hint` is masked). `notification` is the in-app copy,
     kept even when the text could not be sent."""
 
     ORDER_PAID, ORDER_RELEASED, DAILY_DIGEST = "order_paid", "order_released", "daily_digest"
     REFUND, WITHDRAWAL, BALANCE_NEGATIVE, BALANCE_LOW = "refund", "withdrawal", "balance_negative", "balance_low"
+    BOOKING_PAID, BOOKING_RELEASED, BOOKING_ON_HOLD = "booking_paid", "booking_released", "booking_on_hold"
     KIND_CHOICES = [
         (ORDER_PAID, "Order paid"), (ORDER_RELEASED, "Order released"), (DAILY_DIGEST, "Daily digest"), (REFUND, "Refund"),
         (WITHDRAWAL, "Withdrawal"), (BALANCE_NEGATIVE, "Balance below zero"), (BALANCE_LOW, "Balance low"),
+        (BOOKING_PAID, "Booking paid"), (BOOKING_RELEASED, "Booking released"), (BOOKING_ON_HOLD, "Booking on hold"),
     ]
     QUEUED, SENT, FAILED, NO_PHONE = "queued", "sent", "failed", "no_phone"
     STATUS_CHOICES = [(QUEUED, "Waiting to send"), (SENT, "Sent"), (FAILED, "Could not be sent"), (NO_PHONE, "No number to text")]

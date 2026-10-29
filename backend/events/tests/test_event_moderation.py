@@ -134,6 +134,16 @@ class EventModerationTests(TestCase):
         response = self.client.get("/api/events/moderation/pending/")
         self.assertEqual(response.status_code, 403)
 
+    def test_event_approve_refuses_own_event(self):
+        Event.objects.filter(pk=self.event.pk).update(created_by_staff=self.marketing)
+        self._auth(self.marketing_token)
+        response = self.client.post(f"/api/events/moderation/{self.event.id}/approve/")
+        self.assertEqual((response.status_code, response.json()["code"]), (403, "own_listing"))
+        self.event.refresh_from_db()
+        self.assertEqual(self.event.status, Event.PENDING)
+        self._auth(self.admin_token)  # someone else may
+        self.assertEqual(self.client.post(f"/api/events/moderation/{self.event.id}/approve/").status_code, 200)
+
     def test_customer_cannot_approve(self):
         self._auth(issue_token(self.customer, "customer"))
         response = self.client.post(f"/api/events/moderation/{self.event.id}/approve/")

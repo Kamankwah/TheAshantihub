@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('accounts', '0063_seed_direct_operate_permission'),
+        ('accounts', '0067_seed_direct_operate_permission'),
         ('listings', '0034_sale_started_at'),
     ]
 

@@ -81,7 +81,7 @@ function TargetsCard({ lead, onOpen }) {
         <TargetRow key={measure.metric} measure={measure} monthName={monthName}
           week={measure} month={month.data?.measures?.find((m) => m.metric === measure.metric)} />
       ))}
-      <div style={{ ...dim, lineHeight: 1.45 }}>Registrations count when Operations approves KYC. Renewals count when the owner pays in the app.</div>
+      <div style={{ ...dim, lineHeight: 1.45 }}>Registrations count when Operations approves KYC. Listings count when Operations approves them.</div>
     </section>
   );
 }

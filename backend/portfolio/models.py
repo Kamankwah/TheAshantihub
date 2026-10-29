@@ -130,3 +130,100 @@ class BusinessDetailChangeRequest(models.Model):
 
     def __str__(self):
         return f"{self.get_field_display()} change for business owner {self.business_owner_id} ({self.status})"
+
+
+class OwnerConfirmation(models.Model):
+    """One texted link asking a business owner to confirm what staff did for them: listings drafted on their
+    behalf and/or the business registration itself (staff-listing pipeline, plan M3). The raw token exists only in the
+    text and the owner's browser: this row keeps its SHA-256 hash and never the token or the link. Rows are never
+    deleted (a registration with no row at all is "grandfathered", see confirmations.registration_confirmed)."""
+
+    REGISTRATION = "registration"
+    LISTINGS = "listings"
+    SCOPE_CHOICES = [(REGISTRATION, "Registration"), (LISTINGS, "Listings")]
+
+    QUEUED = "queued"
+    SENT = "sent"
+    FAILED = "failed"
+    SIMULATED = "simulated"
+    NO_PHONE = "no_phone"
+    BLOCKED = "blocked"  # the number belongs to a staff account: no text goes (a staff member must not confirm for an owner)
+    SEND_STATE_CHOICES = [
+        (QUEUED, "Queued"), (SENT, "Sent"), (FAILED, "Failed"), (SIMULATED, "Simulated"), (NO_PHONE, "No phone"),
+        (BLOCKED, "Blocked"),
+    ]
+
+    business_owner = models.ForeignKey(BusinessOwner, on_delete=models.CASCADE, related_name="owner_confirmations")
+    scope = models.CharField(max_length=12, choices=SCOPE_CHOICES)
+    token_hash = models.CharField(max_length=64, unique=True)
+    sent_to = models.CharField(max_length=20, blank=True, default="")
+    sent_at = models.DateTimeField(null=True, blank=True)
+    send_state = models.CharField(max_length=10, choices=SEND_STATE_CHOICES, default=QUEUED)
+    expires_at = models.DateTimeField()
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    declined_at = models.DateTimeField(null=True, blank=True)
+    decline_reason = models.CharField(max_length=300, blank=True, default="")  # staff-only
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(StaffUser, on_delete=models.PROTECT, related_name="owner_confirmations_sent")
+    resend_count = models.PositiveSmallIntegerField(default=0)
+    lapse_notified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            # One live link per owner (a newer one revokes the older), enforced in the database too.
+            models.UniqueConstraint(
+                fields=["business_owner"],
+                condition=Q(confirmed_at__isnull=True, declined_at__isnull=True, revoked_at__isnull=True),
+                name="one_open_owner_confirmation",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.scope} confirmation #{self.pk} for owner {self.business_owner_id}"
+
+
+class ListingDraft(models.Model):
+    """A listing staff drafted for a client business. Nothing goes live until the owner confirms by texted link and a
+    second person approves (Task 7 submits the approval). A draft whose link expired unconfirmed reads as `lapsed`
+    (derived by confirmations.state_of, never stored)."""
+
+    PRODUCT, SERVICE, EVENT, STAY = "product", "service", "event", "stay"
+    KIND_CHOICES = [(PRODUCT, "Product"), (SERVICE, "Service"), (EVENT, "Event"), (STAY, "Stay")]
+
+    DRAFT = "draft"
+    AWAITING_OWNER = "awaiting_owner"
+    OWNER_CONFIRMED = "owner_confirmed"
+    OWNER_DECLINED = "owner_declined"
+    WITHDRAWN = "withdrawn"
+    SUBMITTED = "submitted"
+    STATUS_CHOICES = [
+        (DRAFT, "Draft"), (AWAITING_OWNER, "Awaiting the owner"), (OWNER_CONFIRMED, "Owner confirmed"),
+        (OWNER_DECLINED, "Owner declined"), (WITHDRAWN, "Withdrawn"), (SUBMITTED, "Submitted for approval"),
+    ]
+
+    business_owner = models.ForeignKey(BusinessOwner, on_delete=models.CASCADE, related_name="listing_drafts")
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    # The ProposedListingSerializer fields plus the variants/media keys; main_photo_id / photo_ids live inside it.
+    payload = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(StaffUser, on_delete=models.PROTECT, related_name="listing_drafts_made")
+    confirmation = models.ForeignKey(
+        OwnerConfirmation, on_delete=models.SET_NULL, null=True, blank=True, related_name="drafts",
+    )
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=DRAFT)
+    approval = models.ForeignKey(
+        "approvals.ApprovalRequest", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    # Resends of this draft's link today (Accra day); read and written under this row's lock, so the limit of three a
+    # day cannot be raced past (confirmations.resend).
+    resend_day = models.DateField(null=True, blank=True)
+    resends_today = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.kind} draft #{self.pk} for owner {self.business_owner_id}"

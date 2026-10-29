@@ -56,6 +56,7 @@ STAFF = [
     # The external co-signer (approves only requests above the co-sign limit).
     ("Kojo Cosigner", "cosigner.staff@theashantihub.com", "cosigner"),
     ("Yaa Pickup Desk", "pickup.desk.staff@theashantihub.com", "pickup_desk"),
+    ("Efua General Manager", "general.manager.staff@theashantihub.com", "general_manager"),
 ]
 
 # (full_name, login_phone, email, business_kind, ghana_card, gps_address)

@@ -6,7 +6,7 @@ import { apiFetch, apiPost } from '../apiClient.js'
 
 // GET /api/operations/scouts/?scope=team|all — the scoreboard (screen 04):
 //   {scope, today, month_label, counts: {team, all},
-//    totals: {registrations|visits|calls|renewals: {done, target}, visits_flagged},
+//    totals: {registrations|visits|calls|listings: {done, target}, visits_flagged},
 //    scouts: [{id, name, areas, manager: {id, name}|null, mine, state: working|off|holiday|leave, back_on,
 //      measures: {metric: {done, target|null}}, month: {done, target|null, due_by_today, on_pace, leave_cut},
 //      portfolio: {size, healthy, needs_attention, at_risk, new}, check_in: {place, at, outside_radius, distance_m}|null,

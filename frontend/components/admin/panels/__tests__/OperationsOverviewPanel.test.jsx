@@ -8,7 +8,7 @@ import OperationsOverviewPanel, { kpiCards } from '../OperationsOverviewPanel.js
 const API = 'http://localhost:8000'
 const row = (over) => ({
   id: 1, name: 'Kwame Asante', areas: ['Asafo', 'Bantama'], manager: { id: 2, name: 'Ama' }, mine: true, state: 'working', back_on: null,
-  measures: { registrations: { done: 2, target: 3 }, visits: { done: 0, target: 8 }, calls: { done: 0, target: 10 }, renewals: { done: 0, target: 1 } },
+  measures: { registrations: { done: 2, target: 3 }, visits: { done: 0, target: 8 }, calls: { done: 0, target: 10 }, listings: { done: 0, target: 1 } },
   month: { done: 14, target: 81, due_by_today: 18, on_pace: false, leave_cut: 0 },
   portfolio: { size: 14, healthy: 11, needs_attention: 1, at_risk: 2, new: 0 },
   check_in: { place: "Nana's Chop Bar", at: '2026-10-07T10:52:00', outside_radius: false, distance_m: 12 }, outside_7d: 0, fraud_case_open: false,
@@ -24,7 +24,7 @@ const overview = (over = {}) => ({
     at_risk: { count: 4, needs_attention: 2 }, issues: { total: 1, fraud: 1, support: null, delivery: null },
   },
   scouts: [row(), row({ id: 3, name: 'Kofi Boadu', state: 'leave', back_on: '2026-10-09', check_in: null })],
-  totals: { registrations: { done: 2, target: 3 }, visits: { done: 0, target: 8 }, calls: { done: 0, target: 10 }, renewals: { done: 0, target: 1 }, visits_flagged: 0 },
+  totals: { registrations: { done: 2, target: 3 }, visits: { done: 0, target: 8 }, calls: { done: 0, target: 10 }, listings: { done: 0, target: 1 }, visits_flagged: 0 },
   waiting: [{ id: 41, title: "New business · Nana's Chop Bar", kind: 'business.kyc', target_label: "Nana's Chop Bar", maker: 'Kwame Asante', created_at: new Date(Date.now() - 5 * 3600e3).toISOString(), due_at: null, next_move: null }],
   issues: [{ id: 9, type: 'fraud', kind_label: 'Duplicate', business: 'Suame Auto Parts', business_id: 77, what: 'Same MoMo number', account_manager: 'Kwame Asante', opened_at: '2026-10-07T08:00:00Z', open_seconds: 3 * 3600 }],
   issue_total: 1,

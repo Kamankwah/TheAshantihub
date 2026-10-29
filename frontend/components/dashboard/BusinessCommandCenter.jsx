@@ -4,6 +4,8 @@ import ThemeToggle from "../ThemeToggle.jsx";
 import BusinessRegistrationFlow from "../BusinessRegistrationFlow.jsx";
 import { useBusinessProfile } from "../../hooks/useBusinessProfile.js";
 import { useMySubscription } from "../../hooks/useMySubscription.js";
+import { useSubscriptionPlans } from "../../hooks/useSubscriptionPlans.js";
+import { noPlansOffered } from "../../lib/plansOffered.js";
 import { D, glassCard, tint } from "./theme.js";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 import ListingsPanel from "./panels/ListingsPanel.jsx";
@@ -12,7 +14,7 @@ import ServicesPanel from "./panels/ServicesPanel.jsx";
 import BookingsPanel from "./panels/BookingsPanel.jsx";
 import DeliveriesPanel from "./panels/DeliveriesPanel.jsx";
 import PaymentsPanel from "./panels/PaymentsPanel.jsx";
-import VendorPayouts from "../wallet/VendorPayouts.jsx";
+import VendorMoney from "./money/VendorMoney.jsx";
 import CreditPanel from "./panels/CreditPanel.jsx";
 import SubscriptionPanel from "./panels/SubscriptionPanel.jsx";
 import EventsPanel from "./panels/EventsPanel.jsx";
@@ -98,12 +100,17 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
   const { data: profile } = useBusinessProfile(dataReady);
   // The subscription's overdue/pause clock for the renew banner — the same
   // ['my-subscription'] cache the Overview and Subscription tabs read.
-  const { data: subscription } = useMySubscription(dataReady);
+  const { data: subscription, isSuccess: subscriptionLoaded } = useMySubscription(dataReady);
+  // Nothing can be bought or renewed once /api/billing/plans/ has answered [];
+  // while it loads, or fails, the plan UI stays as it is.
+  const plansQuery = useSubscriptionPlans();
+  const plansGone = noPlansOffered(plansQuery);
 
   const isVerified = user?.kycStatus === "verified";
   const isRejected = user?.kycStatus === "rejected";
   const showToast = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
-  const tabs = buildTabs(profile?.business_kind);
+  // A business that holds a plan keeps the tab (paid access runs to term end); one that holds none has nothing to see.
+  const tabs = buildTabs(profile?.business_kind).filter(t => !(t.id === "subscription" && plansGone && subscriptionLoaded && !subscription?.id));
   const activeLabel = tabs.find(t => t.id === tab)?.label || "Overview";
 
   const selectTab = (id) => { if (!isVerified) return; setTab(id); setMobileNavOpen(false); setShowProfile(false); };
@@ -252,7 +259,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                     <button onClick={() => setShowProfile(true)} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}>Set opening hours</button>
                   </section>
                 )}
-                <RenewBanner subscription={subscription} onRenew={() => selectTab("subscription")} />
+                {!plansGone && <RenewBanner subscription={subscription} onRenew={() => selectTab("subscription")} />}
                 <ManagerChangesCard />
                 {tab === "analytics" && <AnalyticsPanel user={user} onNavigate={selectTab} />}
                 {tab === "listings" && <ListingsPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
@@ -264,7 +271,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                 {tab === "delivery-promos" && <DeliveryPromosPanel />}
                 {tab === "promote" && <PromotionsHubPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} />}
                 {tab === "payments" && <PaymentsPanel user={user} PaymentComponent={PaymentComponent} businessKind={profile?.business_kind} />}
-                {tab === "money" && <VendorPayouts />}
+                {tab === "money" && <VendorMoney businessKind={profile?.business_kind} />}
                 {tab === "credit" && <CreditPanel user={user} />}
                 {tab === "subscription" && <SubscriptionPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
               </>

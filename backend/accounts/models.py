@@ -28,6 +28,8 @@ class Role(models.Model):
     PICKUP_DESK = "pickup_desk"
     # External co-signer: approves only requests above the co-sign limit (approvals app).
     COSIGNER = "cosigner"
+    # Reports to the Super Admin; approves listings and other non-money items, never a money item (approvals `money` kinds).
+    GENERAL_MANAGER = "general_manager"
 
     NAME_CHOICES = [
         (SUPER_ADMIN, "Super Admin"),
@@ -40,6 +42,7 @@ class Role(models.Model):
         (DISPATCH, "Dispatch"),
         (PICKUP_DESK, "Pickup Desk"),
         (COSIGNER, "Co-signer"),
+        (GENERAL_MANAGER, "General Manager"),
     ]
 
     name = models.CharField(max_length=20, choices=NAME_CHOICES, unique=True)

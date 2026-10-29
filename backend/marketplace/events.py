@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from accounts.permissions import HasAnyRolePermission
 from events.models import Event, EventTicketType, Ticket
 
+from . import sales_counts
 from .common import OversightPagination, choice_param, csv_export
 
 PERMISSIONS = ("escrow.view", "event.approve")
@@ -62,14 +63,13 @@ def ticket_figures(event_ids):
             held=Sum("price", filter=Q(refunded_at__isnull=True, escrow_status=Ticket.HELD)),
             released=Sum("price", filter=Q(refunded_at__isnull=True, escrow_status=Ticket.RELEASED)),
             refunded=Sum("price", filter=Q(refunded_at__isnull=False)),
-            refunded_count=Count("id", filter=Q(refunded_at__isnull=False)),
             checked_in=Count("id", filter=Q(refunded_at__isnull=True, delivered_at__isnull=False)),
         )
     )
     return {row["ticket_type__event_id"]: row for row in rows}
 
 
-def item(event, figures, now):
+def item(event, figures, now, counts):
     code, label = event_state(event, now)
     row = figures.get(event.pk) or {}
     types = [t for t in event.ticket_types.all()]
@@ -94,7 +94,8 @@ def item(event, figures, now):
         "held": str(row.get("held") or ZERO),
         "released": str(row.get("released") or ZERO),
         "refunded": str(row.get("refunded") or ZERO),
-        "refunded_count": row.get("refunded_count", 0),
+        "paid_count": counts[0],
+        "refunded_count": counts[1],
         "ticket_types": [
             {"id": t.pk, "name": t.name, "price": str(t.price), "sold": t.quantity_sold, "total": t.quantity_total, "active": t.is_active}
             for t in types
@@ -142,7 +143,8 @@ class EventListView(generics.ListAPIView):
         now = timezone.now()
         page = self.paginate_queryset(self.get_queryset())
         figures = ticket_figures([event.pk for event in page])
-        return self.get_paginated_response([item(event, figures, now) for event in page])
+        counts = sales_counts.for_events([event.pk for event in page])
+        return self.get_paginated_response([item(event, figures, now, counts[event.pk]) for event in page])
 
 
 class EventCountsView(APIView):
@@ -192,17 +194,19 @@ class EventExportView(APIView):
         now = timezone.now()
         events = list(filtered(request, now))
         figures = ticket_figures([event.pk for event in events])
+        counts = sales_counts.for_events([event.pk for event in events])
         rows = []
         for event in events:
-            row = item(event, figures, now)
+            row = item(event, figures, now, counts[event.pk])
             rows.append([
                 row["name"], row["organiser"]["name"], timezone.localtime(row["event_date"]).strftime("%Y-%m-%d %H:%M"),
                 row["state_label"], row["tickets_sold"], row["capacity"] if row["capacity"] is not None else "",
                 row["sales"], row["held"], row["released"], row["refunded"],
+                row["paid_count"], row["refunded_count"],
             ])
         return csv_export(
             request, stem="ticket-sales", kind="ticket sales", personal_data=False,
             filters={k: v for k, v in request.query_params.items() if v},
-            header=["Event", "Organiser", "When", "Status", "Tickets sold", "Capacity", "Sales (GH₵)", "Held (GH₵)", "Released (GH₵)", "Refunded (GH₵)"],
+            header=["Event", "Organiser", "When", "Status", "Tickets sold", "Capacity", "Sales (GH₵)", "Held (GH₵)", "Released (GH₵)", "Refunded (GH₵)", "Tickets paid", "Tickets refunded"],
             rows=rows,
         )

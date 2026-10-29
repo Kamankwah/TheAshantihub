@@ -159,6 +159,48 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   verifies them. A pending or historical `business.update` that still holds one cannot be approved,
   and its undo lists the field as not reverted. A proposed phone that belongs to staff is refused. Deactivating a
   scout counts only their non-rejected managed businesses.
+- **Staff-made listings are drafts, not listings (`portfolio.ListingDraft`, `OwnerConfirmation`, approval kind
+  `listing.staff_create`).** A scout, Operations or Super Admin drafts a product, service, event or stay for a client;
+  nothing is published until the owner confirmed it by texted link AND a second person approved it. The kind is
+  `two_people=True` (a Super Admin's own request never applies directly) and `money=False` (the General Manager, a role,
+  may approve it; the GM never decides a `money` kind). The approval renders from the snapshot in `approval.payload`
+  (masked number only; the full number is the audited sudo reveal, `portfolio-business-reveal-phone`). Only a draft's
+  creator may edit it (403 `not_your_draft`); `owner_confirmed` drafts can be edited (back to `draft`, re-confirm) or
+  withdrawn. An owner-confirmed draft is submitted at confirm when the owner's KYC is verified, otherwise it stays
+  `owner_confirmed` and is submitted after commit when KYC is approved (either door); staff retry with
+  `POST .../drafts/<id>/submit/` (409 with the reason). The owner's confirm never fails for a staff-side condition.
+  `POST /api/portfolio/businesses/<id>/listings/` answers 410, and legacy moderation approve/reject and event approve
+  answer 403 `own_listing` to the creator. Operations, Super Admin and the GM hold `listings.approve_staffed`.
+- **The confirmation link is a bearer token: staff never see it.** Stored as a SHA-256 hash, single use, 7 days, one live
+  link per owner (a new one revokes the old and takes over what waited on it). The text carries
+  `<FRONTEND_BASE_URL>/business/confirm#token=<raw>` (a fragment, so it stays out of request logs), is sent through
+  `otp.senders.send_sms` outside any transaction and is never texted to a number belonging to a staff account. The public
+  endpoints (`/api/portfolio/confirm/preview/`, `/confirm/`, `/confirm/decline/`) are POST-only with the token in the
+  body, unauthenticated, throttled, `activity_exempt`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`;
+  refusals are invalid 400 / used 409 / expired 410. No staff response carries the raw token, its hash or a `token=`
+  URL; staff see the masked number, `sent_at`, `expires_at` and the state. `portfolio/tests/test_no_link_leak.py` walks
+  the staff endpoints and guards this: extend its URL list when you add a staff endpoint near a draft or confirmation.
+- **`registration_confirmed` gates both KYC doors** (queue approval and the `business.kyc` approval): 409
+  `confirmation_missing` until a scout- or Operations-registered owner confirmed the registration. An owner with no
+  registration-confirmation row is grandfathered as confirmed, so existing businesses are never blocked. **Live Hubtel SMS
+  on an environment is a precondition for staff-registered businesses to reach KYC there** (the gate is always on; texts
+  that are only simulated confirm nothing, and the 409 says "Texts are simulated on this server, so no link went out").
+  Staff can ask the owner again (`POST /api/portfolio/businesses/<id>/confirmation/registration/`: lapsed, failed,
+  simulated or declined; 409 once confirmed). The staging test path is the management command
+  `owner_confirmation_link <business_owner_id> --staff <email>`: it refuses unless `OTP_SMS_PROVIDER` is `simulated`,
+  and prints the fresh link to stdout only (never logged, never stored raw). An owner is texted at most five times an
+  Accra day (new links and resends together, 429) on top of three resends per draft.
+- **Targets: `listings` replaces `renewals` in `targets.models.METRICS`.** A listing counts once, when its approval is
+  approved, for the lister, on the day of approval. `renewals` stays in `METRIC_CHOICES`/`LEGACY_METRICS` so old rows
+  stay valid; never delete or rewrite them. No min/max is seeded for `listings` (default cap 1000 a day). The prospect
+  payload carries `pipeline {stage, registration, listings{...}}` and the list `listings_live_this_month`, one
+  definition shared with `targets.actual`; `registration` (`confirmed|waiting|not_confirmed|none`) is its own field,
+  never inferred from `stage`.
+- **Paid and refunded counts (`marketplace/sales_counts.py`) are bulk and defined per kind** (the module docstring is the
+  source and also the column tooltip): a refunded purchase still counts as paid and refunded is always a subset of paid.
+  Product - paid orders, or cancelled after a successful payment session; a partial refund counts only for the shops it
+  paid back. Service and stay - `paid_at` set; refunded by cancel marker or, with the ledger on, a booking refund. Event -
+  every ticket once; refunded by `refunded_at` or a ticket-named refund. Add a number there, not in a view.
 - **Business detail change request (`portfolio/detail_changes.py`).** A claimed business files a
   `BusinessDetailChangeRequest` for its `full_name`, `login_phone` or `email` (step-up forced while the ledger is on;
   the refusals for a contact someone else holds are one generic message). Operations assigns an independent scout
@@ -303,6 +345,13 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   dispute first (dispute, then subject, then sale, as disputes resolve). The three pay endpoints take
   `payment_method` and add "payment processing" on MoMo through `payments/booking_pay.py`; a service request's price
   must be above GH₵ 0.00 with at most two decimals (this check is always on, ledger on or off: spec §13 (lxvii)).
+- **Support's verification queues and the pickup desk are paginated** (DRF envelope). The desk lists only
+  ledger-recorded orders and the queue answers `409 ledger_off` while the ledger is off; the hand-over door
+  (`PickupCollectedView`) has no ledger gate on purpose, because it needs the order's collection code, which only a
+  ledger-paid order has (an unrecorded order has none and stays with a person). The collection
+  code is made at payment, checked with `compare_digest`, five wrong tries lock the order (`423 code_locked`), and it
+  is never in a staff payload or log (only the customer's own order carries it). `SiteSettings.pickup_office_address`
+  is set only through the Super Admin's door (`PATCH /api/core/site-settings/pickup-address/`).
 - **Pickup Desk** is the `pickup_desk` staff role with the permissions `pickup.confirm` (store-pickup queue and
   collection) and `orders.redeliver` (open a re-delivery request, spec gate (cxxix)); only a Super Admin invites it.
 - **One-time codes (`otp/`).** One OTP service for every account kind: 6-digit codes kept only as a salted HMAC
@@ -358,8 +407,8 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   Follow-ups before the alerts go on or the screens ship are in the spec's §13 (ci) onward.
 - **A business's money and texts (`wallets/vendor.py`, `vendor_texts.py`, Stage 4).** `/api/wallet/vendor/*` is
   business-owner only (a customer with the same id, or staff, gets 403: platform fees never reach a customer) and answers
-  `409 ledger_off` while the ledger is off. Read-only: sale rows come from the business's own `OrderFeeSnapshot`s (never
-  today's rules), the daily summary from journal lines on its own Pending and Available accounts (`vendor.FOLD`; any
+  `409 ledger_off` while the ledger is off. Read-only: order rows come from the business's own `OrderFeeSnapshot`s (never
+  today's rules), booking rows (services, stays, tickets; `vendor/bookings/`) from its `ledger.BookingSale`s, the daily summary from journal lines on its own Pending and Available accounts (`vendor.FOLD`; any
   other line lands in `other`, so the columns always add up to the balance change), and no row, export or text holds a
   customer's name, phone or address. Texts to a business go through `wallets.VendorText`: `vendor_texts.queue` runs
   inside the payment (`orders.alerts`) or the release (`escrow.release_verified`, after every posting), in a savepoint,
@@ -369,11 +418,15 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `func.__qualname__`, which a `functools.partial` lacks).
   A business text is **never an `OtpEvent`** (those count toward the code send limits) but is counted by the
   `otp.spend` alert. Bodies are GSM-7 plain text with "GHS" (never "GH₵"), at most 306 characters. `phone` is in
-  `ashantihub/sentry.py`'s denylist (the whole number is a local in `vendor_texts.deliver`). **Booking sales (Plan 1b)
-  are not on these screens yet.** Their money is in Pending and Available and their fees count toward the cap (the fee
-  page marks all three categories `charged`), but the sale rows, `awaiting_call`, the statement and the texts come from
-  `OrderFeeSnapshot` only, and `booking_*` journal lines land in the daily summary's `other` column. A follow-up (Plan
-  4F or 4b) must add `BookingSale` rows, `FOLD` kinds and texts before the ledger is turned on (spec §13 (lxxxiii)).
+  `ashantihub/sentry.py`'s denylist (the whole number is a local in `vendor_texts.deliver`). **Booking sales (Plan 1b, shown by 4F)
+  are on these screens.** Their rows come from `GET /api/wallet/vendor/bookings/` (with the server's `release_at`), they
+  are counted in the overview's `awaiting_call`, the three `booking_*` journal kinds are in `vendor.FOLD` (so they no
+  longer land in the daily summary's `other` column), and the statement has one row per booking sale. Booking sales are
+  texted too: `vendor_texts.booking_paid` / `booking_released` / `booking_on_hold` (kinds `booking_paid` /
+  `booking_released` / `booking_on_hold`, keys `booking-paid-<sale>` etc.) are called from `ledger.sales.record_payment`,
+  `release` and `report_problem` (a local import: `wallets.vendor` imports `sales`), never raise, and carry the booking
+  reference and amounts only, never the customer's name, phone or what they wrote. A suspended business keeps the
+  in-app copy and gets no text. (Spec §13 (lxxxiii) is closed.)
 
 ## Listing tools (marketplace Plan 2)
 

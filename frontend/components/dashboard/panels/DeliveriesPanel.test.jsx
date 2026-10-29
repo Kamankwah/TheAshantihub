@@ -35,6 +35,20 @@ describe('DeliveriesPanel', () => {
   })
 })
 
+describe('DeliveriesPanel store pickup', () => {
+  it('a store-pickup order says the customer collects at the AshantiHub office', async () => {
+    renderPanel([{ ...DOOR_TO_DOOR_ORDER, delivery_method: 'store_pickup', delivery_address: '', collection_code: '482913' }])
+    expect(await screen.findByText('The customer collects this order at the AshantiHub pickup office, not at your shop.')).toBeInTheDocument()
+    expect(screen.queryByText(/482913/)).not.toBeInTheDocument()
+  })
+
+  it('a door-to-door order does not carry the pickup notice', async () => {
+    renderPanel([DOOR_TO_DOOR_ORDER])
+    await screen.findByText(/Bantama, Kumasi/)
+    expect(screen.queryByText(/pickup office/)).not.toBeInTheDocument()
+  })
+})
+
 describe('DeliveriesPanel rider tracking (vendor)', () => {
   const API = 'http://localhost:8000'
   const trackWith = (payload) => {

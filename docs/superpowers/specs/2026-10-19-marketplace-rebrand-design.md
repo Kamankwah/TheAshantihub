@@ -60,6 +60,7 @@ Anti-goals: a shopper able to buy before the opening; fake discounts; a staff me
 - **Who can list for clients.** Scouts, Operations and Super Admin can add prospects, register businesses and list products, services, events and stays on a client's behalf.
 - **Owner confirmation.** Both the registration and the listings need the owner's confirmation through a text message with a link, valid 7 days; after that the draft lapses and can be resent. Nothing goes live without it.
 - **Approval.** Listings are approved by Operations, the GM or a Super Admin; never by the person who created or listed it.
+  *Built:* the GM is the General Manager role (Plan 3, Task 0), not merely a permission; the permission `listings.approve_staffed` is granted to Operations, Super Admin and the GM. The kind is two-person, so a Super Admin's own listing waits for someone else.
 - **Purchase counts.** The Super Admin listings table gains two numbers per product, service or event: how many were paid and how many of those were refunded.
 
 ## Plan 4 — Product, cart, checkout and account pages

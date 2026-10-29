@@ -9,7 +9,7 @@ import { D } from "../theme.js";
 import { button, callout, dim, field } from "./panelStyles.js";
 import ListingRevisionsPanel from "./ListingRevisionsPanel.jsx";
 import SponsoredToggle, { isProductListing } from "./SponsoredToggle.jsx";
-import { Chip, ExportButton, FilterBar, KpiStrip, LoadState, Pager, ScreenHeader, col, dateOnly, dateTime, showing, tableStyle, td, th } from "./marketplaceParts.jsx";
+import { Chip, CountCell, CountHead, ExportButton, FilterBar, KpiStrip, LoadState, Pager, ScreenHeader, col, dateOnly, dateTime, showing, tableStyle, td, th } from "./marketplaceParts.jsx";
 import { card, errorStyle, h3, labelStyle, money, useDebounced } from "./portfolioParts.jsx";
 
 // Super Admin > Listings & services (screen 19): every listing in every state.
@@ -23,10 +23,12 @@ const STATE = {
   rejected: ["Rejected", D.textFaint], draft: ["Draft", D.textFaint],
 };
 const TYPE = { product: "Product", service: "Service", booking: "Booking" };
+const PAID_TIP = "Purchases that were paid, one per purchase whatever the quantity. Products: paid orders that include it. Services: paid requests. Stays: paid bookings. A refunded purchase still counts as paid.";
+const REFUNDED_TIP = "Of the paid purchases, how many were refunded or cancelled after payment.";
 const RULES = [
   "An owner's new listing waits for Operations or a Super Admin before it goes on the site.",
   "A listing a scout adds for a business is checked through the scout's approval request; that approval is its moderation.",
-  "The owner is told about every change a scout makes and can undo it within 7 days.",
+  "The owner is told about every change a scout makes to their business and can undo it within 7 days. A listing made for an owner works differently: the owner confirms it by text first, a second person approves it, and a Super Admin can take it down.",
   "A hidden listing is never deleted; it comes back when the business is reinstated.",
   "Taking a listing down here is a rejection with a reason. The owner is told why.",
 ];
@@ -203,8 +205,8 @@ function AllListingsView({ auth, onOpenBusiness }) {
         {!list.isLoading && !list.isError && rows.length === 0 && <div style={dim}>No listing matches these filters.</div>}
         {rows.length > 0 && (
           <div style={{ overflowX: "auto" }}>
-            <table aria-label="Listings" style={{ ...tableStyle, minWidth: 900 }}>
-              <thead><tr><th style={th}>Listing</th><th style={th}>Type</th><th style={th}>Price</th><th style={th}>Status</th><th style={th}>Added by</th><th style={th}>Latest moderation</th><th style={th}>Actions</th></tr></thead>
+            <table aria-label="Listings" style={{ ...tableStyle, minWidth: 1000 }}>
+              <thead><tr><th style={th}>Listing</th><th style={th}>Type</th><th style={th}>Price</th><th style={th}>Status</th><th style={th}>Added by</th><th style={th}>Latest moderation</th><CountHead tip={PAID_TIP}>Paid</CountHead><CountHead tip={REFUNDED_TIP}>Refunded</CountHead><th style={th}>Actions</th></tr></thead>
               <tbody>
                 {rows.map((l) => {
                   const [label, color] = STATE[l.state] || [l.state, D.textFaint];
@@ -217,8 +219,10 @@ function AllListingsView({ auth, onOpenBusiness }) {
                       <td style={td}>{TYPE[l.type] || l.type}</td>
                       <td style={td}>{l.price_amount != null ? `${money(l.price_amount)}${l.price_unit ? ` / ${l.price_unit}` : ""}` : "—"}</td>
                       <td style={td}><Chip color={color}>{label}</Chip>{l.state_note && <div style={dim}>{l.state_note}</div>}</td>
-                      <td style={td}>{l.added_by ? `${l.added_by} (scout, for the owner)` : "Owner"}</td>
+                      <td style={td}>{l.added_by ? `${l.added_by} (${l.added_by_role || "staff"}, for the owner)` : "Owner"}</td>
                       <td style={td}>{l.reviewed_by ? `${l.reviewed_by} · ${dateOnly(l.reviewed_at)}` : "—"}</td>
+                      <CountCell value={l.paid_count} />
+                      <CountCell value={l.refunded_count} />
                       <td style={td}>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" aria-label={`History of ${l.name}`} onClick={() => setHistory(l)} style={button(D.panelBg, D.text)}>History</button>
@@ -234,7 +238,7 @@ function AllListingsView({ auth, onOpenBusiness }) {
             </table>
           </div>
         )}
-        {rows.length > 0 && <div style={dim}>{`${showing(list.data, rows)} · newest first. Taking a listing down removes it from the site at once without deleting it; the owner is told why and it is recorded.`}</div>}
+        {rows.length > 0 && <div style={dim}>{`${showing(list.data, rows)} · newest first. Taking a listing down removes it from the site at once without deleting it; the owner is told why and it is recorded. Paid and Refunded count purchases; hold the pointer over a heading, or tap it, for what each counts.`}</div>}
       </div>
       <Pager data={list.data} page={page} setPage={setPage} />
       <section aria-label="How moderation works" style={card}>

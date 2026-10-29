@@ -68,5 +68,5 @@ def _consequences(request):
 COUPON_KIND = ApprovalKind(
     key=coupons.KIND_KEY, label="Approve a discount coupon", pool_permission="", current_state=_state, apply=_apply,
     response_hours=48, chain_note="Super Admin only", resolve_approver=_super_admin_only, render_diff=_diff,
-    validate=_validate, on_rejected=_on_rejected, consequences=_consequences, amount_of=_amount,
+    validate=_validate, on_rejected=_on_rejected, consequences=_consequences, amount_of=_amount, money=True,
 )

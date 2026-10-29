@@ -12,6 +12,7 @@ from accounts.models import BusinessOwner, BusinessOwnerProfile, Role, StaffUser
 from listings import revisions
 from listings.models import Category, Listing, ListingPhoto, ListingRevision, ListingVariant, Zone
 from listings.serializers import OwnerListingSerializer
+from listings.views import OWN_LISTING
 from notifications.models import Notification
 
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
@@ -433,7 +434,8 @@ class ListingRevisionTests(TestCase):
         self.auth_staff()
         denied = self.client.post(f"/api/listings/moderation/{pending.pk}/approve/")
         self.assertEqual(denied.status_code, 403)
-        self.assertEqual(denied.json(), {"detail": "You made this, so someone else must approve it."})
+        # the listing endpoints keep the staff pipeline's body (its UI reads code own_listing); a revision keeps its own message
+        self.assertEqual(denied.json(), {"detail": OWN_LISTING, "code": "own_listing"})
         self.assertTrue(revisions.cannot_decide(self.staff, pending))
         self.assertFalse(revisions.cannot_decide(self.staff, self.listing))
 

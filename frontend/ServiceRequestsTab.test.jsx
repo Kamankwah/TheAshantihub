@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { server } from './mocks/server.js'
 import { gatedOpening } from './mocks/opening.js'
 import { setStoredAuth } from './apiClient.js'
@@ -13,9 +13,23 @@ import { ServiceRequestsTab } from './App.jsx'
 const ACCEPTED = [{ id: 5, listing_name: 'Braids at Asafo', status: 'accepted', message: 'Box braids', agreed_price: '120.00' }]
 
 // A stand-in for the simulated payment modal: pays at once when opened.
-function InstantPay({ onSuccess }) {
-  return <button onClick={onSuccess}>Simulate paid</button>
+function InstantPay({ onSuccess, processing }) {
+  return <button onClick={onSuccess} data-processing={processing === undefined ? 'none' : processing}>Simulate paid</button>
 }
+
+const API = 'http://localhost:8000'
+const ledgerOff = () => http.get(`${API}/api/wallet/`, () => HttpResponse.json({ code: 'ledger_off', detail: 'off' }, { status: 409 }))
+const ledgerOn = (balance = '500.00') => http.get(`${API}/api/wallet/`, () => HttpResponse.json({ kind: 'customer', balance }))
+// Accepted until the pay call lands, then in_progress like the real server.
+let paidYet = false
+const listAccepted = () => http.get(`${API}/api/services/requests/mine/`, () => HttpResponse.json(paidYet ? [{ ...ACCEPTED[0], status: 'in_progress' }] : ACCEPTED))
+const quote = (pp = '1.80') => http.get(`${API}/api/wallet/processing/`, ({ request }) => {
+  const amount = new URL(request.url).searchParams.get('amount')
+  return HttpResponse.json({ amount, payment_processing: pp, you_pay: '121.80', provider: 'simulated' })
+})
+
+// Old cases run with the ledger off, so the flow is the one before wallets.
+beforeEach(() => { paidYet = false; server.use(ledgerOff()) })
 
 function renderTab() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -68,5 +82,133 @@ describe('ServiceRequestsTab — Pay before the marketplace opens', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Pay GHS 120.00 to start/ }))
     fireEvent.click(screen.getByText('Simulate paid'))
     await waitFor(() => expect(screen.getByText(/Payment went through but we couldn't start the job/)).toBeInTheDocument())
+  })
+})
+
+describe('ServiceRequestsTab — paying by method with the server charge', () => {
+  it('ledger off: the pay flow and body are unchanged', async () => {
+    let body
+    server.use(
+      listAccepted(),
+      http.post(`${API}/api/services/requests/:id/pay/`, async ({ request }) => { body = await request.json(); return HttpResponse.json({ id: 5, status: 'in_progress' }) }),
+    )
+    renderTab()
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: /Pay GHS 120.00 to start/ }))
+    expect(screen.getByText('Simulate paid')).toHaveAttribute('data-processing', 'none')
+    fireEvent.click(screen.getByText('Simulate paid'))
+    await waitFor(() => expect(body).toEqual({}))
+  })
+
+  it("momo passes the server's processing to the payment modal and posts payment_method momo", async () => {
+    let body
+    server.use(
+      ledgerOn(), listAccepted(), quote('1.80'),
+      http.post(`${API}/api/services/requests/:id/pay/`, async ({ request }) => { body = await request.json(); return HttpResponse.json({ id: 5, status: 'in_progress' }) }),
+    )
+    renderTab()
+    const btn = await screen.findByRole('button', { name: /Pay GHS 120.00 to start/ })
+    await waitFor(() => expect(btn).toBeEnabled())
+    fireEvent.click(btn)
+    expect(screen.getByText('Simulate paid')).toHaveAttribute('data-processing', '1.80')
+    fireEvent.click(screen.getByText('Simulate paid'))
+    await waitFor(() => expect(body).toEqual({ payment_method: 'momo' }))
+  })
+
+  it('wallet pays once without opening the payment modal', async () => {
+    const bodies = []
+    server.use(
+      ledgerOn(), listAccepted(),
+      http.post(`${API}/api/services/requests/:id/pay/`, async ({ request }) => {
+        bodies.push(await request.json())
+        await new Promise((r) => setTimeout(r, 50))
+        paidYet = true
+        return HttpResponse.json({ id: 5, status: 'in_progress', payment_processing: '0.00' })
+      }),
+    )
+    renderTab()
+    fireEvent.click(await screen.findByLabelText(/AshantiHub wallet/))
+    const btn = await screen.findByRole('button', { name: 'Pay GH₵ 120.00 from your AshantiHub wallet' })
+    fireEvent.click(btn)
+    fireEvent.click(btn)
+    expect(screen.queryByText('Simulate paid')).not.toBeInTheDocument()
+    expect(await screen.findByText('Paid. The job can start.')).toBeInTheDocument()
+    expect(bodies).toEqual([{ payment_method: 'wallet' }])
+    expect(screen.queryByText(/Payment processing GH/)).not.toBeInTheDocument()
+    // After the refetch the request is in progress and the line is still there.
+    expect(await screen.findByText('In progress')).toBeInTheDocument()
+    expect(screen.getByText('Paid. The job can start.')).toBeInTheDocument()
+  })
+
+  it('insufficient funds shows the server text', async () => {
+    server.use(
+      ledgerOn(), listAccepted(),
+      http.post(`${API}/api/services/requests/:id/pay/`, () => HttpResponse.json(
+        { detail: 'Your wallet balance is too low.', code: 'insufficient_funds' }, { status: 409 })),
+    )
+    renderTab()
+    fireEvent.click(await screen.findByLabelText(/AshantiHub wallet/))
+    fireEvent.click(await screen.findByRole('button', { name: /from your AshantiHub wallet/ }))
+    expect(await screen.findByText('Your wallet balance is too low.')).toBeInTheDocument()
+    expect(screen.queryByText(/Payment went through/)).not.toBeInTheDocument()
+  })
+
+  it('a redirect answer goes to checkout_url', async () => {
+    server.use(
+      ledgerOn(), listAccepted(),
+      http.post(`${API}/api/services/requests/:id/pay/`, () => HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.example/c/9' })),
+    )
+    const original = window.location
+    Object.defineProperty(window, 'location', { configurable: true, value: { href: 'http://localhost/' } })
+    try {
+      renderTab()
+      fireEvent.click(await screen.findByLabelText(/AshantiHub wallet/))
+      fireEvent.click(await screen.findByRole('button', { name: /from your AshantiHub wallet/ }))
+      await waitFor(() => expect(window.location.href).toBe('https://pay.example/c/9'))
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: original })
+    }
+  })
+
+  it('a redirect after mobile money closes the modal and posts once', async () => {
+    let posts = 0
+    server.use(
+      ledgerOn(), listAccepted(), quote('1.80'),
+      http.post(`${API}/api/services/requests/:id/pay/`, () => { posts += 1; return HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.example/c/9' }) }),
+    )
+    const original = window.location
+    Object.defineProperty(window, 'location', { configurable: true, value: { href: 'http://localhost/' } })
+    try {
+      renderTab()
+      const btn = await screen.findByRole('button', { name: /Pay GHS 120.00 to start/ })
+      await waitFor(() => expect(btn).toBeEnabled())
+      fireEvent.click(btn)
+      fireEvent.click(screen.getByText('Simulate paid'))
+      await waitFor(() => expect(window.location.href).toBe('https://pay.example/c/9'))
+      expect(screen.queryByText('Simulate paid')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /Pay GHS 120.00 to start/ }))
+      await new Promise((r) => setTimeout(r, 60))
+      expect(screen.queryByText('Simulate paid')).not.toBeInTheDocument()
+      expect(posts).toBe(1)
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: original })
+    }
+  })
+
+  it("the paid line shows the server's processing charge", async () => {
+    server.use(
+      ledgerOn(), listAccepted(), quote('1.80'),
+      http.post(`${API}/api/services/requests/:id/pay/`, () => { paidYet = true; return HttpResponse.json({ id: 5, status: 'in_progress', payment_processing: '1.80' }) }),
+    )
+    renderTab()
+    const btn = await screen.findByRole('button', { name: /Pay GHS 120.00 to start/ })
+    await waitFor(() => expect(btn).toBeEnabled())
+    fireEvent.click(btn)
+    fireEvent.click(screen.getByText('Simulate paid'))
+    expect(await screen.findByText('Paid. The job can start.')).toBeInTheDocument()
+    expect(screen.getByText('Payment processing GH₵ 1.80')).toBeInTheDocument()
+    expect(await screen.findByText('In progress')).toBeInTheDocument()
+    expect(screen.getByText('Paid. The job can start.')).toBeInTheDocument()
+    expect(screen.getByText('Payment processing GH₵ 1.80')).toBeInTheDocument()
   })
 })

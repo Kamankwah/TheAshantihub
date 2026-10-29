@@ -33,13 +33,13 @@ const FEES = {
   history: [],
 }
 
-function renderPanel({ settings = SETTINGS, fees = FEES } = {}) {
+function renderPanel({ settings = SETTINGS, fees = FEES, ...props } = {}) {
   server.use(
     http.get(`${API}/api/ledger/settings/`, () => HttpResponse.json(settings)),
     http.get(`${API}/api/ledger/fees/`, () => HttpResponse.json(fees)),
   )
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(<QueryClientProvider client={queryClient}><MoneyRulesPanel /></QueryClientProvider>)
+  render(<QueryClientProvider client={queryClient}><MoneyRulesPanel {...props} /></QueryClientProvider>)
 }
 
 describe('MoneyRulesPanel settings', () => {
@@ -205,5 +205,43 @@ describe('MoneyRulesPanel units', () => {
     fireEvent.click(within(input.closest('[data-setting]')).getByRole('button', { name: 'Save' }))
     expect(await within(input.closest('[data-setting]')).findByRole('alert')).toHaveTextContent('between GH₵ 1.00 and GH₵ 100,000,000.00')
     expect(called).toBe(false)
+  })
+})
+
+describe('MoneyRulesPanel for the Accountant', () => {
+  it('an accountant reads that a Super Admin approves', async () => {
+    renderPanel({ superAdmin: false })
+    const note = await screen.findByRole('note')
+    expect(note).toHaveTextContent('A change you propose goes to a Super Admin, who approves it in Approvals. Nothing changes until then.')
+    expect(note).not.toHaveTextContent('Saving asks for your password')
+  })
+
+  it('the save button says Propose and the answer says sent for approval', async () => {
+    server.use(http.post(`${API}/api/ledger/settings/`, () => HttpResponse.json({ approval_id: 4, status: 'pending' }, { status: 201 })))
+    renderPanel({ superAdmin: false })
+    const input = await screen.findByLabelText('Hours by which an order must be verified')
+    fireEvent.change(input, { target: { value: '60' } })
+    const row = input.closest('[data-setting]')
+    expect(within(row).queryByRole('button', { name: 'Save' })).toBeNull()
+    fireEvent.click(within(row).getByRole('button', { name: 'Propose' }))
+    expect(await within(row).findByText('Sent for approval.')).toBeInTheDocument()
+  })
+
+  it('without fees.manage nothing can be edited', async () => {
+    renderPanel({ canPropose: false, superAdmin: false, settings: { ...SETTINGS, pending: [{ id: 10, key: 'withdrawal_per_tx_limit_pesewas', value: 250000, maker: 'Kofi Mensah', created_at: '2026-10-18T10:00:00Z' }] } })
+    expect(await screen.findByRole('heading', { name: 'When money is released' })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^(Save|Propose)$/ })).toBeNull()
+    const row = document.querySelector('[data-setting="withdrawal_per_tx_limit_pesewas"]')
+    expect(within(row).getByText('GH₵ 5,000.00')).toBeInTheDocument()
+    expect(within(row).getByText(/Waiting for approval: .*proposed by Kofi Mensah/)).toBeInTheDocument()
+    expect(screen.getAllByText('Built-in default').length).toBeGreaterThan(0)
+  })
+
+  it('fee tiers have no editor without fees.manage', async () => {
+    renderPanel({ canPropose: false, superAdmin: false })
+    const products = (await screen.findByRole('heading', { name: 'Products' })).closest('[data-fees]')
+    expect(within(products).getByText('1%')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit tiers' })).toBeNull()
   })
 })

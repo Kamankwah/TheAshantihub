@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from unittest import mock
 
 from django.test import override_settings
@@ -148,3 +149,68 @@ class AfterHoursBoundaryAndPreviewTests(AfterHoursStampTests):
             CartItem.objects.create(cart=cart, listing=self.listing_a, quantity=1, unit_price_snapshot="150.00")
             r = self.client.post("/api/marketing/cart/quote/", {"delivery_method": "door_to_door"}, format="json")
         self.assertEqual(r.data["source"], "business_hours")
+
+
+FEE = {"total": "15.00", "lines": [], "distance_km": "3", "distance_basis": "test"}
+PIN = "&lat=6.69&lng=-1.62"
+
+
+def fee_patch():
+    return mock.patch("delivery.rates.checkout_fee", lambda items, lat, lng, **kw: (None, dict(FEE)))
+
+
+class DeliveryPreviewFeeTests(AfterHoursStampTests):
+    """The preview also says the delivery fee checkout will add, with promotions off (3F follow-up)."""
+
+    def preview(self, query="fulfilment=door_to_door" + PIN):
+        cart, _ = Cart.objects.get_or_create(customer=self.customer)
+        if not cart.items.exists():
+            CartItem.objects.create(cart=cart, listing=self.listing_a, quantity=1, unit_price_snapshot="150.00")
+        with mock.patch("django.utils.timezone.now", return_value=accra(19, 12)):
+            return self.client.get(f"/api/orders/delivery-preview/?{query}")
+
+    @override_settings(DELIVERY_FEE_ENABLED=True)
+    def test_preview_gives_the_fee_checkout_will_add(self):
+        with fee_patch():
+            delivery = self.preview().data["delivery"]
+            self.assertEqual((delivery["fee"], delivery["fee_status"], delivery["waived"]), ("15.00", "ok", False))
+            Cart.objects.get(customer=self.customer).items.all().delete()
+            CartItem.objects.create(cart=Cart.objects.get(customer=self.customer), listing=self.listing_a, quantity=1, unit_price_snapshot="150.00")
+            with mock.patch("django.utils.timezone.now", return_value=accra(19, 12)):
+                response = self.client.post("/api/orders/checkout/", {
+                    "delivery_method": "door_to_door", "delivery_address": "12 Ash Road", "delivery_phone": "+233200662001",
+                    "delivery_lat": 6.69, "delivery_lng": -1.62}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(Decimal(str(response.data["delivery_fee"])), Decimal(delivery["fee"]))
+        self.assertEqual(Decimal(str(response.data["total_amount"])), Decimal("150.00") + Decimal(delivery["fee"]))
+
+    @override_settings(DELIVERY_FEE_ENABLED=True)
+    def test_preview_delivery_is_null_for_store_pickup_or_with_fees_off(self):
+        with fee_patch():
+            self.assertIsNone(self.preview("fulfilment=store_pickup" + PIN).data["delivery"])
+        with override_settings(DELIVERY_FEE_ENABLED=False), fee_patch():
+            response = self.preview()
+        self.assertIsNone(response.data["delivery"])
+        self.assertIn("deferred", response.data)
+
+    @override_settings(DELIVERY_FEE_ENABLED=True)
+    def test_preview_without_a_pin_says_needs_location(self):
+        # A rate card is in force but the cart has no delivery pin to measure to.
+        with mock.patch("delivery.rates.checkout_fee", return_value=None), mock.patch("delivery.config.live", return_value=object()):
+            response = self.preview("fulfilment=door_to_door")
+        self.assertEqual(response.data["delivery"]["fee"], None)
+        self.assertEqual(response.data["delivery"]["fee_status"], "needs_location")
+
+    @override_settings(DELIVERY_FEE_ENABLED=True, MARKETING_PROMOS_ENABLED=True)
+    def test_cart_quote_delivery_block_is_unchanged_by_the_move(self):
+        cart, _ = Cart.objects.get_or_create(customer=self.customer)
+        CartItem.objects.create(cart=cart, listing=self.listing_a, quantity=1, unit_price_snapshot="150.00")
+        body = {"delivery_method": "door_to_door", "delivery_lat": 6.69, "delivery_lng": -1.62}
+        with fee_patch():
+            block = self.client.post("/api/marketing/cart/quote/", body, format="json").data["delivery"]
+        self.assertEqual(list(block), ["fee", "fee_status", "waived", "waiver_name", "waived_fee", "mixed_note", "lines", "route"])
+        self.assertEqual(dict(block), {"fee": "15.00", "fee_status": "ok", "waived": False, "waiver_name": None,
+                                       "waived_fee": None, "mixed_note": None, "lines": [], "route": None})
+        out = self.client.post("/api/marketing/cart/quote/", {**body, "delivery_lat": 0, "delivery_lng": 0}, format="json").data["delivery"]
+        self.assertEqual((out["fee"], out["fee_status"]), (None, "out_of_area"))
+        self.assertEqual(list(out), ["fee", "fee_status", "waived", "waiver_name", "waived_fee", "mixed_note", "message"])

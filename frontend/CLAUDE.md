@@ -122,6 +122,16 @@ monolith holding most components, with extractions living in `components/`,
   hand-over) keeps the password in its own state only and clears it after submitting; never lift
   it into a parent, a query cache or storage. The hand-over overlay holds a same-URL history guard
   against Back and its password fields use `autocomplete="off"`.
+- **`/business/confirm` is a page too.** `App.jsx` excludes it from `/business/:id` like `claim`.
+  `OwnerConfirmPage` reads the token from the URL fragment (falls back to `?token=` for links already sent), strips it
+  with `history.replaceState` and keeps it in component state only - never in a query key, cache, storage or log. It
+  calls the public endpoints through `apiPostPublic` (no session, no view-as, never ends a stored session), all POST.
+  The General Manager menu has no Register, Prospects or Client listings (a checker, not a maker).
+  The preview query key is constant (the token rides only in the closure), with `gcTime: 0`.
+- **Prospects work for Operations and Super Admin too.** They list every scout's (`?scout=<id>` narrows; the card names
+  the scout), the add sheet needs a scout picker for non-scouts, and the header shows the listings-live figure only when
+  the server sends it (a one-scout list). `AskOwnerAgain` offers the registration re-ask only when
+  `owner_confirmation.can_ask_again` is true; Resend on a draft only when `confirmation.can_resend` is true.
 - **`ProposeChangeForm` diffs against the business it opened with**, not the live query data.
 - **The public claim page retries once after a 401** (`lib/withoutStaleSignIn.js`): an expired
   sign-in stored in the browser must not block it. Never use that helper on the hand-over, whose
@@ -159,7 +169,31 @@ monolith holding most components, with extractions living in `components/`,
   MSW wallet defaults in `mocks/handlers.js` are "ledger on, empty"; override with `server.use(...)`.
   `WalletNoInventionSweep.test.jsx` is the conformance contract for every wallet screen: add a new wallet
   screen to its list.
+- **Rider wallet and dispatch money screens (Plan 5F).** `RiderWalletHome` and `RiderWalletHistory` mount 3F's
+  destination, withdrawal and history components on `RIDER_WALLET_BASE` (`/api/delivery/rider/wallet`). The rider
+  Earnings tab (`RiderEarningsTab`) branches on `rider/me.rider.wallet`, then on the wallet's own 409 (`ledger_off`
+  or `wallet_disabled` falls back to the payroll earnings); no wallet call is made for an AshantiHub rider. The MSW default for `/api/delivery/rider/wallet/*` is 409 `ledger_off` (unlike 3F's "ledger on, empty" wallet defaults), so a test that wants the wallet must register its own handlers.
+  `RiderMoneyPanel` (staff) renders `acct-rider-payouts` and falls back to `AccountingShellPanel` on `ledger_off`,
+  so the shell's "No rider rate exists" text is only the ledger-off fallback. Balances that can go below zero use
+  `signedGhs`. `RiderMoneyNoInventionSweep.test.jsx` is the conformance contract for these screens.
+- **Verification and pickup screens (Plan 1F).** The Pickup Desk's overview is the desk (`PickupDeskPanel`, also the
+  Super Admin's `pickup-desk` item); Support's queues are `VerificationCallsPanel`. Query-key roots are
+  `ledger-verification` and `ledger-pickup`. The collection code is shown only on the customer's own order
+  (`PickupCollectionNote`); the desk asks for it and no staff payload carries it. The pickup office address comes
+  only from site settings (`pickup_office_address`) and reads "address to be confirmed" while blank. Customer pay
+  screens (service, tickets, stay) go through `useBookingPayment` and never compute a charge. Amount elements in
+  1F's staff panels (pickup desk, verification calls, booking cancel, call outcome form) carry `data-amount` (tabular figures, never gold); `LedgerScreensSweep.test.jsx` is their contract and checks that every GH₵ amount sits inside one.
+  The Pickup Desk's exhaustive menu also has a Desk group holding 5F's Re-deliveries (gated by `orders.redeliver`).
+- **Booking money states come from the server's `money` block;** a refund amount is shown only from `cancel-quote`,
+  `wallet_refund` or `money.refunded`; `components/bookings/` holds the bars. `BookingNoInventionSweep.test.jsx`
+  is the conformance contract for them.
 - **The vendor tab is "Money"** (`id: "money"`, one tab for payouts and the wallet), not "Payouts".
+- **Vendor money screens (`components/dashboard/money/`) are owner-only.** They show platform fees, so nothing
+  outside `components/dashboard/` may import the folder (`MoneyNoInventionSweep.test.jsx` scans for it). `VendorMoney`
+  is the one Money tab, with Payouts (3F's `VendorPayouts`) as a sub-tab. Every money value sits in a `data-amount`
+  element styled `walletStyles("dashboard").amount`; signed amounts use `signedGhs` (`walletMoney.js`). Release hours
+  come only from booking-terms (`useBookingTerms`), never a literal "24/48/72 hours". Booking sales are read from
+  `vendor/bookings/`, not the order sales list. The sweep test is the conformance contract: add a new Money screen to it.
 
 ## Owner listing panels and `basePath`
 

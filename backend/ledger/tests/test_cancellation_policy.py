@@ -115,7 +115,8 @@ class CancelBySaleTests(BookingBase):
         after = sales.release_at(sale) + timedelta(minutes=1)
         with self.assertRaises(sales.CancelError) as ctx:
             sales.cancel_by_customer(sale, after)
-        self.assertIn("dispute", ctx.exception.message.lower())
+        self.assertIn("Report a problem", ctx.exception.message)
+        self.assertNotIn("dispute", ctx.exception.message.lower())
         BookingSale.objects.filter(pk=sale.pk).update(released_at=timezone.now())
         sale.refresh_from_db()
         with self.assertRaises(sales.CancelError):

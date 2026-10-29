@@ -146,7 +146,24 @@ class QuoteView(RatesView):
 
 class RiderEarnedView(APIView):
     """GET payouts/ — what riders earned, from the pay recorded on each delivered job. Read only: there is no payout run,
-    approval or payment here, and bank and tax are not connected."""
+    approval or payment here, and bank and tax are not connected. `redeliveries` lists the re-delivery fees owed to
+    in-house riders through payroll over the same window (delivery.redelivery.owed_trips)."""
+
+    @staticmethod
+    def redeliveries(since):
+        from django.db.models import Count, Sum
+
+        from delivery import redelivery
+        from ledger.money import from_pesewas
+
+        rows = (
+            redelivery.owed_trips(since=since).values("rider_id", "rider__full_name")
+            .annotate(trips=Count("id"), owed=Sum("fee_pesewas")).order_by("rider__full_name", "rider_id")
+        )
+        return [
+            {"staff_id": r["rider_id"], "full_name": r["rider__full_name"], "trips": r["trips"], "owed": str(from_pesewas(r["owed"]))}
+            for r in rows
+        ]
 
     def get_permissions(self):
         return [HasAnyRolePermission("delivery.cash", "delivery.rates", "delivery.fleet")]
@@ -170,6 +187,7 @@ class RiderEarnedView(APIView):
         return Response({
             "since": since, "weeks": weeks, "card": config.rate_dict(config.live(RateCard)),
             "riders": [{"staff_id": r["dispatch_id"], "full_name": r["dispatch__full_name"], "jobs": r["jobs"], "jobs_with_pay": r["with_pay"], "earned": str(r["earned"]) if r["earned"] is not None else None} for r in rows],
+            "redeliveries": self.redeliveries(since),
             "payout": {"status": "not_connected", "note": "Payout runs, tax and bank matching arrive with the Accounting phase. This is a record of what each job earned, not a payment."},
         })
 
@@ -185,9 +203,10 @@ class RiderEarningsLinesView(APIView):
 
         from django.utils import timezone
 
+        from delivery import redelivery
         from orders.models import DeliveryAssignment
 
         weeks = max(1, min(int(request.query_params.get("weeks", 2) or 2), 12))
         since = timezone.now() - timedelta(days=7 * weeks)
         jobs = employment.payroll_jobs(DeliveryAssignment.objects.filter(dispatch_id=staff_id, delivered_at__gte=since)).order_by("-delivered_at")
-        return Response({"results": [{"assignment_id": j.pk, "order_id": j.order_id, "delivered_at": j.delivered_at, "pay": str(j.rider_pay) if j.rider_pay is not None else None, "breakdown": j.rider_pay_breakdown, "wait_pay_held": j.wait_pay_held} for j in jobs]})
+        return Response({"results": [{"assignment_id": j.pk, "order_id": j.order_id, "delivered_at": j.delivered_at, "pay": str(j.rider_pay) if j.rider_pay is not None else None, "breakdown": j.rider_pay_breakdown, "wait_pay_held": j.wait_pay_held} for j in jobs], "redeliveries": [redelivery.owed_row(r) for r in redelivery.owed_trips(since=since, rider=staff_id).order_by("-completed_at")]})

@@ -181,7 +181,7 @@ class DeliveryCaseRefundTests(WiringBase):
     def test_a_refund_waiting_for_the_super_admin_blocks_release(self):
         order, case = self.skipped_case()
         self.ask_refund(case, "600.00")
-        FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        FulfilmentCheck.objects.update_or_create(order=order, defaults=dict(outcome=FulfilmentCheck.MATCHES))
         self.assertIsNone(escrow.release_verified(order))
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.esi), 60000)
 

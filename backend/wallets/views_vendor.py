@@ -58,6 +58,31 @@ class VendorSalesView(APIView):
         return paginator.get_paginated_response(vendor.rows(request.user, page))
 
 
+class VendorBookingsView(APIView):
+    """GET vendor/bookings/?status=all|awaiting_call|released|refunded&date_from=&date_to= — one row per service, stay or
+    ticket sale of the business, newest paid first, 20 a page. Never a customer's name or phone, nor what a reported
+    problem says."""
+
+    permission_classes = [IsBusinessOwner]
+
+    def get(self, request):
+        if not escrow.enabled():
+            return ledger_off()
+        wanted = request.query_params.get("status") or "all"
+        if wanted not in SALE_STATUSES:
+            return Response({"status": "Choose all, awaiting_call, released or refunded."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            date_from, date_to = vendor.optional_dates(request.query_params)
+        except vendor.RangeError as exc:
+            return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
+        queryset = vendor.booking_sales(
+            request.user, status=None if wanted == "all" else wanted, date_from=date_from, date_to=date_to,
+        )
+        paginator = Pagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        return paginator.get_paginated_response(vendor.booking_rows(request.user, page))
+
+
 class VendorDailyView(APIView):
     """GET vendor/daily/?date_from=&date_to= — the business's money day by day (Accra days, newest first; the last 30
     by default, at most 92), only days when something moved, and the range's totals: sold (item subtotals paid into

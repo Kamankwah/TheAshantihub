@@ -51,6 +51,10 @@ def deadline_for(order, *, express=False, limits=None):
 IN_HOUSE_ONLY = "Re-assigned: AshantiHub's own riders only"
 REDELIVERY_UNPAID = "Waiting for the customer to pay the re-delivery fee"
 REDELIVERY_IN_HOUSE = "Re-delivery: AshantiHub's own riders only"
+# The queue row says "first", not "only": the job goes to AshantiHub's riders first and to a third-party rider only when
+# none is available (Director ruling 2). The two "only" texts above stay for the ranking's left-out reasons.
+IN_HOUSE_FIRST = "Re-assigned: AshantiHub's own riders first"
+REDELIVERY_IN_HOUSE_FIRST = "Re-delivery: AshantiHub's own riders first"
 PICKUP_MISSING = "Pickup location missing"
 
 
@@ -67,6 +71,19 @@ def redelivery_hold(order):
     if redelivery.customer_unavailable(held):
         return "in_house" if current is not None and current.status == current.PAID else "unpaid"
     return "in_house" if current is not None and current.status == current.ASSIGNED else None
+
+
+def assign_limit(order):
+    """For the queue screen (unlocked read, no availability worked out per row): {"code", "label"} when the job waits for
+    the customer's re-delivery fee or goes to AshantiHub's own riders first, else None."""
+    hold = redelivery_hold(order)
+    if hold == "unpaid":
+        return {"code": "redelivery_fee_unpaid", "label": REDELIVERY_UNPAID}
+    if hold == "in_house":
+        return {"code": "redelivery_in_house_first", "label": REDELIVERY_IN_HOUSE_FIRST}
+    if services.is_reassignment(getattr(order, "delivery_assignment", None)):
+        return {"code": "in_house_first", "label": IN_HOUSE_FIRST}
+    return None
 
 
 def _riders(*, in_house_only=False):

@@ -3,7 +3,7 @@
 Pay is what each delivered job recorded under the rate card in force when it was delivered: a record, not a
 payment. A job with no recorded pay (no card, or a route that could not be measured) shows no pay, never zero.
 Cash on delivery is not offered at checkout yet, so the cash screen says so and shows no figure."""
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.db.models import Sum
@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from approvals.models import ApprovalRequest
 from orders.models import DeliveryAssignment
 
-from . import cash, config, employment
+from . import cash, config, employment, redelivery
 from .models import CashHandover, RateCard
 from .views_rider import RiderView
 
@@ -41,12 +41,14 @@ class EarningsView(RiderView):
                 "assignment_id": j.pk, "order_id": j.order_id, "delivered_at": j.delivered_at, "pay": str(j.rider_pay) if j.rider_pay is not None else None,
                 "km": (j.rider_pay_breakdown or {}).get("distance_km"), "lines": lines, "wait_pay_held": j.wait_pay_held,
             })
+        since_dt = timezone.make_aware(datetime.combine(start, time.min))
         total = jobs.filter(rider_pay__isnull=False).aggregate(t=Sum("rider_pay"))["t"]
         card = config.live(RateCard)
         pending = ApprovalRequest.objects.filter(kind=config.RATE_CARD, status=ApprovalRequest.PENDING).exists()
         return Response({
             "period": period, "since": start, "jobs": len(rows), "jobs_without_pay": sum(1 for r in rows if r["pay"] is None),
             "could_not_deliver": failed, "total": str(total) if total is not None else None, "results": rows,
+            "redeliveries": [redelivery.owed_row(r) for r in redelivery.owed_trips(since=since_dt, rider=request.user.pk).order_by("-completed_at")],
             "rates": {"per_job": str(card.rider_per_job), "per_km": str(card.rider_per_km), "wait_after_min": card.wait_after_min, "wait_per_min": str(card.wait_per_min), "version": card.version} if card else None,
             "rate_change_pending": pending,
             "payouts": {"status": "not_connected", "note": "Payouts are prepared by Accounting. Payments are simulated until Hubtel is connected, so no money has moved."},
