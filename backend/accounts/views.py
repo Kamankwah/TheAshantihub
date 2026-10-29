@@ -1579,9 +1579,9 @@ class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
             # the queue, with the same photos, by fixing their address.
             new_photo = any(field in data for field in ("ghana_card_front_image", "ghana_card_back_image"))
             new_number = "ghana_card_number" in data and not same_card_number(data["ghana_card_number"], stored_number)
-            if new_photo or new_number:
-                kyc.submit_identity(profile)
             files.delete_after_commit(replaced)
+            if new_photo or new_number:
+                kyc.submit_identity(profile, http_request=self.request)  # last: it may record()
 
 
 CARD_FILE_FIELDS = ("ghana_card_front_image", "ghana_card_back_image", "business_reg_certificate")
@@ -1633,8 +1633,8 @@ class IdentitySubmissionView(APIView):
                 serializer.is_valid(raise_exception=True)
                 replaced = files.replaced_names(profile, CARD_FILE_FIELDS, serializer.validated_data)
                 serializer.save()
-                kyc.submit_identity(profile)
                 files.delete_after_commit(replaced)
+                kyc.submit_identity(profile, http_request=request)  # last: it may record()
         except IntegrityError:
             # Two owners sent the same number at once; the unique column let one win.
             return Response({"ghana_card_number": [DUPLICATE_CARD_MESSAGE]}, status=400)

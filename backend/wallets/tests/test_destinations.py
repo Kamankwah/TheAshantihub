@@ -86,6 +86,10 @@ class DestinationTests(DestinationBase):
         kwame = Holder(owner, "business_owner")
         refused = self.add(kwame)
         self.assertEqual((refused.status_code, refused.json()["code"]), (409, "kyc_required"))
+        self.assertEqual(refused.json()["detail"], (
+            "Your identity must be verified before you can add a payout account. Go to Profile & Settings, open Get "
+            "verified, upload your Ghana Card and wait for AshantiHub to approve it."
+        ))
         owner.kyc_status = BusinessOwner.VERIFIED
         owner.save(update_fields=["kyc_status"])
         BusinessOwnerProfile.objects.create(business_owner=owner, business_name="Adepa Ventures")

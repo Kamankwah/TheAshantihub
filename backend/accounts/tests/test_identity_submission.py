@@ -78,6 +78,23 @@ class IdentitySubmissionTests(TestCase):
         self.assertTrue(profile.ghana_card_front_image)
         self.assertTrue(profile.ghana_card_back_image)
 
+    def test_a_submission_records_identity_submitted_by_the_owner_once(self):
+        from activity.models import ActivityEvent
+
+        owner = self._owner()
+        client = self._client(owner)
+        self.assertEqual(client.post(URL, self._payload(number="GHA-780000001-1"), format="multipart").status_code, 200)
+        events = list(ActivityEvent.objects.filter(verb="identity-submitted"))
+        self.assertEqual(len(events), 1)
+        event = events[0]
+        self.assertEqual((event.actor_type, event.actor_id), (ActivityEvent.BUSINESS_OWNER, owner.pk))
+        self.assertEqual((event.target_type, event.target_id), ("accounts.businessowner", str(owner.pk)))
+        self.assertEqual(event.after, {"identity_status": "pending"})
+        self.assertNotIn("GHA-780000001-1", str(event.after) + event.summary + event.target_label)
+        # A request that moves nothing (pending already) records nothing more.
+        client.patch(PROFILE_URL, {"gps_address": "AK-039-5151"}, format="json")
+        self.assertEqual(ActivityEvent.objects.filter(verb="identity-submitted").count(), 1)
+
     def test_post_without_back_photo_is_400_and_stays_not_submitted(self):
         owner = self._owner()
         payload = self._payload()

@@ -89,6 +89,10 @@ class KycQueueSettlesApprovalTests(QueueBase):
             staff=self.scout, kind="approval_decided", title=f"Approved: {self.approval.title}",
         ).exists())
         self.assertEqual(Notification.objects.filter(business_owner=self.owner, kind="kyc_approved").count(), 1)
+        # KYC approval is about the address: the notice says approved, never "verified" (that is the identity mark).
+        notice = Notification.objects.get(business_owner=self.owner, kind="kyc_approved")
+        self.assertEqual(notice.title, "Your business is approved!")
+        self.assertNotIn("verified", (notice.title + notice.body).lower())
         event = ActivityEvent.objects.get(verb="kyc-approve")  # exactly one: the middleware adds nothing
         self.assertEqual(
             (event.actor_id, event.target_type, event.target_id),

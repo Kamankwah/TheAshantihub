@@ -175,7 +175,7 @@ def approve_owner(owner_id, staff, *, http_request=None, from_approval=None):
         owner.reviewed_at = timezone.now()
         owner.save(update_fields=["kyc_status", "kyc_rejection_reason", "reviewed_by", "reviewed_at"])
         notify_business_owner(
-            owner, "kyc_approved", "Your business is verified!",
+            owner, "kyc_approved", "Your business is approved!",
             body="Your KYC has been approved — you can now publish listings.",
             link="/business-dashboard", icon="✅",
         )
@@ -272,12 +272,14 @@ def pending_approval_id(owner):
 # ── The owner's identity documents (optional identity documents) ───────────
 
 
-def submit_identity(profile):
+def submit_identity(profile, *, http_request=None):
     """Put an owner's Ghana Card forward for the identity check: not_submitted
     or rejected becomes pending, only when the number and both photos are on
     file. A pending or verified identity is never touched. Returns whether it
     moved; idempotent. One conditional UPDATE, so two requests at once cannot
-    both move it."""
+    both move it. A move records `identity-submitted` (the owner as actor,
+    never the number or the files), which refreshes the staff identity queue
+    live; call it last in the transaction (record() holds the chain lock)."""
     if not profile.has_identity_documents():
         return False
     now = timezone.now()
@@ -291,6 +293,11 @@ def submit_identity(profile):
         profile.identity_status = BusinessOwnerProfile.IDENTITY_PENDING
         profile.identity_submitted_at = now
         profile.identity_rejection_reason = None
+        owner = profile.business_owner
+        record(
+            owner, "identity-submitted", target=owner,
+            after={"identity_status": BusinessOwnerProfile.IDENTITY_PENDING}, request=http_request,
+        )
     return bool(moved)
 
 

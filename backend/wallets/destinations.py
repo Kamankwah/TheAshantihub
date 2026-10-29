@@ -113,8 +113,8 @@ def _holder_problem(holder):
     if not names.verified_names(holder):
         if isinstance(holder, BusinessOwner):
             return DestinationError(
-                "Your identity must be verified before you can add a payout account. Open Get verified in your dashboard, "
-                "upload your Ghana Card on your profile and wait for AshantiHub to approve it.", "kyc_required", 409,
+                "Your identity must be verified before you can add a payout account. Go to Profile & Settings, open Get "
+                "verified, upload your Ghana Card and wait for AshantiHub to approve it.", "kyc_required", 409,
             )
         return DestinationError("Add your full name to your profile first.", "name_required", 409)
     return None
