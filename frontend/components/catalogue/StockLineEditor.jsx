@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { apiPut } from '../../apiClient.js'
-import { useStockLine } from '../../hooks/useCatalogueStock.js'
+import { useNeedsRestocking, useStockLine } from '../../hooks/useCatalogueStock.js'
 import { apiErrorMessage } from '../../lib/apiErrorMessage.js'
 import { D } from '../dashboard/theme.js'
 import { coverSentence } from './catalogueFormat.js'
@@ -11,9 +11,10 @@ import { coverSentence } from './catalogueFormat.js'
 const input = { padding: '8px 10px', borderRadius: 8, border: `1.5px solid ${D.divider}`, fontSize: '0.8rem', fontFamily: 'inherit', background: D.panelBg2, color: D.text, width: 110 }
 const btn = { border: `1px solid ${D.divider}`, borderRadius: 20, padding: '7px 14px', fontSize: '0.74rem', fontWeight: 700, fontFamily: 'inherit', background: D.panelBg2, color: D.text, cursor: 'pointer' }
 
-export default function StockLineEditor({ listingId, onSaved, settings }) {
+export default function StockLineEditor({ listingId, onSaved }) {
   const qc = useQueryClient()
   const { data, isLoading, isError } = useStockLine(listingId)
+  const settings = useNeedsRestocking().data?.pages?.[0]?.settings
   const [typed, setTyped] = useState(null) // null: untouched, show the saved line
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -53,7 +54,7 @@ export default function StockLineEditor({ listingId, onSaved, settings }) {
         <div style={{ color: D.textDim, fontSize: '0.74rem', marginTop: 4 }}>Count this product's stock first to set an alert line.</div>
       ) : (
         <>
-          <div style={{ color: D.textDim, fontSize: '0.74rem', marginTop: 4 }}>{coverSentence(data.cover, settings)}</div>
+          <div style={{ color: D.textDim, fontSize: '0.74rem', marginTop: 4 }}>{settings ? coverSentence(data.cover, settings) : null}</div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
             <label style={{ color: D.textDim, fontSize: '0.72rem' }}>
               Alert me at or below (units){' '}

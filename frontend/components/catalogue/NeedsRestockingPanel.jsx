@@ -63,7 +63,7 @@ function Row({ row, settings, hasVariants }) {
           : <RestockBox listingId={row.listing_id} name={row.name} />}
         <button type="button" onClick={() => setLineOpen((o) => !o)} aria-expanded={lineOpen} style={btn}>Alert line…</button>
       </div>
-      {lineOpen && <StockLineEditor listingId={row.listing_id} settings={settings} />}
+      {lineOpen && <StockLineEditor listingId={row.listing_id} />}
     </li>
   )
 }

@@ -7,19 +7,20 @@ import StockLineEditor from '../StockLineEditor.jsx'
 
 const API = 'http://localhost:8000'
 const cover = { listing_id: 5, name: 'Rice', stock: 4, units_sold: 0, days_on_sale: 3, days_of_cover: null, basis: 'own_threshold', line: 6, low: true, sold_out: false }
-const settings = { cover_days: 7, fallback_units: 5, window_days: 28 }
+const settings = { cover_days: 7, fallback_units: 5, window_days: 28, alerts_enabled: false, sold_out_hidden: false }
 
-function setup(line = { listing_id: 5, line: 6, cover }) {
+function setup(line = { listing_id: 5, line: 6, cover }, { statsFail = false } = {}) {
   const puts = []
   let invalidated = 0
   server.use(
+    http.get(`${API}/api/catalogue/stock/`, () => statsFail ? HttpResponse.json({ detail: 'no' }, { status: 500 }) : HttpResponse.json({ count: 0, next: null, previous: null, results: [], tracked_offers: 1, untracked_offers: 0, settings })),
     http.get(`${API}/api/catalogue/stock/5/line/`, () => HttpResponse.json(line)),
     http.put(`${API}/api/catalogue/stock/5/line/`, async ({ request }) => { puts.push(await request.json()); return HttpResponse.json(line) }),
   )
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const orig = qc.invalidateQueries.bind(qc)
   qc.invalidateQueries = (...a) => { invalidated += 1; return orig(...a) }
-  render(<QueryClientProvider client={qc}><StockLineEditor listingId={5} settings={settings} /></QueryClientProvider>)
+  render(<QueryClientProvider client={qc}><StockLineEditor listingId={5} /></QueryClientProvider>)
   return { puts, invalidated: () => invalidated }
 }
 
@@ -84,5 +85,20 @@ describe('StockLineEditor', () => {
     await waitFor(() => expect(puts.length).toBe(1))
     await screen.findByText(/^Saved\./)
     expect(puts.length).toBe(1)
+  })
+
+  it('test_alone_a_fallback_cover_uses_the_servers_window_days', async () => {
+    setup({ listing_id: 5, line: null, cover: { ...cover, basis: 'fallback', line: 5, stock: 3 } })
+    expect(await screen.findByText('3 left. No sales in the last 28 days, so it counts as low at 5 or fewer.')).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('undefined')
+  })
+
+  it('test_settings_unavailable_shows_no_cover_sentence_and_no_undefined', async () => {
+    setup({ listing_id: 5, line: null, cover: { ...cover, basis: 'fallback', line: 5, stock: 3 } }, { statsFail: true })
+    expect(await screen.findByText("Using AshantiHub's default")).toBeInTheDocument()
+    await screen.findByRole('textbox')
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByText(/No sales in the last/)).toBeNull()
+    expect(document.body.textContent).not.toContain('undefined')
   })
 })
