@@ -151,6 +151,11 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   and TIN are optional and never gate it. A
   scout's `business.update` that changes `gps_address` clears that decision too (kept in
   `AppliedChange.result`; an undo puts it back with the address).
+  **Identity documents are a second, separate decision** (`BusinessOwnerProfile.identity_status`, which earns the
+  verified check mark): `kyc.approve_identity` / `reject_identity` / `reopen_identity`, behind `kyc.approve` at
+  `kyc/identity/pending/` and `kyc/{id}/identity/{approve,reject,re-review}/`. Same submitter refusal; lock order owner,
+  then profile row (the owner's profile PATCH locks the profile alone), `record()` last (`identity-*` verbs refresh
+  `kyc-queue`). They never touch `kyc_status`, and KYC approval never touches `identity_status`.
 - **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
   `PortfolioConfig.ready()`); only the business's account manager may submit them; each applied
   change writes a `portfolio.AppliedChange` the owner can undo for 7 days

@@ -390,6 +390,8 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
     login_phone = serializers.SerializerMethodField()
     # The business the owner is registering, to name the row ("Kofi Asamoah · Manhyia Tailoring").
     business_name = serializers.CharField(source="profile.business_name", read_only=True, default=None)
+    # The Ghana Card check (BusinessOwnerProfile.identity_status), separate from kyc_status; None without a profile.
+    identity_status = serializers.CharField(source="profile.identity_status", read_only=True, default=None)
 
     class Meta:
         model = BusinessOwner
@@ -397,6 +399,7 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
             "id", "full_name", "business_name", "login_phone", "kyc_status", "kyc_rejection_reason",
             "created_at", "reviewed_by_name", "reviewed_at",
             "registration_channel", "registered_by_name", "registered_by_role", "open_fraud_flags", "pending_approval_id",
+            "identity_status",
         ]
 
     def get_login_phone(self, obj):
@@ -437,6 +440,7 @@ class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
             "gps_address", "business_contact_phone", "is_formal", "business_kind",
             "business_reg_certificate", "tin",
             "address_verified", "address_verified_by_name", "address_verified_at",
+            "identity_status", "identity_rejection_reason", "identity_submitted_at",
         ]
 
 
@@ -462,6 +466,7 @@ class BusinessOwnerKYCDetailSerializer(BusinessOwnerKYCSerializer):
             "registration_channel", "registered_by_name", "registered_by_role", "open_fraud_flags", "pending_approval_id",
             "business_name", "business_category_name", "zone_name", "lat", "lng",
             "location_accuracy_m", "location_is_manual", "signboard_photo", "address_correction",
+            "identity_status",
         ]
 
     def get_address_correction(self, obj):

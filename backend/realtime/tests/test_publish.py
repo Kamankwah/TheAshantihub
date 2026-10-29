@@ -90,6 +90,14 @@ class PublishTests(TestCase):
         self.assertEqual(set(payload), {"type", "invalidate", "at"})
         self.assertEqual(payload["invalidate"], ["kyc-queue", "kyc-detail", "kyc-stats", "staff-badges"])
 
+    def test_identity_decisions_refresh_the_kyc_queue(self):
+        for verb in ("identity-approve", "identity-reject", "identity-reopen"):
+            with self.subTest(verb=verb):
+                queue = self.listen("perm.kyc.approve")
+                self.record(self.lead, verb, method="POST", target_type="accounts.businessowner", target_id="3", target_label="Adwoa Fabrics")
+                payload = self.message(queue)["payload"]
+                self.assertEqual(payload["invalidate"], ["kyc-queue", "kyc-detail", "kyc-stats", "staff-badges"])
+
     def drain(self, channel):
         """Every payload waiting on `channel` (stops after 0.2 s of quiet)."""
 

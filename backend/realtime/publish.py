@@ -26,7 +26,7 @@ STAFF_MANAGEMENT_VERBS = (
 )
 # (verb prefixes, permissions whose holders' queues changed, query keys)
 QUEUE_INVALIDATIONS = [
-    (("kyc-",), ("kyc.approve",), ("kyc-queue", "kyc-detail", "kyc-stats", "staff-badges")),
+    (("kyc-", "identity-"), ("kyc.approve",), ("kyc-queue", "kyc-detail", "kyc-stats", "staff-badges")),
     # A KYC decision in the queue settles the maker's business.kyc request
     # without an approval.* event (accounts/kyc.py), so scouts' approvals
     # lists refresh from the decision itself.

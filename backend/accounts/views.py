@@ -583,6 +583,67 @@ class KYCReReviewView(APIView):
         return Response({"id": owner.id, "kyc_status": owner.kyc_status})
 
 
+# Staff review of the owner's identity documents (the verified check mark): the
+# same queue contract as KYC, over BusinessOwnerProfile.identity_status.
+IDENTITY_STATUS_MAP = {
+    "pending": BusinessOwnerProfile.IDENTITY_PENDING,
+    "approved": BusinessOwnerProfile.IDENTITY_VERIFIED,
+    "rejected": BusinessOwnerProfile.IDENTITY_REJECTED,
+}
+
+
+class IdentityPendingQueueView(generics.ListAPIView):
+    """GET /api/accounts/kyc/identity/pending/?status=pending|approved|rejected (unknown: pending)."""
+    serializer_class = BusinessOwnerKYCSerializer
+
+    def get_permissions(self):
+        return [HasRolePermission("kyc.approve")]
+
+    def get_queryset(self):
+        tab = self.request.query_params.get("status", "pending")
+        identity_status = IDENTITY_STATUS_MAP.get(tab, BusinessOwnerProfile.IDENTITY_PENDING)
+        queryset = kyc.with_review_data(BusinessOwner.objects.filter(profile__identity_status=identity_status))
+        if identity_status == BusinessOwnerProfile.IDENTITY_PENDING:
+            return queryset.order_by("profile__identity_submitted_at", "id")
+        return queryset.order_by("-profile__identity_reviewed_at", "-profile__identity_submitted_at", "-id")
+
+
+class IdentityDecisionView(APIView):
+    """Shared shape of the three identity decisions; accounts.kyc holds the rules
+    and records the activity event itself."""
+
+    def get_permissions(self):
+        return [HasRolePermission("kyc.approve")]
+
+    def decide(self, request, pk):
+        raise NotImplementedError
+
+    def post(self, request, pk):
+        try:
+            owner = self.decide(request, pk)
+        except (kyc.KycError, ApprovalError) as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return Response({"id": owner.id, "identity_status": owner.profile.identity_status})
+
+
+class IdentityApproveView(IdentityDecisionView):
+    def decide(self, request, pk):
+        return kyc.approve_identity(pk, request.user, http_request=request)
+
+
+class IdentityRejectView(IdentityDecisionView):
+    def decide(self, request, pk):
+        data = request.data if hasattr(request.data, "get") else {}
+        return kyc.reject_identity(pk, request.user, str(data.get("reason") or ""), http_request=request)
+
+
+class IdentityReReviewView(IdentityDecisionView):
+    """POST /api/accounts/kyc/{id}/identity/re-review/ - rejected identity back to pending."""
+
+    def decide(self, request, pk):
+        return kyc.reopen_identity(pk, request.user, http_request=request)
+
+
 class KYCAddressVerifyView(APIView):
     """POST /api/accounts/kyc/{id}/address-verify/ {verified: bool} — records a
     staff decision on the business's Ghana Post digital address (punch-list

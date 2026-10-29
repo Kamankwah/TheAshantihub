@@ -292,3 +292,90 @@ def submit_identity(profile):
         profile.identity_submitted_at = now
         profile.identity_rejection_reason = None
     return bool(moved)
+
+
+# ── Staff review of the owner's identity documents ─────────────────────────
+#
+# A separate decision from the KYC above: it moves only
+# BusinessOwnerProfile.identity_status (the verified check mark) and never
+# touches kyc_status, the pending business.kyc request or the commission.
+# Lock order: the owner row (_locked_owner, which refuses a submitter), then
+# the profile row, then record() last. The owner's own profile PATCH locks the
+# profile row alone, so the two cannot deadlock. The owner's notices reuse the
+# kyc_approved / kyc_rejected kinds (the registry is not enforced and the
+# titles say which check).
+
+IDENTITY_NOT_PENDING = "This business's identity documents are not waiting for review."
+IDENTITY_ONLY_REJECTED = "Only rejected identity documents can be sent back for re-review."
+
+
+def _locked_identity(owner_id, staff, expected):
+    """Lock the owner, then its profile row, and require the identity to be in
+    `expected`. Returns (owner, profile). Raises KycError otherwise, and
+    MakerCannotDecide for a submitter."""
+    owner = _locked_owner(owner_id, staff)
+    profile = BusinessOwnerProfile.objects.select_for_update(of=("self",)).filter(business_owner=owner).first()
+    if profile is None or profile.identity_status != expected:
+        raise KycError(IDENTITY_NOT_PENDING if expected == BusinessOwnerProfile.IDENTITY_PENDING else IDENTITY_ONLY_REJECTED)
+    return owner, profile
+
+
+def approve_identity(owner_id, staff, *, http_request=None):
+    """Verify a pending identity: the owner's products now show the check mark."""
+    with transaction.atomic():
+        owner, profile = _locked_identity(owner_id, staff, BusinessOwnerProfile.IDENTITY_PENDING)
+        profile.identity_status = BusinessOwnerProfile.IDENTITY_VERIFIED
+        profile.identity_rejection_reason = None
+        profile.identity_reviewed_by = staff
+        profile.identity_reviewed_at = timezone.now()
+        profile.save(update_fields=[
+            "identity_status", "identity_rejection_reason", "identity_reviewed_by", "identity_reviewed_at",
+        ])
+        notify_business_owner(
+            owner, "kyc_approved", "You're verified!",
+            body="Your identity documents have been approved. Your products now show the verified check mark.",
+            link="/business-dashboard", icon="✅",
+        )
+        record(staff, "identity-approve", target=owner, after={"identity_status": profile.identity_status}, request=http_request)
+    return owner
+
+
+def reject_identity(owner_id, staff, reason, *, http_request=None):
+    """Reject a pending identity; the owner sees the reason."""
+    reason = (reason or "").strip()
+    if not reason:
+        raise KycError(REASON_REQUIRED)
+    with transaction.atomic():
+        owner, profile = _locked_identity(owner_id, staff, BusinessOwnerProfile.IDENTITY_PENDING)
+        profile.identity_status = BusinessOwnerProfile.IDENTITY_REJECTED
+        profile.identity_rejection_reason = reason[:500]
+        profile.identity_reviewed_by = staff
+        profile.identity_reviewed_at = timezone.now()
+        profile.save(update_fields=[
+            "identity_status", "identity_rejection_reason", "identity_reviewed_by", "identity_reviewed_at",
+        ])
+        notify_business_owner(
+            owner, "kyc_rejected", "Your identity documents need attention", body=reason,
+            link="/business-dashboard", icon="⚠️",
+        )
+        record(
+            staff, "identity-reject", target=owner,
+            after={"identity_status": profile.identity_status, "reason": reason}, request=http_request,
+        )
+    return owner
+
+
+def reopen_identity(owner_id, staff, *, http_request=None):
+    """Send rejected identity documents back to the queue: pending again, the
+    reason and the reviewer pair cleared (the moderated-queue contract)."""
+    with transaction.atomic():
+        owner, profile = _locked_identity(owner_id, staff, BusinessOwnerProfile.IDENTITY_REJECTED)
+        profile.identity_status = BusinessOwnerProfile.IDENTITY_PENDING
+        profile.identity_rejection_reason = None
+        profile.identity_reviewed_by = None
+        profile.identity_reviewed_at = None
+        profile.save(update_fields=[
+            "identity_status", "identity_rejection_reason", "identity_reviewed_by", "identity_reviewed_at",
+        ])
+        record(staff, "identity-reopen", target=owner, after={"identity_status": profile.identity_status}, request=http_request)
+    return owner
