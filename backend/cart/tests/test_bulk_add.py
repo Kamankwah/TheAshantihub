@@ -77,6 +77,21 @@ class BulkAddTests(BulkBase, TestCase):
         self.assertEqual(self.bulk([{"variant": self.vanilla.pk, "quantity": 500}]).status_code, 201)
         self.assertEqual(CartItem.objects.get().quantity, 500)
 
+    def test_untracked_quantity_is_capped_per_line_not_a_500(self):
+        ListingVariant.objects.filter(pk=self.vanilla.pk).update(stock_quantity=None)
+        for quantity in (variants.MAX_STOCK + 1, 2**31):
+            response = self.bulk([{"variant": self.choc.pk, "quantity": 1}, {"variant": self.vanilla.pk, "quantity": quantity}])
+            self.assertEqual(response.status_code, 400, response.content)
+            self.assertEqual([e["index"] for e in response.json()["lines"]], [1])
+            self.assertIsInstance(response.json()["lines"][0]["detail"], str)
+        self.assertFalse(CartItem.objects.exists())
+        # a merge that would pass the cap is refused too, and the cart is left as it was
+        self.assertEqual(self.bulk([{"variant": self.vanilla.pk, "quantity": variants.MAX_STOCK}]).status_code, 201)
+        response = self.bulk([{"variant": self.vanilla.pk, "quantity": 1}])
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["lines"][0]["index"], 0)
+        self.assertEqual(CartItem.objects.get().quantity, variants.MAX_STOCK)
+
     def test_merges_into_the_existing_variant_line(self):
         self.bulk([{"variant": self.vanilla.pk, "quantity": 2}])
         ListingVariant.objects.filter(pk=self.vanilla.pk).update(price_amount="27.00")
@@ -102,11 +117,24 @@ class BulkAddTests(BulkBase, TestCase):
         self.assertEqual(response.json()["lines"][0]["index"], 0)
 
     def test_body_level_problems(self):
+        # Body-level problems are {"detail": "<string>"}; per-line problems are {"lines": [{"index", "detail"}]}.
         plain = make_listing(self.owner, "Plain")
-        self.assertEqual(self.bulk([{"variant": self.vanilla.pk, "quantity": 1}], listing=plain).status_code, 400)
-        self.assertEqual(self.bulk([]).status_code, 400)
+        response = self.bulk([{"variant": self.vanilla.pk, "quantity": 1}], listing=plain)
+        self.assertEqual((response.status_code, response.json()), (400, {"detail": "This listing has no variants."}))
+        response = self.bulk([])
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(set(response.json()), {"detail"})
+        self.assertIsInstance(response.json()["detail"], str)
         dup = self.bulk([{"variant": self.vanilla.pk, "quantity": 1}, {"variant": self.vanilla.pk, "quantity": 1}])
-        self.assertEqual(dup.status_code, 400)
+        self.assertEqual((dup.status_code, dup.json()), (400, {"detail": "Each version can appear only once."}))
+        too_many = self.bulk([{"variant": self.vanilla.pk, "quantity": 1}] * 41)
+        self.assertEqual(too_many.status_code, 400)
+        self.assertEqual(set(too_many.json()), {"detail"})
+        self.assertIsInstance(too_many.json()["detail"], str)
+        not_a_dict = self.bulk([5, {"variant": self.vanilla.pk, "quantity": 1}, "x"])
+        self.assertEqual(not_a_dict.status_code, 400)
+        self.assertEqual([e["index"] for e in not_a_dict.json()["lines"]], [0, 2])
+        self.assertTrue(all(isinstance(e["detail"], str) and e["detail"] for e in not_a_dict.json()["lines"]))
         for quantity in (0, -1, "2", 1.5, True):
             response = self.bulk([{"variant": self.vanilla.pk, "quantity": quantity}])
             self.assertEqual(response.status_code, 400, quantity)

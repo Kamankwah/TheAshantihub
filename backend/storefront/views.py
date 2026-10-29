@@ -163,8 +163,8 @@ class SponsoredFeedView(APIView):
         exclude = params.get("exclude")
         return Response(feeds.sponsored(
             limit=limit,
-            category_id=int(category) if category and category.isdigit() else (0 if category else None),
-            exclude_id=int(exclude) if exclude and exclude.isdigit() else None,
+            category_id=int(category) if category and category.isdecimal() else (0 if category else None),
+            exclude_id=int(exclude) if exclude and exclude.isdecimal() else None,
             request=request,
         ))
 

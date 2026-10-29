@@ -80,6 +80,7 @@ class AlsoViewedView(APIView):
     """GET /api/listings/<id>/also-viewed/?limit=12 -> {"basis": "co_viewed" | "same_category", "results": [card rows]}."""
 
     permission_classes = [AllowAny]
+    throttle_scope = "listing_also_viewed"
 
     def get(self, request, pk):
         anchor = generics.get_object_or_404(

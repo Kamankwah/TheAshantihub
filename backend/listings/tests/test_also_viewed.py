@@ -95,6 +95,11 @@ class RecordViewTests(AlsoViewedBase):
 
 
 class AlsoViewedReadTests(AlsoViewedBase):
+    def test_reading_is_throttled(self):
+        statuses = [self.read().status_code for _ in range(61)]
+        self.assertEqual(statuses[:60], [200] * 60)
+        self.assertEqual(statuses[60], 429)
+
     def test_co_viewed_needs_three_distinct_viewers_per_row(self):
         rows = [self.make(f"Pair {i}") for i in range(4)]
         for row in rows:

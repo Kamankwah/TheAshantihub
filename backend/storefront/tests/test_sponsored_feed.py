@@ -28,6 +28,12 @@ class SponsoredFeedTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         return [row["id"] for row in response.json()]
 
+    def test_unicode_digit_filters_are_not_a_500(self):
+        # "\u00b2" (superscript two) is str.isdigit() but not an int.
+        live = self.make("Live")
+        self.assertEqual(self.ids(category="\u00b2", exclude="\u00b2"), [])  # an unknown category, nothing excluded
+        self.assertEqual(self.ids(exclude="\u00b2"), [live.pk])
+
     def test_lists_only_live_sponsored_listings(self):
         live = self.make("Live")
         self.make("Plain", sponsored=False)

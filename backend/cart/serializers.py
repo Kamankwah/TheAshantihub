@@ -145,6 +145,29 @@ class CartItemCreateSerializer(serializers.Serializer):
         return value
 
 
+MAX_LINE_QUANTITY = variants.MAX_STOCK  # most of one version a cart line may hold (keeps the column far inside its range)
+LINE_SHAPE_MESSAGE = "Each line needs a variant and a whole quantity of 1 or more."
+LINE_TOO_MANY_MESSAGE = f"You can add at most {MAX_LINE_QUANTITY:,} of one version."
+
+
+def bulk_error_body(errors):
+    """Shape serializer errors for POST /api/cart/items/bulk/: a body-level problem is {"detail": "<string>"}; a problem
+    with particular lines is {"lines": [{"index", "detail"}]}. Any other key (such as an unknown listing) is left as is."""
+    out = {}
+    for key, value in errors.items():
+        if key in ("detail", "non_field_errors"):
+            out["detail"] = str(value[0] if isinstance(value, (list, tuple)) else value)
+        elif key == "lines" and isinstance(value, dict):  # a line that is not an object, keyed by its place
+            out["lines"] = [{"index": int(index), "detail": LINE_SHAPE_MESSAGE} for index in sorted(value, key=int)]
+        elif key == "lines" and value and isinstance(value[0], dict) and "index" in value[0]:
+            out["lines"] = value
+        elif key == "lines":  # an empty list, or more lines than one call takes
+            out["detail"] = str(value[0] if isinstance(value, (list, tuple)) else value)
+        else:
+            out[key] = value
+    return out
+
+
 class BulkAddSerializer(serializers.Serializer):
     """Input for POST /api/cart/items/bulk/. Body-level problems (no such listing, no variants, no lines, a variant
     named twice) are a plain 400; a line that is not a variant id and a whole quantity is named by its index."""
@@ -164,7 +187,10 @@ class BulkAddSerializer(serializers.Serializer):
         for index, line in enumerate(attrs["lines"]):
             variant, quantity = line.get("variant"), line.get("quantity", 1)
             if not self._whole(variant) or not self._whole(quantity):
-                errors.append({"index": index, "detail": "Each line needs a variant and a whole quantity of 1 or more."})
+                errors.append({"index": index, "detail": LINE_SHAPE_MESSAGE})
+                continue
+            if quantity > MAX_LINE_QUANTITY:
+                errors.append({"index": index, "detail": LINE_TOO_MANY_MESSAGE})
                 continue
             if variant in seen:
                 raise serializers.ValidationError({"detail": "Each version can appear only once."})

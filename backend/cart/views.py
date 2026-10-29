@@ -12,11 +12,14 @@ from . import guard
 from .models import Cart, CartItem
 from .permissions import IsCartItemOwner
 from .serializers import (
+    LINE_TOO_MANY_MESSAGE,
+    MAX_LINE_QUANTITY,
     BulkAddSerializer,
     CartItemCreateSerializer,
     CartItemSerializer,
     CartItemUpdateSerializer,
     CartSerializer,
+    bulk_error_body,
     cart_with_lines,
 )
 
@@ -112,7 +115,8 @@ class CartItemBulkAddView(APIView):
 
     def post(self, request):
         serializer = BulkAddSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            return Response(bulk_error_body(serializer.errors), status=status.HTTP_400_BAD_REQUEST)
         listing = serializer.validated_data["listing"]
         asked = serializer.validated_data["asked"]  # [(index, variant id, quantity)]
         if serializer.validated_data["line_errors"]:
@@ -141,6 +145,8 @@ class CartItemBulkAddView(APIView):
                 row = rows.get(variant_id)
                 if row is None:
                     errors.append({"index": index, "detail": "That version is not available for this listing."})
+                elif held.get(variant_id, 0) + quantity > MAX_LINE_QUANTITY:
+                    errors.append({"index": index, "detail": LINE_TOO_MANY_MESSAGE})
                 elif row.stock_quantity is not None and held.get(variant_id, 0) + quantity > row.stock_quantity:
                     in_cart = held.get(variant_id, 0)
                     if row.stock_quantity == 0:

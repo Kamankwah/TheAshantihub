@@ -50,6 +50,15 @@ class AddressBookTests(TestCase):
              "lat", "lng", "is_default", "created_at"},
         )
 
+    def test_non_string_gps_or_landmark_is_a_field_error(self):
+        for field, value in (("gps_address", 123), ("gps_address", ["AK-039-5028"]), ("gps_address", {"a": 1}),
+                             ("landmark", ["Blue gate"]), ("landmark", {"a": "b"})):
+            with self.subTest(field=field, value=value):
+                response = self.post(**{field: value})
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertIn(field, response.json())
+        self.assertFalse(CustomerAddress.objects.exists())
+
     def test_list_is_plain_default_first_then_newest(self):
         a = self.post(label="A").json()["id"]
         b = self.post(label="B").json()["id"]
