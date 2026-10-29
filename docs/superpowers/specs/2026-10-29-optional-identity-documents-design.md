@@ -1,6 +1,6 @@
 # Optional identity documents and the verified check mark — design
 
-Date: 2026-10-29. Status: draft for the owner's approval.
+Date: 2026-10-29. Status: Implemented on branch feat/optional-identity-documents (not yet deployed).
 
 ## Why
 
@@ -168,3 +168,16 @@ it applies, that a withdrawal account needs a verified identity.
 Field and endpoint names, the staff review layout, how the public listing response exposes the
 check mark (a boolean beside or replacing `kyc_status`), the shape of the migration, and test
 structure.
+
+## As built
+
+Deviations from the design above:
+
+- The owner's profile PATCH locks the profile row (alone, not the owner) and refuses card changes while identity is
+  pending or verified; sending the same number again is allowed.
+- The Support chip (`support/people.py`) and the public featured tiles (`marketing/featured.py`) also follow identity,
+  beside the check mark, `?verified=true`, featured offers, the credit factor and payout-name matching.
+- The portfolio review-sheet payload gained a `has_certificate` flag so staff can tell whether a certificate is on file.
+- Identity notices reuse the `kyc_approved` and `kyc_rejected` notification kinds rather than new ones.
+- The identity queue has its own serializer with identity-named keys, instead of reusing the KYC queue's.
+- The error code `kyc_required` is kept for the payout refusal, although the rule now asks for verified identity.

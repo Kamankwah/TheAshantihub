@@ -151,11 +151,20 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   and TIN are optional and never gate it. A
   scout's `business.update` that changes `gps_address` clears that decision too (kept in
   `AppliedChange.result`; an undo puts it back with the address).
-  **Identity documents are a second, separate decision** (`BusinessOwnerProfile.identity_status`, which earns the
-  verified check mark): `kyc.approve_identity` / `reject_identity` / `reopen_identity`, behind `kyc.approve` at
-  `kyc/identity/pending/` and `kyc/{id}/identity/{approve,reject,re-review}/`. Same submitter refusal; lock order owner,
-  then profile row (the owner's profile PATCH locks the profile alone), `record()` last (`identity-*` verbs refresh
-  `kyc-queue`). They never touch `kyc_status`, and KYC approval never touches `identity_status`.
+  **KYC means the address; identity is a second, separate decision.** `kyc_status` gates approval and
+  blocked-business behaviour. `BusinessOwnerProfile.identity_status` (`not_submitted`/`pending`/`verified`/`rejected`)
+  is what the public verified check mark, `?verified=true`, featured offers (`catalogue`, `marketing.featured`), the
+  Support chip (`support/people.py`), the credit `kyc_verified` factor and payout-name matching (`wallets.names`) read,
+  all through `BusinessOwner.identity_verified`; never read `kyc_status` for those. Submitting: `kyc.submit_identity`
+  (conditional UPDATE, only with the card number and both photos on file), reached from the owner endpoint
+  `business-owners/me/identity/` and from the profile PATCH when it carries card fields; that PATCH locks the profile
+  row alone (`select_for_update(of=("self",))`) and refuses card changes while identity is pending or verified (the
+  same number is allowed). Deciding: `kyc.approve_identity` / `reject_identity` / `reopen_identity`, behind
+  `kyc.approve`, at `kyc/identity/pending/` and `kyc/{id}/identity/{approve,reject,re-review}/` (their own serializer,
+  identity-named keys). Same submitter refusal (`is_kyc_submitter` never decides identity); lock order owner, then
+  profile row, `record()` last (`identity-*` verbs refresh `kyc-queue`); notices reuse the `kyc_approved` /
+  `kyc_rejected` kinds. KYC approval never touches `identity_status` and identity decisions never touch `kyc_status`.
+  Migration `accounts/0062` backfilled every already KYC-verified business to identity `verified`, so no mark vanished.
 - **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
   `PortfolioConfig.ready()`); only the business's account manager may submit them; each applied
   change writes a `portfolio.AppliedChange` the owner can undo for 7 days
