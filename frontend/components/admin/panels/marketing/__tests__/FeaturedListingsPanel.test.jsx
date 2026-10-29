@@ -33,6 +33,8 @@ describe('FeaturedListingsPanel', () => {
     expect(within(held).getByText(/Held: The business has an open fraud case/)).toBeInTheDocument()
     expect(within(screen.getByRole('table')).getAllByText('Open').length).toBe(2)
     expect(screen.getByText('✓ Verified')).toBeInTheDocument()
+    expect(screen.getByText(/Earned when AshantiHub staff approve the business's Ghana Card\./)).toBeInTheDocument()
+    expect(screen.queryByText(/Earned through KYC/)).not.toBeInTheDocument()
   })
 
   it('releases a booked place', async () => {

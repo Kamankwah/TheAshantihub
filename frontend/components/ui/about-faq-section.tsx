@@ -16,7 +16,7 @@ const FAQS: Faq[] = [
   {
     question: "How does a business get verified on AshantiHub?",
     answer:
-      "AshantiHub staff check every business address before it can list. Businesses can also earn a verified check mark by showing their Ghana Card: staff review it, and the mark appears on their products once it is approved. A business without the mark has simply not added that check.",
+      "AshantiHub staff check every business address before it can list. Businesses can also earn a verified check mark by showing their Ghana Card: staff review it, and the mark appears on their products once it is approved. A business without the mark has not had a Ghana Card approved by staff.",
   },
   {
     question: "Is AshantiHub free for businesses to join?",

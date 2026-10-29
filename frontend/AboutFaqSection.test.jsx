@@ -31,5 +31,7 @@ describe('AboutFaqSection', () => {
     expect(screen.queryByText(/Every business goes through/)).not.toBeInTheDocument()
     expect(screen.queryByText(/no exceptions/i)).not.toBeInTheDocument()
     expect(screen.getByText(/AshantiHub staff check every business address/)).toBeInTheDocument()
+    expect(screen.getByText(/A business without the mark has not had a Ghana Card approved by staff\./)).toBeInTheDocument()
+    expect(screen.queryByText(/simply not added that check/)).not.toBeInTheDocument()
   })
 })

@@ -162,7 +162,7 @@ export default function FeaturedListingsPanel({ auth }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="ft-look" title="Paid and verified must never look alike">
           <div><span style={{ border: "2px solid #D4A017", borderRadius: 6, padding: "1px 8px", fontWeight: 800, fontSize: "0.75rem" }}>Featured</span> Paid placement: gold outline, the word “Featured”, no tick. It means the business paid for the spot, nothing more.</div>
-          <div><span style={{ color: D.okInk, fontWeight: 800, fontSize: "0.75rem" }}>✓ Verified</span> Verification: a green tick on a plain field. Earned through KYC by Operations. It can never be bought and never turns gold.</div>
+          <div><span style={{ color: D.okInk, fontWeight: 800, fontSize: "0.75rem" }}>✓ Verified</span> Verification: a green tick on a plain field. Earned when AshantiHub staff approve the business's Ghana Card. It can never be bought and never turns gold.</div>
           <div style={dim}>A featured listing from a verified business shows both, side by side, each in its own style.</div>
         </Section>
         <Section id="ft-block" title="Who can't book">

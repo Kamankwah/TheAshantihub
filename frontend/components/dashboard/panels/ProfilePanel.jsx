@@ -14,13 +14,16 @@ import IdentityPanel from "./IdentityPanel.jsx";
 // GET /api/accounts/business-owners/me/profile/ (the same hook AnalyticsPanel's
 // welcome strip already calls) rejects PATCH once kyc_status is verified
 // ("Cannot edit a verified KYC profile" — accounts/serializers.py's
-// BusinessOwnerProfileUpdateSerializer.validate), and every business owner who
-// can reach this dashboard is already approved (KYC now means the address was
-// checked; the Ghana Card check is separate, see IdentityPanel). So there's no real self-serve
-// edit to wire up; this shows the real profile fields the backend exposes and
-// points changes at AshantiHub Support via WhatsApp, mirroring ListingsPanel's
-// "📱 WhatsApp Update" convention for the same "can't self-edit once live"
-// situation.
+// BusinessOwnerProfileUpdateSerializer.validate). KYC means the address was checked; the Ghana Card check
+// is separate (IdentityPanel). The header chip reads the owner's real kyc_status (user.kycStatus): approved,
+// waiting, or needs attention — never "approved" for a business that isn't. Changes to the details go to
+// AshantiHub Support via WhatsApp, mirroring ListingsPanel's "📱 WhatsApp Update" convention for the same
+// "can't self-edit once live" situation.
+const KYC_CHIPS = {
+  verified: { label: "✓ Business approved", color: D.green },
+  pending: { label: "Waiting for approval", color: D.amber },
+  rejected: { label: "Needs attention", color: D.red },
+};
 const row = { label: D.textDim, value: D.text };
 
 function maskTail(value, keep = 4) {
@@ -58,7 +61,9 @@ export default function ProfilePanel({ user }) {
         </div>
         <div>
           <div style={{ fontWeight: 900, fontSize: "1.05rem", color: D.text }}>{user?.fullName || "Your Business"}</div>
-          <span style={{ background: tint(D.green, "20"), color: D.green, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>✓ Business approved</span>
+          {KYC_CHIPS[user?.kycStatus] && (
+            <span style={{ background: tint(KYC_CHIPS[user.kycStatus].color, "20"), color: KYC_CHIPS[user.kycStatus].color, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>{KYC_CHIPS[user.kycStatus].label}</span>
+          )}
         </div>
       </div>
 
