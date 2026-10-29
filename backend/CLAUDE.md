@@ -480,13 +480,23 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 
 - **GhanaPost + landmark are enforced in `OrderCheckoutView` before routing**, for door-to-door only (store pickup
   needs neither), via `accounts.gps` (`normalize_gps`, `validate_ashanti_gps`); field-keyed 400s. Older `Order` rows
-  have blank GhanaPost fields, so serializers must tolerate them.
+  have blank GhanaPost fields, so serializers must tolerate them. A non-string value is a field-keyed 400, never a
+  500. `GPS_REMOTE_VALIDATION`, when on, now also gates shopper checkout and address-book saves: a synchronous call of
+  up to 4 s, and a "not found" answer blocks the shopper. The code and landmark are carried read-only (blank on old
+  orders) in the rider job, `DispatchDeliverySerializer`, dispatch board, queue, live tracking, and the support and GM
+  order details; the customer's phone is never added to any of them.
+- **Map pin rule (ruling P45):** while `DELIVERY_FEE_ENABLED` is on and a rate card is in force
+  (`delivery.rates.pin_required`), a door-to-door checkout without `delivery_lat`/`delivery_lng` is refused with
+  400 `{"delivery_lat": [...]}` before routing and creates nothing. Fees off, or no card: a free-text address is enough.
 - **`CustomerAddress`:** one default per customer, at most 10; writes take the Customer-row lock.
 - **`ListingView`:** anonymous viewers are keyed by an HMAC of the client UUID; one row per viewer, listing and day;
-  kept for a 30-day window (nothing prunes it yet). "Also viewed" needs 3 co-viewers per row and at least 4 rows,
+  the read looks back 30 days and the daily beat task `listings.tasks.prune_listing_views` deletes rows older than
+  31 days (signed-in `c:<id>` history included). "Also viewed" (own throttle scope `listing_also_viewed`) needs 3 co-viewers per row and at least 4 rows,
   else the basis is `same_category`.
 - **Bulk cart add is atomic under the cart lock** and merges into existing lines by the two conditional unique
-  constraints.
+  constraints. Lock order: the cart row, then the listing row, then its variant rows by pk; checkout never takes the
+  cart row, so it cannot deadlock with this. Errors are `{"detail": "<string>"}` for body-level problems and
+  `{"lines": [{"index", "detail"}]}` for per-line ones; a line is capped at `listings.variants.MAX_STOCK` of one version.
 - **The wishlist API is not opening-gated** (browse and wishlist work before opening).
 - **Two sponsored lists:** the public `storefront/sponsored/` feed (live, published, not hidden) versus the
   staff-only `listings/sponsored/` Marketing list; never swap their permissions.
