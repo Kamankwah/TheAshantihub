@@ -9,6 +9,7 @@ urlpatterns = [
     path("api/activity/", include("activity.urls")),
     path("api/listings/", include("listings.urls")),
     path("api/direct/listings/", include("listings.urls_direct")),
+    path("api/wishlist/", include("listings.urls_wishlist")),
     path("api/catalogue/", include("catalogue.urls")),
     path("api/hero/", include("listings.hero_urls")),
     path("api/billing/", include("billing.urls")),
