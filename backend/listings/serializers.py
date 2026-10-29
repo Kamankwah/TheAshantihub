@@ -685,6 +685,8 @@ class ModerationListingSerializer(serializers.ModelSerializer):
     photos = serializers.SerializerMethodField()
     # Every video row with its status and playable url, so staff watch them before the listing goes public.
     videos = OwnerVideoSerializer(many=True, read_only=True)
+    # Every variant row (switched-off ones too, with is_active): its name and attribute values are public text.
+    variants = ListingVariantSerializer(many=True, read_only=True)
     # business_owner_name (staff moderation-queue restructuring, item 2) lets
     # the panel group/identify listings by their owning business without a
     # second lookup. reviewed_by_name/reviewed_at (approver attribution) back
@@ -701,7 +703,7 @@ class ModerationListingSerializer(serializers.ModelSerializer):
         fields = [
             "id", "business_owner", "business_owner_name", "name", "description", "category",
             "zone", "price_amount", "price_unit", "tag", "contact_phone", "lat", "lng",
-            "main_photo", "photos", "videos", "specs", "service_duration", *LISTING_DECISION_FIELDS,
+            "main_photo", "photos", "videos", "variants", "specs", "service_duration", *LISTING_DECISION_FIELDS,
             "status", "rejection_reason", "created_at",
             "reviewed_by_name", "reviewed_at", "open_fraud_cases", "subscription_overdue", "sponsored",
         ]

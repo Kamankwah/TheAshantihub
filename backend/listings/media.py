@@ -103,10 +103,13 @@ def parse_youtube(url):
 
 
 def locked_listing(listing):
-    """Re-read the listing under a row lock (inside transaction.atomic) and refuse a discontinued one."""
+    """Re-read the listing under a row lock (inside transaction.atomic) and refuse a discontinued one, or one that
+    staff are reviewing (they approve exactly what they saw)."""
     row = Listing.objects.select_for_update().get(pk=listing.pk)
     if row.status == Listing.DISCONTINUED:
         raise MediaError("This listing was discontinued, so its media cannot change.")
+    if row.status == Listing.PENDING_REVIEW:
+        raise MediaError("This listing is waiting for review, so its photos and videos cannot change until staff decide.")
     return row
 
 

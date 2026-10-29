@@ -915,18 +915,25 @@ class ModerationApproveView(APIView):
         return [HasRolePermission("listings.moderate")]
 
     def post(self, request, pk):
-        listing = generics.get_object_or_404(Listing, pk=pk)
-        if revisions.cannot_decide(request.user, listing):
-            return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
-        if listing.business_owner.kyc_status != BusinessOwner.VERIFIED:
-            return Response(
-                {"detail": "Cannot publish a listing whose owner is not KYC-verified."}, status=400
-            )
-        listing.status = Listing.PUBLISHED
-        listing.rejection_reason = None
-        listing.reviewed_by = request.user
-        listing.reviewed_at = timezone.now()
-        listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+        from . import media
+
+        with db_transaction.atomic():
+            listing = generics.get_object_or_404(Listing.objects.select_for_update(of=("self",)), pk=pk)
+            if revisions.cannot_decide(request.user, listing):
+                return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
+            if listing.status != Listing.PENDING_REVIEW:
+                return Response({"detail": "Only a listing waiting for review can be approved."}, status=400)
+            if listing.business_owner.kyc_status != BusinessOwner.VERIFIED:
+                return Response(
+                    {"detail": "Cannot publish a listing whose owner is not KYC-verified."}, status=400
+                )
+            if media.waiting_for_video(listing):
+                return Response({"detail": "Wait for the video to finish converting before approving."}, status=400)
+            listing.status = Listing.PUBLISHED
+            listing.rejection_reason = None
+            listing.reviewed_by = request.user
+            listing.reviewed_at = timezone.now()
+            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
         notify_business_owner(
             listing.business_owner, "listing_approved", "Listing published",
             body=f"“{listing.name}” is now live on AshantiHub.",
@@ -943,14 +950,20 @@ class ModerationRejectView(APIView):
         reason = (request.data.get("reason") or "").strip()
         if not reason:
             return Response({"reason": "A rejection reason is required."}, status=400)
-        listing = generics.get_object_or_404(Listing, pk=pk)
-        if revisions.cannot_decide(request.user, listing):
-            return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
-        listing.status = Listing.REJECTED
-        listing.rejection_reason = reason
-        listing.reviewed_by = request.user
-        listing.reviewed_at = timezone.now()
-        listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+        with db_transaction.atomic():
+            listing = generics.get_object_or_404(Listing.objects.select_for_update(of=("self",)), pk=pk)
+            if revisions.cannot_decide(request.user, listing):
+                return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
+            if listing.status not in (Listing.PENDING_REVIEW, Listing.PUBLISHED):
+                return Response({"detail": "Only a listing waiting for review, or a published one, can be rejected."}, status=400)
+            taken_down = listing.status == Listing.PUBLISHED
+            listing.status = Listing.REJECTED
+            listing.rejection_reason = reason
+            listing.reviewed_by = request.user
+            listing.reviewed_at = timezone.now()
+            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+            if taken_down:
+                revisions.close_for_take_down(listing, request.user)
         notify_business_owner(
             listing.business_owner, "listing_rejected", "Listing needs changes",
             body=f"“{listing.name}” was rejected: {reason}",

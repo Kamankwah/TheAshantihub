@@ -161,8 +161,11 @@ class RevisionRejectView(_RevisionDecisionView):
         reason = (request.data.get("reason") or "").strip()
         if not reason:
             return Response({"reason": "A rejection reason is required."}, status=400)
+        revision = self.revision(pk)
+        if revisions.cannot_decide(request.user, revision):
+            return Response({"detail": revisions.OWN_APPROVAL_MESSAGE}, status=403)
         try:
-            revision = revisions.reject_revision(self.revision(pk), request.user, reason)
+            revision = revisions.reject_revision(revision, request.user, reason)
         except revisions.RevisionError as exc:
             return Response(exc.payload, status=400)
         return self.done(revision)

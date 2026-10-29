@@ -219,6 +219,12 @@ class OrderCheckoutView(APIView):
                     )
             for item in items:
                 listing = locked[item.listing_id]
+                if listing.status != Listing.PUBLISHED:  # taken down or dropped since the check above: re-read under the lock
+                    return Response(
+                        {"detail": f"“{listing.name}” is no longer available. Remove it from your cart.",
+                         "code": "listing_unavailable"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 if item.variant_id is None:
                     if listing.stock_quantity is not None and listing.stock_quantity < item.quantity:
                         return Response(

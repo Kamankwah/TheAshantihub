@@ -50,6 +50,12 @@ class EnsureAshantiDirectTests(TestCase):
                     call_command("ensure_ashanti_direct", stdout=StringIO())
         self.assertFalse(BusinessOwner.objects.filter(is_company=True).exists())
 
+    def test_the_phone_check_ignores_how_a_stored_phone_was_written(self):
+        BusinessOwner.objects.create(full_name="Old", login_phone="0244 000 111", password_hash="x")
+        with self.assertRaises(CommandError):
+            call_command("ensure_ashanti_direct", stdout=StringIO())
+        self.assertFalse(BusinessOwner.objects.filter(is_company=True).exists())
+
     def test_only_one_company_owner_can_exist(self):
         call_command("ensure_ashanti_direct", stdout=StringIO())
         with self.assertRaises(IntegrityError), transaction.atomic():

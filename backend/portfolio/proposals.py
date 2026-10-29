@@ -838,7 +838,9 @@ def _photo_room(listing, count):
     as it would stand after `count` more photos; a plain message when it would go over."""
     from listings import media
 
-    if media.image_count(listing) + count > media.MAX_IMAGES:
+    # Applying copies the first photo into main_photo when the listing has none, which is one more image.
+    extra = 0 if listing.main_photo or not count else 1
+    if media.image_count(listing) + count + extra > media.MAX_IMAGES:
         return f"A listing can have at most {media.MAX_IMAGES} images, the main photo included. Remove some first."
     return None
 

@@ -46,6 +46,7 @@ LIVE_FIELD_MESSAGE = "Price and stock change at once; edit them with the price a
 NOT_REVISABLE_MESSAGE = "This field cannot be changed here."
 WRONG_STATUS_MESSAGE = "Only a published or dropped listing is edited this way. Edit other listings directly."
 OPEN_MESSAGE = "This edit is waiting for review."
+TAKEN_DOWN_REASON = "The listing was taken down."
 NOTHING_MESSAGE = "There is nothing to send. Make a change first."
 WAIT_FOR_VIDEO_MESSAGE = "Wait for your video to finish converting, then send it."
 NO_VARIANTS_MESSAGE = "Only products and food can have variants."
@@ -185,6 +186,9 @@ def clean_variant_ops(listing, ops):
             item["label"] = _label_for(op["label"], item.get("attributes", {}))
             if not item["label"]:
                 raise RevisionError("The name cannot be empty.", where)
+        elif item.get("attributes"):
+            # The name follows the new attribute values, the same rule as when the variant was added.
+            item["label"] = _label_for(None, item["attributes"])
         if "position" in op:
             try:
                 item["position"] = variants._whole(op["position"], "position", 0, variants.MAX_POSITION)
@@ -229,6 +233,16 @@ def _clean_photo_ids(listing, ids):
     return ids
 
 
+def _clean_video_ids(listing, ids):
+    if not isinstance(ids, list) or any(isinstance(i, bool) or not isinstance(i, int) for i in ids):
+        raise RevisionError("Send a list of video ids.", "remove_video_ids")
+    ids = list(dict.fromkeys(ids))
+    owned = set(ListingVideo.objects.filter(listing=listing, pk__in=ids).values_list("pk", flat=True))
+    if set(ids) - owned:
+        raise RevisionError("That video is not on this listing.", "remove_video_ids")
+    return ids
+
+
 def _check_category_for_variants(listing, changes, ops):
     category = listing.category
     if "category" in changes:
@@ -270,10 +284,7 @@ def save_draft(listing, owner, data, *, new_main_photo=None, clear_main_photo=Fa
         if "remove_photo_ids" in data:
             revision.remove_photo_ids = _clean_photo_ids(row, data["remove_photo_ids"])
         if "remove_video_ids" in data:
-            ids = data["remove_video_ids"]
-            if not isinstance(ids, list) or any(isinstance(i, bool) or not isinstance(i, int) for i in ids):
-                raise RevisionError("Send a list of video ids.", "remove_video_ids")
-            revision.remove_video_ids = list(dict.fromkeys(ids))
+            revision.remove_video_ids = _clean_video_ids(row, data["remove_video_ids"])
         if new_main_photo is not None:
             from accounts.validators import validate_image_content_type
 
@@ -377,6 +388,16 @@ def discard(revision):
 def delete_open(listing):
     """Delete the listing's draft and pending revisions with the files they staged (a discontinued listing is final)."""
     for revision in ListingRevision.objects.filter(listing=listing, status__in=(ListingRevision.DRAFT, ListingRevision.PENDING)):
+        _delete_staged(revision)
+        revision.delete()
+
+
+def close_for_take_down(listing, staff):
+    """A published listing was taken down: its edit waiting for review is rejected (the owner is told why) and an
+    unsent draft edit is deleted with its staged files. Nothing is left to apply to a listing that is no longer live."""
+    for revision in ListingRevision.objects.filter(listing=listing, status=ListingRevision.PENDING):
+        reject_revision(revision, staff, TAKEN_DOWN_REASON)
+    for revision in ListingRevision.objects.filter(listing=listing, status=ListingRevision.DRAFT):
         _delete_staged(revision)
         revision.delete()
 
@@ -497,6 +518,7 @@ def _apply_variants(listing, ops):
     if not ops:
         return
     rows = {row.pk: row for row in ListingVariant.objects.select_for_update().filter(listing=listing, is_active=True).order_by("pk")}
+    had_active = bool(rows)
     top = listing.variants.aggregate(top=Max("position"))["top"]
     next_position = 0 if top is None else top + 1
     for op in ops:
@@ -518,7 +540,7 @@ def _apply_variants(listing, ops):
             for key in fields:
                 setattr(row, key, op[key])
             row.save(update_fields=fields)
-    variants.sync_listing(listing)
+    variants.settle(listing, had_active)
 
 
 def reject_revision(revision, staff, reason):
@@ -588,8 +610,15 @@ def diff(revision, request=None):
             changed[key] = {"old": old, "new": new}
     removed = ListingPhoto.objects.filter(listing=listing, pk__in=revision.remove_photo_ids)
     removed_videos = ListingVideo.objects.filter(listing=listing, pk__in=revision.remove_video_ids)
-    names = {row.pk: row.label for row in variants.active(listing)}
-    ops = [{**op, "current_label": names.get(op.get("id"))} if "id" in op else op for op in revision.variants]
+    rows = {row.pk: row for row in variants.active(listing)}
+    ops = []
+    for op in revision.variants:
+        if "id" in op:
+            row = rows.get(op["id"])
+            op = {**op, "current_label": row.label if row else None}
+            if "attributes" in op:
+                op["current_attributes"] = (row.attributes if row else None) or {}
+        ops.append(op)
     return {
         "fields": changed,
         "media": {

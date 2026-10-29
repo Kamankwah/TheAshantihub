@@ -51,6 +51,18 @@ def sync_listing(listing):
     return listing
 
 
+def settle(listing, had_active):
+    """`sync_listing` after a change that may have switched the last variant off. A listing left with none becomes a
+    plain listing: it keeps its price, but its stock is 0, not the summed stock of variants that are gone, so the owner
+    sets the real stock."""
+    if active(listing).exists():
+        return sync_listing(listing)
+    if had_active:
+        listing.stock_quantity = 0
+        listing.save(update_fields=["stock_quantity", "updated_at"])
+    return listing
+
+
 def _whole(value, field, minimum, maximum=None):
     if isinstance(value, bool) or value is None:
         raise VariantError("Must be a whole number.", field)
@@ -116,9 +128,10 @@ def deactivate(variant):
     with transaction.atomic():
         listing = Listing.objects.select_for_update().get(pk=variant.listing_id)
         row = ListingVariant.objects.select_for_update().get(pk=variant.pk, listing=listing)
+        had_active = active(listing).exists()
         row.is_active = False
         row.save(update_fields=["is_active"])
-        sync_listing(listing)
+        settle(listing, had_active)
     return row
 
 

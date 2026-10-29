@@ -36,7 +36,7 @@ class Command(BaseCommand):
             phone = phones.normalize_gh_phone(raw_phone)
         except ValueError as exc:
             raise CommandError(f"ASHANTI_DIRECT_PHONE: {exc}") from None
-        if BusinessOwner.objects.filter(login_phone=phone).exists() or BusinessOwner.objects.filter(email=email).exists():
+        if phones.filter_by_phone(BusinessOwner.objects.all(), "login_phone", phone).exists() or BusinessOwner.objects.filter(email=email).exists():
             raise CommandError("A business already uses that phone or email; choose the company's own.")
         with transaction.atomic():
             owner = BusinessOwner.objects.create(

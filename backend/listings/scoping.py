@@ -5,9 +5,13 @@ direct mount the owner is always the company, never a client-supplied id, and ev
 listing is remembered as a contribution to it (and to its open edit), so maker-checker can refuse anyone who drafted,
 edited or sent it (`listings.revisions.cannot_decide`)."""
 from django.http import Http404
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import SAFE_METHODS
 
 from accounts import direct
+
+
+DIRECT_FROM_STAFF = "Ashanti Direct is run from the staff dashboard. Sign in there to change its listings."
 
 
 def _owner(request, scope=None):
@@ -40,6 +44,13 @@ class ScopedOwner:
     """Mixin for an owner view that Ashanti Direct's mount reuses: `scope` is "mine" or "direct" (`as_view(scope=...)`)."""
 
     scope = "mine"
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        # Ashanti Direct's own login can read and withdraw, but listings change through the staff dashboard, so that
+        # every write names the staff member who made it (maker-checker needs to know).
+        if self.scope == "mine" and request.method not in SAFE_METHODS and direct.is_direct(request.user):
+            raise PermissionDenied(DIRECT_FROM_STAFF)
 
     def acting_owner(self, request=None):
         return _owner(request or self.request, self.scope)
