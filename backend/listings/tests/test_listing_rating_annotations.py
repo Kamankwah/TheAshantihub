@@ -132,7 +132,7 @@ class ListingReviewPaginationEnvelopeTests(TestCase):
         response = self.client.get(f"/api/reviews/listing/{self.listing.id}/")
         self.assertEqual(response.status_code, 200, response.content)
         data = response.json()
-        self.assertEqual(set(data.keys()), {"count", "next", "previous", "results", "avg_rating", "review_count"})
+        self.assertEqual(set(data.keys()), {"count", "next", "previous", "results", "avg_rating", "review_count", "distribution"})
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["avg_rating"], 4.0)
         self.assertEqual(data["review_count"], 1)

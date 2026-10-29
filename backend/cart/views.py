@@ -5,17 +5,19 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.views import IsCustomer
-from listings.models import Listing
+from listings.models import Listing, ListingVariant
 from listings.visibility import hidden_business_q
 
 from . import guard
 from .models import Cart, CartItem
 from .permissions import IsCartItemOwner
 from .serializers import (
+    BulkAddSerializer,
     CartItemCreateSerializer,
     CartItemSerializer,
     CartItemUpdateSerializer,
     CartSerializer,
+    cart_with_lines,
 )
 
 
@@ -26,7 +28,7 @@ class CartMeView(APIView):
 
     def get(self, request):
         cart, _ = Cart.objects.get_or_create(customer=request.user)
-        return Response(CartSerializer(cart).data)
+        return Response(CartSerializer(cart_with_lines(cart.pk), context={"request": request}).data)
 
 
 def _guard_lines(cart):
@@ -95,6 +97,76 @@ class CartItemCreateView(APIView):
 
         data = CartItemSerializer(saved, many=True).data if "lines" in request.data else CartItemSerializer(saved[0]).data
         return Response(data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class CartItemBulkAddView(APIView):
+    """POST /api/cart/items/bulk/ {listing, lines: [{variant, quantity}]} - several variants of one listing in one
+    atomic write, answering 201 with the whole cart (as GET /api/cart/). All or nothing: a line is refused when its
+    variant is not one of this listing's active versions or when it (with what the cart already holds of that variant)
+    is more than a counted stock; every failing line is named, by its place in `lines`, in
+    400 {"lines": [{"index", "detail"}]}. A variant already in the cart has its quantity added to and its price
+    re-read, like CartItemCreateView. The cart guard runs before and again under the cart's row lock; its refusal is the
+    same 400 {"detail", "code"}. Lock order: the cart, then the listing row, then its variant rows by pk."""
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def post(self, request):
+        serializer = BulkAddSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        listing = serializer.validated_data["listing"]
+        asked = serializer.validated_data["asked"]  # [(index, variant id, quantity)]
+        if serializer.validated_data["line_errors"]:
+            return Response({"lines": serializer.validated_data["line_errors"]}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            guard.check_add(_guard_lines(Cart.objects.filter(customer=request.user).first()), listing)
+        except guard.GuardError as exc:
+            return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            cart, _ = Cart.objects.select_for_update().get_or_create(customer=request.user)
+            try:
+                guard.check_add(_guard_lines(cart), listing)
+            except guard.GuardError as exc:
+                transaction.set_rollback(True)
+                return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
+            list(Listing.objects.select_for_update().filter(pk=listing.pk))
+            rows = {
+                row.pk: row for row in ListingVariant.objects.select_for_update()
+                .filter(listing=listing, is_active=True).order_by("pk")
+            }
+            held = dict(CartItem.objects.filter(cart=cart, listing=listing, variant__isnull=False).values_list("variant_id", "quantity"))
+            errors = []
+            for index, variant_id, quantity in asked:
+                row = rows.get(variant_id)
+                if row is None:
+                    errors.append({"index": index, "detail": "That version is not available for this listing."})
+                elif row.stock_quantity is not None and held.get(variant_id, 0) + quantity > row.stock_quantity:
+                    in_cart = held.get(variant_id, 0)
+                    if row.stock_quantity == 0:
+                        detail = f"{row.label}: sold out."
+                    elif in_cart:
+                        detail = f"{row.label}: only {row.stock_quantity} in stock, {in_cart} already in your cart."
+                    else:
+                        detail = f"{row.label}: only {row.stock_quantity} in stock."
+                    errors.append({"index": index, "detail": detail})
+            if errors:
+                transaction.set_rollback(True)  # nothing written, not even a new empty cart
+                return Response({"lines": errors}, status=status.HTTP_400_BAD_REQUEST)
+            for _, variant_id, quantity in asked:
+                row = rows[variant_id]
+                item = CartItem.objects.filter(cart=cart, listing=listing, variant=row).first()
+                if item is not None:
+                    item.quantity += quantity
+                    item.unit_price_snapshot = row.effective_price
+                    item.save(update_fields=["quantity", "unit_price_snapshot"])
+                else:
+                    CartItem.objects.create(
+                        cart=cart, listing=listing, variant=row, quantity=quantity, unit_price_snapshot=row.effective_price,
+                    )
+        return Response(
+            CartSerializer(cart_with_lines(cart.pk), context={"request": request}).data, status=status.HTTP_201_CREATED,
+        )
 
 
 class CartGuardView(APIView):

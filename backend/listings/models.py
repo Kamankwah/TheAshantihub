@@ -57,6 +57,21 @@ class CategoryVisit(models.Model):
         constraints = [models.UniqueConstraint(fields=["category", "day"], name="uniq_category_visit_day")]
 
 
+class ListingView(models.Model):
+    """One viewer opening one listing on one day (Accra): feeds the "Customers also viewed" carousel (listings.viewed).
+    `viewer_key` is `c:<customer id>` for a signed-in customer, or `a:` plus a keyed hash of the anonymous id the browser
+    sent - the raw id is never stored. Views older than 30 days are ignored by every read."""
+
+    listing = models.ForeignKey("Listing", on_delete=models.CASCADE, related_name="views")
+    viewer_key = models.CharField(max_length=64)
+    day = models.DateField()
+    viewed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["viewer_key", "listing", "day"], name="uniq_listing_view_per_day")]
+        indexes = [models.Index(fields=["viewer_key", "viewed_at"], name="listingview_viewer_at_idx")]
+
+
 class Zone(models.Model):
     name = models.CharField(max_length=50, unique=True)
 
