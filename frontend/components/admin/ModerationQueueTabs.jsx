@@ -53,13 +53,14 @@ export function RejectedReason({ reason }) {
   );
 }
 
-export function ReviewAgainButton({ onClick }) {
+export function ReviewAgainButton({ onClick, disabled = false }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       style={{
         background: D.goldSoft, color: D.deepGold, border: `1px solid ${D.cardBorder}`,
-        borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer",
+        borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.6 : 1,
       }}
     >
       🔄 Review Again

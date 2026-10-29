@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../../apiClient.js";
 import { useIdentityQueue } from "../../../hooks/useIdentityQueue.js";
@@ -23,6 +23,7 @@ import { dim, field } from "./panelStyles.js";
 
 const eyebrow = { color: D.textFaint, fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase" };
 const NOT_PROVIDED = "Not provided";
+const GATE_HINT = "Open the documents to enable Approve and Reject.";
 
 // A missing refusal keeps the server's reason on a 4xx; a server failure keeps
 // the generic text.
@@ -96,10 +97,21 @@ function IdentityRow({ row, state, onDone }) {
   const [actionError, setActionError] = useState(null);
   const detail = useKYCDetail(row.id, { enabled: expanded });
   const registered = registrationLine(row);
+  // A decision is only possible once the documents are open and loaded: this
+  // is whether a person's ID earns the verified mark, so never blind. Review
+  // again needs no gate.
+  const gateReady = expanded && Boolean(detail.data) && !detail.isError;
+  // One request at a time: the buttons are disabled while a POST is in flight
+  // (the ref also stops a second click that lands before the re-render).
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
 
   // After a decision: the three identity lists refetch (via onDone) and the
   // open documents view is refreshed so the row never shows a stale status.
   const decide = async (path, body, failure, after) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
     setActionError(null);
     try {
       await apiPost(`/api/accounts/kyc/${row.id}/identity/${path}/`, body);
@@ -108,6 +120,9 @@ function IdentityRow({ row, state, onDone }) {
       onDone();
     } catch (err) {
       setActionError(refusal(err, failure));
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
     }
   };
   const approve = () => decide("approve", {}, "Could not approve this identity. Please try again.");
@@ -141,20 +156,23 @@ function IdentityRow({ row, state, onDone }) {
           <button type="button" onClick={() => setExpanded((e) => !e)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{expanded ? "▲ Hide documents" : "👁️ View documents"}</button>
           {state === "pending" && (
             <>
-              <button type="button" onClick={approve} style={{ background: D.green, color: D.cream, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>✓ Approve</button>
-              <button type="button" onClick={() => setRejecting(true)} style={{ background: D.panelBg2, color: D.red, border: `1px solid ${D.red}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Reject…</button>
+              <button type="button" onClick={approve} disabled={!gateReady || busy} title={gateReady ? "" : GATE_HINT} style={{ background: gateReady ? D.green : D.panelBg2, color: gateReady ? D.cream : D.textFaint, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: gateReady && !busy ? "pointer" : "not-allowed", opacity: busy ? 0.6 : 1, fontFamily: "inherit" }}>✓ Approve</button>
+              <button type="button" onClick={() => setRejecting(true)} disabled={!gateReady || busy} title={gateReady ? "" : GATE_HINT} style={{ background: D.panelBg2, color: gateReady ? D.red : D.textFaint, border: `1px solid ${gateReady ? D.red : D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: gateReady && !busy ? "pointer" : "not-allowed", fontFamily: "inherit" }}>Reject…</button>
             </>
           )}
-          {state === "rejected" && <ReviewAgainButton onClick={reReview} />}
+          {state === "rejected" && <ReviewAgainButton onClick={reReview} disabled={busy} />}
         </div>
       </div>
 
+      {state === "pending" && !gateReady && (
+        <div style={{ color: D.amber, fontSize: "0.68rem", marginTop: 6 }}>{GATE_HINT}</div>
+      )}
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
 
       {rejecting && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-start" }}>
           <textarea aria-label="Rejection reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why the owner's documents are not accepted (the owner sees this)" style={{ ...field, flex: "1 1 240px", minWidth: 0 }} />
-          <button type="button" onClick={reject} disabled={!reason.trim()} style={{ background: D.red, color: D.cream, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: reason.trim() ? "pointer" : "not-allowed", opacity: reason.trim() ? 1 : 0.5, fontFamily: "inherit" }}>Confirm reject</button>
+          <button type="button" onClick={reject} disabled={!reason.trim() || busy} style={{ background: D.red, color: D.cream, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: reason.trim() && !busy ? "pointer" : "not-allowed", opacity: reason.trim() && !busy ? 1 : 0.5, fontFamily: "inherit" }}>Confirm reject</button>
           <button type="button" onClick={() => { setRejecting(false); setReason(""); }} style={{ background: "none", border: "none", color: D.textDim, fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
         </div>
       )}

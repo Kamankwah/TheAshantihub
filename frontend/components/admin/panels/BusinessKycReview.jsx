@@ -164,7 +164,7 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
   const photos = sheet.photos || {};
   const location = sheet.location || {};
   const consent = sheet.consent;
-  const hasDocuments = Boolean(owner.ghana_card_number || photos.ghana_card_front || photos.ghana_card_back || business.tin_given);
+  const hasDocuments = Boolean(owner.ghana_card_number || photos.ghana_card_front || photos.ghana_card_back || business.tin_given || business.has_certificate);
   const flags = sheet.flags || [];
   const decided = location.address_verified_at != null;
   const verified = decided && location.address_verified === true;
@@ -229,6 +229,7 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
               </div>
             )}
             {business.tin_given && <div style={text}>TIN given</div>}
+            {business.has_certificate && <div style={text}>Certificate on file (open it in the KYC queue's identity view)</div>}
             <div style={dim}>Identity documents are decided in the KYC queue, separately from the address.</div>
           </>
         ) : (

@@ -762,7 +762,7 @@ export const handlers = [
   http.get('http://localhost:8000/api/portfolio/subscriptions-due/', () => HttpResponse.json({ overdue: [], paused: [], cleared: [] })),
   http.get('http://localhost:8000/api/portfolio/businesses/:id/review/', () => HttpResponse.json({
     owner: { full_name: 'Owner', login_phone: '', email: '', ghana_card_number: '', needs_claim: false, claimed_at: null },
-    business: { business_name: 'Business', business_kind: null, category: null, zone: null, opening_hours: '', is_formal: false, tin_given: false },
+    business: { business_name: 'Business', business_kind: null, category: null, zone: null, opening_hours: '', is_formal: false, tin_given: false, has_certificate: false },
     photos: { signboard: null, ghana_card_front: null, ghana_card_back: null },
     location: {
       lat: null, lng: null, accuracy_m: null, is_manual: false, set_by: '', set_at: null, gps_address: '',

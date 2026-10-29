@@ -226,4 +226,15 @@ describe('BusinessKycReview', () => {
     expect(await screen.findByText('TIN given')).toBeInTheDocument()
     expect(screen.queryByText('No documents provided')).not.toBeInTheDocument()
   })
+
+  it('a certificate alone is a document: no No documents provided, and a Certificate on file line', async () => {
+    serve(sheet({
+      owner: { ...sheet().owner, ghana_card_number: null },
+      business: { ...sheet().business, is_formal: true, tin_given: false, has_certificate: true },
+      photos: { signboard: null, ghana_card_front: null, ghana_card_back: null },
+    }))
+    renderReview()
+    expect(await screen.findByText(/Certificate on file/)).toBeInTheDocument()
+    expect(screen.queryByText('No documents provided')).not.toBeInTheDocument()
+  })
 })

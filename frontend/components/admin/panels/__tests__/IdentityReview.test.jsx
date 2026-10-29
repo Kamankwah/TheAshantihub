@@ -42,6 +42,11 @@ async function openIdentity() {
   fireEvent.click(screen.getByRole('button', { name: 'Identity documents' }))
 }
 
+async function openDocuments(r) {
+  fireEvent.click(within(r).getByRole('button', { name: /View documents/ }))
+  await waitFor(() => expect(within(r).getByRole('button', { name: '✓ Approve' })).toBeEnabled())
+}
+
 describe('Identity review in the KYC queue', () => {
   it('identity tab lists pending identity submissions', async () => {
     mockIdentity({ pending: [row(), row({ id: 42, full_name: 'Kofi Asamoah', business_name: '', registration_channel: 'self', registered_by_name: null, registered_by_role: null })] })
@@ -101,6 +106,7 @@ describe('Identity review in the KYC queue', () => {
     await openIdentity()
     const r = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
     const before = calls.length
+    await openDocuments(r)
     fireEvent.click(within(r).getByRole('button', { name: '✓ Approve' }))
     await waitFor(() => expect(posted).toBe(1))
     await waitFor(() => expect(calls.length).toBeGreaterThan(before))
@@ -116,6 +122,7 @@ describe('Identity review in the KYC queue', () => {
     renderPanel()
     await openIdentity()
     const r = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
+    await openDocuments(r)
     fireEvent.click(within(r).getByRole('button', { name: 'Reject…' }))
     const confirm = within(r).getByRole('button', { name: 'Confirm reject' })
     expect(confirm).toBeDisabled()
@@ -160,6 +167,7 @@ describe('Identity review in the KYC queue', () => {
     renderPanel()
     await openIdentity()
     const r = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
+    await openDocuments(r)
     fireEvent.click(within(r).getByRole('button', { name: '✓ Approve' }))
     expect(await within(r).findByRole('alert')).toHaveTextContent("You supplied or changed this business's details, so someone else decides its identity.")
   })
@@ -170,6 +178,7 @@ describe('Identity review in the KYC queue', () => {
     renderPanel()
     await openIdentity()
     const r = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
+    await openDocuments(r)
     fireEvent.click(within(r).getByRole('button', { name: 'Reject…' }))
     fireEvent.change(within(r).getByRole('textbox', { name: 'Rejection reason' }), { target: { value: 'No' } })
     fireEvent.click(within(r).getByRole('button', { name: 'Confirm reject' }))
@@ -186,5 +195,70 @@ describe('Identity review in the KYC queue', () => {
     const r = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
     fireEvent.click(within(r).getByRole('button', { name: /Review Again/ }))
     await waitFor(() => expect(posted).toBe(1))
+  })
+
+  it('approve and reject stay disabled until the documents are open and loaded', async () => {
+    mockIdentity({ pending: [row()] })
+    renderPanel()
+    await openIdentity()
+    const r = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
+    expect(within(r).getByRole('button', { name: '✓ Approve' })).toBeDisabled()
+    expect(within(r).getByRole('button', { name: 'Reject…' })).toBeDisabled()
+    expect(within(r).getByText('Open the documents to enable Approve and Reject.')).toBeInTheDocument()
+    await openDocuments(r)
+    expect(within(r).getByRole('button', { name: 'Reject…' })).toBeEnabled()
+    expect(within(r).queryByText('Open the documents to enable Approve and Reject.')).not.toBeInTheDocument()
+  })
+
+  it('approve and reject stay disabled when the documents fail to load', async () => {
+    mockIdentity({ pending: [row()] })
+    server.use(http.get(`${API}/api/accounts/kyc/:id/`, () => HttpResponse.json({ detail: 'Server error' }, { status: 500 })))
+    renderPanel()
+    await openIdentity()
+    const r = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
+    fireEvent.click(within(r).getByRole('button', { name: /View documents/ }))
+    expect(await within(r).findByText("Could not load this owner's documents.")).toBeInTheDocument()
+    expect(within(r).getByRole('button', { name: '✓ Approve' })).toBeDisabled()
+    expect(within(r).getByRole('button', { name: 'Reject…' })).toBeDisabled()
+  })
+
+  it('a double click on Approve sends one request', async () => {
+    mockIdentity({ pending: [row()] })
+    let posted = 0
+    server.use(http.post(`${API}/api/accounts/kyc/41/identity/approve/`, async () => {
+      posted += 1
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      return HttpResponse.json({ id: 41, identity_status: 'verified' })
+    }))
+    renderPanel()
+    await openIdentity()
+    const r = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
+    await openDocuments(r)
+    const approve = within(r).getByRole('button', { name: '✓ Approve' })
+    fireEvent.click(approve)
+    fireEvent.click(approve)
+    await waitFor(() => expect(posted).toBe(1))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(posted).toBe(1)
+  })
+
+  it('a double click on Review again sends one request', async () => {
+    mockIdentity({ rejected: [row({ identity_status: 'rejected', identity_rejection_reason: 'Blurry' })] })
+    let posted = 0
+    server.use(http.post(`${API}/api/accounts/kyc/41/identity/re-review/`, async () => {
+      posted += 1
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      return HttpResponse.json({ id: 41, identity_status: 'pending' })
+    }))
+    renderPanel()
+    await openIdentity()
+    fireEvent.click(await screen.findByRole('button', { name: /^Rejected/ }))
+    const r = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
+    const again = within(r).getByRole('button', { name: /Review Again/ })
+    fireEvent.click(again)
+    fireEvent.click(again)
+    await waitFor(() => expect(posted).toBe(1))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(posted).toBe(1)
   })
 })

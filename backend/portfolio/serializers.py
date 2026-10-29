@@ -397,6 +397,8 @@ def business_review_sheet(owner, request):
             "hours": hours_payload(owner),
             "is_formal": bool(getattr(profile, "is_formal", False)),
             "tin_given": bool(getattr(profile, "tin", None)),
+            # Only whether a certificate is on file; the file itself is opened in the KYC queue's identity view.
+            "has_certificate": bool(getattr(profile, "business_reg_certificate", None)),
         },
         "photos": {
             "signboard": _portfolio_file_url(request, getattr(profile, "signboard_photo", None)),
