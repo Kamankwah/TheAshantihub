@@ -5,7 +5,7 @@ import { useNeedsRestocking } from "../../../hooks/useCatalogueStock.js";
 import NeedsRestockingPanel from "../../catalogue/NeedsRestockingPanel.jsx";
 import OwnerListingCard from "./OwnerListingCard.jsx";
 
-const pill = (on) => ({ border: `1px solid ${on ? D.gold : D.divider}`, background: on ? D.gold : D.panelBg2, color: on ? "#1a1205" : D.text, borderRadius: 20, padding: "6px 14px", fontSize: "0.74rem", fontWeight: 700, fontFamily: "inherit", cursor: "pointer" });
+const pill = (on) => ({ border: `1px solid ${on ? D.gold : D.divider}`, background: on ? D.gold : D.panelBg2, color: on ? D.darkBrown : D.text, borderRadius: 20, padding: "6px 14px", fontSize: "0.74rem", fontWeight: 700, fontFamily: "inherit", cursor: "pointer" });
 
 // Products management (business item 2, Wave H). Lists the owner's approved (published) and
 // dropped product listings. Price and stock go live at once; every other change (details,
