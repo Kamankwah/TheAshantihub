@@ -210,6 +210,15 @@ describe('RegisterBusinessPanel — identity documents are optional', () => {
     expect(Object.fromEntries(append.mock.calls).is_formal).toBe('true')
   })
 
+  it('an old draft without is_formal loads with the registered tick unchecked, and the hint does not promise the mark', async () => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 1, step: 2, form: { owner_full_name: 'Gifty Asantewaa' }, saved_at: '2026-10-08T10:00:00Z' }))
+    renderPanel()
+    expect(await screen.findByLabelText('The business says it is registered')).not.toBeChecked()
+    expect(screen.getByText(/The owner earns the verified check mark by uploading their Ghana Card \(number, front and back\)/)).toBeInTheDocument()
+    expect(screen.queryByText(/the back isn't needed/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/for the KYC check/)).not.toBeInTheDocument()
+  })
+
   it('no certificate or TIN inputs', async () => {
     renderPanel()
     await fillOwnerAndBusiness()

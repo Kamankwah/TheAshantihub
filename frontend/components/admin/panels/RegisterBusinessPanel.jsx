@@ -628,8 +628,8 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
             <PhotoSlot title="Signboard" inputLabel="Signboard photo" photo={photos.signboard_photo} onTake={takePhoto("signboard_photo")}
               tips={["Whole board in the frame, name readable", "Stand straight in front, not at an angle", "Include the shopfront if you can"]} />
             <PhotoSlot title="Owner's Ghana Card · front (optional)" inputLabel="Ghana Card front photo" photo={photos.ghana_card_front} onTake={takePhoto("ghana_card_front")} emptyLabel="Optional"
-              tips={["Lay the card flat on a dark surface", "All four corners in the frame, no glare", "Front only — the back isn't needed"]} />
-            <div style={hintStyle}>Skip the card photo if the owner can't show the card right now — it's only needed for the verified check mark, and the owner can add it later. Only Operations sees it, for the KYC check. Photos stay on this screen until you submit — they aren't kept in the draft.</div>
+              tips={["Lay the card flat on a dark surface", "All four corners in the frame, no glare"]} />
+            <div style={hintStyle}>Optional. If the owner can't show the card now, skip it. The front photo is kept for Operations to see. The owner earns the verified check mark by uploading their Ghana Card (number, front and back) from their own dashboard. Only Operations sees it. Photos stay on this screen until you submit — they aren't kept in the draft.</div>
             <Field label="Ghana Card number (optional)">
               <input value={form.ghana_card_number} onChange={update("ghana_card_number")} autoComplete="off" autoCapitalize="characters" maxLength={20} style={input} />
             </Field>
