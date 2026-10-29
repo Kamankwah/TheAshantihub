@@ -157,9 +157,9 @@ describe('AshantiHub routing', () => {
       // asserted against directly — this is the same setPage prop Navbar
       // receives and calls unmodified (see Navbar.jsx/Navbar.test.jsx), now
       // backed by useNavigate() instead of a bare useState setter.
-      // Task 10: "/" shows the StorefrontHeader instead of the Navbar, so the
-      // walk starts there: its "All businesses" link (navigate) reaches
-      // /business, where the Navbar and its "Adwaso" link are back.
+      // Every page shows the StorefrontHeader: its "All businesses" link
+      // (navigate) reaches /business, and the same header is still there to
+      // walk to /events and back.
       window.history.pushState({}, '', '/')
       const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
       render(
@@ -174,8 +174,7 @@ describe('AshantiHub routing', () => {
       expect(window.location.pathname).toBe('/business')
       fireEvent.click(screen.getAllByText('Events')[0])
       expect(window.location.pathname).toBe('/events')
-      // The Business nav link is labelled "Adwaso" (route stays /business).
-      fireEvent.click(screen.getAllByText('Adwaso')[0])
+      fireEvent.click(screen.getByRole('button', { name: 'All businesses' }))
       expect(window.location.pathname).toBe('/business')
 
       window.history.pushState({}, '', '/')
