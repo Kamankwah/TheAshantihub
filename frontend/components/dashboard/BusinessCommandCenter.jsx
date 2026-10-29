@@ -10,6 +10,7 @@ import { D, glassCard, tint } from "./theme.js";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 import ListingsPanel from "./panels/ListingsPanel.jsx";
 import ProductsPanel from "./panels/ProductsPanel.jsx";
+import ProductLookupPanel from "../catalogue/ProductLookupPanel.jsx";
 import ServicesPanel from "./panels/ServicesPanel.jsx";
 import BookingsPanel from "./panels/BookingsPanel.jsx";
 import DeliveriesPanel from "./panels/DeliveriesPanel.jsx";
@@ -60,7 +61,10 @@ function buildTabs(businessKind) {
   // no accommodation listings. Legacy null-kind accounts get none.
   let managementTabs = [];
   if (businessKind === "product") {
-    managementTabs = [{ id: "products", icon: "📦", label: "Products" }];
+    managementTabs = [
+      { id: "products", icon: "📦", label: "Products" },
+      { id: "product-lookup", icon: "🔎", label: "Product lookup" },
+    ];
   } else if (businessKind === "service") {
     managementTabs = [
       { id: "services", icon: "🛠️", label: "Services" },
@@ -265,6 +269,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                 {tab === "analytics" && <AnalyticsPanel user={user} onNavigate={selectTab} businessKind={profile?.business_kind} />}
                 {tab === "listings" && <ListingsPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
                 {tab === "products" && <ProductsPanel initialView={tabView || "list"} key={tabView || "list"} />}
+                {tab === "product-lookup" && profile?.business_kind === "product" && <ProductLookupPanel />}
                 {tab === "services" && <ServicesPanel />}
                 {tab === "bookings" && <BookingsPanel />}
                 {tab === "events" && <EventsPanel user={user} PaymentComponent={PaymentComponent} />}
