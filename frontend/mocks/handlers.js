@@ -9,6 +9,30 @@ function proposalReply(body) {
 }
 
 export const handlers = [
+  // Address book (customer): a plain array, default first. Defaults are an empty book; tests override.
+  http.get('http://localhost:8000/api/accounts/addresses/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/accounts/addresses/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json({
+      id: 1, label: body.label, recipient_name: body.recipient_name, phone: body.phone,
+      gps_address: body.gps_address, landmark: body.landmark, address_text: body.address_text ?? '',
+      lat: body.lat ?? null, lng: body.lng ?? null, is_default: true, created_at: '2026-10-28T09:15:22.123456Z',
+    }, { status: 201 })
+  }),
+  http.patch('http://localhost:8000/api/accounts/addresses/:id/', async ({ params, request }) => {
+    const body = await request.json()
+    return HttpResponse.json({
+      id: Number(params.id), label: 'Home', recipient_name: 'Akosua Mensah', phone: '0241234567',
+      gps_address: 'AK-039-5028', landmark: 'Opposite Total filling station', address_text: '',
+      lat: null, lng: null, is_default: true, created_at: '2026-10-28T09:15:22.123456Z', ...body,
+    })
+  }),
+  http.delete('http://localhost:8000/api/accounts/addresses/:id/', () => new HttpResponse(null, { status: 204 })),
+  http.post('http://localhost:8000/api/accounts/addresses/:id/set-default/', ({ params }) => HttpResponse.json({
+    id: Number(params.id), label: 'Home', recipient_name: 'Akosua Mensah', phone: '0241234567',
+    gps_address: 'AK-039-5028', landmark: 'Opposite Total filling station', address_text: '',
+    lat: null, lng: null, is_default: true, created_at: '2026-10-28T09:15:22.123456Z',
+  })),
   // OTP security overview and authenticator status (Plan 2F): every switch off, nothing on file.
   http.get('http://localhost:8000/api/otp/me/', () => HttpResponse.json({
     channels: [], authenticator: null, trusted_devices: [], switches: { sign_in: false, step_up: false, sign_up: false }, customer_gap_days: 30,
