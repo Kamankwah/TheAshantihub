@@ -1,6 +1,6 @@
 # Marketplace Rebrand and Opening — Design
 
-Date: 2026-10-19. Status: Plan 1 built on branch `feature/marketplace-1-storefront`, not deployed, awaiting staging (gate flag `MARKETPLACE_GATE_ENABLED` off by default); Plan 2 built on branch `feature/marketplace-2-business-tools`, not deployed; later plans not started. Source: owner interview (this session) and the screenshots in `docs/` (`screenshot_amazon_home.png`, `Screenshot_amazon_*`, `Screenshot_main_product_page_*`, `Screenshot_product_preview_*`, `Screenshot_shopping_cart*`, `Screenshot_checkout`, `Screenshot_payment_verification screen`, `Screenshot_user_account_*`). Visual language stays `DESIGN.md` (gold, cream, brown, Fraunces / Plus Jakarta Sans); only the layout and behaviour follow Amazon.
+Date: 2026-10-19. Status: Plan 1 built on branch `feature/marketplace-1-storefront`, not deployed, awaiting staging (gate flag `MARKETPLACE_GATE_ENABLED` off by default); Plan 2 built on branch `feature/marketplace-2-business-tools`, not deployed; Plan 4 built on branch `feature/marketplace-4-shopper-pages`, not deployed; later plans not started. Source: owner interview (this session) and the screenshots in `docs/` (`screenshot_amazon_home.png`, `Screenshot_amazon_*`, `Screenshot_main_product_page_*`, `Screenshot_product_preview_*`, `Screenshot_shopping_cart*`, `Screenshot_checkout`, `Screenshot_payment_verification screen`, `Screenshot_user_account_*`). Visual language stays `DESIGN.md` (gold, cream, brown, Fraunces / Plus Jakarta Sans); only the layout and behaviour follow Amazon.
 
 ## Intent
 
@@ -112,3 +112,12 @@ Decisions recorded for Plan 2 (business listing tools):
 - **Discount design (R6/R29):** no `ListingDiscount` model. A discount is `sale_price` + `sale_ends_at` + `sale_started_at` on the listing and on each variant; "was" shows only after the regular price stood 7 days before the sale began.
 - **R19:** variants only on goods and food. **R22:** nginx API body limit raised from 25m to 110m so the 100 MB video reaches the app. **R24:** staff see every video before it goes public; submit is refused while one is converting. **R32:** maker-checker for Direct blocks every staff member who drafted, edited or submitted the item, not only the creator.
 - **Owner supplies before staging:** `ASHANTI_DIRECT_PHONE` and `ASHANTI_DIRECT_EMAIL` (no defaults; `ensure_ashanti_direct` refuses without them); a Super Admin sets Direct's password and payout details.
+
+Decisions recorded for Plan 4 (shopper pages):
+- **GhanaPost:** required for door-to-door delivery only (Ashanti codes, plus a landmark); store pickup needs neither. Builder's call; the owner may overrule.
+- **Payment methods:** payout numbers are not payment methods. There is no default payment method and no saved cards; saved mobile-money numbers are withdrawal destinations, labelled so.
+- **Your Orders** carries the Bookings, Service requests, Tickets and My events tabs so no existing feature is lost.
+- **"Customers also viewed"** shows only on real co-views (3 co-viewers per row, at least 4 rows); otherwise the carousel reads "More in this category".
+- **Product page** is themed (light and dark), unlike the fixed-dark service and stay pages.
+- **Questions-and-answers** removed from listing pages; event Q&A is untouched (owner follow-up).
+- **Amounts** in the cart, checkout and verify pages are always GHS (what is charged); there are no delivery dates (no ETA source).

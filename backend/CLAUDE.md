@@ -457,6 +457,21 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **Ashanti Direct has no money special-case.** Its wallet, fees and payouts are an ordinary business's. `is_company`
   is read only through `accounts/direct.py`.
 
+## Shopper pages (marketplace Plan 4)
+
+- **GhanaPost + landmark are enforced in `OrderCheckoutView` before routing**, for door-to-door only (store pickup
+  needs neither), via `accounts.gps` (`normalize_gps`, `validate_ashanti_gps`); field-keyed 400s. Older `Order` rows
+  have blank GhanaPost fields, so serializers must tolerate them.
+- **`CustomerAddress`:** one default per customer, at most 10; writes take the Customer-row lock.
+- **`ListingView`:** anonymous viewers are keyed by an HMAC of the client UUID; one row per viewer, listing and day;
+  kept for a 30-day window (nothing prunes it yet). "Also viewed" needs 3 co-viewers per row and at least 4 rows,
+  else the basis is `same_category`.
+- **Bulk cart add is atomic under the cart lock** and merges into existing lines by the two conditional unique
+  constraints.
+- **The wishlist API is not opening-gated** (browse and wishlist work before opening).
+- **Two sponsored lists:** the public `storefront/sponsored/` feed (live, published, not hidden) versus the
+  staff-only `listings/sponsored/` Marketing list; never swap their permissions.
+
 ## Test-fixture gotcha
 
 **Reviews are pre-moderated.** A new `Review` lands in `pending` and is invisible to the public
