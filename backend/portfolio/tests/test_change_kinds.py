@@ -276,6 +276,20 @@ class ListingPhotosKindTests(ChangeTestBase):
         self.assertEqual(self.listing.main_photo.name, original)
         self.assertFalse(AppliedChange.objects.get(approval=approval).result["set_main_photo"])
 
+    def test_the_nine_image_cap_holds_for_a_scouts_photos_too(self):
+        # listings.media: 9 images, the main photo included. The listing has 1 gallery photo; 8 more would make 9 + main.
+        for order in range(4, 10):
+            ListingPhoto.objects.create(listing=self.listing, image=jpeg(f"g{order}.jpg"), order=order)
+        self.listing.main_photo.save("main.jpg", jpeg("main.jpg"), save=True)  # 1 main + 7 gallery = 8
+        with self.assertRaises(ValidationError) as ctx:
+            proposals.propose_photos(self.scout, self.listing, photo_ids=[self.staged().pk, self.staged().pk], reason="More")
+        self.assertIn("at most 9 images", str(ctx.exception.detail))
+        approval = proposals.propose_photos(self.scout, self.listing, photo_ids=[self.staged().pk], reason="One more")
+        # an owner adds a photo meanwhile: the request now fails when approved
+        ListingPhoto.objects.create(listing=self.listing, image=jpeg("late.jpg"), order=20)
+        with self.assertRaisesMessage(ApprovalError, "at most 9 images"):
+            services.approve(approval.pk, self.lead)
+
     def test_a_deleted_listing_makes_the_request_stale(self):
         approval = proposals.propose_photos(self.scout, self.listing, photo_ids=[self.staged().pk], reason="More angles")
         Listing.objects.filter(pk=self.listing.pk).delete()

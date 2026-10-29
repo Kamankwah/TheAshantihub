@@ -833,6 +833,16 @@ def listing_create_diff(approval):
 
 # ── listing.photos ──────────────────────────────────────────────────────────
 
+def _photo_room(listing, count):
+    """The listing's photo cap (listings.media: 9 images, the main photo included, counting any edit being prepared)
+    as it would stand after `count` more photos; a plain message when it would go over."""
+    from listings import media
+
+    if media.image_count(listing) + count > media.MAX_IMAGES:
+        return f"A listing can have at most {media.MAX_IMAGES} images, the main photo included. Remove some first."
+    return None
+
+
 def propose_photos(scout, listing, *, photo_ids, reason, http_request=None):
     listing = Listing.objects.select_related("business_owner").get(pk=listing.pk)
     owner = _fresh(listing.business_owner)
@@ -846,6 +856,9 @@ def propose_photos(scout, listing, *, photo_ids, reason, http_request=None):
     errors = photo_errors(owner, ids)
     if errors:
         raise ValidationError(errors)
+    full = _photo_room(listing, len(ids))
+    if full:
+        raise ValidationError({"photo_ids": [full]})
     with transaction.atomic():
         approval = submit(
             scout, LISTING_PHOTOS_KEY, title=f"{_photo_count(len(ids))} for {listing.name} — {owner.display_name}",
@@ -866,11 +879,15 @@ def listing_photos_state(approval):
 def validate_listing_photos(approval):
     payload = approval.payload
     owner = BusinessOwner.objects.get(pk=payload["business_owner_id"])
-    if not Listing.objects.filter(pk=payload["listing_id"], business_owner=owner).exists():
+    listing = Listing.objects.filter(pk=payload["listing_id"], business_owner=owner).first()
+    if listing is None:
         raise ApprovalError(LISTING_MOVED)
     errors = photo_errors(owner, payload.get("photo_ids") or [])
     if errors:
         raise ApprovalError(first_message(errors))
+    full = _photo_room(listing, len(payload.get("photo_ids") or []))
+    if full:
+        raise ApprovalError(full)
 
 
 def apply_listing_photos(approval):
