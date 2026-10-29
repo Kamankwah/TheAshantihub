@@ -400,6 +400,24 @@ describe('BrowseRail controls', () => {
       expect(props.setFilters.mock.calls[1][0]({})).toStrictEqual({ minRating: 4 })
     })
 
+    it('goods context draws price, Sold by Ashanti Direct and Verified sellers; services draw only Seller', async () => {
+      server.use(json(TREE_URL, TREE))
+      const { props } = renderRail()
+      const price = await screen.findByRole('region', { name: 'Price' })
+      fireEvent.click(within(price).getByRole('button', { name: 'GH₵ 500 and above' }))
+      expect(props.setMinPriceInput).toHaveBeenCalledWith('500')
+      expect(props.setFilters.mock.calls[0][0]({})).toStrictEqual({ minPrice: 500, maxPrice: undefined })
+      expect(within(screen.getByRole('region', { name: 'Sold by' })).getByRole('checkbox', { name: 'Sold by Ashanti Direct' })).toBeInTheDocument()
+    })
+
+    it('services context draws only the Verified sellers checkbox', async () => {
+      server.use(json(TREE_URL, TREE))
+      renderRail({ filters: { kind: 'service' } })
+      const seller = await screen.findByRole('region', { name: 'Seller' })
+      expect(within(seller).getAllByRole('checkbox')).toHaveLength(1)
+      expect(screen.queryByRole('checkbox', { name: 'Sold by Ashanti Direct' })).not.toBeInTheDocument()
+    })
+
     it('a selected leaf marks itself current inside the rail', async () => {
       server.use(json(TREE_URL, TREE))
       renderRail({ filters: { category: 'books' } })

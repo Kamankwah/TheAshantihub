@@ -5,8 +5,10 @@ import { useCategories } from "../../hooks/useCategories.js";
 import { useCategoryTree } from "../../hooks/useCategoryTree.js";
 import { useZones } from "../../hooks/useZones.js";
 import DepartmentSection from "./rail/DepartmentSection.jsx";
+import PriceSection from "./rail/PriceSection.jsx";
 import RailSection from "./rail/RailSection.jsx";
 import RatingSection from "./rail/RatingSection.jsx";
+import SoldBySection from "./rail/SoldBySection.jsx";
 import { BODY_FONT, HEADING_FONT } from "./storefrontType.js";
 import {
   KIND_OPTIONS, SECTION_META, availableSections, clearSectionPatch, departmentNodes, effectiveKind,
@@ -77,9 +79,9 @@ export default function BrowseRail({
   mode = "business",
   filters = {},
   setFilters,
-  minPriceInput, // eslint-disable-line no-unused-vars -- read by the price section's body
+  minPriceInput,
   setMinPriceInput,
-  maxPriceInput, // eslint-disable-line no-unused-vars -- read by the price section's body
+  maxPriceInput,
   setMaxPriceInput,
   search,
   onSearchChange,
@@ -180,6 +182,20 @@ export default function BrowseRail({
         return <DepartmentSection tree={tree} nodes={departmentNodes(tree, kind)} filters={filters} setFilters={setFilters} />;
       case "rating":
         return <RatingSection filters={filters} setFilters={setFilters} />;
+      case "price":
+        return (
+          <PriceSection
+            filters={filters}
+            setFilters={setFilters}
+            minPriceInput={minPriceInput}
+            setMinPriceInput={setMinPriceInput}
+            maxPriceInput={maxPriceInput}
+            setMaxPriceInput={setMaxPriceInput}
+          />
+        );
+      case "soldBy":
+      case "verified":
+        return <SoldBySection variant={id} filters={filters} setFilters={setFilters} />;
       default:
         return null;
     }
