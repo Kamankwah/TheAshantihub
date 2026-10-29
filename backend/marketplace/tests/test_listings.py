@@ -89,3 +89,13 @@ class ListingOversightTests(MarketplaceTestCase):
     def test_needs_the_moderation_permission(self):
         self.sign_in(self.support)
         self.assertEqual(self.client.get("/api/marketplace/listings/").status_code, 403)
+
+
+class StateOfLifecycleTests(MarketplaceTestCase):
+    def test_state_of_labels_dropped_and_discontinued(self):
+        from marketplace.listings import state_of
+
+        dropped = Listing(status=Listing.DROPPED)
+        discontinued = Listing(status=Listing.DISCONTINUED)
+        self.assertEqual(state_of(dropped, False), ("dropped", "Hidden by the business"))
+        self.assertEqual(state_of(discontinued, False), ("discontinued", "No longer sold"))

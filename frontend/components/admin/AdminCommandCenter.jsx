@@ -11,6 +11,7 @@ import ThemeToggle from "../ThemeToggle.jsx";
 import OperationsOverviewPanel from "./panels/OperationsOverviewPanel.jsx";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
 import SuperAdminOverviewPanel from "./panels/SuperAdminOverviewPanel.jsx";
+import AshantiDirectPanel from "./panels/AshantiDirectPanel.jsx";
 import ServiceIssuesPanel from "./panels/ServiceIssuesPanel.jsx";
 import DeliveriesReturnsPanel from "./panels/DeliveriesReturnsPanel.jsx";
 import SupportTeamPanel from "./panels/SupportTeamPanel.jsx";
@@ -496,6 +497,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "kyc" && <KYCQueuePanel auth={auth} />}
           {activeTab === "moderation" && (role === "super_admin" || role === "general_manager" ? <SaListingsPanel auth={auth} onOpenBusiness={openBusiness} /> : <ListingsModerationPanel auth={auth} />)}
           {activeTab === "hero" && <HeroApprovalPanel auth={auth} />}
+          {activeTab === "ashanti-direct" && <AshantiDirectPanel />}
           {activeTab === "events-moderation" && (role === "super_admin" || role === "general_manager" ? <SaEventsPanel /> : <EventsModerationPanel auth={auth} />)}
           {activeTab === "event-pricing" && <EventPricingPanel auth={auth} />}
           {activeTab === "reviews" && (role === "support" ? <SupportReviewsPanel /> : <ReviewsModerationPanel auth={auth} />)}

@@ -75,6 +75,7 @@ import PriceLine from "./components/PriceLine.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
 import EventCard, { formatEventDate } from "./components/EventCard.jsx";
 import EventDetailPage from "./components/EventDetailPage.jsx";
+import SellerPage from "./components/SellerPage.jsx";
 import EventSubmissionPanel from "./components/EventSubmissionPanel.jsx";
 import BusinessCommandCenter from "./components/dashboard/BusinessCommandCenter.jsx";
 import AdminCommandCenter from "./components/admin/AdminCommandCenter.jsx";
@@ -2185,7 +2186,7 @@ function OrdersDeliveryTab({ searchQuery }) {
         <div style={{marginTop:10}}>
           {(o.items||[]).map(it=>(
             <div key={it.id} style={{display:"flex",justifyContent:"space-between",fontSize:"0.76rem",color:D.textDim,padding:"3px 0"}}>
-              <span>{it.listing_name} × {it.quantity}</span>
+              <span>{it.listing_name}{it.variant_label ? ` (${it.variant_label})` : ""} × {it.quantity}</span>
               <span>GHS {it.line_total}</span>
             </div>
           ))}
@@ -2699,6 +2700,8 @@ export default function AshantiHub() {
   // Likewise /business/confirm, the owner's texted confirmation page.
   const businessDetailMatch = ["claim", "confirm"].includes(businessPathMatch?.params.id) ? null : businessPathMatch;
   const eventDetailMatch = useMatch("/events/:id");
+  // /seller/:id — a business's public page (SellerPage), a standalone early return like the pages below.
+  const sellerMatch = useMatch("/seller/:id");
   // The stop link in a marketing message (Marketing consent): a standalone page keyed by a signed token.
   const unsubscribeMatch = useMatch("/unsubscribe/:token");
   const trackedLinkMatch = useMatch("/r/:token");
@@ -2736,7 +2739,7 @@ export default function AshantiHub() {
     const path = PAGE_TO_PATH[id] ?? "/";
     if (location.pathname !== path) navigate(path);
   };
-  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !unsubscribeMatch && !trackedLinkMatch && !notifyStopMatch && !onStaffDashboardPath;
+  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !sellerMatch && !unsubscribeMatch && !trackedLinkMatch && !notifyStopMatch && !onStaffDashboardPath;
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
   const queryClient=useQueryClient();
@@ -2980,10 +2983,11 @@ export default function AshantiHub() {
   // added/error UI state" convention as onMessage above. Throws (rather
   // than swallowing) on failure so ListingDetailPage's
   // own try/catch can surface a specific message next to the button.
-  const handleAddToCart = async (item, quantity = 1) => {
+  // `lines` ([{variant, quantity}], from the variant picker) replaces the single quantity.
+  const handleAddToCart = async (item, quantity = 1, lines = null) => {
     if (!user) { setAuthModal("signup"); throw new Error("Please sign in as a customer to add items to your cart."); }
     if (!isCustomer) { throw new Error("Only customer accounts can add items to a cart."); }
-    await apiPost("/api/cart/items/", { listing: item.id, quantity });
+    await apiPost("/api/cart/items/", lines ? { listing: item.id, lines } : { listing: item.id, quantity });
     refetchCart();
     queryClient.invalidateQueries({ queryKey: ["cart-guard"] });
     queryClient.invalidateQueries({ queryKey: ["listings"] });
@@ -3183,6 +3187,20 @@ export default function AshantiHub() {
   if(unsubscribeMatch) return <UnsubscribePage token={unsubscribeMatch.params.token} onHome={()=>navigate("/")}/>;
   if(notifyStopMatch) return <NotifyStopPage token={notifyStopMatch.params.token} onHome={()=>navigate("/")}/>;
   if(isLoading) return <LoadingScreen/>;
+  if(sellerMatch) return (
+    <SellerPage
+      id={sellerMatch.params.id}
+      onBack={()=>navigate("/business")}
+      user={user}
+      favourites={favourites}
+      onFavourite={toggleFav}
+      currency={currency}
+      onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}}
+      onOpenListing={(listingId)=>navigate(`/business/${listingId}`)}
+      onOpenEvent={(eventId)=>navigate(`/events/${eventId}`)}
+      CardComponent={Card}
+    />
+  );
   if(show404) return <NotFoundPage onHome={()=>setPage("home")} user={user}/>;
 
   const activeCatObj=categories?.find(c=>c.slug===filters.category);
@@ -3354,6 +3372,7 @@ export default function AshantiHub() {
               currency={currency}
               onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}}
               onOpenListing={(otherId)=>setSelectedListingId(otherId)}
+              onOpenSeller={(sellerId)=>navigate(`/seller/${sellerId}`)}
               onAddToCart={handleAddToCart}
               CardComponent={Card}
               PaymentComponent={MoMoPayment}
@@ -3382,6 +3401,7 @@ export default function AshantiHub() {
               search={searchInput}
               onSearchChange={setSearchInput}
               showKindFilter={true}
+              showDirectFilter={true}
             />
             <div style={{flex:1,minWidth:0}}>
             {filters.category==="grocery"?(

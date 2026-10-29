@@ -352,7 +352,16 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     # When the owner of a scout-registered business set their own password.
     claimed_at = models.DateTimeField(null=True, blank=True)
 
+    # Ashanti Direct, the company's own shop (marketplace Plan 2, Task 11). At most one row. Read it only through
+    # accounts.direct; nothing in money code branches on it.
+    is_company = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["is_company"], condition=models.Q(is_company=True), name="one_company_owner"),
+        ]
 
     def __str__(self):
         return self.full_name

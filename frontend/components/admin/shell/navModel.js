@@ -139,6 +139,8 @@ export const NAV_ITEMS = [
   // The re-delivery fee (Director ruling 1, 2026-10-20): Operations proposes and decides it; a Super Admin edits it on
   // Money rules, so this screen is Operations' alone.
   { id: "redelivery-fee", icon: "🛵", label: "Re-delivery fee", show: (auth) => opsOnly(auth, "redelivery_fee.manage") },
+  // Ashanti Direct (Plan 2 Task 12): Operations and Super Admin run the company-owned business through the listing tools.
+  { id: "ashanti-direct", icon: "🏬", label: "Ashanti Direct", show: (auth) => auth.hasPermission("direct.operate") },
   // Re-deliveries (wallet 5F, Director ruling 8): the Super Admin and the Pickup Desk ask for an order to be delivered
   // again. Support keeps the same block inside Order status and gets no second item.
   { id: "redeliveries", icon: "🔁", label: "Re-deliveries", show: (auth) => auth.hasPermission("orders.redeliver") && auth.user?.role !== "support" },
@@ -222,7 +224,7 @@ export const NAV_ITEMS = [
 // [group id, group label, item ids]. The original (pre-1B) grouping, used for
 // any session whose role has no menu below.
 const DEFAULT_GROUPS = [
-  ["moderation", "Moderation", ["kyc", "moderation", "hero", "events-moderation", "reviews", "fraud-cases"]],
+  ["moderation", "Moderation", ["kyc", "moderation", "hero", "events-moderation", "reviews", "fraud-cases", "ashanti-direct"]],
   ["finance", "Finance", ["event-pricing", "subscription-plans", "subscription-plans-approval", "commission-policy", "escrow", "disputes", "transactions", "wallets", "withdrawals", "credit"]],
   ["users-roles", "Users & Roles", ["users", "staff", "sessions"]],
   ["field-ops", "Field Operations", ["scout-assignments", "field-verification", "visits", "targets", "commission", "leaderboard", "prospects", "register-business", "delivery-coordination", "my-deliveries", "portfolio", "all-portfolios", "at-risk", "subscriptions-due"]],
@@ -247,7 +249,7 @@ const ROLE_MENUS = {
     // Scheduled orders (paid orders held until their shops open, with Send now) sits beside Orders & deliveries:
     // Director ruling 7 (2026-10-20) added it to the canvas menu. Verification calls and Pickup desk (Plan 1F),
     // then Re-deliveries and Free delivery (wallet 5F, Director ruling 8) follow it.
-    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "support-verification", "pickup-desk", "redeliveries", "mk-delivery-promos", "events-moderation", "hero", "disputes"]],
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "support-verification", "pickup-desk", "redeliveries", "mk-delivery-promos", "events-moderation", "hero", "disputes", "ashanti-direct"]],
     ["listing-for-clients", "Listing for clients", ["prospects", "register-business", "client-listings"]],
     ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation", "wallets", "withdrawals"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
@@ -281,7 +283,7 @@ const ROLE_MENUS = {
     ["people", "People", ["ops-scouts", "support-team", "my-team", "targets", "leave"]],
     ["businesses", "Businesses", ["all-portfolios", "at-risk", "subscriptions-due"]],
     ["listing-for-clients", "Listing for clients", ["prospects", "register-business", "client-listings"]],
-    ["moderation", "Moderation", ["kyc", "moderation", "hero-events", "reviews"]],
+    ["moderation", "Moderation", ["kyc", "moderation", "hero-events", "reviews", "ashanti-direct"]],
     // Scheduled orders beside Deliveries & returns (Director ruling 7, 2026-10-20).
     ["service", "Service", ["support-issues", "deliveries-returns", "delivery-scheduled", "fraud-cases"]],
     ["activity", "Activity", ["activity", "visit-map"]],

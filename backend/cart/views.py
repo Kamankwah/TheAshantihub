@@ -39,7 +39,9 @@ def _guard_lines(cart):
 class CartItemCreateView(APIView):
     """POST /api/cart/items/ — add a listing to the caller's cart. If the
     listing is already in the cart, increments quantity on the existing row
-    rather than creating a duplicate line.
+    rather than creating a duplicate line. A listing with variants takes
+    `variant` or `lines: [{variant, quantity}]`: one line per variant, all added
+    or none, and its price is the variant's.
 
     The cart guard (cart.guard) refuses, with 400 {"detail", "code"} and
     nothing written, a service, stay or event listing and anything that would
@@ -55,7 +57,7 @@ class CartItemCreateView(APIView):
         serializer = CartItemCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         listing = serializer.validated_data["listing"]
-        quantity = serializer.validated_data["quantity"]
+        entries = serializer.validated_data["entries"]  # [(variant or None, quantity)], already checked as a whole
 
         try:
             guard.check_add(_guard_lines(Cart.objects.filter(customer=request.user).first()), listing)
@@ -75,24 +77,24 @@ class CartItemCreateView(APIView):
             except guard.GuardError as exc:
                 transaction.set_rollback(True)  # nothing written, not even a new empty cart
                 return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
-            item = CartItem.objects.filter(cart=cart, listing=listing).first()
-            if item is not None:
-                # Ruling R33: adding the line again re-reads today's price (a sale that ended, or one just started).
-                item.quantity += quantity
-                item.unit_price_snapshot = listing.effective_price
-                item.save(update_fields=["quantity", "unit_price_snapshot"])
-                created = False
-            else:
-                item = CartItem.objects.create(
-                    cart=cart, listing=listing, quantity=quantity,
-                    unit_price_snapshot=listing.effective_price,
-                )
-                created = True
+            saved, created = [], False
+            for variant, quantity in entries:
+                price = variant.effective_price if variant is not None else listing.effective_price
+                item = CartItem.objects.filter(cart=cart, listing=listing, variant=variant).first()
+                if item is not None:
+                    # Ruling R33: adding the line again re-reads today's price (a sale that ended, or one just started).
+                    item.quantity += quantity
+                    item.unit_price_snapshot = price
+                    item.save(update_fields=["quantity", "unit_price_snapshot"])
+                else:
+                    item = CartItem.objects.create(
+                        cart=cart, listing=listing, variant=variant, quantity=quantity, unit_price_snapshot=price,
+                    )
+                    created = True
+                saved.append(item)
 
-        return Response(
-            CartItemSerializer(item).data,
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-        )
+        data = CartItemSerializer(saved, many=True).data if "lines" in request.data else CartItemSerializer(saved[0]).data
+        return Response(data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 class CartGuardView(APIView):
@@ -143,7 +145,7 @@ class CartItemUpdateDeleteView(APIView):
         # a sale that has since ended is charged the regular price for the new quantity. A listing whose price was
         # removed keeps the old snapshot (the line cannot be re-added, and checkout prices from the snapshot).
         if item.quantity != old_quantity:
-            current = item.listing.effective_price
+            current = item.variant.effective_price if item.variant_id else item.listing.effective_price
             if current is not None and current != item.unit_price_snapshot:
                 item.unit_price_snapshot = current
                 item.save(update_fields=["unit_price_snapshot"])

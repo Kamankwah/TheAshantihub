@@ -4,6 +4,8 @@ from django.utils import timezone
 from accounts.models import BusinessOwner
 from accounts.validators import validate_image_content_type
 
+from .validators import validate_image_size
+
 
 class Category(models.Model):
     PRODUCT = "product"
@@ -76,11 +78,16 @@ class Listing(models.Model):
     PENDING_REVIEW = "pending_review"
     PUBLISHED = "published"
     REJECTED = "rejected"
+    # Dropped: hidden by its owner, returns on restore with no re-approval. Discontinued: permanent.
+    DROPPED = "dropped"
+    DISCONTINUED = "discontinued"
     STATUS_CHOICES = [
         (DRAFT, "Draft"),
         (PENDING_REVIEW, "Pending Review"),
         (PUBLISHED, "Published"),
         (REJECTED, "Rejected"),
+        (DROPPED, "Dropped"),
+        (DISCONTINUED, "Discontinued"),
     ]
 
     business_owner = models.ForeignKey(BusinessOwner, on_delete=models.CASCADE, related_name="listings")
@@ -92,6 +99,10 @@ class Listing(models.Model):
     price_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     # A live discount (Plan M1 Deals): goes live at once, valid only below price_amount (see listings.pricing).
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # Optional end of the discount (listings.pricing.live_discount_q): read-time expiry, no job. Null = no end date.
+    sale_ends_at = models.DateTimeField(null=True, blank=True)
+    # When the current sale price was set; the "was" price needs the regular price held 7 days before this moment.
+    sale_started_at = models.DateTimeField(null=True, blank=True)
     # Flagged by marketing/operations/super admin (`deals.manage`): appears in Deals even without a discount.
     sponsored = models.BooleanField(default=False)
     sponsored_by = models.ForeignKey(
@@ -104,11 +115,13 @@ class Listing(models.Model):
     lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     main_photo = models.ImageField(
         upload_to="listing_photos/main/", null=True, blank=True,
-        validators=[validate_image_content_type],
+        validators=[validate_image_content_type, validate_image_size],
     )
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+    dropped_at = models.DateTimeField(null=True, blank=True)
+    discontinued_at = models.DateTimeField(null=True, blank=True)
 
     # Approver attribution (staff moderation-queue restructuring) — which staff
     # member approved (published) OR rejected this listing, and when. Set by
@@ -129,6 +142,8 @@ class Listing(models.Model):
         "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="listings_created_for_owners",
     )
+    # Every other staff member who drafted, edited or sent it (Ashanti Direct); none of them may approve it.
+    staff_contributors = models.ManyToManyField("accounts.StaffUser", blank=True, related_name="listings_contributed")
 
     # Structured (not freeform-text) spec table, per the reviews/ratings/Q&A
     # plan's ListingDetailPage "Specs" tab (docs/PROJECT_SCOPE.md) — a list
@@ -221,6 +236,8 @@ class Listing(models.Model):
         update_fields = kwargs.get("update_fields")
         adding = self._state.adding
         touches_price = update_fields is None or "price_amount" in update_fields
+        if adding and self.sale_price is not None and self.sale_started_at is None:
+            self.sale_started_at = timezone.now()
         loaded = getattr(self, "_loaded_price", self._UNKNOWN)
         changed = adding or loaded is self._UNKNOWN or pricing.dec(loaded) != pricing.dec(self.price_amount)
         super().save(*args, **kwargs)
@@ -235,15 +252,117 @@ class ListingPriceHistory(models.Model):
     Recorded from the day Task 6 shipped; it backs the 7-day "was" price rule (listings.pricing)."""
 
     listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="price_history")
+    # Null for the listing's own price; set for one variant's regular price (listing queries filter variant__isnull).
+    variant = models.ForeignKey("ListingVariant", on_delete=models.CASCADE, null=True, blank=True, related_name="price_history")
     price = models.DecimalField(max_digits=10, decimal_places=2)
     started_at = models.DateTimeField(default=timezone.now)
     ended_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        indexes = [models.Index(fields=["listing", "ended_at"], name="listing_price_open_idx")]
+        indexes = [
+            models.Index(fields=["listing", "ended_at"], name="listing_price_open_idx"),
+            models.Index(fields=["variant", "ended_at"], name="listing_vprice_open_idx"),
+        ]
 
     def __str__(self):
         return f"{self.listing_id}: {self.price} from {self.started_at:%Y-%m-%d}"
+
+
+class ListingVariant(models.Model):
+    """One buyable version of a listing (a flavour, a size) with its own price and stock. The listing keeps a derived
+    "from" price and summed stock (listings.variants.sync_listing), so every reader of the listing stays correct.
+    A variant is never deleted once an order may point at it: it is switched off (`is_active=False`)."""
+
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="variants")
+    label = models.CharField(max_length=100)
+    attributes = models.JSONField(default=dict, blank=True)
+    price_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    # A discount on this variant alone (same rules as Listing.sale_price / sale_ends_at; listings.pricing).
+    sale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    sale_ends_at = models.DateTimeField(null=True, blank=True)
+    sale_started_at = models.DateTimeField(null=True, blank=True)
+    # None = stock is not counted for this variant.
+    stock_quantity = models.PositiveIntegerField(null=True, blank=True)
+    position = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["listing", "label"], condition=models.Q(is_active=True), name="listing_variant_label_active_uniq",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.label} ({self.listing_id})"
+
+    @property
+    def effective_price(self):
+        """What one unit of this variant costs now: its live sale price, otherwise its regular price."""
+        from . import pricing
+
+        return pricing.effective_price(self)
+
+    def save(self, *args, **kwargs):
+        from . import pricing
+
+        update_fields = kwargs.get("update_fields")
+        super().save(*args, **kwargs)
+        if update_fields is None or "price_amount" in update_fields:
+            pricing.record_variant_price(self)
+
+
+class ListingRevision(models.Model):
+    """A proposed edit of an approved listing. The listing row is untouched until staff approve it
+    (listings.revisions.apply_revision copies it over in one transaction). `changes` holds the scalar fields,
+    `variants` the variant structure operations, `remove_photo_ids`/`remove_video_ids` the gallery items to delete and
+    `new_main_photo` a staged replacement main photo. One open (draft or pending) revision per listing.
+    `draft` is outside the staff queue so an owner can prepare several changes before sending."""
+
+    DRAFT = "draft"
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    STATUS_CHOICES = [(DRAFT, "Draft"), (PENDING, "Pending"), (APPROVED, "Approved"), (REJECTED, "Rejected")]
+
+    # `Listing.revisions` is already a text field (a service's revision allowance), hence this related_name.
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="listing_revisions")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=DRAFT)
+    changes = models.JSONField(default=dict, blank=True)
+    variants = models.JSONField(default=list, blank=True)
+    remove_photo_ids = models.JSONField(default=list, blank=True)
+    remove_video_ids = models.JSONField(default=list, blank=True)
+    new_main_photo = models.ImageField(
+        upload_to="listing_photos/main/", null=True, blank=True,
+        validators=[validate_image_content_type, validate_image_size],
+    )
+    created_by = models.ForeignKey(
+        BusinessOwner, on_delete=models.SET_NULL, null=True, blank=True, related_name="listing_revisions",
+    )
+    created_by_staff = models.ForeignKey(
+        "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="listing_revisions_created",
+    )
+    staff_contributors = models.ManyToManyField("accounts.StaffUser", blank=True, related_name="listing_revisions_contributed")
+    rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_listing_revisions",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["listing"], condition=models.Q(status__in=["draft", "pending"]), name="listing_one_open_revision",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Edit of {self.listing.name} ({self.status})"
 
 
 class ListingPhoto(models.Model):
@@ -252,12 +371,58 @@ class ListingPhoto(models.Model):
         upload_to="listing_photos/gallery/", validators=[validate_image_content_type]
     )
     order = models.PositiveSmallIntegerField(default=0)
+    # Set while the photo is staged in an open edit of an approved listing; the public never sees such a row.
+    revision = models.ForeignKey(
+        "ListingRevision", on_delete=models.CASCADE, null=True, blank=True, related_name="staged_photos",
+    )
 
     class Meta:
         ordering = ["order"]
 
     def __str__(self):
         return f"Photo {self.order} for {self.listing.name}"
+
+
+class ListingVideo(models.Model):
+    """A listing video: an uploaded file converted for the web, or a YouTube link (only its 11-character id is kept).
+    `status` is processing -> converting -> ready | failed for uploads (a YouTube row is ready at once). `converting`
+    is the claim a conversion task takes so a redelivered task cannot run twice. `revision` is set while the video is
+    staged in an open edit of an approved listing."""
+
+    UPLOAD = "upload"
+    YOUTUBE = "youtube"
+    KIND_CHOICES = [(UPLOAD, "Upload"), (YOUTUBE, "YouTube")]
+    PROCESSING = "processing"
+    CONVERTING = "converting"
+    READY = "ready"
+    FAILED = "failed"
+    STATUS_CHOICES = [(PROCESSING, "Processing"), (CONVERTING, "Converting"), (READY, "Ready"), (FAILED, "Failed")]
+
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="videos")
+    revision = models.ForeignKey(
+        "ListingRevision", on_delete=models.CASCADE, null=True, blank=True, related_name="staged_videos",
+    )
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    source = models.FileField(upload_to="listing_videos/source/", null=True, blank=True)
+    web_file = models.FileField(upload_to="listing_videos/web/", null=True, blank=True)
+    poster = models.ImageField(upload_to="listing_videos/poster/", null=True, blank=True)
+    youtube_id = models.CharField(max_length=11, blank=True)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=PROCESSING)
+    duration_seconds = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
+    position = models.PositiveSmallIntegerField(default=0)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    @property
+    def owner_status(self):
+        """`converting` is our own claim marker; to owners and staff it is still processing."""
+        return self.PROCESSING if self.status == self.CONVERTING else self.status
+
+    def __str__(self):
+        return f"Video {self.pk} ({self.kind}, {self.status}) for {self.listing.name}"
 
 
 class HeroMediaSubmission(models.Model):

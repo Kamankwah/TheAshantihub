@@ -381,6 +381,25 @@ describe('BusinessDashboard Listings & Prices specs/service_duration editing', (
     expect(screen.getByDisplayValue('Cotton')).toBeInTheDocument()
   })
 
+  it('shows no photo or video controls while the listing is waiting for review', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/mine/', () => HttpResponse.json([
+        { id: 1, name: "Ama's Lodge", status: 'pending_review', price_amount: '450.00', price_unit: 'per night', specs: [], service_duration: '', photos: [], videos: [] },
+      ])),
+      http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json({
+        ghana_card_number: 'GHA-1', gps_address: 'AK-1', business_contact_phone: '+233200000000', is_formal: false,
+      })),
+      http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/hero/mine/', () => HttpResponse.json({})),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+    fireEvent.click(await screen.findByText('✏️ Edit'))
+    expect(screen.getByText('Photos and videos cannot change while this listing is waiting for review.')).toBeInTheDocument()
+    expect(screen.queryByText(/Add a YouTube link/i)).not.toBeInTheDocument()
+  })
+
   it('adds a spec row, fills service_duration, and saves with the PATCH body including both', async () => {
     mockDashboardDataWithDraftListing()
     let patchBody = null

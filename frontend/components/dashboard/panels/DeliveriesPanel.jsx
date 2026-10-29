@@ -106,7 +106,7 @@ function OrderRow({ order }) {
       </div>
 
       <div style={{ color: D.textFaint, fontSize: "0.72rem", marginTop: 8 }}>
-        {(order.items || []).map(i => `${i.quantity}× ${i.listing_name || i.name || "item"}`).join(", ")}
+        {(order.items || []).map(i => `${i.quantity}× ${i.listing_name || i.name || "item"}${i.variant_label ? ` (${i.variant_label})` : ""}`).join(", ")}
       </div>
 
       {!doorToDoor && (

@@ -61,7 +61,7 @@ def manager_job(assignment, now=None):
         "delivery_address": order.delivery_address, "delivery_lat": drop[0], "delivery_lng": drop[1],
         "pickup": block["primary"], "multi_pickup": block["multi_pickup"],
         "stops": [{**r, "id": 0} if r["id"] is None else r for r in block["all"]], "progress": block["progress"], "route_plan": assignment.route_plan or order.route_plan, "skip_history": block["skip_history"],
-        "items": [{"name": i.listing.name, "quantity": i.quantity, "business": getattr(i.listing.business_owner, "display_name", None)} for i in order.items.all()],
+        "items": [{"name": i.line_name, "quantity": i.quantity, "business": getattr(i.listing.business_owner, "display_name", None)} for i in order.items.all()],
         "payment": payloads.payment_label(order), "total_amount": str(order.total_amount),
         "placed_at": order.placed_at, "assigned_at": assignment.assigned_at, "deadline_at": assignment.deadline_at,
         "timeline": [payloads.event_row(e) for e in events], "steps": payloads.steps_for(assignment, events),

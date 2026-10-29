@@ -1,6 +1,6 @@
 # Marketplace Rebrand and Opening — Design
 
-Date: 2026-10-19. Status: Plan 1 built on branch `feature/marketplace-1-storefront`, not deployed, awaiting staging (gate flag `MARKETPLACE_GATE_ENABLED` off by default); later plans not started. Source: owner interview (this session) and the screenshots in `docs/` (`screenshot_amazon_home.png`, `Screenshot_amazon_*`, `Screenshot_main_product_page_*`, `Screenshot_product_preview_*`, `Screenshot_shopping_cart*`, `Screenshot_checkout`, `Screenshot_payment_verification screen`, `Screenshot_user_account_*`). Visual language stays `DESIGN.md` (gold, cream, brown, Fraunces / Plus Jakarta Sans); only the layout and behaviour follow Amazon.
+Date: 2026-10-19. Status: Plan 1 built on branch `feature/marketplace-1-storefront`, not deployed, awaiting staging (gate flag `MARKETPLACE_GATE_ENABLED` off by default); Plan 2 built on branch `feature/marketplace-2-business-tools`, not deployed; later plans not started. Source: owner interview (this session) and the screenshots in `docs/` (`screenshot_amazon_home.png`, `Screenshot_amazon_*`, `Screenshot_main_product_page_*`, `Screenshot_product_preview_*`, `Screenshot_shopping_cart*`, `Screenshot_checkout`, `Screenshot_payment_verification screen`, `Screenshot_user_account_*`). Visual language stays `DESIGN.md` (gold, cream, brown, Fraunces / Plus Jakarta Sans); only the layout and behaviour follow Amazon.
 
 ## Intent
 
@@ -104,3 +104,11 @@ Decisions recorded at launch (Plan M1B):
 - **Business contact phone:** removed from all public responses; the owner and staff keep it.
 - **Dark mode:** on every page via the `--ah-*` tokens. The listing and event detail pages remain fixed-dark in both themes; the owner may want a light variant.
 - **AshantiHub's own support contacts:** unchanged.
+
+Decisions recorded for Plan 2 (business listing tools):
+- **V5, what is live at once:** `manage` is narrowed to `price_amount`, `price_unit` and stock. Everything else, including `tag`, `contact_phone`, `specs`, `service_duration` and the warranty/expiry/return/brand/condition/dimensions/weight/barcode fields, goes through a pending revision. R2: `sale_price` stays live like price.
+- **B1:** the 9 images include the main photo. **B2:** `contact_phone` and the decision fields need re-approval, although today they do not. **B3:** Ashanti Direct hero ads are Marketing's own slides; Operations does not submit them. **B4:** a discount's end date is optional, 1% to 90% off, one live discount per listing or variant. **B5:** a listing with variants cannot join a flash sale.
+- **`contact_phone`:** stays hidden from the public (Plan 1); owner and staff see it, and changing it needs staff approval.
+- **Discount design (R6/R29):** no `ListingDiscount` model. A discount is `sale_price` + `sale_ends_at` + `sale_started_at` on the listing and on each variant; "was" shows only after the regular price stood 7 days before the sale began.
+- **R19:** variants only on goods and food. **R22:** nginx API body limit raised from 25m to 110m so the 100 MB video reaches the app. **R24:** staff see every video before it goes public; submit is refused while one is converting. **R32:** maker-checker for Direct blocks every staff member who drafted, edited or submitted the item, not only the creator.
+- **Owner supplies before staging:** `ASHANTI_DIRECT_PHONE` and `ASHANTI_DIRECT_EMAIL` (no defaults; `ensure_ashanti_direct` refuses without them); a Super Admin sets Direct's password and payout details.

@@ -101,6 +101,31 @@ describe('Sidebar', () => {
     expect(screen.queryByLabelText('Search')).not.toBeInTheDocument()
   })
 
+  it('sidebar checkbox sets directOnly and clears with Clear filters', () => {
+    const setFilters = vi.fn()
+    const onClear = vi.fn()
+    renderSidebar({ setFilters, onClear, showDirectFilter: true, filters: { directOnly: true } })
+    const box = screen.getByLabelText('Sold by Ashanti Direct')
+    expect(box).toBeChecked()
+    fireEvent.click(box)
+    expect(setFilters.mock.calls[0][0]({ directOnly: true })).toEqual({ directOnly: undefined })
+    fireEvent.click(screen.getByLabelText('Sold by Ashanti Direct'))
+    fireEvent.click(screen.getByText('Clear Filters'))
+    expect(onClear).toHaveBeenCalled()
+  })
+
+  it('sets directOnly when ticked and is absent unless the Business tab asks for it', () => {
+    const setFilters = vi.fn()
+    renderSidebar({ setFilters, showDirectFilter: true })
+    fireEvent.click(screen.getByLabelText('Sold by Ashanti Direct'))
+    expect(setFilters.mock.calls[0][0]({})).toEqual({ directOnly: true })
+  })
+
+  it('does not show the Sold by Ashanti Direct filter by default (Events tab)', () => {
+    renderSidebar()
+    expect(screen.queryByLabelText('Sold by Ashanti Direct')).not.toBeInTheDocument()
+  })
+
   describe('phone-width closed state', () => {
     let mm
     afterEach(() => { mm?.restore(); mm = undefined })

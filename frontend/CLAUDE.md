@@ -194,3 +194,11 @@ monolith holding most components, with extractions living in `components/`,
   element styled `walletStyles("dashboard").amount`; signed amounts use `signedGhs` (`walletMoney.js`). Release hours
   come only from booking-terms (`useBookingTerms`), never a literal "24/48/72 hours". Booking sales are read from
   `vendor/bookings/`, not the order sales list. The sweep test is the conformance contract: add a new Money screen to it.
+
+## Owner listing panels and `basePath`
+
+Owner listing panels (`ListingsPanel`, the variants, revision and discount editors) take a `basePath` prop, default
+`"/api/listings/mine"`. Ashanti Direct mounts the same panels on `"/api/direct/listings"`, whose URLs mirror the
+`mine/` subtree exactly, so the swap needs no other change. The promotion hub takes `promoteBase` (default
+`"/api/listings"`) and a `direct` prop; for Direct it hides the hero, free-delivery and flash-invitation cards (hero
+ads are Marketing's). Never hardcode `/api/listings/mine` in a panel.

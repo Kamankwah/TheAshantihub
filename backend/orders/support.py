@@ -84,15 +84,30 @@ def payments_note():
 def return_stock(order):
     """Put the stock an order reserved at checkout back on the shelf (tracked listings only). The listing rows are
     locked in one pass in primary-key order, so a cancel or the pickup job never deadlocks with a checkout."""
-    from listings.models import Listing
+    from listings import variants
+    from listings.models import Listing, ListingVariant
 
-    quantities = {}
+    plain, bought = {}, {}
     for line in order.items.all():
-        quantities[line.listing_id] = quantities.get(line.listing_id, 0) + line.quantity
-    for listing in Listing.objects.select_for_update().filter(pk__in=quantities).order_by("pk"):
+        if line.variant_id is None:
+            plain[line.listing_id] = plain.get(line.listing_id, 0) + line.quantity
+        else:
+            bought[line.variant_id] = (line.listing_id, bought.get(line.variant_id, (0, 0))[1] + line.quantity)
+    listing_ids = set(plain) | {listing_id for listing_id, _ in bought.values()}
+    listings = {row.pk: row for row in Listing.objects.select_for_update().filter(pk__in=listing_ids).order_by("pk")}
+    for listing_id, quantity in plain.items():
+        listing = listings[listing_id]
         if listing.stock_quantity is not None:
-            listing.stock_quantity += quantities[listing.pk]
+            listing.stock_quantity += quantity
             listing.save(update_fields=["stock_quantity"])
+    touched = set()
+    for row in ListingVariant.objects.select_for_update().filter(pk__in=bought).order_by("pk"):
+        if row.stock_quantity is not None:
+            row.stock_quantity += bought[row.pk][1]
+            row.save(update_fields=["stock_quantity"])
+        touched.add(row.listing_id)
+    for listing_id in sorted(touched):
+        variants.sync_listing(listings[listing_id])
 
 
 def _base():
@@ -186,7 +201,7 @@ class SupportOrderDetailView(APIView):
             "delivery_phone": mask_phone(order.delivery_phone) if order.delivery_phone else "",
             "lines": [
                 {
-                    "name": line.listing.name, "quantity": line.quantity, "line_total": str(line.line_total),
+                    "name": line.line_name, "quantity": line.quantity, "line_total": str(line.line_total),
                     "business": line.listing.business_owner.display_name,
                 }
                 for line in order.items.all()

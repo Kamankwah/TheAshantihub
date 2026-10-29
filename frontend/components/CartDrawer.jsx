@@ -345,7 +345,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
             {items.map((item) => (
               <div key={item.id} style={{ padding: "10px 14px", borderBottom: `1px solid ${C.line}`, display: "flex", gap: 10, alignItems: "center" }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: "0.78rem", color: C.ink }}>{item.listing_name}</div>
+                  <div style={{ fontWeight: 700, fontSize: "0.78rem", color: C.ink }}>{item.listing_name}{item.variant_label ? ` (${item.variant_label})` : ""}</div>
                   <div style={{ fontSize: "0.65rem", color: C.inkDim }}>{formatAmount(item.unit_price_snapshot)} each</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                     <button
@@ -398,7 +398,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
             <div style={{ fontWeight: 800, color: C.ink, fontSize: "0.85rem", marginBottom: 10 }}>Confirm your order</div>
             {items.map((item) => (
               <div key={`confirm-${item.id}`} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.76rem", color: C.inkDim, marginBottom: 6 }}>
-                <span>{item.listing_name} × {item.quantity}</span>
+                <span>{item.listing_name}{item.variant_label ? ` (${item.variant_label})` : ""} × {item.quantity}</span>
                 <span style={{ fontWeight: 700, color: C.ink }}>{formatAmount(item.line_total)}</span>
               </div>
             ))}
@@ -529,7 +529,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
               <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.inkDim }}>Order Ref</span><span style={{ fontWeight: 700 }}>#{order.id}</span></div>
               {order.items?.map((oi, i) => (
                 <div key={oi.id ?? i} style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: C.inkDim }}>{oi.listing_name || oi.listing} × {oi.quantity}</span>
+                  <span style={{ color: C.inkDim }}>{oi.listing_name || oi.listing}{oi.variant_label ? ` (${oi.variant_label})` : ""} × {oi.quantity}</span>
                   <span>{formatAmount(oi.line_total)}</span>
                 </div>
               ))}

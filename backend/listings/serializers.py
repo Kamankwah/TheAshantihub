@@ -1,12 +1,15 @@
+from decimal import Decimal
+
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
 
+from accounts import direct
 from accounts.models import BusinessOwner
 from billing.models import Subscription
 
-from . import pricing
-from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
+from . import pricing, services, variants
+from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, ListingVariant, ListingVideo, Promotion, Zone
 
 # The product/service decision fields added by the comprehensive listing-
 # creation work — shared between the owner-facing (writable) and public
@@ -25,6 +28,79 @@ class ListingPhotoSerializer(serializers.ModelSerializer):
     class Meta:
         model = ListingPhoto
         fields = ["id", "image", "order"]
+
+
+class OwnerPhotoSerializer(ListingPhotoSerializer):
+    """A gallery photo as its owner sees it: `staged` is true while it waits in an open edit of an approved listing."""
+
+    staged = serializers.SerializerMethodField()
+
+    class Meta(ListingPhotoSerializer.Meta):
+        fields = [*ListingPhotoSerializer.Meta.fields, "staged"]
+
+    def get_staged(self, obj):
+        return obj.revision_id is not None
+
+
+def _file_url(serializer, file):
+    if not file:
+        return None
+    request = serializer.context.get("request")
+    return request.build_absolute_uri(file.url) if request is not None else file.url
+
+
+class PublicVideoSerializer(serializers.ModelSerializer):
+    """Exactly {id, kind, url | youtube_id, poster, position}: the shopper's view of a ready video."""
+
+    class Meta:
+        model = ListingVideo
+        fields = ["id", "kind", "poster", "position"]
+
+    def to_representation(self, obj):
+        data = {"id": obj.pk, "kind": obj.kind}
+        if obj.kind == ListingVideo.YOUTUBE:
+            data["youtube_id"] = obj.youtube_id
+        else:
+            data["url"] = _file_url(self, obj.web_file)
+        data["poster"] = _file_url(self, obj.poster)
+        data["position"] = obj.position
+        return data
+
+
+class OwnerVideoSerializer(serializers.ModelSerializer):
+    """A video as its owner sees it: staged flag, conversion status, and fixed words when conversion failed."""
+
+    url = serializers.SerializerMethodField()
+    poster = serializers.SerializerMethodField()
+    staged = serializers.SerializerMethodField()
+    error = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ListingVideo
+        fields = ["id", "kind", "status", "youtube_id", "url", "poster", "duration_seconds", "position", "staged", "error"]
+
+    def get_url(self, obj):
+        return _file_url(self, obj.web_file) if obj.status == ListingVideo.READY else None
+
+    def get_poster(self, obj):
+        return _file_url(self, obj.poster)
+
+    def get_staged(self, obj):
+        return obj.revision_id is not None
+
+    def get_status(self, obj):
+        return obj.owner_status
+
+    def get_error(self, obj):
+        from .media import FAILED_TEXT
+
+        return FAILED_TEXT if obj.status == ListingVideo.FAILED else None
+
+
+def live_photos(obj, context):
+    """The photos the public may see: never one staged in an open edit."""
+    return ListingPhotoSerializer([p for p in obj.photos.all() if p.revision_id is None], many=True, context=context).data
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -70,9 +146,90 @@ class BusinessOwnerMiniSerializer(serializers.ModelSerializer):
     docs/PROJECT_SCOPE.md). Deliberately no phone/email/payout info exposed.
     """
 
+    # `name` is the business name the seller page shows (the owner's own name only when none is set), so "Sold by"
+    # names the business; `is_ashanti_direct` marks the company's own shop.
+    name = serializers.CharField(source="display_name", read_only=True)
+    is_ashanti_direct = serializers.SerializerMethodField()
+
     class Meta:
         model = BusinessOwner
-        fields = ["id", "full_name", "kyc_status"]
+        fields = ["id", "full_name", "name", "kyc_status", "is_ashanti_direct"]
+
+    def get_is_ashanti_direct(self, obj):
+        return direct.is_direct(obj)
+
+
+def live_sale_ends_at(obj):
+    """The discount's end date, only while the discount is live (a listing or a variant)."""
+    if obj.sale_ends_at is None or not pricing.is_discounted(obj):
+        return None
+    return serializers.DateTimeField().to_representation(obj.sale_ends_at)
+
+
+class PublicVariantSerializer(serializers.ModelSerializer):
+    effective_price = serializers.SerializerMethodField()
+    sale_price = serializers.SerializerMethodField()
+    was_price = serializers.SerializerMethodField()
+    sale_ends_at = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ListingVariant
+        fields = [
+            "id", "label", "attributes", "price_amount", "sale_price", "was_price", "sale_ends_at", "effective_price",
+            "stock_quantity", "position",
+        ]
+
+    def get_effective_price(self, obj):
+        return str(obj.effective_price)
+
+    def get_sale_price(self, obj):
+        return str(pricing.dec(obj.sale_price)) if pricing.is_discounted(obj) else None
+
+    def get_was_price(self, obj):
+        was = pricing.was_price(obj)
+        return None if was is None else str(was)
+
+    def get_sale_ends_at(self, obj):
+        return live_sale_ends_at(obj)
+
+
+class ListingVariantSerializer(PublicVariantSerializer):
+    """The owner's view of a variant (adds `is_active`), and the validation of a new one."""
+
+    label = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    price_amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.01"))
+    stock_quantity = serializers.IntegerField(min_value=0, max_value=variants.MAX_STOCK, required=False, allow_null=True)
+    attributes = serializers.JSONField(required=False)
+
+    class Meta(PublicVariantSerializer.Meta):
+        fields = [*PublicVariantSerializer.Meta.fields, "is_active"]
+        read_only_fields = ["position", "is_active"]
+
+    def validate_attributes(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Send the attributes as a list of name and value pairs.")
+        if len(value) > variants.MAX_ATTRIBUTES:
+            raise serializers.ValidationError(f"At most {variants.MAX_ATTRIBUTES} attributes.")
+        clean = {}
+        for key, item in value.items():
+            if not isinstance(item, str) or not item.strip() or not str(key).strip():
+                raise serializers.ValidationError("Each attribute needs a name and a text value.")
+            if len(str(key)) > 50 or len(item) > 100:
+                raise serializers.ValidationError("An attribute name or value is too long.")
+            clean[str(key).strip()] = item.strip()
+        return clean
+
+    def validate(self, data):
+        label = (data.get("label") or "").strip()
+        if not label:
+            label = " / ".join((data.get("attributes") or {}).values())[:100]
+        if not label:
+            raise serializers.ValidationError({"label": "Give the variant a name or at least one attribute."})
+        listing = self.context["listing"]
+        if variants.active(listing).filter(label__iexact=label).exists():
+            raise serializers.ValidationError({"label": "This listing already has a variant with that name."})
+        data["label"] = label
+        return data
 
 
 class PublicListingSerializer(serializers.ModelSerializer):
@@ -80,7 +237,8 @@ class PublicListingSerializer(serializers.ModelSerializer):
     # let anyone recover a business number. Owner and staff serializers keep it.
     category = CategorySerializer(read_only=True)
     zone = ZoneSerializer(read_only=True)
-    photos = ListingPhotoSerializer(many=True, read_only=True)
+    photos = serializers.SerializerMethodField()
+    videos = serializers.SerializerMethodField()
     business_owner = BusinessOwnerMiniSerializer(read_only=True)
     # Only present (True) when the queryset annotated it — PublicListingListView
     # (docs/BUSINESS_EVENTS_ROADMAP.md Phase 5's search-ranking annotation) does
@@ -98,6 +256,9 @@ class PublicListingSerializer(serializers.ModelSerializer):
     sale_price = serializers.SerializerMethodField()
     was_price = serializers.SerializerMethodField()
     effective_price = serializers.SerializerMethodField()
+    sale_ends_at = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+    has_variants = serializers.SerializerMethodField()
 
     class Meta:
         model = Listing
@@ -105,13 +266,27 @@ class PublicListingSerializer(serializers.ModelSerializer):
             "id", "name", "description", "category", "zone", "price_amount", "price_unit",
             "tag", "lat", "lng", "main_photo", "photos", "created_at",
             "is_promoted", "specs", "service_duration", "avg_rating", "review_count",
-            "sale_price", "was_price", "effective_price",
+            "sale_price", "sale_ends_at", "was_price", "effective_price", "variants", "has_variants", "videos",
             "business_owner", *LISTING_DECISION_FIELDS, "cancellation_policy",
         ]
         # This serializer only ever backs read-only views (list/detail/
         # related), but mark the decision fields read-only explicitly anyway
         # so a future write usage can't accept them unvalidated.
         read_only_fields = LISTING_DECISION_FIELDS
+
+    def get_photos(self, obj):
+        return live_photos(obj, self.context)
+
+    def get_videos(self, obj):
+        """Ready uploads and YouTube links that are not staged in an open edit."""
+        rows = [v for v in obj.videos.all() if v.revision_id is None and v.status == ListingVideo.READY]
+        return PublicVideoSerializer(rows, many=True, context=self.context).data
+
+    def get_variants(self, obj):
+        return PublicVariantSerializer(variants.active_rows(obj), many=True).data
+
+    def get_has_variants(self, obj):
+        return bool(variants.active_rows(obj))
 
     def get_is_promoted(self, obj):
         return bool(getattr(obj, "is_promoted", False))
@@ -122,6 +297,9 @@ class PublicListingSerializer(serializers.ModelSerializer):
     def get_was_price(self, obj):
         was = pricing.was_price(obj)
         return None if was is None else str(was)
+
+    def get_sale_ends_at(self, obj):
+        return live_sale_ends_at(obj)
 
     def get_effective_price(self, obj):
         value = obj.effective_price
@@ -230,45 +408,47 @@ def validate_sale_price(data, instance=None):
     price = data["price_amount"] if "price_amount" in data else getattr(instance, "price_amount", None)
     if price is None or not (0 < sale < price):
         raise serializers.ValidationError({"sale_price": SALE_PRICE_MESSAGE})
+    try:
+        pricing.sale_for(pricing.dec(price), sale_price=sale)  # the discount endpoint's bounds: 1% to 90% off
+    except pricing.PricingError as exc:
+        raise serializers.ValidationError({"sale_price": str(exc)}) from None
     return data
 
 
-def save_sent_fields(instance, validated_data):
-    """Write only the fields this request sent (catalogue plan 6). ModelSerializer.update saves the whole row, which would
-    write back the catalogue_product and stock_quantity this request read over a staff grouping decision or a
-    checkout's decrement that committed meanwhile."""
-    for attr, value in validated_data.items():
-        setattr(instance, attr, value)
-    instance.save(update_fields=[*validated_data, "updated_at"])
-    return instance
+# Moved to listings.services; kept importable from here for the callers that already use it.
+save_sent_fields = services.save_sent_fields
 
 
 class OwnerListingManageSerializer(serializers.ModelSerializer):
-    """Light edit of a listing's *operational* fields (business item 2) —
-    price, specs, stock, and the product/service decision fields — allowed
-    even on a *published* listing WITHOUT sending it back to moderation.
+    """The live edit of a listing: price, the live sale price and the price unit, and nothing else.
 
-    The content-moderated fields (name, description, category, zone, photos)
-    are deliberately NOT here: changing those still requires the full edit +
-    re-review via OwnerListingSerializer. This mirrors how the restock endpoint
-    already mutates a published listing's stock without re-moderation — routine
-    commercial changes shouldn't pull a live listing off the marketplace.
+    Narrowed in marketplace Plan 2 (decision V5). It used to also let `tag`, `contact_phone`, `specs`,
+    `service_duration`, the warranty/expiry/return/brand/condition/dimensions/weight/barcode fields and the
+    cancellation policy through without moderation, but a shopper sees those, so an approved listing now changes them
+    only through a revision that staff approve (listings.revisions). Stock goes live through `restock` and the
+    variants' own live endpoint. A field sent here that is not live is refused with a message, not ignored.
     """
-
-    # The product's barcode (catalogue plan 6): typed with spaces or hyphens, kept as its 14-digit GTIN.
-    barcode = serializers.CharField(required=False, allow_blank=True, max_length=40)
 
     class Meta:
         model = Listing
-        fields = [
-            "id", "price_amount", "sale_price", "price_unit", "tag", "contact_phone",
-            "specs", "service_duration", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
-        ]
+        fields = ["id", "price_amount", "sale_price", "price_unit"]
 
-    def validate_barcode(self, value):
-        return clean_listing_barcode(value, self.instance)
+    def to_internal_value(self, data):
+        from .revisions import REVISABLE_FIELDS
+
+        refused = sorted(set(getattr(data, "keys", lambda: [])()) - set(self.fields))
+        if refused:
+            raise serializers.ValidationError({
+                key: "Changes to this are sent for approval; save them as an edit of the listing."
+                if key in REVISABLE_FIELDS else "Stock is changed with the restock control." if key == "stock_quantity"
+                else "This cannot be changed here."
+                for key in refused
+            })
+        return super().to_internal_value(data)
 
     def validate(self, data):
+        if self.instance is not None and self.instance.status == Listing.DISCONTINUED:
+            raise serializers.ValidationError({"status": "A discontinued listing cannot be changed."})
         return validate_sale_price(data, self.instance)
 
     def update(self, instance, validated_data):
@@ -299,7 +479,17 @@ def subscriptions_on():
     return subscriptions_enabled()
 
 
-def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None):
+def active_listing_cap_reached(owner):
+    """True when the owner's plan caps active (published) listings and they already hold that many. Shared by the
+    create rule below and by lifecycle.restore, so a drop cannot be used to get past the cap."""
+    subscription = getattr(owner, "subscription", None)
+    cap = subscription.plan.max_active_listings if subscription is not None else None
+    if cap is None:
+        return False
+    return Listing.objects.filter(business_owner=owner, status=Listing.PUBLISHED).count() >= cap
+
+
+def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None, revising=False, adds_variants=False):
     """The rules a business's listing must meet — shared by the owner's own
     form (OwnerListingSerializer.validate) and a scout's proposed listing
     (portfolio.proposals), so the two paths can't drift apart.
@@ -307,23 +497,33 @@ def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None)
     `data` is validated serializer data; `instance` the listing being edited
     (None on create); `initial_data` the raw input — the product answers
     check which keys were actually sent (defaults to `data`). Raises
-    serializers.ValidationError; returns `data` unchanged."""
+    serializers.ValidationError; returns `data` unchanged.
+
+    `revising` is the edit of an approved listing through a revision (listings.revisions): the published-listing
+    refusal is skipped and a dropped listing is accepted, a discontinued one is still refused. `adds_variants` says the
+    revision leaves the listing with variants, so its category must still allow them."""
     if initial_data is None:
         initial_data = data
 
-    if instance is not None and instance.status == Listing.PUBLISHED:
+    refused = (Listing.DISCONTINUED,) if revising else (Listing.DROPPED, Listing.DISCONTINUED)
+    if instance is not None and instance.status in refused:
+        raise serializers.ValidationError({"status": "A dropped or discontinued listing cannot be edited."})
+
+    if instance is not None and instance.status == Listing.PUBLISHED and not revising:
         raise serializers.ValidationError(
             {"status": "Cannot edit a published listing."}
         )
 
     profile = getattr(owner, "profile", None)
+    company = direct.is_direct(owner)  # Ashanti Direct sells across kinds and holds no plan; fees and payouts are unchanged
 
     # Category-kind restriction — applies to both create and edit, since
     # an edit can change a listing's category just as easily as a create
     # can pick the wrong one in the first place.
     category = data.get("category", getattr(instance, "category", None))
     if (
-        profile is not None
+        not company
+        and profile is not None
         and profile.business_kind
         and category is not None
         and category.kind
@@ -333,7 +533,15 @@ def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None)
             {"category": f"Your business is registered for {profile.business_kind} listings only."}
         )
 
-    if instance is None and subscriptions_on():
+    # Variants exist only on goods and food: a listing that has them (or will after this revision) cannot move to a
+    # category of another kind.
+    if (
+        category is not None and ("category" in data or adds_variants) and not pricing.sale_allowed(category)
+        and (adds_variants or (instance is not None and variants.has_variants(instance)))
+    ):
+        raise serializers.ValidationError({"category": "Only products and food can have variants. Remove the variants first."})
+
+    if instance is None and not company and subscriptions_on():
         subscription = getattr(owner, "subscription", None)
         if (
             subscription is None
@@ -342,13 +550,8 @@ def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None)
         ):
             raise serializers.ValidationError({"subscription": SUBSCRIPTION_INACTIVE_MESSAGE})
 
-        max_active_listings = subscription.plan.max_active_listings
-        if max_active_listings is not None:
-            active_count = Listing.objects.filter(
-                business_owner=owner, status=Listing.PUBLISHED
-            ).count()
-            if active_count >= max_active_listings:
-                raise serializers.ValidationError({"max_active_listings": LISTING_LIMIT_MESSAGE})
+        if active_listing_cap_reached(owner):
+            raise serializers.ValidationError({"max_active_listings": LISTING_LIMIT_MESSAGE})
 
     # ── Product decision-field enforcement (comprehensive listing-
     # creation work). "Mandatory" here means "the form makes the user
@@ -400,7 +603,12 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     # the "Submit for Hero" flow to pick a photo) can show the gallery without
     # a second round-trip — same shape as PublicListingSerializer/
     # ModerationListingSerializer's `photos` field.
-    photos = ListingPhotoSerializer(many=True, read_only=True)
+    photos = serializers.SerializerMethodField()
+    videos = serializers.SerializerMethodField()
+    variants = ListingVariantSerializer(many=True, read_only=True)
+    has_variants = serializers.SerializerMethodField()
+    sale_ends_at = serializers.SerializerMethodField()
+    pending_revision = serializers.SerializerMethodField()
 
     # The product's barcode (catalogue plan 6): typed with spaces or hyphens, kept as its 14-digit GTIN.
     barcode = serializers.CharField(required=False, allow_blank=True, max_length=40)
@@ -408,13 +616,39 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Listing
         fields = [
-            "id", "category", "zone", "name", "description", "price_amount", "sale_price", "price_unit",
-            "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "specs",
+            "id", "variants", "has_variants", "pending_revision", "category", "zone", "name", "description", "price_amount", "sale_price", "sale_ends_at", "price_unit",
+            "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "videos", "specs",
             "service_duration", "units_total", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
-            "status", "rejection_reason", "created_at", "updated_at",
+            "status", "rejection_reason", "dropped_at", "discontinued_at", "created_at", "updated_at",
         ]
-        read_only_fields = ["status", "rejection_reason", "created_at", "updated_at"]
+        read_only_fields = ["status", "rejection_reason", "dropped_at", "discontinued_at", "created_at", "updated_at"]
         extra_kwargs = {"contact_phone": {"required": False}, "units_total": {"required": False}}
+
+    def get_has_variants(self, obj):
+        return any(row.is_active for row in obj.variants.all())
+
+    def get_sale_ends_at(self, obj):
+        return live_sale_ends_at(obj)
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        if not pricing.is_discounted(obj):
+            data["sale_price"] = None  # live-only, like sale_ends_at: an expired or inert sale price is not shown
+        return data
+
+    def get_photos(self, obj):
+        return OwnerPhotoSerializer(list(obj.photos.all()), many=True, context=self.context).data
+
+    def get_videos(self, obj):
+        return OwnerVideoSerializer(list(obj.videos.all()), many=True, context=self.context).data
+
+    def get_pending_revision(self, obj):
+        """The open edit of this approved listing (draft, waiting, or rejected), small: enough for a banner."""
+        rows = [row for row in obj.listing_revisions.all() if row.status != "approved"]
+        if not rows:
+            return None
+        row = max(rows, key=lambda item: item.pk)
+        return {"id": row.pk, "status": row.status, "rejection_reason": row.rejection_reason}
 
     def validate_barcode(self, value):
         return clean_listing_barcode(value, self.instance)
@@ -423,24 +657,36 @@ class OwnerListingSerializer(serializers.ModelSerializer):
         if data.get("barcode"):
             clean_listing_barcode(data["barcode"], self.instance, data.get("category"))
         validate_sale_price(data, self.instance)
+        if data.get("main_photo") and self.instance is not None and not self.instance.main_photo:
+            from . import media
+
+            if media.image_count(self.instance) >= media.MAX_IMAGES:
+                raise serializers.ValidationError(
+                    {"main_photo": f"A listing can have at most {media.MAX_IMAGES} images, the main photo included."}
+                )
+        # The owner is the signed-in business unless the caller names one (a company-run listing, Plan 2 Task 11).
+        owner = self.context.get("owner") or self.context["request"].user
         return validate_listing_for_owner(
-            self.context["request"].user, data, instance=self.instance, initial_data=self.initial_data,
+            owner, data, instance=self.instance, initial_data=self.initial_data,
+            revising=self.context.get("revising", False), adds_variants=self.context.get("adds_variants", False),
         )
 
     def update(self, instance, validated_data):
         return save_sent_fields(instance, validated_data)
 
     def create(self, validated_data):
-        owner = self.context["request"].user
-        if not validated_data.get("contact_phone"):
-            validated_data["contact_phone"] = owner.profile.business_contact_phone
-        return Listing.objects.create(business_owner=owner, **validated_data)
+        owner = self.context.get("owner") or self.context["request"].user
+        return services.create_listing(owner, validated_data, staff=self.context.get("staff"))
 
 
 class ModerationListingSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     zone = ZoneSerializer(read_only=True)
-    photos = ListingPhotoSerializer(many=True, read_only=True)
+    photos = serializers.SerializerMethodField()
+    # Every video row with its status and playable url, so staff watch them before the listing goes public.
+    videos = OwnerVideoSerializer(many=True, read_only=True)
+    # Every variant row (switched-off ones too, with is_active): its name and attribute values are public text.
+    variants = ListingVariantSerializer(many=True, read_only=True)
     # business_owner_name (staff moderation-queue restructuring, item 2) lets
     # the panel group/identify listings by their owning business without a
     # second lookup. reviewed_by_name/reviewed_at (approver attribution) back
@@ -457,12 +703,15 @@ class ModerationListingSerializer(serializers.ModelSerializer):
         fields = [
             "id", "business_owner", "business_owner_name", "name", "description", "category",
             "zone", "price_amount", "price_unit", "tag", "contact_phone", "lat", "lng",
-            "main_photo", "photos", "specs", "service_duration", *LISTING_DECISION_FIELDS,
+            "main_photo", "photos", "videos", "variants", "specs", "service_duration", *LISTING_DECISION_FIELDS,
             "status", "rejection_reason", "created_at",
             "reviewed_by_name", "reviewed_at", "open_fraud_cases", "subscription_overdue", "sponsored",
         ]
         # Read-only on this staff view; a reviewer sees every answer the owner gave.
         read_only_fields = LISTING_DECISION_FIELDS
+
+    def get_photos(self, obj):
+        return live_photos(obj, self.context)
 
     def get_open_fraud_cases(self, obj):
         from fraud.models import FraudFlag

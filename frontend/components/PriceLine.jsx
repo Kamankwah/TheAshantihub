@@ -8,6 +8,7 @@ import { C, CURRENCIES } from "../theme.js";
 // `price_amount` is never struck through. Money is plain text with tabular
 // figures and no decoration (DESIGN.md): dark brown on a light surface, the
 // dark-mode text colour (light gold) on the legacy dark surfaces. `currency`
+// A listing with options (variants) shows the lowest option's price, so it reads "From". `currency`
 // is the display-only conversion the marketplace Card offers (GHS source).
 const TABULAR = { fontVariantNumeric: "tabular-nums", fontFeatureSettings: '"tnum" 1' };
 
@@ -31,6 +32,7 @@ export default function PriceLine({ item, currency = "GHS", tone = "light", size
   const color = tone === "dark" ? C.lightGold : C.darkBrown;
   return (
     <span data-testid="price-line" style={{ display: "inline-flex", alignItems: "baseline", flexWrap: "wrap", gap: "0 8px", ...style }}>
+      {item?.has_variants && <span style={{ fontWeight: 600, color, fontSize: `calc(${size} * 0.75)`, opacity: 0.8 }}>From</span>}
       <span style={{ fontWeight: 800, color, fontSize: size, ...TABULAR }}>{now}</span>
       {then && (
         <s style={{ fontSize: `calc(${size} * 0.8)`, color, opacity: 0.7, ...TABULAR }}>

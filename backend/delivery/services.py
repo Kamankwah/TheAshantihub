@@ -581,7 +581,7 @@ def open_case_for_skipped_stop(assignment, stop):
     order = assignment.order
     lines = stops.stop_lines(stop, order)
     total = sum((i.line_total for i in lines), Decimal("0.00"))
-    listed = "; ".join(f"{i.listing.name} × {i.quantity} (GH₵ {i.line_total})" for i in lines)
+    listed = "; ".join(f"{i.line_name} × {i.quantity} (GH₵ {i.line_total})" for i in lines)
     limits = config.effective_limits()
     return Dispute.objects.create(
         order=order, raised_by=order.customer, reason=Dispute.DELIVERY_ISSUE, case_type=Dispute.NOT_RECEIVED, rider=assignment.dispatch,

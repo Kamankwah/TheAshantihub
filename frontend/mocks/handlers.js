@@ -351,6 +351,16 @@ export const handlers = [
   http.get('http://localhost:8000/api/listings/moderation/pending/', () => {
     return HttpResponse.json([])
   }),
+  // Owners' changes to live listings (staff review): empty queue by default; tests override.
+  http.get('http://localhost:8000/api/listings/revisions/pending/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/listings/revisions/:id/', ({ params }) => HttpResponse.json({
+    id: Number(params.id), listing: 1, listing_name: 'Listing', business_owner_name: 'Business', status: 'pending',
+    changed_fields: [], made_by_staff: false, created_by_staff: null,
+    diff: { fields: {}, media: { staged_photos: [], remove_photos: [], staged_videos: [], remove_videos: [], remove_video_ids: [] }, variants: [] },
+  })),
+  http.post('http://localhost:8000/api/listings/revisions/:id/approve/', ({ params }) => HttpResponse.json({ id: Number(params.id), listing: 1, status: 'approved' })),
+  http.post('http://localhost:8000/api/listings/revisions/:id/reject/', ({ params }) => HttpResponse.json({ id: Number(params.id), listing: 1, status: 'rejected' })),
+  http.post('http://localhost:8000/api/listings/revisions/:id/re-review/', ({ params }) => HttpResponse.json({ id: Number(params.id), listing: 1, status: 'pending' })),
   http.get('http://localhost:8000/api/listings/hero/pending/', () => {
     return HttpResponse.json([])
   }),
@@ -811,5 +821,21 @@ export const handlers = [
   http.post('http://localhost:8000/api/orders/:id/redelivery/pay/', () => HttpResponse.json({
     mode: 'immediate', payment_method: 'wallet', payment_processing: '0.00',
     redelivery: { id: 1, order: 7, attempt: 1, status: 'paid', status_label: 'Paid, waiting for a rider', fee: '15.00', fee_pesewas: 1500 },
+  })),
+  // Listing editor (marketplace Plan 2): no open edit by default (the server answers 404), and the owner's
+  // Ashanti Direct tree answers the same shapes as the business one.
+  http.get('http://localhost:8000/api/listings/mine/:id/revision/', () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })),
+  http.get('http://localhost:8000/api/direct/listings/:id/revision/', () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })),
+  http.get('http://localhost:8000/api/direct/listings/', () => HttpResponse.json([])),
+  // Discounts: nothing running by default (DiscountsPanel); a test overrides these for a running or refused one.
+  http.get('http://localhost:8000/api/listings/mine/:id/discounts/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/direct/listings/:id/discounts/', () => HttpResponse.json([])),
+  // Promotion hub: sponsored ads are free until priced; no flash-sale invitations by default.
+  http.get('http://localhost:8000/api/listings/promotions/pricing/', () => HttpResponse.json({ enabled: false })),
+  http.get('http://localhost:8000/api/marketing/owner/flash-sales/', () => HttpResponse.json({ results: [] })),
+  // Public seller page: a seller with nothing live by default; the lists it reads honour ?seller= in the tests that need them.
+  http.get('http://localhost:8000/api/listings/sellers/:id/', ({ params }) => HttpResponse.json({
+    id: Number(params.id), name: 'Adwoa Fabrics', since: '2026-03-02T10:00:00Z',
+    counts: { products: 0, services: 0, stays: 0, events: 0 },
   })),
 ]
