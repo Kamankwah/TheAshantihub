@@ -71,6 +71,13 @@ describe('PromotionsHubPanel', () => {
     expect(await screen.findByText('PAY 35')).toBeInTheDocument()
   })
 
+  it('says plainly that a paid request cannot be paid here when no payment screen is given', async () => {
+    server.use(http.post(`${API}/api/listings/9/promote/`, () => HttpResponse.json({ id: 4, listing: 9, kind: 'featured', amount_paid: '35.00', status: 'pending', free: false }, { status: 201 })))
+    renderHub({ listingId: 9, PaymentComponent: undefined }, { pricing: true })
+    fireEvent.click(await screen.findByText('📣 Promote 7d'))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/costs GHS 35\.00 and needs a payment, but paying is not available on this screen yet/)
+  })
+
   it('a scoped hub posts to the given promote base', async () => {
     let hit = false
     server.use(http.post(`${API}/api/direct/listings/9/promote/`, () => { hit = true; return HttpResponse.json({ id: 1, free: true, amount_paid: '0.00' }, { status: 201 }) }))

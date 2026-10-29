@@ -783,6 +783,13 @@ describe('ListingDetailPage — variants', () => {
     expect(await screen.findByText('Added to Cart ✓')).toBeInTheDocument()
   })
 
+  it('labels the price of a listing with options "From"', async () => {
+    showListing(WITH_VARIANTS)
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.getAllByTestId('price-line')[0]).toHaveTextContent(/^From\s*GHS/)
+  })
+
   it('keeps the single Add to Cart for a listing without variants', async () => {
     showListing({ ...LISTING, variants: [], has_variants: false })
     renderPage()

@@ -446,11 +446,11 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **Drop / Discontinue.** `dropped` is reversible without re-approval (restore respects the plan active-listing cap);
   `discontinued` is final and deletes any open revision. Both leave every public surface through `status=PUBLISHED`;
   old orders still open. Live price and stock edits are allowed on dropped, refused on discontinued.
-- **Media.** At most 9 images including the main photo, 5 MB each; one video per listing, at most 100 MB and 60 s
+- **Media.** At most 9 images including the main photo, 5 MB each; at most 2 videos per listing (uploads and YouTube links together), each upload at most 100 MB and 60 s
   (nginx `client_max_body_size` is 110m on the API templates). Uploads are converted by `core/video.py` with
   ffmpeg/ffprobe, installed in `Dockerfile` and `Dockerfile.prod`: **rebuild `web` and `worker`**. The 720p cap is
   short side at most 720, never upscaled. After conversion the source is deleted. A listing or revision cannot be
-  submitted while a video is processing, and staff see every video (with its URL) in the queue and the diff.
+  submitted (or approved) while a video is processing, photos and videos cannot change while the listing is pending review, and staff see every video (with its URL) and every variant in the queue and the diff.
 - **"Was" price.** A sale is `sale_price` + `sale_ends_at` + `sale_started_at` on `Listing` and `ListingVariant` (no
   discount model). "Was" shows only when the regular price has stood for 7 days **before `sale_started_at`**; a null
   `sale_started_at` means no "was". Expiry is read-time through `pricing`. Flash sales exclude variant listings.
