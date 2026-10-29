@@ -35,7 +35,7 @@ from .moderation_checks import (
 from .category_tree import build_tree
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, ListingVariant, Promotion, Zone
 from .permissions import IsHeroMediaOwner, IsListingOwnerOrDirectOperator, IsListingPhotoOwner
-from .views_revisions import ScopedOwner
+from .scoping import ScopedOwner
 from .serializers import (
     CartTieredListingSerializer,
     CategorySerializer,
@@ -461,6 +461,7 @@ class PublicListingDetailView(generics.RetrieveAPIView):
     def get_queryset(self):
         return _with_rating_annotations(
             Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q())
+            .select_related("business_owner__profile")
         )
 
 
@@ -488,6 +489,7 @@ class RelatedListingsView(generics.ListAPIView):
             .exclude(sold_out_q())  # sold out: hidden like search while the switch is on (catalogue plan 6)
             .filter(Q(category=anchor.category) | Q(zone=anchor.zone))
             .exclude(pk=anchor.pk)
+            .select_related("business_owner__profile")
             .order_by("-created_at")
         )
         return _with_rating_annotations(queryset)[: self.RELATED_LIMIT]
@@ -512,7 +514,7 @@ class OwnerListingUpdateView(ScopedOwner, generics.UpdateAPIView):
     http_method_names = ["patch"]
 
     def get_serializer_context(self):
-        return {**super().get_serializer_context(), "owner": self.get_object().business_owner}
+        return {**super().get_serializer_context(), "owner": self.acting_owner()}
 
 
 class _ListingLifecycleView(ScopedOwner, APIView):

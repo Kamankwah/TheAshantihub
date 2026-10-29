@@ -6,11 +6,6 @@ from accounts.models import BusinessOwner
 from accounts.permissions import HasRolePermission
 
 
-class IsListingOwner(BasePermission):
-    def has_object_permission(self, request, view, obj):
-        return isinstance(request.user, BusinessOwner) and obj.business_owner_id == request.user.id
-
-
 class IsListingOwnerOrDirectOperator(BasePermission):
     """The owner views' gate. A view's `scope` says who is acting: "mine" is the signed-in business owner on their own
     listing; "direct" is a staff member holding `direct.operate` on Ashanti Direct's listing. A business on a direct

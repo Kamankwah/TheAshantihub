@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 from . import pricing
 from .models import Listing
 from .permissions import IsListingOwnerOrDirectOperator
-from .views_revisions import ScopedOwner, _owner
+from .scoping import ScopedOwner, _owner
 
 _DATE = serializers.DateTimeField()
 

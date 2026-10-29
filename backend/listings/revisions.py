@@ -65,8 +65,16 @@ class RevisionError(Exception):
 
 
 def cannot_decide(staff, obj):
-    """True when `staff` made `obj` (a listing or revision) and so must not approve it (maker-checker)."""
-    return staff is not None and getattr(obj, "created_by_staff_id", None) is not None and obj.created_by_staff_id == staff.id
+    """True when `staff` made `obj` (a listing or revision) or helped make it (drafted, edited or sent it: a recorded
+    contributor), and so must not approve it (maker-checker). `created_by_staff` always stays the original creator.
+    A revision's own contributor list is used; the listing's contributors are not (every contribution is recorded on
+    both the listing and its open edit, see listings.scoping)."""
+    if staff is None:
+        return False
+    if getattr(obj, "created_by_staff_id", None) == staff.id:
+        return True
+    contributors = getattr(obj, "staff_contributors", None)
+    return contributors is not None and contributors.filter(pk=staff.pk).exists()
 
 
 def open_revision(listing):
@@ -255,8 +263,6 @@ def save_draft(listing, owner, data, *, new_main_photo=None, clear_main_photo=Fa
             raise RevisionError(OPEN_MESSAGE, "status")
         if revision is None:
             revision = ListingRevision(listing=row, created_by=owner if staff is None else None, created_by_staff=staff)
-        elif staff is not None:
-            revision.created_by_staff = staff  # the last staff member to edit it is its maker of record (maker-checker)
         changes = data.get("changes", revision.changes)
         ops = data.get("variants", revision.variants)
         changes, ops = _validate(row, owner, changes, ops)

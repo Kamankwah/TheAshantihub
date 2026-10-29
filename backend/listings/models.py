@@ -142,6 +142,8 @@ class Listing(models.Model):
         "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="listings_created_for_owners",
     )
+    # Every other staff member who drafted, edited or sent it (Ashanti Direct); none of them may approve it.
+    staff_contributors = models.ManyToManyField("accounts.StaffUser", blank=True, related_name="listings_contributed")
 
     # Structured (not freeform-text) spec table, per the reviews/ratings/Q&A
     # plan's ListingDetailPage "Specs" tab (docs/PROJECT_SCOPE.md) — a list
@@ -342,6 +344,7 @@ class ListingRevision(models.Model):
     created_by_staff = models.ForeignKey(
         "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="listing_revisions_created",
     )
+    staff_contributors = models.ManyToManyField("accounts.StaffUser", blank=True, related_name="listing_revisions_contributed")
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
     reviewed_by = models.ForeignKey(
         "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_listing_revisions",

@@ -17,7 +17,7 @@ from . import media
 from .models import Listing, ListingPhoto, ListingVideo
 from .serializers import ListingPhotoSerializer, OwnerPhotoSerializer, OwnerVideoSerializer
 from .permissions import IsListingOwnerOrDirectOperator
-from .views_revisions import ScopedOwner, _owner
+from .scoping import ScopedOwner, _owner
 
 QUEUED = "Removal is waiting for approval: it takes effect when staff approve your edit."
 

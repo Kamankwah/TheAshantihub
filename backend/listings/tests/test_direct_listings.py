@@ -14,6 +14,7 @@ from accounts.testing import make_staff, staff_token
 from activity.models import ActivityEvent
 from ledger import escrow, posting
 from ledger.models import Account, OrderFeeSnapshot
+from listings.serializers import SUBSCRIPTION_INACTIVE_MESSAGE
 from listings.models import Category, Listing, ListingRevision, Zone
 from orders.models import Order, OrderItem
 
@@ -31,6 +32,7 @@ class DirectBase(TestCase):
         self.zone = Zone.objects.get(name="Manhyia")
         self.ops = make_staff("operations", "ops@example.com")
         self.ops2 = make_staff("operations", "ops2@example.com")
+        self.ops3 = make_staff("operations", "ops3@example.com")
         self.boss = make_staff("super_admin", "boss@example.com")
         self.support = make_staff("support", "support@example.com")
         self.partner = BusinessOwner.objects.create(
@@ -85,12 +87,37 @@ class DirectListingTests(DirectBase):
             ("post", "restock/", {"add": 1}), ("post", "drop/", {}), ("post", "submit/", {}),
             ("get", "variants/", None), ("get", "discounts/", None), ("get", "revision/", None),
             ("post", "photos/", {}), ("post", "videos/", {}),
+            ("post", "discontinue/", {}), ("post", "restore/", {}), ("post", "promote/", {"kind": "boost", "days": 3}),
+            ("post", "variants/", {"label": "S", "price_amount": "1.00"}), ("delete", "variants/1/", {}),
+            ("patch", "variants/1/live/", {"price_amount": "1.00"}),
+            ("post", "discounts/", {"sale_price": "1.00"}), ("post", "discounts/end/", {}),
+            ("put", "revision/", {"changes": {"name": "x"}}), ("delete", "revision/", {}),
+            ("post", "revision/submit/", {}), ("delete", "photos/1/", {}), ("delete", "videos/1/", {}),
         ]:
             response = getattr(self.client, method)(f"{BASE}{theirs.pk}/{suffix}", body, format="json") if body is not None \
                 else getattr(self.client, method)(f"{BASE}{theirs.pk}/{suffix}")
             self.assertEqual(response.status_code, 404, (method, suffix, response.status_code))
         theirs.refresh_from_db()
         self.assertEqual((theirs.name, theirs.status), ("Partner item", Listing.PUBLISHED))
+
+    def test_a_partner_variant_photo_or_video_id_under_a_direct_listing_is_a_404(self):
+        from listings.models import ListingPhoto, ListingVariant
+
+        theirs = self.listing(self.partner, "Partner item")
+        own = self.listing(self.direct, "Direct item")
+        variant = ListingVariant.objects.create(listing=theirs, label="S", price_amount=Decimal("5.00"), stock_quantity=1)
+        photo = ListingPhoto.objects.create(listing=theirs, image="x.png")
+        self.as_staff(self.ops)
+        self.assertEqual(self.client.delete(f"{BASE}{own.pk}/variants/{variant.pk}/").status_code, 404)
+        self.assertEqual(self.client.patch(f"{BASE}{own.pk}/variants/{variant.pk}/live/", {"price_amount": "1.00"}, format="json").status_code, 404)
+        self.assertEqual(self.client.delete(f"{BASE}{own.pk}/photos/{photo.pk}/").status_code, 404)
+        self.assertEqual(self.client.delete(f"{BASE}{own.pk}/videos/999/").status_code, 404)
+
+    def test_promote_on_the_direct_mount_works_for_a_direct_listing(self):
+        own = self.listing(self.direct, "Direct item")
+        self.as_staff(self.ops)
+        response = self.client.post(f"{BASE}{own.pk}/promote/", {"kind": "boost", "days": 3, "keywords": "kettle"}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
 
     def test_partner_owner_cannot_use_the_direct_urls(self):
         mine = self.listing(self.partner, "Partner item")
@@ -126,13 +153,73 @@ class DirectListingTests(DirectBase):
         own.refresh_from_db()
         self.assertEqual((own.stock_quantity, own.price_amount, own.status), (5, Decimal("60.00"), Listing.PUBLISHED))
 
-    def test_a_second_operator_editing_a_revision_becomes_its_maker_of_record(self):
+    def test_original_drafter_stays_created_by_staff_and_is_blocked_after_a_second_operator_edits(self):
         own = self.listing(self.direct, "Direct item")
         self.as_staff(self.ops)
         self.client.put(f"{BASE}{own.pk}/revision/", {"changes": {"name": "One"}}, format="json")
         self.as_staff(self.ops2)
         self.client.put(f"{BASE}{own.pk}/revision/", {"changes": {"name": "Two"}}, format="json")
-        self.assertEqual(ListingRevision.objects.get(listing=own).created_by_staff_id, self.ops2.pk)
+        revision = ListingRevision.objects.get(listing=own)
+        self.assertEqual(revision.created_by_staff_id, self.ops.pk)
+        self.assertIn(self.ops2.pk, revision.staff_contributors.values_list("pk", flat=True))
+        self.as_staff(self.ops2)
+        self.client.post(f"{BASE}{own.pk}/revision/submit/", {}, format="json")
+        for staff in (self.ops, self.ops2):
+            self.as_staff(staff)
+            self.assertEqual(self.client.post(f"/api/listings/revisions/{revision.pk}/approve/").status_code, 403)
+        for staff in (self.ops3, self.boss):
+            self.as_staff(staff)
+            self.assertEqual(self.client.post(f"/api/listings/revisions/{revision.pk}/approve/").status_code, 200)
+            break
+
+    def test_an_editor_and_a_submitter_of_a_direct_listing_are_blocked_but_an_uninvolved_operator_can_approve(self):
+        self.as_staff(self.ops)
+        listing_id = self.client.post(BASE, self.payload(), format="json").json()["id"]
+        self.as_staff(self.ops2)  # edits
+        self.assertEqual(self.client.patch(f"{BASE}{listing_id}/", {"description": "Better."}, format="json").status_code, 200)
+        self.as_staff(self.ops3)  # sends it
+        self.assertEqual(self.client.post(f"{BASE}{listing_id}/submit/", {}, format="json").status_code, 200)
+        for staff in (self.ops, self.ops2, self.ops3):
+            self.as_staff(staff)
+            self.assertEqual(self.client.post(f"/api/listings/moderation/{listing_id}/approve/").status_code, 403, staff)
+        self.as_staff(self.boss)
+        self.assertEqual(self.client.post(f"/api/listings/moderation/{listing_id}/approve/").status_code, 200)
+
+    def test_a_third_operator_who_only_added_a_photo_to_a_draft_revision_is_blocked_too(self):
+        import io
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        own = self.listing(self.direct, "Direct item")
+        self.as_staff(self.ops)
+        self.client.put(f"{BASE}{own.pk}/revision/", {"changes": {"name": "One"}}, format="json")
+        buf = io.BytesIO()
+        Image.new("RGB", (2, 2)).save(buf, format="PNG")
+        self.as_staff(self.ops3)
+        response = self.client.post(
+            f"{BASE}{own.pk}/photos/", {"image": SimpleUploadedFile("a.png", buf.getvalue(), content_type="image/png")},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(self.client.post(f"{BASE}{own.pk}/revision/submit/", {}, format="json").status_code, 200)
+        revision = ListingRevision.objects.get(listing=own)
+        self.assertEqual(self.client.post(f"/api/listings/revisions/{revision.pk}/approve/").status_code, 403)
+        self.as_staff(self.ops2)
+        self.assertEqual(self.client.post(f"/api/listings/revisions/{revision.pk}/approve/").status_code, 200)
+
+    def test_a_refused_submit_records_nothing(self):
+        own = self.listing(self.direct, "Direct item")
+        self.as_staff(self.ops)
+        self.client.put(f"{BASE}{own.pk}/revision/", {"changes": {"name": "One"}}, format="json")
+        self.as_staff(self.ops2)
+        self.assertEqual(self.client.post(f"{BASE}{own.pk}/revision/submit/", {}, format="json").status_code, 200)
+        self.as_staff(self.ops3)
+        refused = self.client.post(f"{BASE}{own.pk}/revision/submit/", {}, format="json")  # already sent: refused
+        self.assertEqual(refused.status_code, 400)
+        revision = ListingRevision.objects.get(listing=own)
+        self.assertNotIn(self.ops3.pk, revision.staff_contributors.values_list("pk", flat=True))
+        self.assertNotIn(self.ops3.pk, own.staff_contributors.values_list("pk", flat=True))
 
     def test_review_focus_creator_of_a_direct_listing_cannot_approve_it(self):
         self.as_staff(self.ops)
@@ -172,6 +259,7 @@ class DirectListingTests(DirectBase):
         self.as_owner(self.partner)
         refused = self.client.post("/api/listings/mine/", self.payload(), format="json")
         self.assertEqual(refused.status_code, 400)
+        self.assertEqual(refused.json()["subscription"], [SUBSCRIPTION_INACTIVE_MESSAGE])
 
     def test_direct_urls_without_the_company_row_are_404(self):
         BusinessOwner.objects.filter(is_company=True).delete()
