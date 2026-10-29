@@ -198,6 +198,7 @@ class SupportOrderDetailView(APIView):
             "customer_id": customer.pk,
             "customer_email": mask_email(customer.email) if customer.email else "",
             "delivery_address": order.delivery_address,
+            "delivery_gps_address": order.delivery_gps_address, "delivery_landmark": order.delivery_landmark,
             "delivery_phone": mask_phone(order.delivery_phone) if order.delivery_phone else "",
             "lines": [
                 {

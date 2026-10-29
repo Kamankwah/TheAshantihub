@@ -36,6 +36,28 @@ function renderAtPath(path) {
 
 describe('AshantiHub routing', () => {
   it(
+    'cart_path_renders_the_cart_page: "/cart" is a real page (signed out it asks for sign-in)',
+    async () => {
+      renderAtPath('/cart')
+      expect(await screen.findByText('Sign in to see your cart.', {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Shopping Cart' })).toBeInTheDocument()
+      expect(screen.queryByText(/page not found/i)).not.toBeInTheDocument()
+    },
+    8000,
+  )
+
+  it(
+    'checkout_path_renders_the_checkout_page: "/checkout" is a real standalone page (signed out it asks for sign-in)',
+    async () => {
+      renderAtPath('/checkout')
+      expect(await screen.findByText('Sign in to check out.', {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Secure checkout' })).toBeInTheDocument()
+      expect(screen.queryByText(/page not found/i)).not.toBeInTheDocument()
+    },
+    8000,
+  )
+
+  it(
     'root_renders_storefront_home: "/" is the marketplace home, not the old Hero landing',
     async () => {
       renderAtPath('/')
@@ -240,6 +262,53 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
   )
 
   it(
+    'a signed-in customer using "Use my details" on Sell on AshantiHub lands on the prefilled personal-info step and stays signed in',
+    async () => {
+      setStoredAuth({ token: 'test-token', account_type: 'customer', id: 2, full_name: 'Yaa Boateng' })
+      server.use(
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
+          account_type: 'customer', id: 2, full_name: 'Yaa Boateng', email: 'yaa@example.com', phone: '0244000111', registration_step: 'complete',
+        })),
+      )
+      try {
+        renderAtPath('/my-account/sell')
+        fireEvent.click(await screen.findByRole('button', { name: 'Use my details' }, { timeout: 4000 }))
+        expect(await screen.findByPlaceholderText('Full name', {}, { timeout: 3000 })).toHaveValue('Yaa Boateng')
+        expect(screen.getByPlaceholderText('Email')).toHaveValue('yaa@example.com')
+        expect(screen.getByPlaceholderText(/Phone/)).toHaveValue('0244000111')
+        // The shopping session is untouched: registering a business is a separate login.
+        expect(getStoredAuth()).toMatchObject({ account_type: 'customer', id: 2 })
+      } finally {
+        setStoredAuth(null)
+      }
+    },
+    10000,
+  )
+
+  it(
+    'signing in from checkout returns the shopper to /checkout, not home',
+    async () => {
+      server.use(
+        http.post('http://localhost:8000/api/accounts/customers/login/', () => HttpResponse.json({ token: 't', account_type: 'customer', id: 2, full_name: 'Yaa' })),
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({ account_type: 'customer', id: 2, full_name: 'Yaa', registration_step: 'complete' })),
+      )
+      try {
+        renderAtPath('/checkout')
+        fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }, { timeout: 4000 }))
+        fireEvent.change(await screen.findByPlaceholderText('Phone or email'), { target: { value: '0244000111' } })
+        fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'secret' } })
+        const buttons = screen.getAllByRole('button', { name: 'Sign In' })
+        fireEvent.click(buttons[buttons.length - 1])
+        expect(await screen.findByRole('heading', { name: 'Secure checkout' }, { timeout: 4000 })).toBeInTheDocument()
+        expect(screen.queryByTestId('storefront-home')).not.toBeInTheDocument()
+      } finally {
+        setStoredAuth(null)
+      }
+    },
+    12000,
+  )
+
+  it(
     'mounting directly at /payments (simulating a hard reload) renders the Business Command Center',
     async () => {
       // Same business-owner-session gate as /business-dashboard above — now
@@ -334,6 +403,28 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
         renderAtPath('/my-account')
         expect(await screen.findByText('My Account', {}, { timeout: 3000 })).toBeInTheDocument()
         expect(screen.queryByTestId('storefront-home')).not.toBeInTheDocument()
+      } finally {
+        setStoredAuth(null)
+      }
+    },
+    8000,
+  )
+
+  it.each(['/my-account/orders', '/my-account/payments/wallet', '/my-account/not-a-section'])(
+    'mounting directly at %s as a signed-in customer shows Your Account, never the 404 page',
+    async (path) => {
+      setStoredAuth({ token: 'test-token', account_type: 'customer', id: 1, full_name: 'Ama Owusu' })
+      server.use(
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
+          account_type: 'customer', id: 1, full_name: 'Ama Owusu', registration_step: 'complete',
+        })),
+        http.get('http://localhost:8000/api/orders/', () => HttpResponse.json([])),
+        http.get('http://localhost:8000/api/events/tickets/mine/', () => HttpResponse.json([])),
+      )
+      try {
+        renderAtPath(path)
+        expect(await screen.findByText('My Account', {}, { timeout: 3000 })).toBeInTheDocument()
+        expect(screen.queryByText(/page not found/i)).not.toBeInTheDocument()
       } finally {
         setStoredAuth(null)
       }
@@ -524,7 +615,26 @@ describe('AshantiHub routing — /payment/return', () => {
         ),
       )
       renderAtPath('/payment/return?reference=AH-TEST-REF')
-      expect(await screen.findByText(/Payment Successful/i, {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(await screen.findByText(/Payment confirmed/i, {}, { timeout: 3000 })).toBeInTheDocument()
+    },
+    8000,
+  )
+
+  it(
+    'mounting directly at /checkout/verify renders the same verification page',
+    async () => {
+      server.use(
+        http.get('http://localhost:8000/api/payments/checkout-sessions/AH-TEST-REF/', () =>
+          HttpResponse.json({
+            reference: 'AH-TEST-REF', kind: 'order_checkout', amount: '150.00', purpose: 'AshantiHub Order #1',
+            status: 'success', checkout_url: null, created_at: '2026-07-15T10:00:00Z',
+            processing_fee: '0.00', wallet: true, order_id: 1,
+          }),
+        ),
+      )
+      renderAtPath('/checkout/verify?reference=AH-TEST-REF')
+      expect(await screen.findByText(/Payment confirmed/i, {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(screen.getByText('AshantiHub wallet')).toBeInTheDocument()
     },
     8000,
   )

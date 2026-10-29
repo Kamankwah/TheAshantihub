@@ -2,6 +2,7 @@ import { useState } from "react";
 import { apiDelete, apiPatch, apiPost, apiPut } from "../../../apiClient.js";
 import { useListingRevision } from "../../../hooks/useListingRevision.js";
 import { D, tint } from "../theme.js";
+import { STOCK_COUNT_HELP } from "../../catalogue/catalogueFormat.js";
 import { Chip, DEFAULT_LISTINGS_PATH, btn, inputStyle, noteStyle, quietBtn, serverMessage } from "./listingEditorShared.jsx";
 
 // Variants of a product or food listing (flavour, size ...), each with its own price and stock.
@@ -170,6 +171,7 @@ export default function VariantEditor({ listing = null, basePath = DEFAULT_LISTI
             ? "Each variant has its own price and stock. They are saved when you create the listing."
             : "Each variant has its own price and stock."}
       </div>
+      <div style={{ ...noteStyle, margin: "0 0 8px" }}>{STOCK_COUNT_HELP}</div>
       {waiting && <div style={{ color: D.amber, fontSize: "0.72rem", marginBottom: 6 }}>This edit is waiting for review.</div>}
       {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginBottom: 6 }}>{actionError}</div>}
 

@@ -58,7 +58,7 @@ def manager_job(assignment, now=None):
                   "vehicle": rider.get_vehicle_type_display() if rider else None, "plate": assignment.vehicle.plate if assignment.vehicle_id else None},
         "shift": payloads.shift_block(shift, now),
         "customer": {"name": order.customer.full_name, "phone_masked": mask_phone(order.delivery_phone) if order.delivery_phone else None},
-        "delivery_address": order.delivery_address, "delivery_lat": drop[0], "delivery_lng": drop[1],
+        "delivery_address": order.delivery_address, "delivery_gps_address": order.delivery_gps_address, "delivery_landmark": order.delivery_landmark, "delivery_lat": drop[0], "delivery_lng": drop[1],
         "pickup": block["primary"], "multi_pickup": block["multi_pickup"],
         "stops": [{**r, "id": 0} if r["id"] is None else r for r in block["all"]], "progress": block["progress"], "route_plan": assignment.route_plan or order.route_plan, "skip_history": block["skip_history"],
         "items": [{"name": i.line_name, "quantity": i.quantity, "business": getattr(i.listing.business_owner, "display_name", None)} for i in order.items.all()],

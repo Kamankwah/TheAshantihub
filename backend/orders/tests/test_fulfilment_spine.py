@@ -58,7 +58,7 @@ class DeliveryMethodTests(FulfilmentSpineTestsBase):
         response = self.client.post(
             "/api/orders/checkout/",
             {"delivery_method": "door_to_door", "delivery_address": "12 Ash Road, Kumasi",
-             "delivery_phone": "+233200770001"},
+             "delivery_phone": "+233200770001", "delivery_gps_address": "AK-039-5028", "delivery_landmark": "Blue gate"},
             format="json",
         )
         self.assertEqual(response.status_code, 201, response.content)
@@ -216,6 +216,7 @@ class OwnerOrderTests(FulfilmentSpineTestsBase):
             "delivery_method": "door_to_door",
             "delivery_address": "Bantama, Kumasi",
             "delivery_phone": "+233200770055",
+            "delivery_gps_address": "AK-039-5028", "delivery_landmark": "Blue gate",
         }, format="json")
         self.assertEqual(response.status_code, 201, response.content)
 

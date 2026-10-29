@@ -51,6 +51,10 @@ class Order(models.Model):
     # manual pin/address when they're absent (there is no geocoding service).
     delivery_address = models.CharField(max_length=500, blank=True)
     delivery_phone = models.CharField(max_length=20, blank=True)
+    # Ghana Post digital address (normalised, e.g. AK-039-5028) and a landmark for the rider; blank on store pickup and
+    # on orders placed before they were asked for.
+    delivery_gps_address = models.CharField(max_length=20, blank=True)
+    delivery_landmark = models.CharField(max_length=200, blank=True)
     delivery_lat = models.FloatField(null=True, blank=True)
     delivery_lng = models.FloatField(null=True, blank=True)
     # total_amount is NET: what the customer pays after any coupon. discount_amount is the

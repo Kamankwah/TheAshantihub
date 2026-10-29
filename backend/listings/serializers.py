@@ -316,6 +316,66 @@ class PublicListingSerializer(serializers.ModelSerializer):
         return getattr(obj, "review_count", 0)
 
 
+class DetailCategorySerializer(CategorySerializer):
+    """The category on the listing detail page only: adds the breadcrumb (`ancestors`, root first)."""
+
+    ancestors = serializers.SerializerMethodField()
+
+    class Meta(CategorySerializer.Meta):
+        fields = [*CategorySerializer.Meta.fields, "ancestors"]
+
+    MAX_DEPTH = 10
+
+    def get_ancestors(self, obj):
+        chain, seen, node = [], {obj.pk}, obj.parent
+        while node is not None and node.pk not in seen and len(chain) < self.MAX_DEPTH:
+            chain.append({"id": node.pk, "slug": node.slug, "label": node.label})
+            seen.add(node.pk)
+            node = node.parent
+        return chain[::-1]
+
+
+class DetailVariantSerializer(PublicVariantSerializer):
+    available = serializers.SerializerMethodField()
+    discount_percent = serializers.SerializerMethodField()
+
+    class Meta(PublicVariantSerializer.Meta):
+        fields = [*PublicVariantSerializer.Meta.fields, "available", "discount_percent"]
+
+    def get_available(self, obj):
+        return obj.stock_quantity is None or obj.stock_quantity > 0
+
+    def get_discount_percent(self, obj):
+        return pricing.discount_percent(pricing.was_price(obj), obj.effective_price)
+
+
+class PublicListingDetailSerializer(PublicListingSerializer):
+    """GET /api/listings/<id>/ only: the card fields plus the breadcrumb, the variant axes and availability, and the
+    discount percent. Kept off the shared card serializer so list rows stay lean."""
+
+    category = DetailCategorySerializer(read_only=True)
+    variant_axes = serializers.SerializerMethodField()
+    discount_percent = serializers.SerializerMethodField()
+
+    class Meta(PublicListingSerializer.Meta):
+        fields = [*PublicListingSerializer.Meta.fields, "variant_axes", "discount_percent"]
+
+    def get_variants(self, obj):
+        return DetailVariantSerializer(variants.active_rows(obj), many=True).data
+
+    def get_variant_axes(self, obj):
+        axes = {}
+        for row in sorted(variants.active_rows(obj), key=lambda r: (r.position, r.pk)):
+            for name, value in (row.attributes or {}).items():
+                values = axes.setdefault(name, [])
+                if value not in values:
+                    values.append(value)
+        return [{"name": name, "values": values} for name, values in axes.items()]
+
+    def get_discount_percent(self, obj):
+        return pricing.discount_percent(pricing.was_price(obj), obj.effective_price)
+
+
 class CartTieredListingSerializer(PublicListingSerializer):
     """Search for a customer whose cart holds something (?cart_tiers=1, cart.guard): the tier of the listing's shop
     (1 in the cart, 2 near it, 3 everyone else; null for services, stays and events, which are not tiered), the distance

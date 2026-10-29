@@ -135,6 +135,7 @@ class StaffBadgesView(APIView):
         # load-order coupling to the queue-owning apps.
         from approvals.services import waiting_for
         from billing.models import SubscriptionPlan
+        from catalogue.models import CatalogueAttachRequest
         from contact.models import ContactMessage
         from events.models import Event, Ticket
         from listings.models import HeroMediaSubmission, Listing, Promotion
@@ -263,6 +264,10 @@ class StaffBadgesView(APIView):
                 "listings": count(
                     "listings.moderate",
                     Listing.objects.filter(status=Listing.PENDING_REVIEW),
+                ),
+                "catalogue": count(
+                    "listings.moderate",
+                    CatalogueAttachRequest.objects.filter(status=CatalogueAttachRequest.PENDING),
                 ),
                 "events": count(
                     "event.approve",

@@ -123,11 +123,11 @@ class AlertTests(TestCase):
         savepoint = next(i for i, sql in enumerate(sqls) if sql.startswith("SAVEPOINT"))
         self.assertLess(insert, savepoint)                                          # the run's atomic block comes after
 
-    def test_the_low_notice_names_no_screen_that_may_not_exist(self):
+    def test_the_low_notice_names_the_needs_restocking_screen(self):
         product(self.owner, "Milo", stock=3)
         alerts.run()
         [notice] = self.notices(alerts.LOW)
-        self.assertEqual(notice.body, "“Milo” is running low. Open your listings to restock.")
+        self.assertEqual(notice.body, "“Milo” is running low. See Needs restocking under Products in your dashboard.")
 
     def test_one_notice_per_business_naming_its_offers(self):
         for n in range(7):

@@ -59,7 +59,7 @@ def tell(owner, kind, names):
         icon = "📭"
     else:
         title = "Running low" if one else f"{len(names)} products running low"
-        body = f"{_names(names)} {'is' if one else 'are'} running low. Open your listings to restock."
+        body = f"{_names(names)} {'is' if one else 'are'} running low. See Needs restocking under Products in your dashboard."
         icon = "📦"
     return notify_business_owner(owner, kind, title, body=body, link="/business-dashboard", icon=icon)
 

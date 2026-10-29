@@ -24,6 +24,7 @@ from datetime import timedelta
 from decimal import ROUND_DOWN, Decimal
 from typing import Optional
 
+from django.conf import settings as django_settings
 from django.db.models import Min, Q, Sum
 from django.utils import timezone
 from rest_framework.pagination import PageNumberPagination
@@ -167,6 +168,13 @@ def row(listing, cover):
     }
 
 
+def line_state(listing):
+    """One offer's own low-stock line (None: the default) and its cover (None when its stock is not counted)."""
+    line = own_lines([listing.pk]).get(listing.pk)
+    cover = None if listing.stock_quantity is None else row(listing, cover_of(listing))
+    return {"listing_id": listing.pk, "line": line, "cover": cover}
+
+
 class StockPagination(PageNumberPagination):
     page_size = 20
 
@@ -194,6 +202,8 @@ def needs_restocking(owner, now=None):
         "tracked_offers": len(listings), "untracked_offers": untracked,
         "settings": {
             "cover_days": current.cover_days, "fallback_units": current.fallback_units, "window_days": current.window_days,
+            "alerts_enabled": bool(getattr(django_settings, "STOCK_ALERTS_ENABLED", False)),
+            "sold_out_hidden": bool(getattr(django_settings, "SOLD_OUT_HIDDEN_ENABLED", False)),
         },
     }
 

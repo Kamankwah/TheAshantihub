@@ -140,6 +140,13 @@ class PublishTests(TestCase):
                     self.record(self.lead, verb, method="POST", target_type="x", target_id="1")
                     self.assertEqual(self.message(queue)["payload"]["invalidate"], keys)
 
+    def test_catalogue_decisions_refresh_the_grouping_queue_live(self):
+        for verb in ["catalogue-staff-approve", "catalogue-staff-reject", "catalogue-staff-re-review", "catalogue-staff-detach"]:
+            with self.subTest(verb=verb):
+                queue = self.listen("perm.listings.moderate")
+                self.record(self.lead, verb, method="POST", target_type="x", target_id="1")
+                self.assertEqual(self.message(queue)["payload"]["invalidate"], ["catalogue-queue", "staff-badges"])
+
     def test_support_calls_and_the_pickup_desk_refresh_live(self):
         calls = ["ledger-order-verification", "ledger-booking-verification", "ledger-booking-cancel", "ledger-pickup-collected",
                  "delivery-rider-deliver", "delivery-deliver"]

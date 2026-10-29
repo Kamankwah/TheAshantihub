@@ -225,7 +225,7 @@ def offer_payload(offer, now=None):
     pay = rider_pay(card, trip) if card and trip is not None else None
     return {
         "id": offer.pk, "order_id": order.pk, "expires_at": offer.expires_at, "seconds_left": max(0, int((offer.expires_at - now).total_seconds())),
-        "pickup": {"business_name": name, "lat": plat, "lng": plng}, "delivery_address": order.delivery_address, "delivery_lat": dlat, "delivery_lng": dlng,
+        "pickup": {"business_name": name, "lat": plat, "lng": plng}, "delivery_address": order.delivery_address, "delivery_gps_address": order.delivery_gps_address, "delivery_landmark": order.delivery_landmark, "delivery_lat": dlat, "delivery_lng": dlng,
         "to_pickup_km": to_pickup, "trip_km": trip, "distance_basis": basis, "payment": payloads.payment_label(order),
         "deadline_at": dispatching.deadline_for(order), "pay": pay, "items": order.items.count(),
         "stop_count": stop_count, "route_km": (order.route_plan or {}).get("total_km"),

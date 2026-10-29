@@ -37,7 +37,8 @@ class AfterHoursStampTests(CheckoutTestsBase):
             CartItem.objects.create(cart=cart, listing=listing, quantity=1, unit_price_snapshot=listing.price_amount)
         body = {"delivery_method": method}
         if method == "door_to_door":
-            body.update(delivery_address="12 Ash Road", delivery_phone="+233200662001")
+            body.update(delivery_address="12 Ash Road", delivery_phone="+233200662001",
+                        delivery_gps_address="AK-039-5028", delivery_landmark="Blue gate")
         with mock.patch("django.utils.timezone.now", return_value=now):
             response = self.client.post("/api/orders/checkout/", body, format="json")
         self.assertEqual(response.status_code, 201, response.content)
@@ -179,7 +180,7 @@ class DeliveryPreviewFeeTests(AfterHoursStampTests):
             with mock.patch("django.utils.timezone.now", return_value=accra(19, 12)):
                 response = self.client.post("/api/orders/checkout/", {
                     "delivery_method": "door_to_door", "delivery_address": "12 Ash Road", "delivery_phone": "+233200662001",
-                    "delivery_lat": 6.69, "delivery_lng": -1.62}, format="json")
+                    "delivery_gps_address": "AK-039-5028", "delivery_landmark": "Blue gate", "delivery_lat": 6.69, "delivery_lng": -1.62}, format="json")
         self.assertEqual(response.status_code, 201, response.content)
         self.assertEqual(Decimal(str(response.data["delivery_fee"])), Decimal(delivery["fee"]))
         self.assertEqual(Decimal(str(response.data["total_amount"])), Decimal("150.00") + Decimal(delivery["fee"]))

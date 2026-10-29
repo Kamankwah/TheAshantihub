@@ -400,6 +400,8 @@ REST_FRAMEWORK = {
         "notify_me": "30/hour",
         "notify_me_stop": "30/hour",
         "category_visit": "60/min",
+        "listing_view": "60/min",
+        "listing_also_viewed": "60/min",
         "storefront_search": "120/min",
         "storefront_deals": "120/min",
         "storefront_home": "120/min",
@@ -539,6 +541,10 @@ CELERY_BEAT_SCHEDULE = {
     "reports-reap-stuck-exports": {
         "task": "reports.tasks.reap_stuck_exports",
         "schedule": 900.0,  # every 15 minutes
+    },
+    "listings-prune-views": {
+        "task": "listings.tasks.prune_listing_views",
+        "schedule": crontab(hour=3, minute=50),
     },
     "listings-reap-stuck-videos": {
         "task": "listings.tasks.reap_stuck_videos",
