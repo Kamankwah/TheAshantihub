@@ -17,11 +17,19 @@ export function listingPriceAmounts(item) {
   return { current, was: item?.was_price ?? null };
 }
 
-function format(amount, currency, unit) {
+// The amount without its currency code: GHS as the server sent it, any other currency converted for display
+// (rate x amount, whole units). PriceTag (shop/) splits this same string, so there is one formatter.
+export function convertAmount(amount, currency) {
   if (amount == null || amount === "") return null;
-  if (!currency || currency === "GHS") return `GHS ${amount}${unit || ""}`;
+  if (!currency || currency === "GHS") return String(amount);
   const rate = CURRENCIES[currency];
-  return `${currency} ${((parseFloat(amount) || 0) * rate).toFixed(0)}${unit || ""}`;
+  return ((parseFloat(amount) || 0) * rate).toFixed(0);
+}
+
+function format(amount, currency, unit) {
+  const shown = convertAmount(amount, currency);
+  if (shown == null) return null;
+  return `${!currency ? "GHS" : currency} ${shown}${unit || ""}`;
 }
 
 export default function PriceLine({ item, currency = "GHS", tone = "light", size = "1rem", style }) {

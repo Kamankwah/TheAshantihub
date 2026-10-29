@@ -130,6 +130,19 @@ export const handlers = [
       { status: 201 },
     )
   }),
+  // POST /api/cart/items/bulk/ (Plan 4): all-or-nothing add of several variants; 201 with the whole cart (GET /api/cart/ shape).
+  http.post('http://localhost:8000/api/cart/items/bulk/', async ({ request }) => {
+    const body = await request.json()
+    const items = (body.lines || []).map((line, i) => ({
+      id: i + 1, listing: body.listing, listing_name: 'Item', variant: line.variant, variant_label: 'Variant',
+      quantity: line.quantity ?? 1, unit_price_snapshot: '0.00', line_total: '0.00', added_at: '2026-07-01T00:00:00Z',
+      listing_photo: null, seller_name: 'Seller', is_ashanti_direct: false, in_stock: true, stock_quantity: null,
+    }))
+    return HttpResponse.json(
+      { id: 1, total: '0.00', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z', items },
+      { status: 201 },
+    )
+  }),
   http.patch('http://localhost:8000/api/cart/items/:id/', async ({ params, request }) => {
     const body = await request.json()
     return HttpResponse.json({ id: Number(params.id), listing: 1, listing_name: 'Item', quantity: body.quantity, unit_price_snapshot: '0.00', line_total: '0.00', added_at: '2026-07-01T00:00:00Z' })
