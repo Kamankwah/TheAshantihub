@@ -11,7 +11,9 @@ list: the business's details and its Ghana Post address. The documents become so
 
 ## What the owner decided
 
-- The Ghana Card and the business certificate can be left out at registration.
+- The Ghana Card and the business certificate can be left out at registration. A certificate and TIN
+  are not mandatory even for a business that says it is registered: the scout (or owner) ticks
+  "registered" and skips the details if they can't be shown right then.
 - **KYC approval rests on the business address only.** Documents no longer gate it.
 - A business that uploads its documents and has them approved gets the verified check mark on its
   products. Nothing else gives the check mark.
@@ -65,8 +67,11 @@ scout path (`ScoutRegistrationSerializer` / `portfolio/registration.py`, which r
 
 - Ghana Card number, both card photos, certificate and TIN are optional everywhere: the owner form,
   the server serializer, `compute_registration_step`, and the scout registration (form and server).
-  `is_formal` stays a choice; saying "formally registered" no longer forces a certificate or TIN at
-  registration.
+  **A certificate and TIN are never mandatory, even for a business that says it is registered.**
+  `is_formal` becomes a plain tick, "this business is registered": the owner ticks it on their form,
+  and the scout ticks it in the field when the business says so (a new tick on the scout form, which
+  has none today). If the certificate or TIN can't be shown at that moment, they are skipped and the
+  tick still stands. Nothing is validated against the tick.
 - `ghana_card_number` is `unique`. A blank value must be stored as `NULL`, never `""`, or the second
   document-less business collides with the first.
 - Still required: business details, contact phone, and a Ghana Post address in the Ashanti Region.
@@ -84,8 +89,9 @@ decision simply wait for that click; no backfill.
 
 ### 4. Getting the check mark
 
-- The business dashboard gets a "Get verified" section where the owner submits the card number and
-  both photos, and the certificate and TIN when the business is formal. It works whether KYC is
+- The business dashboard gets a "Get verified" section where the owner submits the Ghana Card number
+  and both photos (required for the mark). The certificate and TIN are optional extras, offered
+  whether or not the business ticked "registered"; staff see them when given. It works whether KYC is
   pending or verified, so it is **its own endpoint**; the existing profile PATCH stays locked once
   KYC is verified.
 - Submitting sets identity `pending`. A resubmission after rejection is allowed and sets `pending`
@@ -149,8 +155,9 @@ it applies, that a withdrawal account needs a verified identity.
 2. Payout-name matching for businesses requires identity verified (section 1); it blocks adding new
    withdrawal accounts only, existing ones stay. With the ledger off there is no visible effect yet.
 3. Scout registration follows the same optional rule.
-4. TIN is optional with the certificate: both are asked for only when submitting for the mark, and
-   only if the business is formal.
+4. Certificate and TIN are never mandatory, at registration or for the mark; only the Ghana Card
+   (number and both photos) is needed for the mark. The owner's ruling covers registered businesses;
+   applying it to the mark too is my reading.
 5. Rejected-KYC businesses start at identity `not_submitted` (they can submit from the dashboard).
 6. A business with KYC verified and no identity can publish; its listings simply carry no mark and
    are excluded from "verified only" and featured offers.
