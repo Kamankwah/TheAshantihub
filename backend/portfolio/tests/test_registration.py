@@ -192,7 +192,6 @@ class RegistrationTests(RegistrationBase):
         for overrides, field in [
             ({"gps_address": "GA-543-0125"}, "gps_address"),  # Greater Accra, not Ashanti
             ({"signboard_photo": None}, "signboard_photo"),
-            ({"ghana_card_front": None}, "ghana_card_front"),
             ({"signboard_photo": SimpleUploadedFile("sign.png", b"not an image", content_type="image/png")}, "signboard_photo"),
         ]:
             with self.subTest(overrides=overrides):
@@ -349,6 +348,32 @@ class RegistrationFlagTests(RegistrationBase):
             "title": "Owner's phone matches staff member Esi",
         }])
 
+    def test_scout_registers_without_ghana_card_photo_or_number(self):
+        response = self.register(ghana_card_front=None, ghana_card_number=None)
+        self.assertEqual(response.status_code, 201, response.content)
+        profile = BusinessOwnerProfile.objects.get(business_owner_id=response.json()["id"])
+        self.assertFalse(profile.ghana_card_front_image)
+        self.assertIsNone(profile.ghana_card_number)
+        self.assertFalse(profile.is_formal)
+        self.assertIsNone(profile.tin)
+
+    def test_registered_tick_is_stored_without_certificate_or_tin(self):
+        response = self.register(ghana_card_front=None, ghana_card_number=None, is_formal="true")
+        self.assertEqual(response.status_code, 201, response.content)
+        profile = BusinessOwnerProfile.objects.get(business_owner_id=response.json()["id"])
+        self.assertTrue(profile.is_formal)
+        self.assertIsNone(profile.tin)
+        self.assertFalse(profile.business_reg_certificate)
+
+    def test_two_scout_registrations_without_card_numbers_do_not_collide(self):
+        first = self.register(ghana_card_front=None, ghana_card_number="")
+        second = self.register(
+            ghana_card_front=None, ghana_card_number="", owner_phone="0245550000", owner_email="two@example.com",
+            gps_address="AK-112-0385",
+        )
+        self.assertEqual((first.status_code, second.status_code), (201, 201), second.content)
+        self.assertEqual(BusinessOwnerProfile.objects.filter(ghana_card_number__isnull=True).count(), 2)
+
 
 class RegisterCheckTests(RegistrationBase):
     def test_the_review_step_check(self):
@@ -403,6 +428,18 @@ class KycResubmitTests(RegistrationBase):
             (event.verb, event.after),
             ("business.kyc_resubmitted", {"photos": ["signboard_photo"], "approval_id": new.pk}),
         )
+
+    def test_a_card_photo_can_be_added_when_none_was_registered(self):
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
+        profile.ghana_card_front_image = None
+        profile.save(update_fields=["ghana_card_front_image"])
+        reject(self.approval_id, self.lead, "Please add the card photo")
+        self.as_(self.scout)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.url, {"ghana_card_front": png("late-card.png")}, format="multipart")
+        self.assertEqual(response.status_code, 201, response.content)
+        profile.refresh_from_db()
+        self.assertIn("late-card", profile.ghana_card_front_image.name)
 
     def test_replaced_photos_are_deleted_once_the_request_is_saved(self):
         reject(self.approval_id, self.lead, "Both photos are blurry")

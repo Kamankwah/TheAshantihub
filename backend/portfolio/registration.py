@@ -182,7 +182,8 @@ def _create_business(registrar, values, identity):
                 location_is_manual=values.get("location_is_manual", False),
                 ghana_card_number=values.get("ghana_card_number"),
                 signboard_photo=values["signboard_photo"],
-                ghana_card_front_image=values["ghana_card_front"],
+                ghana_card_front_image=values.get("ghana_card_front"),
+                is_formal=values.get("is_formal", False),
             )
     except IntegrityError:
         # Another registration with the same phone or Ghana Card committed
