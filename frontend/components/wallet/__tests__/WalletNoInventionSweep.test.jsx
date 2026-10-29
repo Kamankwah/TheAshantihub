@@ -1,8 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../../mocks/server.js'
+import TopUpDialog from '../../account/wallet/TopUpDialog.jsx'
+import WalletOverview from '../../account/wallet/WalletOverview.jsx'
+import WalletTransactions from '../../account/wallet/WalletTransactions.jsx'
 import WalletsPanel from '../../admin/panels/WalletsPanel.jsx'
 import WithdrawalsPanel from '../../admin/panels/WithdrawalsPanel.jsx'
 import BalanceSummary from '../BalanceSummary.jsx'
@@ -57,13 +61,16 @@ const scenarios = [
   ['WithdrawalHistory', customerData, () => <WithdrawalHistory />, 'Processing'],
   ['PaymentMethodPicker', customerWallet, () => <PaymentMethodPicker amount="30.00" />, /AshantiHub wallet/],
   ['VendorPayouts', vendorWallet, () => <VendorPayouts />, 'Pending'],
+  ['WalletOverview', customerData, () => <MemoryRouter><WalletOverview /></MemoryRouter>, 'Order payment'],
+  ['WalletTransactions', customerData, () => <MemoryRouter><WalletTransactions /></MemoryRouter>, 'Order payment'],
+  ['TopUpDialog', null, () => <TopUpDialog onClose={() => {}} />, /Amount to add/],
   ['WalletsPanel', () => server.use(http.get(`${API}/api/wallet/staff/wallets/`, () => envelope([{ holder_id: 1, name: 'Ama Mensah', balance: '25.50' }]))), () => <WalletsPanel />, 'Ama Mensah'],
   ['WithdrawalsPanel', () => server.use(http.get(`${API}/api/wallet/staff/withdrawals/`, () => envelope([staffWd]))), () => <WithdrawalsPanel auth={{ hasPermission: () => true }} />, 'WD-1'],
 ]
 // Default ("ledger on, empty") renders: wait for the same ready text where the
 // screen has one without data, otherwise just let the queries settle.
 const emptyReady = {
-  TopUpForm: /Amount to add/, WithdrawForm: null, VendorPayouts: null, PaymentMethodPicker: null,
+  TopUpForm: /Amount to add/, TopUpDialog: /Amount to add/, WithdrawForm: null, VendorPayouts: null, PaymentMethodPicker: null,
 }
 
 function sweep(container) {
