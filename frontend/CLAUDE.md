@@ -237,5 +237,5 @@ ads are Marketing's). Never hardcode `/api/listings/mine` in a panel.
 - **Never build a second barcode formatter:** `displayBarcode` (`catalogueFormat.js`) is the one. `formatPrice` there
   delegates to `walletMoney.formatGhs`.
 - **`components/catalogue/__tests__/CatalogueNoInventionSweep.test.jsx` is the conformance contract** (no contact links, no
-  distance, no null shown, tabular prices, no gold on prices or the verified mark). Add every new catalogue screen to it;
-  `OtherSellersPanel` joins when 6F Task 10 lands (after M4).
+  distance, no null shown, tabular prices, no gold on prices or the verified mark). Add every new catalogue screen to it
+  (`OtherSellersPanel`, in `components/shop/`, is already covered; its `ShortfallPrompt` sits beside BuyBox's low and out-of-stock lines).

@@ -10,8 +10,8 @@ backend (catalogue entries, offers, other sellers, stock cover and low-stock ale
 feature/catalogue-offers-6) is implemented behind three switches that default off: `STOCK_ALERTS_ENABLED` (the alerts),
 `SOLD_OUT_HIDDEN_ENABLED` (sold-out hiding) and `CATALOGUE_MATCHER_ENABLED` (the barcode matcher: the nightly job and
 approve's on-commit run); later stages are specs only. **6F status (2026-10-20):** the Stage 6 screens (Plan 6F) are built on
-branch feature/wallet-frontend-6f-catalogue, except Other sellers, the featured offer and the shortfall prompt (waiting for M4's
-product page, 6F Task 10); no switch is turned on; manual layout and staging checks owed (360, 768 and 1280 px; ask, approve,
+branch feature/wallet-frontend-6f-catalogue, including Other sellers, the featured offer and the shortfall prompt (built by 6F
+Task 10 after the M4 merge, on the product page's buy box); no switch is turned on; manual layout and staging checks owed (360, 768 and 1280 px; ask, approve,
 Other sellers, checkout on staging; a second staff tab refreshing live).
 **Basis:** The owner's brief, plus the decisions in §1, reconciled with the existing code in §13.
 
@@ -871,8 +871,8 @@ nothing until `CATALOGUE_MATCHER_ENABLED` is on, and sold-out listings leave sea
   flash-sale price, so "cheapest first" can be wrong during a flash sale: order by the price the customer would pay
   before the panel ships. The shortfall prompt invites carts holding several offers of one product, which raises the
   odds of the pre-existing checkout lock-order deadlock (spec (xvii)): fix that first.
-  **6F status:** built, except "Other sellers, the featured offer and the shortfall prompt: waiting for M4's product page (6F
-  Task 10)" (with the cart guard per add and disabling Add at 0, which are M4's), and the manual checks (owed). Built: barcode
+  **6F status:** built, including Other sellers, the featured offer and the shortfall prompt (6F Task 10, after the M4 merge;
+  each row has its own cart guard, opening gate and staff gate), and the manual layout and staging checks stay owed. Built: barcode
   field, grouping and lookup, Needs restocking and the per-offer line (the `<= 3` badge is gone), the staff queue, ungroup and
   `catalogue` tab, the realtime row, ordering by the price the customer pays, the `truncated` message. Product grouping is in
   the Operations, Super Admin and GM menus (done).
