@@ -9,7 +9,7 @@ const VALUES = [
   {
     emoji: "🤝",
     title: "Trust",
-    body: "Every business is verified. Ghana Card, digital address and physical confirmation. No exceptions.",
+    body: "Businesses can earn a verified check mark by showing their Ghana Card, and AshantiHub staff check every address.",
   },
   {
     emoji: "👑",

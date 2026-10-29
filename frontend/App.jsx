@@ -37,6 +37,7 @@ import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
 import { C } from "./theme.js";
 import ThemeToggle from "./components/ThemeToggle.jsx";
+import VerifiedMark from "./components/VerifiedMark.jsx";
 import Flag from "./components/Flag.jsx";
 import { formatAccraDayTime } from "./lib/accraTime.js";
 import OrderTrackingMap from "./components/OrderTrackingMap.jsx";
@@ -1096,7 +1097,9 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
         </button>
       </div>
       <div style={{padding:"12px 14px"}}>
-        <div onClick={()=>onOpen&&onOpen(item.id)} style={{fontWeight:700,fontSize:"0.9rem",color:"white",marginBottom:2,cursor:onOpen?"pointer":"default"}}>{item.name}</div>
+        <div onClick={()=>onOpen&&onOpen(item.id)} style={{fontWeight:700,fontSize:"0.9rem",color:"white",marginBottom:2,cursor:onOpen?"pointer":"default"}}>{item.name}{item.business_owner?.identity_verified===true&&<span style={{marginLeft:6,verticalAlign:"middle"}}><VerifiedMark verified compact/></span>}</div>
+        {/* The check mark follows the seller's staff-approved identity (business_owner.identity_verified), not KYC;
+            sellers without it show nothing. */}
         {/* Listing's public serializer now returns avg_rating/review_count directly
             (Phase 4 of the reviews/ratings work) — a listing with zero reviews shows
             no stars at all rather than "0.0 ★ (0 reviews)". */}

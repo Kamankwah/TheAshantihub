@@ -16,7 +16,7 @@ const FAQS: Faq[] = [
   {
     question: "How does a business get verified on AshantiHub?",
     answer:
-      "Every business goes through a verification check before it can list: a valid Ghana Card, a registered digital address, and a physical confirmation of the business. This is the same Trust standard behind everything we do — no exceptions.",
+      "AshantiHub staff check every business address before it can list. Businesses can also earn a verified check mark by showing their Ghana Card: staff review it, and the mark appears on their products once it is approved. A business without the mark has simply not added that check.",
   },
   {
     question: "Is AshantiHub free for businesses to join?",

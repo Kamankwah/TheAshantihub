@@ -1,10 +1,11 @@
 import { C } from "../theme.js";
+import VerifiedMark from "./VerifiedMark.jsx";
 import { usePublicFeatured } from "../hooks/useMarketingBanners.js";
 
 // ─── FeaturedRow ────────────────────────────────────────────────────────────
 // Paid featured listings (home row, or the top of a category). Paid and verified must never
 // look alike: a featured card has a gold outline and the word "Featured" and no tick; a
-// verified business has its own green tick on a plain field. Both can show side by side.
+// verified business (staff-approved identity, not KYC) has its own green tick on a plain field. Both can show side by side.
 // Renders nothing when no slot is booked and live.
 export default function FeaturedRow({ category = "", onOpen }) {
   const { data } = usePublicFeatured(category);
@@ -22,7 +23,7 @@ export default function FeaturedRow({ category = "", onOpen }) {
               <strong style={{ fontSize: "0.85rem", color: C.ink }}>{row.name}</strong>
               <span style={{ fontSize: "0.72rem", color: C.inkDim }}>
                 {row.business}
-                {row.verified && <span style={{ marginLeft: 6, color: C.okInk, fontWeight: 800 }}>✓ Verified</span>}
+                {row.verified === true && <span style={{ marginLeft: 6 }}><VerifiedMark verified compact /></span>}
               </span>
               {row.price_amount != null && <span style={{ fontSize: "0.78rem", fontWeight: 700 }}>GH₵ {Number(row.price_amount).toLocaleString("en-GH", { minimumFractionDigits: 2 })}{row.price_unit ? ` / ${row.price_unit}` : ""}</span>}
             </div>
