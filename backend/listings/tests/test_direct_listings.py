@@ -133,6 +133,28 @@ class DirectListingTests(DirectBase):
         self.assertEqual(self.client.get(BASE).status_code, 403)
         self.assertEqual(self.client.post(BASE, self.payload(), format="json").status_code, 403)
 
+    def test_the_general_manager_checks_direct_but_never_operates_it(self):
+        gm = make_staff("general_manager", "gm@example.com")
+        self.assertNotIn("direct.operate", gm.effective_permission_codenames())
+        self.assertIn("listings.moderate", gm.effective_permission_codenames())
+        self.as_staff(gm)
+        self.assertEqual(self.client.get(BASE).status_code, 403)
+        self.assertEqual(self.client.post(BASE, self.payload(), format="json").status_code, 403)
+        # as a checker the GM decides what Operations made, through the revision queue and the listing queue
+        own = self.listing(self.direct, "Direct item")
+        self.as_staff(self.ops)
+        self.client.put(f"{BASE}{own.pk}/revision/", {"changes": {"name": "Better"}}, format="json")
+        self.client.post(f"{BASE}{own.pk}/revision/submit/", {}, format="json")
+        revision = ListingRevision.objects.get(listing=own)
+        self.as_staff(gm)
+        self.assertEqual(self.client.get("/api/listings/revisions/pending/").status_code, 200)
+        self.assertEqual(self.client.post(f"/api/listings/revisions/{revision.pk}/approve/").status_code, 200)
+        self.as_staff(self.ops)
+        listing_id = self.client.post(BASE, self.payload(), format="json").json()["id"]
+        self.client.post(f"{BASE}{listing_id}/submit/", {}, format="json")
+        self.as_staff(gm)
+        self.assertEqual(self.client.post(f"/api/listings/moderation/{listing_id}/approve/").status_code, 200)
+
     def test_anonymous_is_refused(self):
         self.assertIn(self.client.get(BASE).status_code, (401, 403))
 
