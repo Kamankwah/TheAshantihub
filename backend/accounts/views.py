@@ -2,13 +2,14 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import SAFE_METHODS, AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -31,6 +32,7 @@ from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
 from .models import (
     BusinessOwner,
+    BusinessOwnerProfile,
     Customer,
     Permission,
     Role,
@@ -61,6 +63,8 @@ from .serializers import (
     BusinessOwnerLoginSerializer,
     BusinessOwnerRegistrationSerializer,
     BusinessOwnerProfileUpdateSerializer,
+    DUPLICATE_CARD_MESSAGE,
+    IdentitySubmissionSerializer,
     CustomerListSerializer,
     CustomerLoginSerializer,
     CustomerProfileSerializer,
@@ -115,6 +119,9 @@ def me(request):
         data["kyc_status"] = request.user.kyc_status
         data["kyc_rejection_reason"] = request.user.kyc_rejection_reason
         data["registration_step"] = request.user.compute_registration_step()
+        profile = getattr(request.user, "profile", None)
+        data["identity_status"] = profile.identity_status if profile else BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED
+        data["identity_rejection_reason"] = profile.identity_rejection_reason if profile else None
     if isinstance(request.user, Customer):
         data["avatar"] = (
             request.build_absolute_uri(request.user.avatar.url) if request.user.avatar else None
@@ -1472,6 +1479,64 @@ class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user.profile
+
+    def perform_update(self, serializer):
+        with transaction.atomic():
+            serializer.save()
+            # A registration that supplies the number and both photos goes straight to the identity check. Only a
+            # request that touched a card field can submit: an owner whose identity was rejected must not be put back
+            # in the queue, with the same photos, by editing their address.
+            if any(field in serializer.validated_data for field in IDENTITY_FIELDS):
+                kyc.submit_identity(serializer.instance)
+
+
+IDENTITY_FIELDS = ("ghana_card_number", "ghana_card_front_image", "ghana_card_back_image")
+IDENTITY_ALREADY_SUBMITTED = {
+    BusinessOwnerProfile.IDENTITY_PENDING: "Your identity documents are already being reviewed.",
+    BusinessOwnerProfile.IDENTITY_VERIFIED: "Your identity is already verified.",
+}
+
+
+def _identity_body(profile):
+    """Where the identity check stands. Never the card number or the files."""
+    return {
+        "identity_status": profile.identity_status,
+        "identity_rejection_reason": profile.identity_rejection_reason,
+        "identity_submitted_at": profile.identity_submitted_at,
+        "is_formal": profile.is_formal,
+        "has_certificate": bool(profile.business_reg_certificate),
+        "has_tin": bool(profile.tin),
+    }
+
+
+class IdentitySubmissionView(APIView):
+    """GET/POST /api/accounts/business-owners/me/identity/ — the owner's Ghana Card for the verified check mark.
+    POST (multipart) takes the number and both photos, optionally the certificate, TIN and is_formal, and puts the
+    identity in the review queue. A pending or verified identity answers 409 and keeps what is stored. Works
+    whatever the business's KYC status is (the profile PATCH is locked once KYC is verified; this is the other door)."""
+
+    permission_classes = [IsBusinessOwner]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        profile = getattr(request.user, "profile", None) or BusinessOwnerProfile(business_owner=request.user)
+        return Response(_identity_body(profile))
+
+    def post(self, request):
+        try:
+            with transaction.atomic():
+                BusinessOwnerProfile.objects.get_or_create(business_owner=request.user)
+                profile = BusinessOwnerProfile.objects.select_for_update().get(business_owner=request.user)
+                if profile.identity_status in IDENTITY_ALREADY_SUBMITTED:
+                    return Response({"detail": IDENTITY_ALREADY_SUBMITTED[profile.identity_status]}, status=409)
+                serializer = IdentitySubmissionSerializer(profile, data=request.data)
+                serializer.is_valid(raise_exception=True)
+                serializer.save()
+                kyc.submit_identity(profile)
+        except IntegrityError:
+            # Two owners sent the same number at once; the unique column let one win.
+            return Response({"ghana_card_number": [DUPLICATE_CARD_MESSAGE]}, status=400)
+        return Response(_identity_body(profile))
 
 
 class BusinessHoursView(APIView):

@@ -20,7 +20,7 @@ from fraud.models import FraudFlag
 from fraud.services import open_flag_exists
 from notifications.services import notify_business_owner
 
-from .models import BusinessOwner, ScoutAssignment
+from .models import BusinessOwner, BusinessOwnerProfile, ScoutAssignment
 
 KYC_KIND = "business.kyc"
 TARGET_TYPE = "accounts.businessowner"
@@ -267,3 +267,28 @@ def pending_approval_id(owner):
         .values_list("pk", flat=True)
         .first()
     )
+
+
+# ── The owner's identity documents (optional identity documents) ───────────
+
+
+def submit_identity(profile):
+    """Put an owner's Ghana Card forward for the identity check: not_submitted
+    or rejected becomes pending, only when the number and both photos are on
+    file. A pending or verified identity is never touched. Returns whether it
+    moved; idempotent. One conditional UPDATE, so two requests at once cannot
+    both move it."""
+    if not profile.has_identity_documents():
+        return False
+    now = timezone.now()
+    moved = BusinessOwnerProfile.objects.filter(
+        pk=profile.pk,
+        identity_status__in=(BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED, BusinessOwnerProfile.IDENTITY_REJECTED),
+    ).update(
+        identity_status=BusinessOwnerProfile.IDENTITY_PENDING, identity_submitted_at=now, identity_rejection_reason=None,
+    )
+    if moved:
+        profile.identity_status = BusinessOwnerProfile.IDENTITY_PENDING
+        profile.identity_submitted_at = now
+        profile.identity_rejection_reason = None
+    return bool(moved)

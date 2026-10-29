@@ -565,8 +565,14 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
             "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image",
             "gps_address", "business_contact_phone", "is_formal",
             "business_reg_certificate", "tin", "business_kind", "hours", "has_hours",
+            "identity_status", "identity_rejection_reason",
         ]
-        extra_kwargs = {field: {"required": False} for field in fields if field not in ("hours", "has_hours")}
+        read_only_fields = ["identity_status", "identity_rejection_reason"]
+        extra_kwargs = {
+            field: {"required": False}
+            for field in fields
+            if field not in ("hours", "has_hours", "identity_status", "identity_rejection_reason")
+        }
         # business_kind is set at trial-start (billing.StartTrialSerializer) or, while
         # subscriptions are off, by billing.BusinessKindView, and
         # drives listing-category / subscription-plan gating on the frontend; it
@@ -611,6 +617,46 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
             owner.kyc_rejection_reason = None
             owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
         return instance
+
+
+DUPLICATE_CARD_MESSAGE = "We couldn't accept this Ghana Card number. Check it and try again, or contact support."
+
+
+class IdentitySubmissionSerializer(serializers.ModelSerializer):
+    """The owner's identity documents (POST .../business-owners/me/identity/): the
+    Ghana Card number and both photos are required; the certificate, TIN and
+    is_formal are optional. The number's uniqueness is checked here, in one
+    message that says nothing about who holds it."""
+
+    ghana_card_number = serializers.CharField(max_length=30)
+
+    class Meta:
+        model = BusinessOwnerProfile
+        fields = [
+            "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image",
+            "business_reg_certificate", "tin", "is_formal",
+        ]
+        extra_kwargs = {
+            "ghana_card_front_image": {"required": True, "allow_null": False},
+            "ghana_card_back_image": {"required": True, "allow_null": False},
+            "business_reg_certificate": {"required": False},
+            "tin": {"required": False, "allow_blank": True, "allow_null": True},
+            "is_formal": {"required": False},
+        }
+
+    def validate_ghana_card_number(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Enter your Ghana Card number.")
+        taken = BusinessOwnerProfile.objects.filter(ghana_card_number=value)
+        if self.instance is not None:
+            taken = taken.exclude(pk=self.instance.pk)
+        if taken.exists():
+            raise serializers.ValidationError(DUPLICATE_CARD_MESSAGE)
+        return value
+
+    def validate_tin(self, value):
+        return (value or "").strip() or None
 
 
 class CustomerLoginSerializer(serializers.Serializer):
