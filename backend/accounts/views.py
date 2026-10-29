@@ -1483,7 +1483,9 @@ class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
         # Locked for the whole PATCH (update() holds the transaction): validation and save run against the
         # current row, so a staff verify/reject or an identity POST landing meanwhile is not reverted by this
         # request's full-row save, and the "documents under review" rule is checked on what is really stored.
-        profile = BusinessOwnerProfile.objects.select_for_update().select_related("business_owner").get(
+        # Only the profile row is locked (of=self): the owner row is joined for reading, and other code locks the
+        # owner first and the profile second, so locking both here in the opposite order could deadlock.
+        profile = BusinessOwnerProfile.objects.select_for_update(of=("self",)).select_related("business_owner").get(
             business_owner=self.request.user,
         )
         self.check_object_permissions(self.request, profile)

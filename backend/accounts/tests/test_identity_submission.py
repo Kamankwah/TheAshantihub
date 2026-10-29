@@ -325,9 +325,15 @@ class IdentitySubmissionTests(TestCase):
             response = self._client(owner).patch(PROFILE_URL, {"gps_address": "AK-039-3333"}, format="json")
         self.assertEqual(response.status_code, 200, response.content)
         # A SELECT ... FOR UPDATE on the profile only works inside a transaction, so this also shows the PATCH is atomic.
-        self.assertTrue(
-            any("FOR UPDATE" in q["sql"] and "accounts_businessownerprofile" in q["sql"] for q in queries.captured_queries),
-        )
+        locking = [q["sql"] for q in queries.captured_queries if "FOR UPDATE" in q["sql"]
+                   and "accounts_businessownerprofile" in q["sql"]]
+        self.assertTrue(locking)
+        # Only the profile row is locked: other code locks the owner first and the profile second, so also locking
+        # the joined owner row here (in the opposite order) could deadlock.
+        for sql in locking:
+            clause = sql[sql.index("FOR UPDATE"):]
+            self.assertIn('OF "accounts_businessownerprofile"', clause)
+            self.assertNotIn("accounts_businessowner\"", clause)
 
     def test_profile_patch_validates_the_rule_against_the_row_not_a_stale_copy(self):
         # The row becomes pending after the owner's request began: the refusal reads the locked, current row.
@@ -336,9 +342,9 @@ class IdentitySubmissionTests(TestCase):
         owner = self._owner(ghana_card_number="GHA-700000001-1")
         original = BusinessOwnerProfile.objects.select_for_update
 
-        def pending_before_lock():
+        def pending_before_lock(**kwargs):
             BusinessOwnerProfile.objects.filter(business_owner=owner).update(identity_status="pending")
-            return original()
+            return original(**kwargs)
 
         with mock.patch.object(BusinessOwnerProfile.objects, "select_for_update", side_effect=pending_before_lock):
             response = self._client(owner).patch(PROFILE_URL, {"ghana_card_number": "GHA-700000009-9"}, format="json")
