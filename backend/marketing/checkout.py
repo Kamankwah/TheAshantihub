@@ -25,7 +25,7 @@ from django.utils import timezone
 
 from accounts.phones import filter_by_phone, phone_key
 from fraud.models import FraudFlag
-from listings.models import Listing
+from listings.models import Listing, ListingVariant
 from listings.visibility import hidden_business_q
 from notifications.services import notify_staff_role
 from orders.models import Order, OrderItem
@@ -50,6 +50,7 @@ class Line:
     unit_price: Decimal
     flash_sale: object = None
     cart_item_id: int = None
+    variant: object = None
 
     @property
     def line_total(self):
@@ -89,11 +90,14 @@ def usable_rows(rows, listings):
     owner_ids = {l.business_owner_id for l in listings}
     flagged = set(FraudFlag.objects.filter(status=FraudFlag.OPEN, business_owner_id__in=owner_ids).values_list("business_owner_id", flat=True))
     fresh = {l.pk: l for l in Listing.objects.filter(pk__in=ids)}
+    with_variants = set(
+        ListingVariant.objects.filter(listing_id__in=ids, is_active=True).values_list("listing_id", flat=True)
+    )  # a flash sale prices one single-price listing only (decision V4)
     out = []
     for row in rows:
         live = fresh.get(row.listing_id)
         if (
-            live is None or live.status != Listing.PUBLISHED or live.pk in hidden or live.stock_quantity is None
+            live is None or live.pk in with_variants or live.status != Listing.PUBLISHED or live.pk in hidden or live.stock_quantity is None
             or live.price_amount is None or cents(live.price_amount) != cents(row.normal_price)
             or live.business_owner_id in flagged
         ):
@@ -115,7 +119,7 @@ def _flash_lines(customer, items, now, lock):
     sales = live_window_sales(now, lock)
     lines, notes = [], []
     if not sales:
-        return [Line(i.listing, i.quantity, i.unit_price_snapshot, None, i.id) for i in items], notes
+        return [Line(i.listing, i.quantity, i.unit_price_snapshot, None, i.id, i.variant) for i in items], notes
     by_sale = {s.pk: s for s in sales}
     rows = FlashSaleListing.objects.filter(
         sale_id__in=by_sale, listing_id__in=[i.listing_id for i in items],
@@ -128,22 +132,22 @@ def _flash_lines(customer, items, now, lock):
     for sale in sales:
         room[sale.pk] = [max(0, sale.stock_cap - _sold(sale)), max(0, sale.per_customer_limit - _sold(sale, customer))]
     for item in items:
-        row = usable.get(item.listing_id)
+        row = None if item.variant_id else usable.get(item.listing_id)
         snapshot = cents(item.unit_price_snapshot)
         if row is None or cents(row.sale_price) >= snapshot:
-            lines.append(Line(item.listing, item.quantity, item.unit_price_snapshot, None, item.id))
+            lines.append(Line(item.listing, item.quantity, item.unit_price_snapshot, None, item.id, item.variant))
             continue
         left = room[row.sale_id]
         take = min(item.quantity, left[0], left[1])
         if take <= 0:
-            lines.append(Line(item.listing, item.quantity, item.unit_price_snapshot, None, item.id))
+            lines.append(Line(item.listing, item.quantity, item.unit_price_snapshot, None, item.id, item.variant))
             notes.append(f"{item.listing.name}: the sale price is no longer available for you, so it is at its normal price." if left[1] <= 0 else f"{item.listing.name}: sold out at the sale price, so it is at its normal price.")
             continue
         left[0] -= take
         left[1] -= take
-        lines.append(Line(item.listing, take, row.sale_price, by_sale[row.sale_id], item.id))
+        lines.append(Line(item.listing, take, row.sale_price, by_sale[row.sale_id], item.id, item.variant))
         if take < item.quantity:
-            lines.append(Line(item.listing, item.quantity - take, item.unit_price_snapshot, None, item.id))
+            lines.append(Line(item.listing, item.quantity - take, item.unit_price_snapshot, None, item.id, item.variant))
             notes.append(f"{item.listing.name}: {take} at the sale price, the other {item.quantity - take} at the normal price.")
     return lines, notes
 
@@ -271,6 +275,7 @@ def create_lines(order, priced):
         OrderItem.objects.create(
             order=order, listing=line.listing, quantity=line.quantity, unit_price=line.unit_price,
             line_total=line.line_total, flash_sale=line.flash_sale,
+            variant=line.variant, variant_label=line.variant.label if line.variant is not None else "",
         )
 
 

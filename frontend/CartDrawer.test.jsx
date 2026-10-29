@@ -82,6 +82,15 @@ describe('CartDrawer', () => {
     expect(await screen.findByText(/Your cart is empty/)).toBeInTheDocument()
   })
 
+  it('names the variant on each cart line', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json({
+      ...CART_WITH_ITEM,
+      items: [{ ...CART_WITH_ITEM.items[0], listing_name: 'Cake', variant: 3, variant_label: 'Vanilla' }],
+    })))
+    renderDrawer()
+    expect(await screen.findByText('Cake (Vanilla)')).toBeInTheDocument()
+  })
+
   it('shows a loading state before the cart resolves', () => {
     server.use(http.get('http://localhost:8000/api/cart/', async () => {
       await new Promise((r) => setTimeout(r, 50))

@@ -210,8 +210,11 @@ class IssueTests(Base):
             confirmations.request_confirmation(self.owner, self.scout)
         self.assertEqual(caught.exception.code, "nothing_to_confirm")
 
-    def test_needs_owner_text_is_true_today(self):
+    def test_needs_owner_text_is_true_for_a_partner_and_false_for_ashanti_direct(self):
         self.assertTrue(confirmations.needs_owner_text(self.owner))
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(is_company=True)
+        self.owner.refresh_from_db()
+        self.assertFalse(confirmations.needs_owner_text(self.owner))
 
     def test_str_has_no_hash(self):
         row = self.ask()

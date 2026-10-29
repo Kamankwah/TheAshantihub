@@ -3,7 +3,7 @@ import { apiPost } from "../../../apiClient.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { formatAccra } from "../../../lib/bookingTerms.js";
 import { useIncomingServiceRequests } from "../../../hooks/useIncomingServiceRequests.js";
-import { useMyListings } from "../../../hooks/useMyListings.js";
+import { useMyListings, DEFAULT_LISTINGS_PATH } from "../../../hooks/useMyListings.js";
 import { useCategories } from "../../../hooks/useCategories.js";
 import { D, glassCard, sectionTitle, tint } from "../theme.js";
 import OwnerListingCard from "./OwnerListingCard.jsx";
@@ -108,13 +108,15 @@ function RequestCard({ sr, onChanged }) {
   );
 }
 
-export default function ServicesPanel() {
-  const { data, isLoading, isError, refetch } = useIncomingServiceRequests();
-  const listings = useMyListings();
+// `direct` (Ashanti Direct): the incoming-request queue is a business owner's own inbox, which a staff
+// operator does not have, so it is neither fetched nor shown; only the listings are.
+export default function ServicesPanel({ basePath = DEFAULT_LISTINGS_PATH, direct = false }) {
+  const { data, isLoading, isError, refetch } = useIncomingServiceRequests({ enabled: !direct });
+  const listings = useMyListings(true, basePath);
   const categories = useCategories();
 
-  if (isLoading) return <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading your requests…</div>;
-  if (isError) return <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your service requests.</div>;
+  if (!direct && isLoading) return <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading your requests…</div>;
+  if (!direct && isError) return <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your service requests.</div>;
   const requests = data || [];
   const active = requests.filter(r => !["completed", "declined", "cancelled"].includes(r.status));
 
@@ -122,7 +124,7 @@ export default function ServicesPanel() {
   // service listings belong here; accommodation ones are managed in Bookings.
   const catMap = Object.fromEntries((categories.data || []).map(c => [c.id, c]));
   const myServices = (listings.data || []).filter(l => {
-    if (l.status !== "published") return false;
+    if (!["published", "dropped"].includes(l.status)) return false;
     const cat = catMap[l.category];
     return cat && cat.kind === "service" && !cat.is_accommodation;
   });
@@ -131,14 +133,16 @@ export default function ServicesPanel() {
     <div style={{ maxWidth: 720 }}>
       {/* Your listings — view/edit price, specs and photos (bug fix 4) */}
       <div style={{ ...sectionTitle, marginBottom: 4 }}>Your service listings</div>
-      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>Approved services. Edit price, specs and add photos here — changes go live without re-approval.</div>
+      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>Approved services. Price changes go live at once. Anything else you change waits for our approval, and your approved version stays live meanwhile. Discontinued listings are listed under the Listings tab.</div>
       {!listings.isLoading && myServices.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem", marginBottom: 20 }}>No approved service listings yet. Once a service is approved it appears here.</div>}
-      {myServices.map(l => <OwnerListingCard key={l.id} listing={l} onChanged={listings.refetch} variant="service" />)}
+      {myServices.map(l => <OwnerListingCard key={l.id} listing={l} onChanged={listings.refetch} variant="service" basePath={basePath} />)}
 
+      {!direct && <>
       <div style={{ ...sectionTitle, marginTop: 28, marginBottom: 4 }}>Service requests</div>
       <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>{active.length} active. Accept a request with a quote, then track it to completion once the customer pays.</div>
       {requests.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem" }}>No service requests yet. They'll appear here when a customer requests one of your services.</div>}
       {requests.map(r => <RequestCard key={r.id} sr={r} onChanged={refetch} />)}
+      </>}
     </div>
   );
 }

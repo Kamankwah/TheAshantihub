@@ -63,6 +63,18 @@ class ListingModerationTests(TestCase):
         self.listing_verified_owner.refresh_from_db()
         self.assertEqual(self.listing_verified_owner.status, Listing.PENDING_REVIEW)
 
+    def test_a_staff_contributor_cannot_approve_or_reject_the_listing_either(self):
+        # R35: the decision uses revisions.cannot_decide (creator OR recorded staff contributor), a superset of the creator check
+        self.listing_verified_owner.staff_contributors.add(self.admin)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.admin_token}")
+        approve = self.client.post(f"/api/listings/moderation/{self.listing_verified_owner.id}/approve/")
+        reject = self.client.post(
+            f"/api/listings/moderation/{self.listing_verified_owner.id}/reject/", {"reason": "No"}, format="json",
+        )
+        self.assertEqual([(r.status_code, r.json()["code"]) for r in (approve, reject)], [(403, "own_listing")] * 2)
+        self.listing_verified_owner.refresh_from_db()
+        self.assertEqual(self.listing_verified_owner.status, Listing.PENDING_REVIEW)
+
     def test_a_listing_someone_else_made_is_still_decided_normally(self):
         maker = StaffUser.objects.create(
             full_name="Scout Person", email="scout-listing@example.com", password_hash="x",

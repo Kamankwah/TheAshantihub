@@ -4,6 +4,7 @@ from django.db import IntegrityError, transaction
 from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework.test import APIClient
 
+from accounts.models import Role
 from catalogue import identity
 from catalogue.models import CatalogueProduct, product_row
 from catalogue.tests.helpers import BARCODE, STORE_CODE, as_account, business, product
@@ -95,13 +96,23 @@ class ListingBarcodeTests(TestCase):
         self.listing = product(self.owner)
         as_account(self.client, self.owner, "business_owner")
 
-    def manage(self, barcode):
-        return self.client.patch(f"/api/listings/mine/{self.listing.pk}/manage/", {"barcode": barcode}, format="json")
+    def manage(self, barcode, listing=None):
+        """A barcode is no longer a live edit (marketplace Plan 2, V5): an approved listing changes it through a revision,
+        which validates it with the same rules. The answer is the owner's revision."""
+        return self.client.put(
+            f"/api/listings/mine/{(listing or self.listing).pk}/revision/", {"changes": {"barcode": barcode}}, format="json",
+        )
 
     def test_the_barcode_is_kept_as_its_fourteen_digit_key(self):
         response = self.manage("0 36000 29145 2")
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.json()["barcode"], "00036000291452")
+        self.assertEqual(response.json()["changes"]["barcode"], "00036000291452")
+        self.assertEqual(self.client.post(f"/api/listings/mine/{self.listing.pk}/revision/submit/").status_code, 200)
+        from listings import revisions
+        from listings.models import ListingRevision
+        from accounts.models import StaffUser
+        revisions.apply_revision(ListingRevision.objects.get(listing=self.listing), StaffUser.objects.create(
+            full_name="R", email="r@example.com", password_hash="x", role=Role.objects.get(name="operations")))
         self.listing.refresh_from_db()
         self.assertEqual(self.listing.barcode, "00036000291452")
 
@@ -175,19 +186,16 @@ class ListingBarcodeTests(TestCase):
         from catalogue.tests.helpers import service, stay
         for listing in (service(self.owner), stay(self.owner)):
             with self.subTest(listing=listing.name):
-                response = self.client.patch(
-                    f"/api/listings/mine/{listing.pk}/manage/", {"barcode": BARCODE}, format="json")
+                response = self.manage(BARCODE, listing)
                 self.assertEqual(response.status_code, 400, response.content)
                 self.assertEqual(response.json()["barcode"], [NOT_GOODS_MESSAGE])
-                self.assertEqual(
-                    self.client.patch(f"/api/listings/mine/{listing.pk}/manage/", {"barcode": ""}, format="json").status_code, 200)
+                self.assertEqual(self.manage("", listing).status_code, 200)
 
     def test_a_food_listing_can_carry_a_barcode(self):
         food = product(self.owner, "Bottled water", category="food")                 # kind=service, is_food
-        response = self.client.patch(f"/api/listings/mine/{food.pk}/manage/", {"barcode": BARCODE}, format="json")
+        response = self.manage(BARCODE, food)
         self.assertEqual(response.status_code, 200, response.content)
-        food.refresh_from_db()
-        self.assertEqual(food.barcode, BARCODE)
+        self.assertEqual(response.json()["changes"]["barcode"], BARCODE)
 
     def test_the_public_listing_shape_is_unchanged(self):
         self.client.credentials()

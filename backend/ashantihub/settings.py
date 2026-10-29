@@ -537,6 +537,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "reports.tasks.reap_stuck_exports",
         "schedule": 900.0,  # every 15 minutes
     },
+    "listings-reap-stuck-videos": {
+        "task": "listings.tasks.reap_stuck_videos",
+        "schedule": 900.0,  # every 15 minutes
+    },
     "approvals-escalate": {
         "task": "approvals.tasks.escalate_due_approvals",
         "schedule": 300.0,  # every 5 minutes
@@ -690,6 +694,16 @@ CATALOGUE_MATCHER_ENABLED = env.bool("CATALOGUE_MATCHER_ENABLED", default=False)
 # hides the offer"). Off until the Plan 6F screens tell a business to leave the count empty when it does not count stock;
 # the listing's own page and the other-sellers list are not affected by it (see listings.visibility.sold_out_q).
 SOLD_OUT_HIDDEN_ENABLED = env.bool("SOLD_OUT_HIDDEN_ENABLED", default=False)
+
+# Sponsored ads (featured/boost promotions) are free until the owner sets prices (marketplace Plan 2, Task 9). Off by
+# default: a promotion costs 0 and writes no billing Transaction, and the dashboard says "Free for now". It still waits
+# for staff approval either way. Turn on only once prices are announced to businesses.
+PROMOTION_PRICING_ENABLED = env.bool("PROMOTION_PRICING_ENABLED", default=False)
+
+# Ashanti Direct, the company's own shop (accounts.direct): the company phone and email, set in the environment. There is
+# no default; `manage.py ensure_ashanti_direct` stops without both and never invents a number.
+ASHANTI_DIRECT_PHONE = env("ASHANTI_DIRECT_PHONE", default="")
+ASHANTI_DIRECT_EMAIL = env("ASHANTI_DIRECT_EMAIL", default="")
 
 # The marketplace opening gate (storefront.opening). Off by default: while off the marketplace is open to everyone
 # and nothing is blocked. Turn on once the opening time is confirmed.

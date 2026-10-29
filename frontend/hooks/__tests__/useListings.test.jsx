@@ -91,6 +91,17 @@ describe('useListings', () => {
     expect(url.searchParams.get('verified')).toBe('true')
   })
 
+  it('sends sold_by=direct only when directOnly is set', async () => {
+    const seen = []
+    server.use(http.get('http://localhost:8000/api/listings/', ({ request }) => { seen.push(new URL(request.url)); return HttpResponse.json(PAGE_ONE) }))
+    const on = renderWithClient(() => useListings({ directOnly: true }))
+    await waitFor(() => expect(on.result.current.isLoading).toBe(false))
+    expect(seen[0].searchParams.get('sold_by')).toBe('direct')
+    const off = renderWithClient(() => useListings({ directOnly: undefined }))
+    await waitFor(() => expect(off.result.current.isLoading).toBe(false))
+    expect(seen[1].searchParams.has('sold_by')).toBe(false)
+  })
+
   it('omits verified when falsy', async () => {
     let capturedUrl
     server.use(

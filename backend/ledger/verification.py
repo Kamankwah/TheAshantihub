@@ -142,7 +142,7 @@ def awaiting_row(order, now, limit=None):
         "overdue": now > order.placed_at + limit, "delivery_method": order.delivery_method,
         "customer_name": order.customer.full_name, "customer_phone": order.delivery_phone or order.customer.phone,
         "items": [
-            {"name": item.listing.name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
+            {"name": item.line_name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
             for item in order.items.all()
         ],
         "customer_confirmed": customer_confirmed(order, check),
@@ -292,7 +292,7 @@ def pickup_row(order, now, window=None):
         "order_id": order.pk, "placed_at": order.placed_at, "collect_by": collect_by(order, now, window),
         "overdue": now > collect_by(order, now, window), "customer_name": order.customer.full_name,
         "items": [
-            {"name": item.listing.name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
+            {"name": item.line_name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
             for item in order.items.all()
         ],
     }

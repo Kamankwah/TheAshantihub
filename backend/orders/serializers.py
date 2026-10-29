@@ -13,7 +13,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderItem
-        fields = ["id", "listing", "listing_name", "quantity", "unit_price", "line_total"]
+        fields = ["id", "listing", "listing_name", "variant", "variant_label", "quantity", "unit_price", "line_total"]
 
 
 DELIVERY_FIELDS = [
@@ -355,5 +355,5 @@ class DispatchDeliverySerializer(serializers.ModelSerializer):
                     "lng": float(item.listing.lng) if item.listing.lng is not None else None,
                     "items": [],
                 }
-            seen[owner.id]["items"].append(f"{item.listing.name} × {item.quantity}")
+            seen[owner.id]["items"].append(f"{item.line_name} × {item.quantity}")
         return list(seen.values())

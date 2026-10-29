@@ -144,6 +144,8 @@ export const LISTING_STATUS_META = {
   pending_review: { label: "Pending Review", color: D.amber },
   published: { label: "Published", color: D.green },
   rejected: { label: "Rejected", color: D.red },
+  dropped: { label: "Dropped", color: D.amber },
+  discontinued: { label: "Discontinued", color: "#8A7A6B" },
 };
 
 export const HERO_STATUS_META = {

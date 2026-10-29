@@ -108,6 +108,24 @@ describe('UserPanel', () => {
       await screen.findByText('No orders yet.')
     })
 
+    it('names the variant bought beside the listing name', async () => {
+      server.use(
+        http.get('http://localhost:8000/api/orders/', () =>
+          HttpResponse.json([{
+            id: 3, status: 'paid', delivery_status: 'processing', delivery_method: 'store_pickup', total_amount: '55.00', placed_at: '2026-07-03T00:00:00Z',
+            items: [
+              { id: 5, listing: 9, listing_name: 'Cake', variant_label: 'Vanilla', quantity: 1, unit_price: '25.00', line_total: '25.00' },
+              { id: 6, listing: 9, listing_name: 'Cake', variant_label: 'Chocolate', quantity: 1, unit_price: '30.00', line_total: '30.00' },
+            ],
+          }]),
+        ),
+      )
+      renderPanel()
+      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      await screen.findByText('Cake (Vanilla) × 1')
+      expect(screen.getByText('Cake (Chocolate) × 1')).toBeInTheDocument()
+    })
+
     it('shows a delivery stepper only for a paid door-to-door order', async () => {
       server.use(
         http.get('http://localhost:8000/api/orders/', () =>

@@ -20,7 +20,8 @@ server {
 
 	# Photo and document uploads. nginx's 1MB default would reject them as
 	# 413 before the request ever reached Django.
-	client_max_body_size 25m;
+	# The app enforces the real limits: 100 MB per video, 5 MB per image.
+	client_max_body_size 110m;
 
 	# No /.well-known/ location here on purpose. HestiaCP does not drop a
 	# challenge file on disk — it injects a regex location that answers the

@@ -145,6 +145,10 @@ class EventListView(generics.ListAPIView):
         if zone_name:
             queryset = queryset.filter(zone__name=zone_name)
 
+        seller = self.request.query_params.get("seller")
+        if seller and seller.isdigit():  # the seller page's Events tab
+            queryset = queryset.filter(submitted_by_business_id=int(seller))
+
         return queryset
 
 

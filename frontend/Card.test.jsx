@@ -46,6 +46,15 @@ describe('Card with real API shape', () => {
     expect(screen.getByText(/Manhyia/)).toBeInTheDocument()
   })
 
+  it('says "From" before the price of a listing with options, and not otherwise', () => {
+    const props = { accentColor: '#000080', user: null, favourites: [], onFavourite: vi.fn(), currency: 'GHS', onMessage: vi.fn() }
+    const { unmount } = renderWithClient(<Card item={{ ...REAL_SHAPED_LISTING, has_variants: true }} {...props} />)
+    expect(screen.getByTestId('price-line')).toHaveTextContent(/^From\s*GHS 450\.00/)
+    unmount()
+    renderWithClient(<Card item={{ ...REAL_SHAPED_LISTING, has_variants: false }} {...props} />)
+    expect(screen.getByTestId('price-line')).not.toHaveTextContent('From')
+  })
+
   it('renders the main_photo as an image when present', () => {
     renderWithClient(
       <Card

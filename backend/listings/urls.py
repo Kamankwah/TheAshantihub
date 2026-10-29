@@ -1,18 +1,45 @@
 from django.urls import path
 
-from . import views
+from . import views, views_discounts, views_media, views_revisions, views_sellers
 
 urlpatterns = [
     path("mine/", views.OwnerListingCreateListView.as_view(), name="listing-mine-list-create"),
     path("mine/<int:pk>/", views.OwnerListingUpdateView.as_view(), name="listing-mine-update"),
     path("mine/<int:pk>/submit/", views.ListingSubmitView.as_view(), name="listing-submit"),
+    path("mine/<int:pk>/drop/", views.ListingDropView.as_view(), name="listing-drop"),
+    path("mine/<int:pk>/restore/", views.ListingRestoreView.as_view(), name="listing-restore"),
+    path("mine/<int:pk>/discontinue/", views.ListingDiscontinueView.as_view(), name="listing-discontinue"),
     path("mine/<int:pk>/restock/", views.ListingRestockView.as_view(), name="listing-restock"),
     path("mine/<int:pk>/manage/", views.ListingManageView.as_view(), name="listing-manage"),
-    path("mine/<int:pk>/photos/", views.ListingPhotoCreateView.as_view(), name="listing-photo-create"),
+    path("mine/<int:pk>/variants/", views.ListingVariantListCreateView.as_view(), name="listing-variants"),
+    path("mine/<int:pk>/variants/<int:vid>/", views.ListingVariantDetailView.as_view(), name="listing-variant-detail"),
+    path("mine/<int:pk>/variants/<int:vid>/live/", views.ListingVariantLiveView.as_view(), name="listing-variant-live"),
+    path("mine/<int:pk>/discounts/", views_discounts.ListingDiscountsView.as_view(), name="listing-discounts"),
+    path("mine/<int:pk>/discounts/end/", views_discounts.ListingDiscountEndView.as_view(), name="listing-discount-end"),
+    path("mine/<int:pk>/revision/", views_revisions.ListingRevisionView.as_view(), name="listing-revision"),
+    path(
+        "mine/<int:pk>/revision/submit/", views_revisions.ListingRevisionSubmitView.as_view(),
+        name="listing-revision-submit",
+    ),
+    path("revisions/pending/", views_revisions.RevisionPendingQueueView.as_view(), name="listing-revision-pending"),
+    path("revisions/<int:pk>/", views_revisions.RevisionDetailView.as_view(), name="listing-revision-detail"),
+    path(
+        "revisions/<int:pk>/approve/", views_revisions.RevisionApproveView.as_view(), name="listing-revision-approve",
+    ),
+    path("revisions/<int:pk>/reject/", views_revisions.RevisionRejectView.as_view(), name="listing-revision-reject"),
+    path(
+        "revisions/<int:pk>/re-review/", views_revisions.RevisionReReviewView.as_view(),
+        name="listing-revision-re-review",
+    ),
+    path("mine/<int:pk>/photos/", views_media.ListingPhotoCreateView.as_view(), name="listing-photo-create"),
     path(
         "mine/<int:pk>/photos/<int:photo_id>/",
-        views.ListingPhotoDeleteView.as_view(),
+        views_media.ListingPhotoDeleteView.as_view(),
         name="listing-photo-delete",
+    ),
+    path("mine/<int:pk>/videos/", views_media.ListingVideoCreateView.as_view(), name="listing-video-create"),
+    path(
+        "mine/<int:pk>/videos/<int:video_id>/", views_media.ListingVideoDeleteView.as_view(), name="listing-video-delete",
     ),
     path("moderation/pending/", views.ModerationPendingQueueView.as_view(), name="moderation-pending"),
     path("moderation/stats/", views.ModerationStatsView.as_view(), name="moderation-stats"),
@@ -35,6 +62,7 @@ urlpatterns = [
     path("zones/<int:pk>/", views.ZoneDetailView.as_view(), name="zone-detail"),
     # Before the `<int:pk>/` patterns below, so "promotions" is never parsed
     # as a listing id.
+    path("promotions/pricing/", views.PromotionPricingView.as_view(), name="promotion-pricing"),
     path("promotions/", views.PromotionAdminListView.as_view(), name="promotion-admin-list"),
     path(
         "promotions/<int:pk>/approve/",
@@ -51,6 +79,7 @@ urlpatterns = [
         views.PromotionCancelView.as_view(),
         name="promotion-cancel",
     ),
+    path("sellers/<int:pk>/", views_sellers.SellerDetailView.as_view(), name="listing-seller"),
     path("sponsored/", views.SponsoredListView.as_view(), name="listing-sponsored-list"),
     path("", views.PublicListingListView.as_view(), name="listing-list"),
     path("<int:pk>/", views.PublicListingDetailView.as_view(), name="listing-detail"),

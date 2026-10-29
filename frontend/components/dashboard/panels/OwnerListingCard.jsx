@@ -1,15 +1,20 @@
-import { useRef, useState } from "react";
-import { apiPatch, apiPost, apiPostForm, apiDelete } from "../../../apiClient.js";
+import { useState } from "react";
+import { apiPatch, apiPost, apiPut } from "../../../apiClient.js";
+import { useListingRevision } from "../../../hooks/useListingRevision.js";
 import { D, glassCard, sectionTitle, tint } from "../theme.js";
+import ListingChangesBanner from "./ListingChangesBanner.jsx";
+import MediaManager from "./MediaManager.jsx";
+import VariantEditor from "./VariantEditor.jsx";
+import { DecisionFields } from "./listingFormFields.jsx";
+import { Chip, DEFAULT_LISTINGS_PATH, btn, inputStyle, noteStyle, quietBtn, serverMessage } from "./listingEditorShared.jsx";
 
-// Shared owner-facing listing management card (business item 2 + pre-prod bug
-// fixes 3/4). One card renders a single approved listing and lets the owner
-// view/edit its operational details WITHOUT re-moderation (the /manage/
-// endpoint) plus manage its photo gallery (the customer-facing images). Reused
-// by ProductsPanel (variant="product": stock + restock + expiry), ServicesPanel
-// (variant="service": no stock) and BookingsPanel (variant="accommodation").
-const inputStyle = { padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${D.divider}`, fontSize: "0.8rem", fontFamily: "inherit", background: D.panelBg2, color: D.text, boxSizing: "border-box" };
-const btn = { border: "none", borderRadius: 20, padding: "7px 14px", fontSize: "0.74rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
+// Shared owner-facing listing card for an approved listing. Only price and stock go live at
+// once (the /manage/, /restock/ and variant "live" endpoints). Every other change ("Edit
+// details", images, videos, variants) is kept as a draft edit that our team approves while the
+// approved version stays live. An owner can also Drop (hide, reversible), Restore, or
+// Discontinue (permanent) the listing. Reused by ProductsPanel (stock + restock + expiry),
+// ServicesPanel and BookingsPanel; every URL is built from `basePath` so Ashanti Direct can
+// mount the same card on "/api/direct/listings".
 
 function daysUntil(dateStr) {
   if (!dateStr) return null;
@@ -30,74 +35,168 @@ function ExpiryBadge({ listing }) {
   );
 }
 
-export default function OwnerListingCard({ listing, onChanged, variant = "product" }) {
-  const isProduct = variant === "product";
-  const [editing, setEditing] = useState(false);
+
+const CONFIRM_TEXT = {
+  drop: {
+    text: "Drop hides this listing from shoppers right away. Nothing is deleted, and you can restore it later.",
+    action: "Yes, drop it",
+  },
+  discontinue: {
+    text: "Discontinue is permanent: the listing can never be sold again. Old orders will still show it.",
+    action: "Yes, discontinue it",
+  },
+};
+
+// The "Edit price & specs" form. The price is live (it goes through /manage/); name, description,
+// tag and specs go into a draft edit of the approved listing and need approval.
+function DetailsEditor({ listing, basePath, kind, onSaved, onCancel }) {
+  const revision = useListingRevision(listing.id, { basePath });
+  if (revision.isLoading) return <div style={{ ...noteStyle, marginTop: 10 }}>Loading your edit…</div>;
+  const waiting = revision.data?.status === "pending";
+  return <DetailsForm listing={listing} basePath={basePath} kind={kind} staged={waiting ? {} : (revision.data?.changes || {})} waiting={waiting} onSaved={onSaved} onCancel={onCancel} />;
+}
+
+// Fields that go into the draft edit besides name/description/tag/specs, by kind of listing.
+const PRODUCT_FIELDS = ["has_warranty", "warranty_details", "has_expiry", "expiry_date", "return_policy", "brand", "condition", "dimensions", "weight", "barcode"];
+const SERVICE_FIELDS = ["service_duration", "whats_included", "requirements", "revisions", "delivery_time"];
+const STAY_FIELDS = ["service_duration", "whats_included", "requirements", "cancellation_policy", "units_total"];
+const BOOLEAN_FIELDS = ["has_warranty", "has_expiry"];
+
+// One value in the shape the API stores it, so a form value and the live listing compare equal.
+const normalise = (field, value) => {
+  if (BOOLEAN_FIELDS.includes(field)) return value === true || value === "yes";
+  if (field === "expiry_date") return value || null;
+  if (field === "units_total") return value === "" || value == null ? null : Number(value);
+  if (field === "tag") return value || null;
+  return value ?? "";
+};
+const toForm = (field, value) => (BOOLEAN_FIELDS.includes(field) ? (value ? "yes" : "no") : value ?? "");
+
+function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCancel }) {
+  const fields = ["name", "description", "tag", "contact_phone", ...(kind === "product" ? PRODUCT_FIELDS : kind === "stay" ? STAY_FIELDS : SERVICE_FIELDS)];
   const [price, setPrice] = useState(listing.price_amount ?? "");
-  const [specs, setSpecs] = useState(listing.specs || []);
+  const [form, setForm] = useState(() => Object.fromEntries(fields.map(f => [f, toForm(f, staged[f] !== undefined ? staged[f] : listing[f])])));
+  const [specs, setSpecs] = useState((staged.specs !== undefined ? staged.specs : listing.specs) || []);
+  const [error, setError] = useState(null);
+  const update = (field, value) => setForm(f => ({ ...f, [field]: value }));
+  const setSpec = (i, key, val) => setSpecs(prev => prev.map((s, idx) => idx === i ? { ...s, [key]: val } : s));
+  const label = { fontSize: "0.72rem", fontWeight: 700, color: D.text, display: "block", marginBottom: 4 };
+
+  const save = async () => {
+    setError(null);
+    const cleanSpecs = specs.filter(s => s.label || s.value);
+    const changes = {};
+    if (!waiting) {
+      for (const f of fields) {
+        const wanted = normalise(f, form[f]);
+        if (JSON.stringify(wanted) !== JSON.stringify(normalise(f, listing[f]))) changes[f] = wanted;
+      }
+      if (JSON.stringify(cleanSpecs) !== JSON.stringify(listing.specs || [])) changes.specs = cleanSpecs;
+    }
+    const priceChanged = !listing.has_variants && String(price) !== String(listing.price_amount ?? "");
+    if (!priceChanged && Object.keys(changes).length === 0) { setError("You have not changed anything yet."); return; }
+    let priceSaved = false;
+    try {
+      if (priceChanged) { await apiPatch(`${basePath}/${listing.id}/manage/`, { price_amount: price === "" ? null : price }); priceSaved = true; }
+      if (Object.keys(changes).length > 0) await apiPut(`${basePath}/${listing.id}/revision/`, { changes });
+      onSaved();
+    } catch (err) {
+      const words = serverMessage(err, "Could not save your changes. Please try again.");
+      setError(priceSaved ? `Price saved; the other changes were not. ${words}` : words);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      {!listing.has_variants && (
+        <div style={{ marginBottom: 12 }}>
+          <label htmlFor={`price-${listing.id}`} style={label}>Price (GHS)</label>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input id={`price-${listing.id}`} type="number" value={price} onChange={e => setPrice(e.target.value)} style={{ ...inputStyle, width: 160 }} />
+            <Chip color={D.green}>Live now</Chip>
+          </div>
+        </div>
+      )}
+      {waiting ? (
+        <div style={{ color: D.amber, fontSize: "0.74rem", marginBottom: 8 }}>This edit is waiting for review, so the other details cannot change until it is decided.</div>
+      ) : (
+      <>
+      <div style={{ ...noteStyle, marginBottom: 8 }}>Everything below needs approval. Your approved version stays live until then.</div>
+      <label style={label}>Name</label>
+      <input value={form.name} onChange={e => update("name", e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
+      <label style={label}>Description</label>
+      <textarea value={form.description} onChange={e => update("description", e.target.value)} style={{ ...inputStyle, width: "100%", minHeight: 64, marginBottom: 8, resize: "vertical" }} />
+      <label style={label}>Tag</label>
+      <input value={form.tag} onChange={e => update("tag", e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
+      <label style={label}>Contact phone</label>
+      <input value={form.contact_phone} onChange={e => update("contact_phone", e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
+      <DecisionFields kind={kind === "product" ? "product" : "service"} isAccommodation={kind === "stay"} form={form} update={update} hideStock />
+      {kind === "product" && (
+        <div style={{ marginBottom: 8 }}>
+          <label style={label}>Barcode</label>
+          <input value={form.barcode} onChange={e => update("barcode", e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+        </div>
+      )}
+      <div style={{ ...sectionTitle, fontSize: "0.72rem", marginBottom: 6 }}>Specs</div>
+      {specs.map((s, i) => (
+        <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+          <input value={s.label || ""} onChange={e => setSpec(i, "label", e.target.value)} placeholder="Label" style={{ ...inputStyle, flex: 1, width: "auto" }} />
+          <input value={s.value || ""} onChange={e => setSpec(i, "value", e.target.value)} placeholder="Value" style={{ ...inputStyle, flex: 1, width: "auto" }} />
+          <button type="button" onClick={() => setSpecs(prev => prev.filter((_, idx) => idx !== i))} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>✕</button>
+        </div>
+      ))}
+      <button type="button" onClick={() => setSpecs(prev => [...prev, { label: "", value: "" }])} style={{ ...quietBtn, marginBottom: 10 }}>+ Add spec</button>
+      </>
+      )}
+      {error && <div style={{ color: D.red, fontSize: "0.74rem", marginBottom: 6 }}>{error}</div>}
+      <div style={{ display: "flex", gap: 6 }}>
+        <button type="button" onClick={save} style={{ ...btn, background: D.gold, color: "#1a1205" }}>Save changes</button>
+        <button type="button" onClick={onCancel} style={quietBtn}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+export default function OwnerListingCard({ listing, onChanged, variant = "product", basePath = DEFAULT_LISTINGS_PATH, showVariants }) {
+  const isProduct = variant === "product";
+  const variantsAllowed = showVariants ?? (isProduct || Boolean(listing.has_variants));
+  const hasVariants = Boolean(listing.has_variants);
+  const [editing, setEditing] = useState(false);
   const [restockOpen, setRestockOpen] = useState(false);
   const [restockQty, setRestockQty] = useState("");
-  const [uploading, setUploading] = useState(false);
+  const [variantsOpen, setVariantsOpen] = useState(false);
+  const [confirm, setConfirm] = useState(null); // "drop" | "discontinue" | null
+  const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState(null);
-  const fileRef = useRef(null);
 
-  const photos = listing.photos || [];
+  const dropped = listing.status === "dropped";
+  const discontinued = listing.status === "discontinued";
   const lowStock = isProduct && listing.stock_quantity != null && listing.stock_quantity <= 3;
+  const base = `${basePath}/${listing.id}`;
 
-  const saveDetails = async () => {
-    setActionError(null);
-    try {
-      await apiPatch(`/api/listings/mine/${listing.id}/manage/`, {
-        price_amount: price === "" ? null : price,
-        specs: specs.filter(s => s.label || s.value),
-      });
-      setEditing(false);
-      onChanged();
-    } catch { setActionError("Could not save. Please try again."); }
+  const run = async (call, fallback, after) => {
+    setActionError(null); setBusy(true);
+    try { await call(); if (after) after(); onChanged(); }
+    catch (err) { setActionError(serverMessage(err, fallback)); }
+    finally { setBusy(false); }
   };
 
-  const restock = async () => {
+  const restock = () => {
     if (!restockQty) return;
-    setActionError(null);
-    try {
-      await apiPost(`/api/listings/mine/${listing.id}/restock/`, { add: Number(restockQty) });
-      setRestockOpen(false); setRestockQty("");
-      onChanged();
-    } catch { setActionError("Could not restock. Please try again."); }
+    return run(() => apiPost(`${base}/restock/`, { add: Number(restockQty) }), "Could not restock. Please try again.", () => { setRestockOpen(false); setRestockQty(""); });
   };
-
-  const uploadPhoto = async (e) => {
-    const file = e.target.files?.[0];
-    if (fileRef.current) fileRef.current.value = ""; // allow re-picking the same file
-    if (!file) return;
-    setActionError(null); setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("image", file);
-      await apiPostForm(`/api/listings/mine/${listing.id}/photos/`, fd);
-      onChanged();
-    } catch { setActionError("Could not upload that photo. Please try again."); }
-    finally { setUploading(false); }
-  };
-
-  const deletePhoto = async (photoId) => {
-    setActionError(null);
-    try {
-      await apiDelete(`/api/listings/mine/${listing.id}/photos/${photoId}/`);
-      onChanged();
-    } catch { setActionError("Could not remove that photo. Please try again."); }
-  };
-
-  const setSpec = (i, key, val) => setSpecs(prev => prev.map((s, idx) => idx === i ? { ...s, [key]: val } : s));
+  const lifecycle = (verb) => run(() => apiPost(`${base}/${verb}/`, {}), `Could not ${verb} this listing. Please try again.`, () => setConfirm(null));
 
   return (
     <div style={{ ...glassCard, padding: 16, marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
         <div>
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem" }}>{listing.name}</div>
-          <div style={{ color: D.textDim, fontSize: "0.74rem", marginTop: 2 }}>GHS {listing.price_amount ?? "—"}{listing.price_unit ? ` ${listing.price_unit}` : ""}</div>
+          <div style={{ color: D.textDim, fontSize: "0.74rem", marginTop: 2 }}>{hasVariants ? "From " : ""}GHS {listing.price_amount ?? "—"}{listing.price_unit ? ` ${listing.price_unit}` : ""}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {dropped && <Chip color={D.amber}>Dropped: hidden from shoppers</Chip>}
+          {discontinued && <Chip color={D.textFaint}>Discontinued</Chip>}
           <ExpiryBadge listing={listing} />
           {isProduct && (
             <span style={{ background: lowStock ? tint(D.red, "22") : tint(D.green, "22"), color: lowStock ? D.red : D.green, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>
@@ -107,62 +206,57 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
         </div>
       </div>
 
-      {/* Photo gallery — always visible so the owner can see what customers see */}
-      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
-        {listing.main_photo && (
-          <img src={listing.main_photo} alt="Main photo" title="Main photo" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: `2px solid ${D.gold}` }} />
-        )}
-        {photos.map(p => (
-          <div key={p.id} style={{ position: "relative" }}>
-            <img src={p.image} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: `1px solid ${D.divider}` }} />
-            <button
-              onClick={() => deletePhoto(p.id)}
-              title="Remove photo"
-              style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: D.red, color: "#fff", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer", lineHeight: 1, padding: 0 }}
-            >✕</button>
-          </div>
-        ))}
-        <label style={{ ...btn, background: D.panelBg2, color: D.text, border: `1px dashed ${D.divider}`, display: "inline-flex", alignItems: "center", cursor: uploading ? "default" : "pointer", opacity: uploading ? 0.6 : 1 }}>
-          {uploading ? "Uploading…" : "📷 Add photo"}
-          <input ref={fileRef} type="file" accept="image/*" onChange={uploadPhoto} disabled={uploading} style={{ display: "none" }} />
-        </label>
-      </div>
-      {photos.length === 0 && !listing.main_photo && <div style={{ color: D.textFaint, fontSize: "0.68rem", marginTop: 4 }}>No photos yet — add images so customers can see this listing.</div>}
+      <ListingChangesBanner listing={listing} basePath={basePath} onChanged={onChanged} onEdit={() => setEditing(true)} />
+
+      {!discontinued && (
+        <MediaManager listing={listing} basePath={basePath} onChanged={onChanged} />
+      )}
 
       {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
       {lowStock && !restockOpen && <div style={{ color: D.red, fontSize: "0.7rem", marginTop: 6 }}>Running low — restock soon.</div>}
 
-      <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-        <button onClick={() => setEditing(e => !e)} style={{ ...btn, background: D.panelBg2, color: D.text, border: `1px solid ${D.divider}` }}>{editing ? "Close" : "✏️ Edit price & specs"}</button>
-        {isProduct && <button onClick={() => setRestockOpen(o => !o)} style={{ ...btn, background: D.gold, color: "#1a1205" }}>📦 Restock</button>}
-      </div>
-
-      {isProduct && restockOpen && (
-        <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center" }}>
-          <input type="number" min={1} value={restockQty} onChange={e => setRestockQty(e.target.value)} placeholder="Add quantity" style={{ ...inputStyle, width: 140 }} />
-          <button onClick={restock} disabled={!restockQty} style={{ ...btn, background: D.green, color: "#fff", cursor: restockQty ? "pointer" : "default" }}>Add to stock</button>
+      {!discontinued && !hasVariants && isProduct && (
+        <div style={{ marginTop: 12 }}>
+          <button type="button" onClick={() => setRestockOpen(o => !o)} style={{ ...btn, background: D.gold, color: "#1a1205" }}>📦 Restock</button>
+          {restockOpen && (
+            <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center" }}>
+              <input type="number" min={1} value={restockQty} onChange={e => setRestockQty(e.target.value)} placeholder="Add quantity" style={{ ...inputStyle, width: 140 }} />
+              <button type="button" onClick={restock} disabled={!restockQty || busy} style={{ ...btn, background: D.green, color: "#fff", cursor: restockQty ? "pointer" : "default" }}>Add to stock</button>
+              <Chip color={D.green}>Live now</Chip>
+            </div>
+          )}
         </div>
       )}
 
-      {editing && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ marginBottom: 10 }}>
-            <label style={{ fontSize: "0.72rem", fontWeight: 700, color: D.text, display: "block", marginBottom: 4 }}>Price (GHS)</label>
-            <input type="number" value={price} onChange={e => setPrice(e.target.value)} style={{ ...inputStyle, width: 160 }} />
-          </div>
-          <div style={{ ...sectionTitle, fontSize: "0.72rem", marginBottom: 6 }}>Specs</div>
-          {specs.map((s, i) => (
-            <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-              <input value={s.label || ""} onChange={e => setSpec(i, "label", e.target.value)} placeholder="Label" style={{ ...inputStyle, flex: 1 }} />
-              <input value={s.value || ""} onChange={e => setSpec(i, "value", e.target.value)} placeholder="Value" style={{ ...inputStyle, flex: 1 }} />
-              <button onClick={() => setSpecs(prev => prev.filter((_, idx) => idx !== i))} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>✕</button>
-            </div>
-          ))}
-          <button onClick={() => setSpecs(prev => [...prev, { label: "", value: "" }])} style={{ ...btn, background: D.panelBg2, color: D.text, border: `1px solid ${D.divider}`, marginBottom: 10 }}>+ Add spec</button>
-          <div>
-            <button onClick={saveDetails} style={{ ...btn, background: D.gold, color: "#1a1205" }}>Save changes</button>
+      {!discontinued && variantsAllowed && (hasVariants || variantsOpen) && (
+        <VariantEditor listing={listing} basePath={basePath} onChanged={onChanged} />
+      )}
+
+      {!discontinued && (
+        <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+          {variantsAllowed && !hasVariants && !variantsOpen && (
+            <button type="button" onClick={() => setVariantsOpen(true)} style={quietBtn}>＋ Add variants</button>
+          )}
+          <button type="button" onClick={() => setEditing(e => !e)} style={quietBtn}>{editing ? "Close" : "✏️ Edit price & specs"}</button>
+          {dropped
+            ? <button type="button" disabled={busy} onClick={() => lifecycle("restore")} style={{ ...btn, background: D.green, color: "#fff" }}>Restore</button>
+            : <button type="button" disabled={busy} onClick={() => setConfirm("drop")} style={quietBtn}>Drop</button>}
+          <button type="button" disabled={busy} onClick={() => setConfirm("discontinue")} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>Discontinue</button>
+        </div>
+      )}
+
+      {confirm && (
+        <div role="alertdialog" aria-label={`Confirm ${confirm}`} style={{ marginTop: 10, padding: "10px 12px", border: `1px solid ${D.red}`, borderRadius: 10, color: D.text, fontSize: "0.76rem" }}>
+          <div>{CONFIRM_TEXT[confirm].text}</div>
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <button type="button" disabled={busy} onClick={() => lifecycle(confirm)} style={{ ...btn, background: D.red, color: "#fff" }}>{CONFIRM_TEXT[confirm].action}</button>
+            <button type="button" onClick={() => setConfirm(null)} style={quietBtn}>Cancel</button>
           </div>
         </div>
+      )}
+
+      {editing && !discontinued && (
+        <DetailsEditor listing={listing} basePath={basePath} kind={variant === "accommodation" ? "stay" : isProduct ? "product" : "service"} onCancel={() => setEditing(false)} onSaved={() => { setEditing(false); onChanged(); }} />
       )}
     </div>
   );

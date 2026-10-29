@@ -94,7 +94,7 @@ def stop_row(stop, order, skips=()):
         "status": stop.status, "status_label": stop.get_status_display(), "planned_arrival": stop.planned_arrival,
         "late": stops.arrival_late(stop),
         "arrived_at": stop.arrived_at, "collected_at": stop.collected_at, "skip_note": stop.skip_note,
-        "items": [f"{i.listing.name} × {i.quantity}" for i in lines],
+        "items": [f"{i.line_name} × {i.quantity}" for i in lines],
         "attempts_left": max(0, services.CODE_ATTEMPT_LIMIT - stop.code_attempts), "wrong_tries": stop.code_attempts,
         **({"skips": list(skips)} if skips != () else {}),
     }

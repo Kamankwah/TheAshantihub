@@ -7,6 +7,8 @@ import { categoryPathLabel } from "../../../lib/categoryOptions.jsx";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
 import { button, callout, dim, field } from "./panelStyles.js";
+import ListingRevisionsPanel from "./ListingRevisionsPanel.jsx";
+import { VariantsTable, VideosBlock } from "./listingReviewParts.jsx";
 import SponsoredToggle, { isProductListing } from "./SponsoredToggle.jsx";
 import { Chip, CountCell, CountHead, ExportButton, FilterBar, KpiStrip, LoadState, Pager, ScreenHeader, col, dateOnly, dateTime, showing, tableStyle, td, th } from "./marketplaceParts.jsx";
 import { card, errorStyle, h3, labelStyle, money, useDebounced } from "./portfolioParts.jsx";
@@ -87,6 +89,8 @@ function ReviewSheet({ listing, canModerate, approving, onApprove, onClose }) {
             {rows.map(([k, v]) => <div key={k} style={{ display: "contents" }}><dt style={dim}>{k}</dt><dd style={{ margin: 0 }}>{String(v)}</dd></div>)}
             {(d.specs || []).map((s, i) => <div key={`s${i}`} style={{ display: "contents" }}><dt style={dim}>{s.label}</dt><dd style={{ margin: 0 }}>{s.value}</dd></div>)}
           </dl>
+          <VariantsTable variants={d.variants} />
+          <VideosBlock videos={d.videos} />
           {d.open_fraud_cases > 0 && <div role="alert" style={callout(D.red)}>{`This business has ${d.open_fraud_cases} open fraud ${d.open_fraud_cases === 1 ? "case" : "cases"}.`}</div>}
         </>
       )}
@@ -130,7 +134,7 @@ function TakeDown({ listing, onDone, onCancel }) {
   );
 }
 
-export default function SaListingsPanel({ auth, onOpenBusiness }) {
+function AllListingsView({ auth, onOpenBusiness }) {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({ type: "", status: "", added_by: "", category: "" });
   const [search, setSearch] = useState("");
@@ -244,6 +248,23 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
         <h3 style={h3}>How moderation works</h3>
         <ul style={{ margin: 0, paddingLeft: 18, fontSize: "0.8rem", color: D.text, display: "flex", flexDirection: "column", gap: 4 }}>{RULES.map((r) => <li key={r}>{r}</li>)}</ul>
       </section>
+    </div>
+  );
+}
+
+// Super Admin also reviews owners' changes to live listings (same queue and
+// panel as Operations' Listings moderation); a toggle keeps the screen above untouched.
+export default function SaListingsPanel({ auth, onOpenBusiness }) {
+  const [view, setView] = useState("all"); // "all" | "changes"
+  const views = [["all", "All listings"], ["changes", "Changes to live listings"]];
+  return (
+    <div style={col}>
+      <div role="group" aria-label="Listings view" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {views.map(([key, label]) => (
+          <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)} style={{ background: view === key ? D.text : "transparent", color: view === key ? D.panelBg : D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "6px 12px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{label}</button>
+        ))}
+      </div>
+      {view === "changes" ? <ListingRevisionsPanel auth={auth} /> : <AllListingsView auth={auth} onOpenBusiness={onOpenBusiness} />}
     </div>
   );
 }

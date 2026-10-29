@@ -20,6 +20,7 @@ import SubscriptionPanel from "./panels/SubscriptionPanel.jsx";
 import EventsPanel from "./panels/EventsPanel.jsx";
 import ProfilePanel from "./panels/ProfilePanel.jsx";
 import DeliveryPromosPanel from "./panels/DeliveryPromosPanel.jsx";
+import PromotionsHubPanel from "./panels/PromotionsHubPanel.jsx";
 import RenewBanner from "./RenewBanner.jsx";
 import ManagerChangesCard from "./ManagerChangesCard.jsx";
 
@@ -41,6 +42,7 @@ const TABS = [
   { id: "events", icon: "🎉", label: "Events" },
   { id: "deliveries", icon: "🚚", label: "Deliveries" },
   { id: "delivery-promos", icon: "🎁", label: "Free delivery" },
+  { id: "promote", icon: "📣", label: "Promote" },
   { id: "payments", icon: "💳", label: "Payments" },
   { id: "money", icon: "💰", label: "Money" },
   { id: "credit", icon: "🏅", label: "Credit" },
@@ -267,6 +269,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                 {tab === "events" && <EventsPanel user={user} PaymentComponent={PaymentComponent} />}
                 {tab === "deliveries" && <DeliveriesPanel />}
                 {tab === "delivery-promos" && <DeliveryPromosPanel />}
+                {tab === "promote" && <PromotionsHubPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} />}
                 {tab === "payments" && <PaymentsPanel user={user} PaymentComponent={PaymentComponent} businessKind={profile?.business_kind} />}
                 {tab === "money" && <VendorMoney businessKind={profile?.business_kind} />}
                 {tab === "credit" && <CreditPanel user={user} />}

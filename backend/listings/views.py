@@ -2,9 +2,10 @@ import os
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction as db_transaction
-from django.db.models import Avg, Case, Count, Exists, F, FloatField, IntegerField, OuterRef, Q, Value, When
+from django.db.models import Avg, Case, Count, Max, Exists, F, FloatField, IntegerField, OuterRef, Q, Value, When
 from django.db.models import ProtectedError
 from django.utils import timezone
 from django.utils.crypto import get_random_string
@@ -14,13 +15,15 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import BusinessOwner
+from accounts.direct import direct_q
+from accounts.models import BusinessOwner, StaffUser
 from activity.services import record as activity_record
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner
 from billing.models import Transaction
 from notifications.services import notify_business_owner, notify_staff_role
 
+from . import lifecycle, revisions, variants
 from .moderation_checks import (
     CONTACT_DETAILS_MESSAGE,
     blocking_failures,
@@ -31,8 +34,9 @@ from .moderation_checks import (
 )
 from . import hero_rules
 from .category_tree import build_tree
-from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
-from .permissions import IsHeroMediaOwner, IsListingOwner, IsListingPhotoOwner
+from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, ListingVariant, Promotion, Zone
+from .permissions import IsHeroMediaOwner, IsListingOwnerOrDirectOperator, IsListingPhotoOwner
+from .scoping import ScopedOwner
 from .serializers import (
     CartTieredListingSerializer,
     CategorySerializer,
@@ -43,6 +47,7 @@ from .serializers import (
     HeroSlideInputSerializer,
     HeroSubmitSerializer,
     ListingPhotoSerializer,
+    ListingVariantSerializer,
     ModerationListingSerializer,
     OwnerListingManageSerializer,
     OwnerListingSerializer,
@@ -52,6 +57,7 @@ from .serializers import (
     PublicListingSerializer,
     ZoneSerializer,
 )
+from . import pricing
 from .pricing import effective_price_expr
 from .visibility import hidden_business_q, sold_out_q
 from .visits import record_visit
@@ -72,31 +78,7 @@ def _with_rating_annotations(queryset):
     return queryset.annotate(
         avg_rating=Avg("reviews__rating", filter=Q(reviews__status="published")),
         review_count=Count("reviews", filter=Q(reviews__status="published"), distinct=True),
-    )
-
-
-class ListingPhotoCreateView(generics.CreateAPIView):
-    serializer_class = ListingPhotoSerializer
-    permission_classes = [IsAuthenticated, IsListingOwner]
-
-    def get_listing(self):
-        listing = generics.get_object_or_404(Listing, pk=self.kwargs["pk"])
-        self.check_object_permissions(self.request, listing)
-        return listing
-
-    def perform_create(self, serializer):
-        serializer.save(listing=self.get_listing())
-
-
-class ListingPhotoDeleteView(APIView):
-    permission_classes = [IsAuthenticated, IsListingOwner]
-
-    def delete(self, request, pk, photo_id):
-        listing = generics.get_object_or_404(Listing, pk=pk)
-        self.check_object_permissions(request, listing)
-        photo = generics.get_object_or_404(ListingPhoto, pk=photo_id, listing=listing)
-        photo.delete()
-        return Response(status=204)
+    ).prefetch_related("variants", "videos")
 
 
 class CategoryListView(generics.ListCreateAPIView):
@@ -383,6 +365,13 @@ class PublicListingListView(generics.ListAPIView):
         if verified and verified.lower() in ("true", "1"):
             queryset = queryset.filter(business_owner__kyc_status=BusinessOwner.VERIFIED)
 
+        if self.request.query_params.get("sold_by") == "direct":
+            queryset = queryset.filter(direct_q("business_owner__"))
+
+        seller = self.request.query_params.get("seller")
+        if seller and seller.isdigit():  # the seller page's grid (GET /api/listings/sellers/<id>/)
+            queryset = queryset.filter(business_owner_id=int(seller))
+
         queryset = queryset.annotate(is_promoted=Exists(self._promoted_subquery()))
         ctx = self._cart_guard()
         if ctx is not None:
@@ -473,6 +462,7 @@ class PublicListingDetailView(generics.RetrieveAPIView):
     def get_queryset(self):
         return _with_rating_annotations(
             Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q())
+            .select_related("business_owner__profile")
         )
 
 
@@ -500,27 +490,63 @@ class RelatedListingsView(generics.ListAPIView):
             .exclude(sold_out_q())  # sold out: hidden like search while the switch is on (catalogue plan 6)
             .filter(Q(category=anchor.category) | Q(zone=anchor.zone))
             .exclude(pk=anchor.pk)
+            .select_related("business_owner__profile")
             .order_by("-created_at")
         )
         return _with_rating_annotations(queryset)[: self.RELATED_LIMIT]
 
 
-class OwnerListingCreateListView(generics.ListCreateAPIView):
+class OwnerListingCreateListView(ScopedOwner, generics.ListCreateAPIView):
     serializer_class = OwnerListingSerializer
-    permission_classes = [IsAuthenticated, IsBusinessOwner]
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
 
     def get_queryset(self):
-        return Listing.objects.filter(business_owner=self.request.user)
+        return Listing.objects.filter(business_owner=self.acting_owner()).prefetch_related("variants", "listing_revisions", "photos", "videos")
+
+    def get_serializer_context(self):
+        # The business a new listing belongs to, and (on Ashanti Direct's mount) the staff member making it.
+        return {**super().get_serializer_context(), "owner": self.acting_owner(), "staff": self.acting_staff()}
 
 
-class OwnerListingUpdateView(generics.UpdateAPIView):
+class OwnerListingUpdateView(ScopedOwner, generics.UpdateAPIView):
     queryset = Listing.objects.all()
     serializer_class = OwnerListingSerializer
-    permission_classes = [IsAuthenticated, IsListingOwner]
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
     http_method_names = ["patch"]
 
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "owner": self.acting_owner()}
 
-class ListingManageView(generics.UpdateAPIView):
+
+class _ListingLifecycleView(ScopedOwner, APIView):
+    """POST /api/listings/mine/{id}/<verb>/ — empty body, owner only; answers {"id", "status"} or 400 {"status": why}."""
+
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
+    action = None
+
+    def post(self, request, pk):
+        listing = generics.get_object_or_404(Listing, pk=pk)
+        self.check_object_permissions(request, listing)
+        try:
+            listing = getattr(lifecycle, self.action)(listing)
+        except lifecycle.LifecycleError as exc:
+            return Response({"status": str(exc)}, status=400)
+        return Response({"id": listing.pk, "status": listing.status})
+
+
+class ListingDropView(_ListingLifecycleView):
+    action = "drop"
+
+
+class ListingRestoreView(_ListingLifecycleView):
+    action = "restore"
+
+
+class ListingDiscontinueView(_ListingLifecycleView):
+    action = "discontinue"
+
+
+class ListingManageView(ScopedOwner, generics.UpdateAPIView):
     """PATCH /api/listings/mine/{id}/manage/ — light edit of a listing's
     operational fields (business item 2), allowed on a published listing
     without re-moderation. See OwnerListingManageSerializer for what's in vs
@@ -529,8 +555,83 @@ class ListingManageView(generics.UpdateAPIView):
 
     queryset = Listing.objects.all()
     serializer_class = OwnerListingManageSerializer
-    permission_classes = [IsAuthenticated, IsListingOwner]
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
     http_method_names = ["patch"]
+
+    def update(self, request, *args, **kwargs):
+        if variants.has_variants(self.get_object()):
+            return Response({"detail": variants.VARIANT_LISTING_MESSAGE}, status=400)
+        return super().update(request, *args, **kwargs)
+
+
+class _OwnerVariantView(ScopedOwner, APIView):
+    """Shared by the variant endpoints: only the signed-in business's own listing (and its own variant) resolves; any
+    other id is a 404, so one business cannot learn that another's listing exists."""
+
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
+
+    def owner_listing(self, request, pk):
+        return generics.get_object_or_404(Listing, pk=pk, business_owner=self.acting_owner(request))
+
+    def owner_variant(self, request, pk, vid):
+        listing = self.owner_listing(request, pk)
+        return listing, generics.get_object_or_404(ListingVariant, pk=vid, listing=listing)
+
+
+class ListingVariantListCreateView(_OwnerVariantView):
+    """GET/POST /api/listings/mine/{id}/variants/ - list a listing's variants, or add one. Adding works only on a draft
+    or rejected listing; a live listing's structure changes are sent for approval (never here)."""
+
+    def get(self, request, pk):
+        listing = self.owner_listing(request, pk)
+        return Response(ListingVariantSerializer(listing.variants.all(), many=True).data)
+
+    def post(self, request, pk):
+        self.owner_listing(request, pk)
+        with db_transaction.atomic():
+            listing = Listing.objects.select_for_update().get(pk=pk)
+            if listing.status in (Listing.PUBLISHED, Listing.DROPPED):
+                return Response({"detail": variants.STRUCTURE_LOCKED}, status=400)
+            if listing.status == Listing.DISCONTINUED:
+                return Response({"detail": "A discontinued listing cannot be changed."}, status=400)
+            if listing.status == Listing.PENDING_REVIEW:
+                return Response({"detail": "A listing waiting for review cannot be changed."}, status=400)
+            if not pricing.sale_allowed(listing.category):
+                return Response({"detail": "Only products and food can have variants."}, status=400)
+            serializer = ListingVariantSerializer(data=request.data, context={"listing": listing})
+            serializer.is_valid(raise_exception=True)
+            count = variants.active(listing).count()
+            last = listing.variants.aggregate(top=Max("position"))["top"]
+            if count >= variants.MAX_VARIANTS:
+                return Response({"detail": f"A listing can have at most {variants.MAX_VARIANTS} variants."}, status=400)
+            row = serializer.save(listing=listing, position=0 if last is None else last + 1)
+            variants.sync_listing(listing)
+        return Response(ListingVariantSerializer(row).data, status=201)
+
+
+class ListingVariantDetailView(_OwnerVariantView):
+    """DELETE /api/listings/mine/{id}/variants/{vid}/ - switch a variant off on a draft or rejected listing."""
+
+    def delete(self, request, pk, vid):
+        listing, row = self.owner_variant(request, pk, vid)
+        if listing.status not in (Listing.DRAFT, Listing.REJECTED):
+            return Response({"detail": variants.STRUCTURE_LOCKED}, status=400)
+        variants.deactivate(row)
+        return Response(status=204)
+
+
+class ListingVariantLiveView(_OwnerVariantView):
+    """PATCH /api/listings/mine/{id}/variants/{vid}/live/ - the one live variant edit: price_amount and/or stock_quantity
+    (or add). Nothing else about a variant changes here."""
+
+    def patch(self, request, pk, vid):
+        _, row = self.owner_variant(request, pk, vid)
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            row = variants.set_live(row, data)
+        except variants.VariantError as exc:
+            return Response(exc.payload, status=400)
+        return Response(ListingVariantSerializer(row).data)
 
 
 class ListingSponsoredView(APIView):
@@ -571,7 +672,7 @@ class SponsoredListView(APIView):
         ])
 
 
-class ListingRestockView(APIView):
+class ListingRestockView(ScopedOwner, APIView):
     """POST /api/listings/mine/{id}/restock/ — a business owner sets a
     listing's stock count (Wave F). Unlike the general edit endpoint (which
     blocks editing a *published* listing), restock deliberately works on a
@@ -583,11 +684,15 @@ class ListingRestockView(APIView):
     (stock_quantity=None) starts tracking it from that quantity.
     """
 
-    permission_classes = [IsAuthenticated, IsListingOwner]
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
 
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
         self.check_object_permissions(request, listing)
+        if listing.status == Listing.DISCONTINUED:
+            return Response({"status": "A discontinued listing cannot be changed."}, status=400)
+        if variants.has_variants(listing):
+            return Response({"detail": variants.VARIANT_LISTING_MESSAGE}, status=400)
 
         if "stock_quantity" in request.data:
             try:
@@ -615,16 +720,22 @@ class ListingRestockView(APIView):
         return Response({"id": listing.id, "stock_quantity": listing.stock_quantity})
 
 
-class ListingSubmitView(APIView):
-    permission_classes = [IsAuthenticated, IsListingOwner]
+class ListingSubmitView(ScopedOwner, APIView):
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
 
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
         self.check_object_permissions(request, listing)
+        if listing.status in (Listing.DROPPED, Listing.DISCONTINUED):
+            return Response({"status": "A dropped or discontinued listing cannot be submitted."}, status=400)
         if listing.status not in (Listing.DRAFT, Listing.REJECTED):
             return Response(
                 {"status": "Only draft or rejected listings can be submitted for review."}, status=400
             )
+        from . import media
+
+        if media.waiting_for_video(listing):
+            return Response({"detail": revisions.WAIT_FOR_VIDEO_MESSAGE}, status=400)
         listing.status = Listing.PENDING_REVIEW
         listing.save(update_fields=["status"])
         notify_staff_role(
@@ -647,7 +758,7 @@ PROMOTION_DAILY_RATES = {
 }
 
 
-class ListingPromoteView(APIView):
+class ListingPromoteView(ScopedOwner, APIView):
     """POST /api/listings/{id}/promote/ — a business owner pays to promote
     one of their own listings (roadmap Phase 5), distinct from subscription
     tier. Mirrors OrderCheckoutView/HeroExtendView's simulated-payment
@@ -667,7 +778,7 @@ class ListingPromoteView(APIView):
     re-based to "now" at approval, so approval lag doesn't eat the paid window.
     """
 
-    permission_classes = [IsAuthenticated, IsListingOwner]
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
 
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
@@ -703,7 +814,9 @@ class ListingPromoteView(APIView):
                 status=400,
             )
 
-        amount = PROMOTION_DAILY_RATES[kind] * days
+        # Free until priced: with pricing off the promotion costs 0 and leaves no billing row.
+        free = not settings.PROMOTION_PRICING_ENABLED
+        amount = 0 if free else PROMOTION_DAILY_RATES[kind] * days
         with db_transaction.atomic():
             promotion = Promotion.objects.create(
                 listing=listing,
@@ -714,14 +827,28 @@ class ListingPromoteView(APIView):
                 amount_paid=amount,
                 status=Promotion.PENDING,
             )
-            Transaction.objects.create(
-                business_owner=request.user,
-                amount=amount,
-                purpose=f"{kind.capitalize()} promotion for listing #{listing.id} ({days} days)",
-                status=Transaction.SUCCESS,
-                reference=f"AH-PROMO-{promotion.id}-{get_random_string(8).upper()}",
-            )
-        return Response(PromotionSerializer(promotion).data, status=201)
+            if not free:
+                Transaction.objects.create(
+                    business_owner=listing.business_owner,
+                    amount=amount,
+                    purpose=f"{kind.capitalize()} promotion for listing #{listing.id} ({days} days)",
+                    status=Transaction.SUCCESS,
+                    reference=f"AH-PROMO-{promotion.id}-{get_random_string(8).upper()}",
+                )
+        return Response({**PromotionSerializer(promotion).data, "free": free}, status=201)
+
+
+class PromotionPricingView(APIView):
+    """GET /api/listings/promotions/pricing/ — {"enabled": bool}: whether sponsored ads are charged yet. Business
+    owners and staff only; the dashboard reads it to say "Free for now" (and never invents a price)."""
+
+    def get_permissions(self):
+        return [IsAuthenticated()]
+
+    def get(self, request):
+        if not isinstance(request.user, (BusinessOwner, StaffUser)):
+            return Response({"detail": "Not allowed."}, status=403)
+        return Response({"enabled": bool(settings.PROMOTION_PRICING_ENABLED)})
 
 
 # Staff moderation-queue restructuring — the canonical three-state queue
@@ -788,18 +915,25 @@ class ModerationApproveView(APIView):
         return [HasRolePermission("listings.moderate")]
 
     def post(self, request, pk):
-        listing = generics.get_object_or_404(Listing, pk=pk)
-        if listing.created_by_staff_id == request.user.id:
-            return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
-        if listing.business_owner.kyc_status != BusinessOwner.VERIFIED:
-            return Response(
-                {"detail": "Cannot publish a listing whose owner is not KYC-verified."}, status=400
-            )
-        listing.status = Listing.PUBLISHED
-        listing.rejection_reason = None
-        listing.reviewed_by = request.user
-        listing.reviewed_at = timezone.now()
-        listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+        from . import media
+
+        with db_transaction.atomic():
+            listing = generics.get_object_or_404(Listing.objects.select_for_update(of=("self",)), pk=pk)
+            if revisions.cannot_decide(request.user, listing):
+                return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
+            if listing.status != Listing.PENDING_REVIEW:
+                return Response({"detail": "Only a listing waiting for review can be approved."}, status=400)
+            if listing.business_owner.kyc_status != BusinessOwner.VERIFIED:
+                return Response(
+                    {"detail": "Cannot publish a listing whose owner is not KYC-verified."}, status=400
+                )
+            if media.waiting_for_video(listing):
+                return Response({"detail": "Wait for the video to finish converting before approving."}, status=400)
+            listing.status = Listing.PUBLISHED
+            listing.rejection_reason = None
+            listing.reviewed_by = request.user
+            listing.reviewed_at = timezone.now()
+            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
         notify_business_owner(
             listing.business_owner, "listing_approved", "Listing published",
             body=f"“{listing.name}” is now live on AshantiHub.",
@@ -816,14 +950,20 @@ class ModerationRejectView(APIView):
         reason = (request.data.get("reason") or "").strip()
         if not reason:
             return Response({"reason": "A rejection reason is required."}, status=400)
-        listing = generics.get_object_or_404(Listing, pk=pk)
-        if listing.created_by_staff_id == request.user.id:
-            return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
-        listing.status = Listing.REJECTED
-        listing.rejection_reason = reason
-        listing.reviewed_by = request.user
-        listing.reviewed_at = timezone.now()
-        listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+        with db_transaction.atomic():
+            listing = generics.get_object_or_404(Listing.objects.select_for_update(of=("self",)), pk=pk)
+            if revisions.cannot_decide(request.user, listing):
+                return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
+            if listing.status not in (Listing.PENDING_REVIEW, Listing.PUBLISHED):
+                return Response({"detail": "Only a listing waiting for review, or a published one, can be rejected."}, status=400)
+            taken_down = listing.status == Listing.PUBLISHED
+            listing.status = Listing.REJECTED
+            listing.rejection_reason = reason
+            listing.reviewed_by = request.user
+            listing.reviewed_at = timezone.now()
+            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+            if taken_down:
+                revisions.close_for_take_down(listing, request.user)
         notify_business_owner(
             listing.business_owner, "listing_rejected", "Listing needs changes",
             body=f"“{listing.name}” was rejected: {reason}",
