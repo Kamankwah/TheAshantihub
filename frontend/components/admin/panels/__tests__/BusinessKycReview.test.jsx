@@ -203,4 +203,27 @@ describe('BusinessKycReview', () => {
     await screen.findByText('Waiting — text sent')
     expect(screen.queryByRole('button', { name: 'Ask the owner to confirm again' })).toBeNull()
   })
+
+  it('says No documents provided, and drops the card number from the checks line, when none were given', async () => {
+    serve(sheet({
+      owner: { ...sheet().owner, ghana_card_number: null },
+      photos: { signboard: 'http://localhost:8000/media/signboards/nana.jpg', ghana_card_front: null, ghana_card_back: null },
+    }))
+    renderReview()
+    expect(await screen.findByText('No documents provided')).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Ghana Card · front' })).not.toBeInTheDocument()
+    expect(screen.getByText("The owner's sign-in phone was checked against every other business's sign-in, contact and payout MoMo numbers; the Ghana Post address was checked too.")).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /identity/i })).not.toBeInTheDocument()
+  })
+
+  it('shows a TIN as given without calling it a missing document', async () => {
+    serve(sheet({
+      owner: { ...sheet().owner, ghana_card_number: null },
+      business: { ...sheet().business, is_formal: true, tin_given: true },
+      photos: { signboard: null, ghana_card_front: null, ghana_card_back: null },
+    }))
+    renderReview()
+    expect(await screen.findByText('TIN given')).toBeInTheDocument()
+    expect(screen.queryByText('No documents provided')).not.toBeInTheDocument()
+  })
 })

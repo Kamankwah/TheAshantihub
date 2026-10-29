@@ -348,6 +348,11 @@ export const handlers = [
   http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
     return HttpResponse.json([])
   }),
+  // Identity-document review (the verified check mark) - default empty; tests override.
+  http.get('http://localhost:8000/api/accounts/kyc/identity/pending/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/accounts/kyc/:id/identity/approve/', ({ params }) => HttpResponse.json({ id: Number(params.id), identity_status: 'verified' })),
+  http.post('http://localhost:8000/api/accounts/kyc/:id/identity/reject/', ({ params }) => HttpResponse.json({ id: Number(params.id), identity_status: 'rejected' })),
+  http.post('http://localhost:8000/api/accounts/kyc/:id/identity/re-review/', ({ params }) => HttpResponse.json({ id: Number(params.id), identity_status: 'pending' })),
   http.get('http://localhost:8000/api/listings/moderation/pending/', () => {
     return HttpResponse.json([])
   }),

@@ -12,16 +12,18 @@ import ModerationQueueTabs, {
   RejectedReason,
   ReviewAgainButton,
 } from "../ModerationQueueTabs.jsx";
-import { callout, chip, dim } from "./panelStyles.js";
+import { callout, chip, dim, pill } from "./panelStyles.js";
 import { addressCorrectionText } from "./portfolioParts.jsx";
+import IdentityReviewPanel from "./IdentityReviewPanel.jsx";
 
 // A single labelled field in the detail view. Renders a "—" for empty values
-// so a missing/incomplete KYC field is visible rather than silently blank.
-function DetailField({ label, value }) {
+// so a missing/incomplete KYC field is visible rather than silently blank;
+// `empty` swaps in a plainer word ("Not provided") for an optional document.
+function DetailField({ label, value, empty = "—" }) {
   return (
     <div style={{ marginBottom: 8 }}>
       <div style={{ color: D.textFaint, fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
-      <div style={{ color: D.text, fontSize: "0.78rem", wordBreak: "break-word" }}>{value === true ? "Yes" : value === false ? "No" : (value || "—")}</div>
+      <div style={{ color: D.text, fontSize: "0.78rem", wordBreak: "break-word" }}>{value === true ? "Yes" : value === false ? "No" : (value || empty)}</div>
     </div>
   );
 }
@@ -220,10 +222,10 @@ function KYCRow({ owner, state, onDone, canSendScout }) {
                 <DetailField label="KYC status" value={detail.data.kyc_status} />
                 <DetailField label="Business contact phone" value={p?.business_contact_phone} />
                 <DetailField label="Business kind" value={p?.business_kind} />
-                <DetailField label="Ghana card number" value={p?.ghana_card_number} />
+                <DetailField label="Ghana card number" value={p?.ghana_card_number} empty="Not provided" />
                 <DetailField label="GPS (digital) address" value={p?.gps_address} />
                 <DetailField label="Formally registered?" value={p?.is_formal} />
-                <DetailField label="TIN" value={p?.tin} />
+                <DetailField label="TIN" value={p?.tin} empty="Not provided" />
               </div>
               {!fullPhone && detail.data.login_phone && (
                 <button type="button" onClick={revealPhone} style={{ ...small, marginBottom: 8 }}>Show full phone number (recorded)</button>
@@ -279,7 +281,7 @@ function KYCRow({ owner, state, onDone, canSendScout }) {
                   <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Registration document</div>
                   {p?.business_reg_certificate
                     ? <a href={p.business_reg_certificate} target="_blank" rel="noreferrer" style={{ color: D.gold, fontSize: "0.78rem", fontWeight: 700 }}>📄 View business registration certificate</a>
-                    : <div style={{ color: D.textDim, fontSize: "0.75rem" }}>No certificate uploaded.</div>}
+                    : <div style={{ color: D.textDim, fontSize: "0.75rem" }}>Not provided</div>}
                 </div>
               )}
             </>
@@ -295,7 +297,24 @@ function KYCRow({ owner, state, onDone, canSendScout }) {
 // view and adds the Ghana Post address-verification gate on Approve/Reject.
 // Staff phase 2A: each row says who registered the business, shows its open
 // fraud cases, and a refused decision shows the server's reason.
+// A switch above it picks the address queue or the identity-document review
+// (IdentityReviewPanel); the address queue is the default and never depends on
+// documents.
 export default function KYCQueuePanel({ auth }) {
+  const [view, setView] = useState("address");
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div role="group" aria-label="Review type" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {[["address", "Address checks"], ["identity", "Identity documents"]].map(([key, label]) => (
+          <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)} style={pill(view === key)}>{label}</button>
+        ))}
+      </div>
+      {view === "identity" ? <IdentityReviewPanel /> : <AddressQueue auth={auth} />}
+    </div>
+  );
+}
+
+function AddressQueue({ auth }) {
   const [tab, setTab] = useState("pending");
   const { data: stats } = useKycStats();
   const canSendScout = auth?.hasPermission?.("scouts.assign") ?? false;
