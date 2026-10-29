@@ -574,6 +574,12 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
         # this KYC-edit endpoint must never let it be switched.
         extra_kwargs["business_kind"] = {"read_only": True}
 
+    def validate_ghana_card_number(self, value):
+        # The column is unique, so "no card number" must be NULL, never "":
+        # a second business without one would collide on the empty string.
+        value = (value or "").strip()
+        return value or None
+
     def validate(self, data):
         owner = self.instance.business_owner
         if owner.kyc_status == BusinessOwner.VERIFIED:
@@ -581,31 +587,17 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
                 {"kyc_status": "Cannot edit a verified KYC profile."}
             )
 
-        # Ghana Card number and a Ghana Post GPS address are mandatory for a
-        # business, and the GPS address must be in the Ashanti Region. Checked
-        # against the effective (post-update) values so a partial edit of an
-        # already-complete profile still passes.
-        ghana_card = data.get("ghana_card_number", self.instance.ghana_card_number)
-        if not (ghana_card or "").strip():
-            raise serializers.ValidationError(
-                {"ghana_card_number": "Your Ghana Card number is required."}
-            )
+        # Only the Ghana Post GPS address is mandatory, and it must be in the
+        # Ashanti Region. The Ghana Card, certificate and TIN are optional:
+        # KYC rests on the address. Checked against the effective
+        # (post-update) value so a partial edit of an already-complete
+        # profile still passes.
         gps = data.get("gps_address", self.instance.gps_address)
         try:
             validate_ashanti_gps(gps)
         except serializers.ValidationError as exc:
             raise serializers.ValidationError({"gps_address": exc.detail})
 
-        is_formal = data.get("is_formal", self.instance.is_formal)
-        if is_formal:
-            cert = data.get("business_reg_certificate", self.instance.business_reg_certificate)
-            tin = data.get("tin", self.instance.tin)
-            if not cert:
-                raise serializers.ValidationError(
-                    {"business_reg_certificate": "Required for formally registered businesses."}
-                )
-            if not tin:
-                raise serializers.ValidationError({"tin": "Required for formally registered businesses."})
         return data
 
     def update(self, instance, validated_data):

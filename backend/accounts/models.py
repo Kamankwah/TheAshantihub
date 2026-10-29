@@ -395,12 +395,9 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
             profile = self.profile
         except BusinessOwnerProfile.DoesNotExist:
             return "business_info"
-        if not (profile.ghana_card_number and profile.gps_address
-                and profile.business_contact_phone
-                and profile.ghana_card_front_image
-                and profile.ghana_card_back_image):
-            return "business_info"
-        if profile.is_formal and not (profile.business_reg_certificate and profile.tin):
+        # The Ghana Card, certificate and TIN are optional: KYC rests on the
+        # Ghana Post address, so that and a contact phone finish this step.
+        if not (profile.gps_address and profile.business_contact_phone):
             return "business_info"
         if not profile.business_kind or (subscriptions_enabled() and getattr(self, "subscription", None) is None):
             return "plan_selection"

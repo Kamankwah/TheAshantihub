@@ -89,12 +89,24 @@ class ComputeRegistrationStepTests(TestCase):
         owner = self._make_owner_with_profile()
         self.assertEqual(owner.compute_registration_step(), "business_info")
 
-    def test_formal_business_without_documents_still_needs_business_info(self):
+    def test_formal_business_without_documents_leaves_business_info(self):
         owner = self._make_owner_with_profile(
-            ghana_card_number="GHA-1", gps_address="AK-1", business_contact_phone="+233201111111",
-            ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg", is_formal=True,
+            gps_address="AK-1", business_contact_phone="+233201111111", is_formal=True,
         )
-        self.assertEqual(owner.compute_registration_step(), "business_info")
+        self.assertEqual(owner.compute_registration_step(), "plan_selection")
+
+    def test_business_info_needs_the_address_and_contact_phone(self):
+        no_address = self._make_owner_with_profile(business_contact_phone="+233201111111")
+        self.assertEqual(no_address.compute_registration_step(), "business_info")
+        BusinessOwner.objects.all().delete()
+        no_phone = self._make_owner_with_profile(gps_address="AK-1")
+        self.assertEqual(no_phone.compute_registration_step(), "business_info")
+
+    def test_address_and_phone_without_card_or_images_leave_business_info(self):
+        owner = self._make_owner_with_profile(
+            gps_address="AK-1", business_contact_phone="+233201111111",
+        )
+        self.assertEqual(owner.compute_registration_step(), "plan_selection")
 
     def test_business_info_complete_needs_plan_selection(self):
         owner = self._make_owner_with_profile(

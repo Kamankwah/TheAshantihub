@@ -91,17 +91,116 @@ class BusinessOwnerProfileUpdateTests(TestCase):
         self.assertEqual(response.status_code, 400, response.content)
         self.assertIn("gps_address", response.json())
 
-    def test_blank_ghana_card_number_is_rejected(self):
-        owner = self._make_owner(BusinessOwner.PENDING, ghana_card_number="")
-        self.client = APIClient()
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
-        response = self.client.patch(
+    def _client(self, owner):
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
+        return client
+
+    def test_profile_saves_without_any_document(self):
+        owner = self._make_owner(BusinessOwner.PENDING, ghana_card_number=None)
+        response = self._client(owner).patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"business_contact_phone": "+233208889901"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        owner.profile.refresh_from_db()
+        self.assertIsNone(owner.profile.ghana_card_number)
+        self.assertEqual(owner.profile.business_contact_phone, "+233208889901")
+
+    def test_blank_card_number_is_stored_as_null(self):
+        for blank in ("", "   "):
+            with self.subTest(blank=repr(blank)):
+                BusinessOwner.objects.all().delete()
+                owner = self._make_owner(BusinessOwner.PENDING)
+                response = self._client(owner).patch(
+                    "/api/accounts/business-owners/me/profile/",
+                    {"ghana_card_number": blank},
+                    format="json",
+                )
+                self.assertEqual(response.status_code, 200, response.content)
+                owner.profile.refresh_from_db()
+                self.assertIsNone(owner.profile.ghana_card_number)
+
+    def test_blank_card_number_in_multipart_is_stored_as_null(self):
+        owner = self._make_owner(BusinessOwner.PENDING)
+        response = self._client(owner).patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"ghana_card_number": "", "gps_address": "AK-039-5050"},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        owner.profile.refresh_from_db()
+        self.assertIsNone(owner.profile.ghana_card_number)
+
+    def test_two_businesses_without_card_numbers_both_save(self):
+        first = self._make_owner(BusinessOwner.PENDING, ghana_card_number=None)
+        second = BusinessOwner.objects.create(
+            full_name="Kofi Seller", login_phone="+233208889911", password_hash="x",
+        )
+        BusinessOwnerProfile.objects.create(
+            business_owner=second, gps_address="AK-039-5051", business_contact_phone="+233208889911",
+        )
+        for owner in (first, second):
+            response = self._client(owner).patch(
+                "/api/accounts/business-owners/me/profile/",
+                {"ghana_card_number": "", "gps_address": "AK-039-6060"},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(
+            BusinessOwnerProfile.objects.filter(ghana_card_number__isnull=True).count(), 2
+        )
+        self.assertFalse(BusinessOwnerProfile.objects.filter(ghana_card_number="").exists())
+
+    def test_a_given_card_number_must_still_be_unique(self):
+        self._make_owner(BusinessOwner.PENDING)
+        other = BusinessOwner.objects.create(
+            full_name="Kofi Seller", login_phone="+233208889911", password_hash="x",
+        )
+        BusinessOwnerProfile.objects.create(
+            business_owner=other, gps_address="AK-039-5051", business_contact_phone="+233208889911",
+        )
+        response = self._client(other).patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"ghana_card_number": "GHA-777888999-0"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("ghana_card_number", response.json())
+
+    def test_formal_business_saves_without_certificate_or_tin(self):
+        owner = self._make_owner(BusinessOwner.REJECTED, ghana_card_number=None)
+        response = self._client(owner).patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"is_formal": "true"},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        owner.profile.refresh_from_db()
+        self.assertTrue(owner.profile.is_formal)
+        self.assertFalse(owner.profile.business_reg_certificate)
+        self.assertFalse(owner.profile.tin)
+
+    def test_missing_gps_address_is_still_rejected(self):
+        owner = self._make_owner(BusinessOwner.PENDING, gps_address=None)
+        response = self._client(owner).patch(
             "/api/accounts/business-owners/me/profile/",
             {"business_contact_phone": "+233208889901"},
             format="json",
         )
         self.assertEqual(response.status_code, 400, response.content)
-        self.assertIn("ghana_card_number", response.json())
+        self.assertIn("gps_address", response.json())
+
+    def test_non_ashanti_gps_is_still_rejected(self):
+        owner = self._make_owner(BusinessOwner.PENDING, ghana_card_number=None)
+        response = self._client(owner).patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"gps_address": "GA-543-0125"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("gps_address", response.json())
 
     def test_verified_owner_cannot_edit(self):
         owner = self._make_owner(BusinessOwner.VERIFIED)
@@ -113,18 +212,6 @@ class BusinessOwnerProfileUpdateTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
-
-    def test_toggling_is_formal_true_without_documents_is_rejected(self):
-        owner = self._make_owner(BusinessOwner.REJECTED)
-        self.client = APIClient()
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
-        response = self.client.patch(
-            "/api/accounts/business-owners/me/profile/",
-            {"is_formal": "true"},
-            format="multipart",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("business_reg_certificate", response.json())
 
     def test_customer_cannot_access_endpoint(self):
         customer = Customer.objects.create(full_name="Ama", phone="+233200002222", password_hash="x")
