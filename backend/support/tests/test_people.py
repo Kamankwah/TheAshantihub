@@ -135,9 +135,21 @@ class LookupTests(PeopleBase):
         self.assertEqual(self.search("yaw")[0]["status"]["label"], "Open dispute")
         biz = self.search("akosua")[0]
         self.assertEqual(biz["open_conversations"], 2)
+        # KYC-verified (address checked) but identity not approved: no verified chip.
+        self.assertEqual(biz["status"], {"key": "active", "label": "Active"})
+        self.business.profile.identity_status = "verified"
+        self.business.profile.save()
+        biz = self.search("akosua")[0]
         self.assertEqual(biz["status"]["label"], "Verified business")
         FraudFlag.objects.create(kind="other", status="open", source="staff", title="t", business_owner=self.business)
         self.assertEqual(self.search("akosua")[0]["status"]["label"], "Under Operations review")
+
+    def test_business_360_verified_follows_identity_not_kyc(self):
+        url = f"/api/support/staff/businesses/{self.business.pk}/360/"
+        self.assertIs(self.client.get(url).json()["profile"]["verified"], False)   # KYC-verified, identity not approved
+        self.business.profile.identity_status = "verified"
+        self.business.profile.save()
+        self.assertIs(self.client.get(url).json()["profile"]["verified"], True)
 
     def test_overdue_subscription_shows_its_day_and_suspension_wins(self):
         subscribe_overdue(self.business, timezone.now() - timezone.timedelta(days=3))

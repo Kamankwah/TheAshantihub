@@ -111,6 +111,15 @@ class IdentityPublicMarkTests(TestCase):
             self.assertNotIn("gha-100000009", body)
             self.assertNotIn("cert.pdf", body)
 
+    def test_owner_without_a_profile_row_is_not_identity_verified(self):
+        bare = BusinessOwner.objects.create(
+            full_name="No Profile", login_phone="+233269999999", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
+        )
+        listing(bare)
+        row = self.results()[0]
+        self.assertIs(row["business_owner"]["identity_verified"], False)
+        self.assertEqual(self.results("?verified=true"), [])
+
     def test_listing_list_query_count_does_not_grow_with_rows(self):
         listing(owner(identity=VERIFIED))
         listing(owner())

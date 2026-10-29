@@ -322,6 +322,6 @@ def public_listings(category_slug=None, request=None):
         out.append({
             "id": listing.pk, "name": listing.name, "main_photo": photo, "price_amount": listing.price_amount, "price_unit": listing.price_unit,
             "category": listing.category.slug, "business": listing.business_owner.display_name,
-            "verified": listing.business_owner.kyc_status == listing.business_owner.VERIFIED,
+            "verified": listing.business_owner.identity_verified,
         })
     return out

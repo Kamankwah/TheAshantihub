@@ -67,7 +67,7 @@ def business_status(owner, has_open_flag):
         if state["state"] in ("overdue", "paused"):
             day = state.get("overdue_day")
             return _chip("overdue", f"Subscription overdue · day {day}" if day else "Subscription overdue")
-    if owner.kyc_status == BusinessOwner.VERIFIED:
+    if owner.identity_verified:  # the mark follows approved identity documents, as on the desk pane
         return _chip("verified", "Verified business")
     return _chip("active", "Active")
 
@@ -330,7 +330,7 @@ def business_360(owner, viewer):
             "id": owner.pk, "name": owner.display_name, "owner_name": owner.full_name,
             "phone": _person_phone(owner.login_phone), "email": mask_email(owner.email) or None,
             "since": owner.created_at, "area": profile.zone.name if profile is not None and profile.zone_id else None,
-            "is_suspended": owner.is_suspended, "verified": owner.kyc_status == BusinessOwner.VERIFIED,
+            "is_suspended": owner.is_suspended, "verified": owner.identity_verified,
             "status": business_status(owner, flag),
             "account_manager": owner.account_manager.full_name if owner.account_manager_id else None,
         },
