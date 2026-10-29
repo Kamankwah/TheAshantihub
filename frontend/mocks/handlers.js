@@ -757,6 +757,22 @@ export const handlers = [
     consent: null, flags: [], registered_by_name: null, created_at: '2026-10-07T00:00:00Z', address_correction: null,
   })),
   http.get('http://localhost:8000/api/fraud/flags/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/catalogue/stock/', () => HttpResponse.json({
+    count: 0, next: null, previous: null, results: [], tracked_offers: 0, untracked_offers: 0,
+    settings: { cover_days: 7, fallback_units: 5, window_days: 28, alerts_enabled: false, sold_out_hidden: false },
+  })),
+  http.get('http://localhost:8000/api/catalogue/stock/:id/line/', ({ params }) => HttpResponse.json({ listing_id: Number(params.id), line: null, cover: null })),
+  http.get('http://localhost:8000/api/catalogue/mine/:id/', ({ params }) => HttpResponse.json({
+    listing: Number(params.id), groupable: true, barcode: '', store_code: false, catalogue_product: null, request: null,
+  })),
+  http.get('http://localhost:8000/api/catalogue/products/', () => HttpResponse.json({ results: [], truncated: false })),
+  http.get('http://localhost:8000/api/catalogue/products/:id/offers/', ({ params }) => HttpResponse.json({
+    catalogue_product: { id: Number(params.id), brand: '', name: '', barcode: '' }, your_listings: [], offers: [], truncated: false,
+  })),
+  http.get('http://localhost:8000/api/catalogue/listings/:id/other-sellers/', () => HttpResponse.json({
+    catalogue_product: null, featured_offer_id: null, ordering: 'price', offers: [],
+  })),
+  http.get('http://localhost:8000/api/catalogue/staff/requests/pending/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/fraud/flags/counts/', () => HttpResponse.json({ open: 0, confirmed: 0, dismissed: 0 })),
   http.get('http://localhost:8000/api/notifications/staff-badges/', () => {
     return HttpResponse.json({
