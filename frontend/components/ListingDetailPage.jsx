@@ -1,5 +1,6 @@
 import FlashPriceTag from "./FlashPriceTag.jsx";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { C, tint } from "../theme.js";
 import { apiPost } from "../apiClient.js";
 import { useListing } from "../hooks/useListing.js";
@@ -18,6 +19,11 @@ import StaffGateNotice from "./StaffGateNotice.jsx";
 import BookingTermsNote from "./BookingTermsNote.jsx";
 import { useBookingTerms } from "../hooks/useBookingTerms.js";
 import { stayStart } from "../lib/bookingTerms.js";
+import { useWallet } from "../hooks/useWallet.js";
+import { useBookingPayment } from "../hooks/useBookingPayment.js";
+import { useStayQuote } from "../hooks/useStayQuote.js";
+import PaymentMethodPicker from "./wallet/PaymentMethodPicker.jsx";
+import { walletStyles } from "./wallet/walletStyles.js";
 import { ReviewsList, ReviewWriteForm, starString, textareaStyle, submitBtnStyle } from "./ReviewComponents.jsx";
 
 // ─── ListingDetailPage ──────────────────────────────────────────────────────
@@ -69,8 +75,10 @@ export default function ListingDetailPage({
   currency,
   onMessage,
   onOpenListing,
+  onOpenSeller,
   onAddToCart,
   CardComponent,
+  PaymentComponent,
 }) {
   const { data: item, isLoading, isError, refetch } = useListing(id);
   const bookingTerms = useBookingTerms();
@@ -81,6 +89,10 @@ export default function ListingDetailPage({
   const [addingToCart, setAddingToCart] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
   const [cartError, setCartError] = useState(null);
+  // Variant picker: quantity wanted per variant id (rows with 0 are left out of the add).
+  const [variantQty, setVariantQty] = useState({});
+  // Another listing (same page, new id) must not inherit the previous listing's variant quantities.
+  useEffect(() => { setVariantQty({}); }, [id]);
   // Service request flow (business item 2 / Wave H2) — for a service listing,
   // a customer sends a request instead of adding to cart; the owner accepts
   // with a quote before any payment.
@@ -89,8 +101,8 @@ export default function ListingDetailPage({
   const [requesting, setRequesting] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
   const [requestError, setRequestError] = useState(null);
-  // Accommodation booking (Wave H3): dates + units, priced client-side from the
-  // nightly rate; the server re-checks availability and re-prices on submit.
+  // Accommodation booking (Wave H3): dates + units. With the wallet ledger on the total is the
+  // server's quote; the server re-checks availability and re-prices on submit.
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
   const [bookingUnits, setBookingUnits] = useState(1);
@@ -104,6 +116,23 @@ export default function ListingDetailPage({
   // Before the marketplace opens, Add to Cart and Book are greyed with
   // "Opens <D Mon>" unless this account may buy (see useCanBuy).
   const { canBuy, label: opensLabel } = useCanBuy();
+
+  // Paying for a stay (wallet ledger): only a customer on an accommodation
+  // listing after the marketplace opens asks the wallet; otherwise the pay
+  // state is "off" and the stay flow is exactly as it was before wallets.
+  // useWallet shares its query with useBookingPayment and the picker; the
+  // server's stay quote is asked only with dates set and the ledger on.
+  const stayPayActive = user?.accountType === "customer" && canBuy && !!item?.category?.is_accommodation;
+  const ledger = useWallet({ enabled: stayPayActive });
+  const stayQuote = useStayQuote({
+    listingId: item?.id, checkIn, checkOut, units: bookingUnits,
+    enabled: stayPayActive && !!ledger.data && !!checkIn && !!checkOut,
+  });
+  const stayTotal = stayQuote.data?.total_price ?? null;
+  const pay = useBookingPayment({ amount: stayTotal ?? "", enabled: stayPayActive });
+  const [momoOpen, setMomoOpen] = useState(false);
+  const stayInFlight = useRef(false);
+  const queryClient = useQueryClient();
 
   if (isLoading) {
     return (
@@ -136,6 +165,48 @@ export default function ListingDetailPage({
   // prompt them to sign in as a customer. Staff see the controls too, gated
   // at click time by staffGate above.
   const isBusinessAccount = !!user && !staffGate.isStaff && user.accountType !== "customer";
+  const variants = Array.isArray(item.variants) ? item.variants : [];
+  const videos = (Array.isArray(item.videos) ? item.videos : []).filter(playableVideo);
+
+  // Stay payment (wallet ledger on): every figure shown is the server's quote.
+  const stayStyles = walletStyles("light");
+  const fewFree = !!stayQuote.data && stayQuote.data.units_free < stayQuote.data.units;
+  const stayReady = pay.ready && !!stayQuote.data && stayQuote.data.available === true && stayTotal !== null && !fewFree;
+
+  const submitBooking = async () => {
+    if (stayInFlight.current) return;
+    stayInFlight.current = true;
+    setBooking(true);
+    let redirecting = false;
+    try {
+      const created = await apiPost("/api/bookings/", {
+        listing: item.id, check_in: checkIn, check_out: checkOut, units: bookingUnits, ...pay.body,
+      });
+      // Hubtel: a redirect body is not a booking. The in-flight guard stays set while the browser leaves.
+      if (created?.mode === "redirect") {
+        redirecting = true;
+        setMomoOpen(false);
+        window.location.href = created.checkout_url;
+        return;
+      }
+      setMomoOpen(false);
+      setBookingDone(created);
+      queryClient.invalidateQueries({ queryKey: ["wallet"] });
+    } catch (err) {
+      setMomoOpen(false);
+      const code = err?.body?.code;
+      if ((err?.status === 409 && (code === "insufficient_funds" || code === "ledger_off")) || (err?.status === 403 && code === "not_open")) {
+        setBookingError(err.body.detail || apiErrorMessage(err, "We could not take the payment."));
+      } else {
+        setBookingError(err?.status === 409 ? "Those dates aren't available — try different dates." : (err?.body?.detail || "Could not book. Please try again."));
+      }
+    } finally {
+      if (!redirecting) {
+        stayInFlight.current = false;
+        setBooking(false);
+      }
+    }
+  };
   const tabs = isService ? SERVICE_TABS : PRODUCT_TABS;
 
   const renderSection = (tabId) => {
@@ -204,6 +275,11 @@ export default function ListingDetailPage({
               ))}
             </div>
           )}
+          {videos.length > 0 && (
+            <div data-testid="media-videos" style={{ display: "grid", gap: 10, marginTop: 12 }}>
+              {videos.map((v) => <VideoPlayer key={v.id} video={v} title={item.name} />)}
+            </div>
+          )}
         </div>
 
         {/* Details (persistent buy-box) */}
@@ -223,6 +299,20 @@ export default function ListingDetailPage({
           <div style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.8rem", marginBottom: 10 }}>
             {item.category?.icon} {item.category?.label} · 📍 {item.zone?.name}
           </div>
+          {item.business_owner?.id != null && (
+            <div style={{ marginBottom: 10 }}>
+              <a
+                href={`/seller/${item.business_owner.id}`}
+                onClick={(e) => { if (onOpenSeller) { e.preventDefault(); onOpenSeller(item.business_owner.id); } }}
+                style={{ color: C.lightGold, fontSize: "0.8rem", fontWeight: 700 }}
+              >
+                Sold by {item.business_owner.name || item.business_owner.full_name}
+              </a>
+              {item.business_owner.is_ashanti_direct === true && (
+                <span style={{ marginLeft: 8, background: `${C.gold}22`, color: C.lightGold, border: `1px solid ${C.gold}66`, borderRadius: 20, padding: "2px 9px", fontSize: "0.65rem", fontWeight: 800 }}>Ashanti Direct</span>
+              )}
+            </div>
+          )}
           {item.tag && (
             <span style={{ display: "inline-block", background: accentColor, color: "white", fontSize: "0.65rem", fontWeight: 700, padding: "3px 10px", borderRadius: 20, marginBottom: 12 }}>
               {item.tag}
@@ -257,6 +347,9 @@ export default function ListingDetailPage({
             bookingDone ? (
               <div style={{ marginTop: 16, background: `${C.kente2}22`, color: "white", borderRadius: 14, padding: "14px 16px", fontSize: "0.8rem" }}>
                 ✓ Booked! {bookingDone.check_in} → {bookingDone.check_out} · GHS {bookingDone.total_price}. Manage it in “My Account”.
+                {bookingDone.payment_processing && bookingDone.payment_processing !== "0.00" && (
+                  <div>Payment processing GH₵ {bookingDone.payment_processing}</div>
+                )}
               </div>
             ) : (
               <div style={{ marginTop: 16 }}>
@@ -272,30 +365,47 @@ export default function ListingDetailPage({
                 <label style={{ display: "block", color: "rgba(255,255,255,0.75)", fontSize: "0.68rem", marginBottom: 8 }}>Units / rooms
                   <input type="number" min={1} value={bookingUnits} onChange={(e) => setBookingUnits(Number(e.target.value) || 1)} style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box", marginTop: 3 }} />
                 </label>
+                {pay.ledgerOn && (
+                  <div style={{ ...stayStyles.card, marginBottom: 10 }}>
+                    {stayQuote.isError && <div role="alert" style={stayStyles.error}>We could not price this stay. Try different dates.</div>}
+                    {stayQuote.data && stayTotal !== null && (
+                      <div data-testid="stay-total" style={stayStyles.value}>
+                        {stayQuote.data.nights} {stayQuote.data.nights === 1 ? "night" : "nights"} × {stayQuote.data.units}: <span style={stayStyles.amount}>GH₵ {stayTotal}</span>
+                      </div>
+                    )}
+                    {stayQuote.data && stayTotal === null && <div style={stayStyles.note}>This listing has no nightly rate set, so it cannot be booked here.</div>}
+                    {fewFree && <div role="status" style={{ ...stayStyles.note, marginTop: 6 }}>Only {stayQuote.data.units_free} free for those dates.</div>}
+                    {stayTotal !== null && (
+                      <PaymentMethodPicker value={pay.method} onChange={pay.setMethod} amount={stayTotal} tone="light" />
+                    )}
+                    {pay.problem && <div role="alert" style={{ ...stayStyles.error, marginTop: 8 }}>{pay.problem}</div>}
+                  </div>
+                )}
+                {!pay.ledgerOn && pay.problem && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{pay.problem}</div>}
+                {stayPayActive && pay.state === "unknown" && !pay.problem && <div role="status" style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.72rem", marginBottom: 8 }}>Checking payment options…</div>}
                 {checkIn && <BookingTermsNote kind="stay" policy={item.cancellation_policy} start={stayStart(checkIn, bookingTerms.data?.stay_check_in_time)} />}
-                {bookingError && <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{bookingError}</div>}
+                {bookingError && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{bookingError}</div>}
                 <button
-                  disabled={booking || !checkIn || !checkOut || !canBuy}
-                  onClick={async () => {
+                  disabled={booking || !checkIn || !checkOut || !canBuy || (pay.ledgerOn && !stayReady) || pay.state === "unknown"}
+                  onClick={() => {
                     setBookingError(null);
                     if (!canBuy || staffGate.blocked()) return;
                     if (!user) { setBookingError("Sign in as a customer to book."); return; }
-                    setBooking(true);
-                    try {
-                      const created = await apiPost("/api/bookings/", {
-                        listing: item.id, check_in: checkIn, check_out: checkOut, units: bookingUnits,
-                      });
-                      setBookingDone(created);
-                    } catch (err) {
-                      setBookingError(err?.status === 409 ? "Those dates aren't available — try different dates." : (err?.body?.detail || "Could not book. Please try again."));
-                    } finally {
-                      setBooking(false);
-                    }
+                    if (pay.ledgerOn && pay.method === "momo") { setMomoOpen(true); return; }
+                    submitBooking();
                   }}
                   style={{ width: "100%", minHeight: 44, background: canBuy && checkIn && checkOut ? C.gold : "rgba(255,255,255,0.08)", color: canBuy && checkIn && checkOut ? C.darkBrown : "rgba(255,255,255,0.45)", border: "none", borderRadius: 20, fontSize: "0.82rem", fontWeight: 900, cursor: canBuy && checkIn && checkOut ? "pointer" : "not-allowed", fontFamily: "inherit" }}
                 >
-                  {!canBuy ? opensLabel : booking ? "Booking…" : item.price_amount != null ? `Book · GHS ${item.price_amount}/night` : "Book"}
+                  {!canBuy ? opensLabel : booking ? "Booking…" : pay.ledgerOn ? "Book and pay" : item.price_amount != null ? `Book · GHS ${item.price_amount}/night` : "Book"}
                 </button>
+                {momoOpen && PaymentComponent && (
+                  <PaymentComponent
+                    amount={parseFloat(stayTotal) || 0}
+                    processing={pay.processing}
+                    onSuccess={() => submitBooking()}
+                    onClose={() => setMomoOpen(false)}
+                  />
+                )}
               </div>
             )
           ) : isService ? (
@@ -361,6 +471,34 @@ export default function ListingDetailPage({
             {cartBlocked.code !== "not_deliverable" && <div style={{ fontWeight: 900, marginBottom: 4 }}>{cartBlocked.code === "food_far" || cartBlocked.code === "food_unlocated" ? "Too far for this delivery" : "Delivery limit reached"}</div>}
             {cartBlocked.detail}
           </div>
+          ) : variants.length > 0 ? (
+          <VariantPicker
+            variants={variants}
+            qty={variantQty}
+            setQty={setVariantQty}
+            canBuy={canBuy}
+            opensLabel={opensLabel}
+            adding={addingToCart}
+            added={addedToCart}
+            onAdd={async () => {
+              if (!onAddToCart || !canBuy) return;
+              setCartError(null);
+              if (staffGate.blocked()) return;
+              const lines = variants.filter((v) => (variantQty[v.id] || 0) > 0).map((v) => ({ variant: v.id, quantity: variantQty[v.id] }));
+              if (lines.length === 0) return;
+              setAddingToCart(true);
+              try {
+                await onAddToCart(item, 1, lines);
+                setVariantQty({});
+                setAddedToCart(true);
+                setTimeout(() => setAddedToCart(false), 2000);
+              } catch (err) {
+                setCartError(apiErrorMessage(err, err?.message || "Could not add this item to your cart."));
+              } finally {
+                setAddingToCart(false);
+              }
+            }}
+          />
           ) : (
           <button
             disabled={addingToCart || item.price_amount == null || !onAddToCart || !canBuy}
@@ -440,6 +578,80 @@ export default function ListingDetailPage({
       )}
     </div>
   );
+}
+
+// ─── VariantPicker ──────────────────────────────────────────────────────────
+// One row per active variant: label, its price (the struck-through original only when the server sends
+// was_price), "Out of stock" at a counted zero, and a stepper bounded by the count when stock is counted
+// (stock_quantity null = not counted, no bound). Plan 4 restyles this; the data fields stay.
+function VariantPicker({ variants, qty, setQty, canBuy, opensLabel, adding, added, onAdd }) {
+  const total = variants.reduce((n, v) => n + (qty[v.id] || 0), 0);
+  const change = (v, delta) => setQty((q) => {
+    const max = v.stock_quantity == null ? Infinity : v.stock_quantity;
+    const next = Math.max(0, Math.min(max, (q[v.id] || 0) + delta));
+    return { ...q, [v.id]: next };
+  });
+  const stepBtn = { width: 44, height: 44, borderRadius: 10, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.08)", color: "white", fontSize: "1.1rem", cursor: "pointer", fontFamily: "inherit" };
+  const enabled = canBuy && total > 0 && !adding;
+  return (
+    <div data-testid="variant-picker" style={{ marginTop: 16 }}>
+      <div style={{ color: C.lightGold, fontSize: "0.78rem", fontWeight: 800, marginBottom: 8 }}>Choose an option</div>
+      {variants.map((v) => {
+        const out = v.stock_quantity === 0;
+        const detail = v.attributes && typeof v.attributes === "object" ? Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(", ") : "";
+        return (
+          <div key={v.id} data-testid="variant-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.08)", flexWrap: "wrap" }}>
+            <div style={{ minWidth: 120 }}>
+              <div style={{ color: "white", fontWeight: 700, fontSize: "0.85rem" }}>{v.label}</div>
+              {detail && <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.7rem" }}>{detail}</div>}
+              <PriceLine item={v} tone="dark" size="0.85rem" />
+            </div>
+            {out ? (
+              <span style={{ color: "#ffb4b4", fontSize: "0.78rem", fontWeight: 700 }}>Out of stock</span>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button type="button" aria-label={`One fewer ${v.label}`} style={stepBtn} onClick={() => change(v, -1)} disabled={(qty[v.id] || 0) === 0}>−</button>
+                <span data-testid="variant-qty" style={{ minWidth: 24, textAlign: "center", color: "white", fontWeight: 800 }}>{qty[v.id] || 0}</span>
+                <button type="button" aria-label={`One more ${v.label}`} style={stepBtn} onClick={() => change(v, 1)} disabled={v.stock_quantity != null && (qty[v.id] || 0) >= v.stock_quantity}>+</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <button
+        type="button"
+        disabled={!enabled}
+        onClick={onAdd}
+        style={{ marginTop: 12, width: "100%", minHeight: 44, background: enabled ? (added ? C.kente2 : C.gold) : "rgba(255,255,255,0.08)", color: enabled ? (added ? "white" : C.darkBrown) : "rgba(255,255,255,0.45)", border: "none", borderRadius: 20, fontSize: "0.82rem", fontWeight: 900, cursor: enabled ? "pointer" : "not-allowed", fontFamily: "inherit" }}
+      >
+        {!canBuy ? opensLabel : adding ? "Adding…" : added ? "Added to Cart ✓" : "Add to cart"}
+      </button>
+    </div>
+  );
+}
+
+// ─── Videos ─────────────────────────────────────────────────────────────────
+// Only ready videos reach the public payload. A YouTube id is embedded only when it is exactly 11 URL-safe
+// characters; anything else renders nothing rather than a guessed URL.
+const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
+function playableVideo(v) {
+  if (v?.kind === "youtube") return YOUTUBE_ID.test(v.youtube_id || "");
+  return !!v?.url;
+}
+
+function VideoPlayer({ video, title }) {
+  if (video.kind === "youtube") {
+    return (
+      <iframe
+        title={`${title} video`}
+        src={`https://www.youtube-nocookie.com/embed/${video.youtube_id}`}
+        allow="encrypted-media; picture-in-picture"
+        allowFullScreen
+        style={{ width: "100%", aspectRatio: "16 / 9", border: 0, borderRadius: 12 }}
+      />
+    );
+  }
+  return <video controls src={video.url} poster={video.poster || undefined} style={{ width: "100%", borderRadius: 12, background: "#000" }} />;
 }
 
 // ─── Tab sets ───────────────────────────────────────────────────────────────
@@ -660,9 +872,9 @@ function SellerRatingBadge({ businessOwner, user }) {
         style={{ background: "none", border: "none", color: "white", fontSize: "0.82rem", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 8, fontFamily: "inherit" }}
       >
         {reviewCount > 0 ? (
-          <span>⭐ {avgRating} · Sold by {businessOwner.full_name} · {reviewCount} seller review{reviewCount === 1 ? "" : "s"}</span>
+          <span>⭐ {avgRating} · Sold by {businessOwner.name || businessOwner.full_name} · {reviewCount} seller review{reviewCount === 1 ? "" : "s"}</span>
         ) : (
-          <span>Sold by {businessOwner.full_name}</span>
+          <span>Sold by {businessOwner.name || businessOwner.full_name}</span>
         )}
         <span style={{ color: C.gold }}>{expanded ? "▲" : "▼"}</span>
       </button>

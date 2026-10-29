@@ -34,7 +34,7 @@ class RiderRefundTests(RefundBase):
         order = self.delivered_order()
         refunds.refund_order(order, source="dispute-1")                                     # the whole order, delivery included
         self.assertEqual(self.wallet(), 7000)
-        FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        FulfilmentCheck.objects.update_or_create(order=order, defaults=dict(outcome=FulfilmentCheck.MATCHES))
         self.assertIsNone(escrow.release_verified(order))
         self.assertFalse(RiderEarning.objects.exists())
         self.assertFalse(Account.objects.filter(kind=Account.RIDER_BALANCE).exists())        # no empty wallet opened

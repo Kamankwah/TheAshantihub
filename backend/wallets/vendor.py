@@ -7,10 +7,11 @@ payment), so they show what the ledger recorded, never today's rules; balances c
 business's own snapshots, item lines and accounts are read: an order can span several businesses (backend/CLAUDE.md,
 owner-scoped order isolation). No customer's name, phone or address appears here: the order screen
 (GET /api/orders/owner/) already carries what fulfilment needs. Money is integer pesewas inside and GH₵ strings in the
-rows. Only product orders have rows here. Plan 1b's booking sales (ledger.BookingSale) are in the ledger, so their
-money is in Pending and Available, their fees count toward the cap, and their journal lines land in the daily summary's
-"other" column, but they have no sale rows, statement lines or texts until a follow-up adds them as a second source of
-rows with kind "booking": a gate before the ledger is turned on (spec §13 (lxxxiii))."""
+rows. Product orders have `sale_groups` / `rows`; Plan 1b's booking sales (ledger.BookingSale: services, stays and
+tickets) have `booking_sales` / `booking_rows`, rows of kind "booking" served at vendor/bookings/. Their money is in
+Pending and Available and their fees count toward the cap; their journal lines fold into the daily summary's columns
+and each is one statement line (no item name); they have texts (vendor_texts: paid, released, on hold). Like the order rows they carry no customer name, phone or
+address and, for a problem the customer reported, only that one exists, never what it says (Director ruling G3)."""
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
@@ -21,8 +22,8 @@ from django.utils.dateparse import parse_date
 
 from accounts.models import BusinessOwner
 from disputes.models import Dispute
-from ledger import fees, posting, settings_store, verification
-from ledger.models import Account, FeeRuleSet, FulfilmentCheck, JournalLine, OrderFeeSnapshot
+from ledger import fees, posting, sales, settings_store, verification
+from ledger.models import Account, BookingSale, FeeRuleSet, FulfilmentCheck, JournalLine, OrderFeeSnapshot
 from ledger.money import to_pesewas
 from marketing.models_waivers import DeliveryWaiver, WaivedFeeCharge
 from orders.models import Order, OrderItem
@@ -125,7 +126,7 @@ def rows(owner, groups):
     items = {}
     for item in OrderItem.objects.filter(order_id__in=ids, listing__business_owner=owner).select_related("listing").order_by("pk"):
         items.setdefault(item.order_id, []).append(
-            {"name": item.listing.name, "quantity": item.quantity, "line_total": money(to_pesewas(item.line_total))}
+            {"name": item.line_name, "quantity": item.quantity, "line_total": money(to_pesewas(item.line_total))}
         )
     # The business's free-delivery promo on the order: owed until release, charged from Available then, reversed (and
     # given back) on a whole refund (ledger.escrow.charge_waiver / return_waiver), so OWED is what it pays. An
@@ -173,6 +174,105 @@ def rows(owner, groups):
     return out
 
 
+# --- booking sales: services, stays and event tickets (Task 1 of plan 4F) -----------------------------------------
+
+BOOKING_ON_HOLD_PROBLEM = "On hold: a problem was reported"
+BOOKING_ON_HOLD_EVENT = "On hold while AshantiHub checks the event"
+BOOKING_ON_HOLD_CANCELLED = "On hold: the event was cancelled and its tickets are being refunded"
+BOOKING_WAITING_FOR_DONE = "Waiting for you to mark the service done"
+BOOKING_WAITING_SERVICE = "Waiting for the customer to accept, or the automatic release"
+BOOKING_WAITING_STAY = "Releases after the guest's check-in window"
+BOOKING_WAITING_TICKETS = "Releases after the event"
+BOOKING_DUE = "Due for release"
+BOOKING_WAITING = {
+    BookingSale.SERVICE: BOOKING_WAITING_SERVICE, BookingSale.STAY: BOOKING_WAITING_STAY,
+    BookingSale.TICKETS: BOOKING_WAITING_TICKETS,
+}
+
+
+def booking_sales(owner, *, status=None, date_from=None, date_to=None):
+    """The business's booking sales, newest paid first, as a queryset. awaiting_call: not released and not refunded in
+    full; released: released and not refunded in full; refunded: refunded in full. The dates are the Accra day of
+    `paid_at`."""
+    queryset = BookingSale.objects.filter(business_owner=owner)
+    if date_from is not None:
+        queryset = queryset.filter(paid_at__date__gte=date_from)
+    if date_to is not None:
+        queryset = queryset.filter(paid_at__date__lte=date_to)
+    if status == AWAITING:
+        queryset = queryset.filter(released_at__isnull=True, reversed_at__isnull=True)
+    elif status == RELEASED:
+        queryset = queryset.filter(released_at__isnull=False, reversed_at__isnull=True)
+    elif status == REFUNDED:
+        queryset = queryset.filter(reversed_at__isnull=False)
+    return queryset.select_related("session", "service_request__listing", "booking__listing", "event").order_by("-paid_at", "-id")
+
+
+def booking_status_of(sale):
+    if sale.reversed_at is not None:
+        return REFUNDED
+    return RELEASED if sale.released_at is not None else AWAITING
+
+
+def booking_figures(sale):
+    """(gross, platform fee, refunded, net) of one booking sale in pesewas: the fee is what was charged less what refunds
+    gave back, the net is what is left of the item subtotal after both. One place for the rows and the statement."""
+    fee = sale.charged_pesewas - sale.refunded_fee_pesewas
+    return sale.base_pesewas, fee, sale.refunded_base_pesewas, sale.base_pesewas - sale.refunded_base_pesewas - fee
+
+
+def booking_rows(owner, sales_page, now=None):
+    """The API rows for these booking sales (one page), in their order, in a fixed number of queries whatever their
+    number: the three release settings once, open problems in one query, unrefunded tickets per purchase in one.
+    `platform_fee` and `net` are what is left after refunds. No customer detail, and no reason for a problem."""
+    from events.models import Event, Ticket
+
+    now = now or timezone.now()
+    sales_page = list(sales_page)
+    hours = sales.release_hours(now)
+    disputes = [sale.dispute_id for sale in sales_page if sale.dispute_id is not None]
+    open_problems = set(
+        Dispute.objects.filter(pk__in=disputes).exclude(status__in=Dispute.FINAL_STATUSES).values_list("pk", flat=True)
+    ) if disputes else set()
+    transactions = [sale.session.transaction_id for sale in sales_page if sale.kind == BookingSale.TICKETS]
+    live = dict(
+        Ticket.objects.filter(transaction_id__in=transactions, refunded_at__isnull=True)
+        .values("transaction_id").annotate(n=Count("id")).values_list("transaction_id", "n")
+    ) if transactions else {}
+    out = []
+    for sale in sales_page:
+        status = booking_status_of(sale)
+        under_review = sale.kind == BookingSale.TICKETS and sale.event.status in (Event.PENDING, Event.REJECTED)
+        cancelled = sale.kind == BookingSale.TICKETS and sale.event.status == Event.CANCELLED
+        problem = sale.dispute_id in open_problems
+        awaiting = status == AWAITING
+        on_hold = awaiting and (problem or under_review or cancelled)
+        due = sales.release_at(sale, now, hours=hours) if awaiting and not on_hold else None
+        if not awaiting:
+            label = LABELS[status]
+        elif on_hold:
+            label = BOOKING_ON_HOLD_PROBLEM if problem else (BOOKING_ON_HOLD_CANCELLED if cancelled else BOOKING_ON_HOLD_EVENT)
+        elif due is None:
+            label = BOOKING_WAITING_FOR_DONE
+        elif due <= now:
+            label = BOOKING_DUE
+        else:
+            label = BOOKING_WAITING[sale.kind]
+        gross, fee, refunded, net = booking_figures(sale)
+        tickets = live.get(sale.session.transaction_id, 0) if sale.kind == BookingSale.TICKETS else None
+        out.append({
+            "kind": "booking", "sale": sale.pk, "booking_kind": sale.kind, "booking_kind_label": sale.get_kind_display(),
+            "reference": f"Booking #{sale.pk}", "what": sales.description(sale, live_tickets=tickets), "placed_at": sale.paid_at,
+            "item_subtotal": money(gross), "refunded": money(refunded),
+            "platform_fee": money(fee), "free_delivery_promo": "0.00",
+            "net": money(net),
+            "status": status, "status_label": label, "on_hold": on_hold,
+            "customer_accepted": sale.customer_accepted_at is not None,
+            "release_at": due, "released_at": sale.released_at if status == RELEASED else None,
+        })
+    return out
+
+
 def fee_cap(owner, now=None):
     """The lifetime platform-fee cap (spec §1 row 2) as the business sees it: the cap in force (None: no cap), the fees
     charged so far against it, and what is left (None with no cap)."""
@@ -184,6 +284,13 @@ def fee_cap(owner, now=None):
     }
 
 
+def withdrawing(owner):
+    """Pesewas the business has asked to withdraw that have not yet reached it (held, or sent and waiting)."""
+    holder_type, holder_id = ref(owner)
+    return Withdrawal.objects.filter(holder_type=holder_type, holder_id=holder_id, status__in=Withdrawal.OPEN).aggregate(
+        total=Sum("amount_pesewas"))["total"] or 0
+
+
 def overview(owner, now=None):
     """Pending (waiting for Support's call), Available (released; may be negative after a late refund, which blocks
     withdrawals), what can be withdrawn (Available when positive, before the per-withdrawal and daily limits and a usable
@@ -192,8 +299,9 @@ def overview(owner, now=None):
     available = posting.balance_of(Account.VENDOR_AVAILABLE, owner)
     return {
         "pending": money(pending), "available": money(available), "withdrawable": money(max(available, 0)),
-        "negative": available < 0, "awaiting_call": sale_groups(owner, status=AWAITING).count(),
-        "fee_cap": fee_cap(owner, now),
+        "negative": available < 0,
+        "awaiting_call": sale_groups(owner, status=AWAITING).count() + booking_sales(owner, status=AWAITING).count(),
+        "withdrawing": money(withdrawing(owner)), "fee_cap": fee_cap(owner, now),
     }
 
 
@@ -206,8 +314,7 @@ DR, CR = JournalLine.DEBIT, JournalLine.CREDIT
 # (column, sign). The release takes the item subtotal out of Pending (a debit) and credits Available with it less the
 # platform fee, so the fee is the difference. Any other line lands in "other" (credits in, debits out), so for every day
 #   sold - fees - refunded - free_delivery_promo - withdrawn + other = net_change (the change in Pending + Available).
-# Plan 1b's booking_payment / booking_release / booking_refund lines are not folded yet, so they land in "other"; the
-# follow-up that adds booking sales to the rows adds them here (spec §13 (lxxxiii)).
+# Plan 1b's booking_payment / booking_release / booking_refund lines fold the same way as the order ones (4F Task 2).
 FOLD = {
     ("order_payment", P, CR): ("sold", 1),
     ("order_release", P, DR): ("fees", 1),
@@ -215,6 +322,12 @@ FOLD = {
     ("order_refund", P, DR): ("refunded", 1),
     ("order_refund", A, DR): ("refunded", 1),
     ("order_refund", A, CR): ("refunded", -1),
+    ("booking_payment", P, CR): ("sold", 1),
+    ("booking_release", P, DR): ("fees", 1),
+    ("booking_release", A, CR): ("fees", -1),
+    ("booking_refund", P, DR): ("refunded", 1),
+    ("booking_refund", A, DR): ("refunded", 1),
+    ("booking_refund", A, CR): ("refunded", -1),
     ("order_waiver_charge", A, DR): ("free_delivery_promo", 1),
     ("order_waiver_return", A, CR): ("free_delivery_promo", -1),
     ("withdrawal_hold", A, DR): ("withdrawn", 1),
@@ -266,7 +379,7 @@ def _shown(row):
 def daily(owner, first, last):
     """The business's money for the Accra days first..last, from the journal lines on its own Pending and Available
     accounts (never another holder's: accounts are matched by kind, owner type and id). Newest day first; days when
-    nothing moved are left out; `totals` covers the range. `orders` counts the payments into Pending; `released` is what
+    nothing moved are left out; `totals` covers the range. `orders` counts the payments into Pending (orders and bookings: the column is "sales paid"); `released` is what
     moved to Available at release (shown, not part of the identity in FOLD's note)."""
     accounts = [found for found in (account(owner, P), account(owner, A)) if found is not None]
     days = {}
@@ -289,9 +402,9 @@ def daily(owner, first, last):
             else:
                 row["other"] += signed
             row["net_change"] += signed
-            if key == ("order_payment", P, CR):
+            if key in (("order_payment", P, CR), ("booking_payment", P, CR)):
                 row["orders"] += line["journals"]
-            if key == ("order_release", A, CR):
+            if key in (("order_release", A, CR), ("booking_release", A, CR)):
                 row["released"] += line["total"]
     totals = _blank()
     for row in days.values():
@@ -327,14 +440,17 @@ def _withdrawals(owner, first, last):
 
 def check_statement_size(owner, first, last):
     """Raises RangeError when the range holds more than EXPORT_MAX_ROWS rows, counted in SQL before any row is loaded."""
-    total = sale_groups(owner, date_from=first, date_to=last).count() + _withdrawals(owner, first, last).count()
+    total = (
+        sale_groups(owner, date_from=first, date_to=last).count() + booking_sales(owner, date_from=first, date_to=last).count()
+        + _withdrawals(owner, first, last).count()
+    )
     if total > EXPORT_MAX_ROWS:
         raise RangeError("date_from", "Too many rows \u2014 choose a shorter date range.")
 
 
 def statement(owner, first, last):
     """The business's statement for the Accra days first..last, oldest first (spec §6, the transactions page's export):
-    each sale bought on those days (gross, the platform fee shown separately, the free-delivery promo, what was refunded,
+    each sale and each booking sale (services, stays, tickets: type "Booking", no item name) bought on those days (gross, the platform fee shown separately, the free-delivery promo, what was refunded,
     the amount due or paid, and Pending / Available / Refunded) and each withdrawal asked for on them (what left
     Available, the provider's charge, what arrived; Withdrawn, in progress or returned). Every cell is a date, a number,
     a fixed word or an AshantiHub reference - no item name, note or person - so a spreadsheet never runs a formula from
@@ -350,6 +466,12 @@ def statement(owner, first, last):
             timezone.localdate(row["placed_at"]).isoformat(), "Sale", escape_cell(row["reference"]), row["item_subtotal"],
             row["platform_fee"], row["free_delivery_promo"], row["refunded"], "", row["net"],
             escape_cell(SALE_STATEMENT_STATUS[row["status"]]),
+        ]))
+    for sale in booking_sales(owner, date_from=first, date_to=last):
+        gross, fee, refunded, net = booking_figures(sale)
+        entries.append((sale.paid_at, 2, sale.pk, [
+            timezone.localdate(sale.paid_at).isoformat(), "Booking", f"Booking #{sale.pk}", money(gross), money(fee), "",
+            money(refunded), "", money(net), SALE_STATEMENT_STATUS[booking_status_of(sale)],
         ]))
     for withdrawal in _withdrawals(owner, first, last):
         entries.append((withdrawal.created_at, 1, withdrawal.pk, [
@@ -377,8 +499,7 @@ CHARGED = (FeeRuleSet.PRODUCT, FeeRuleSet.SERVICE, FeeRuleSet.EVENT)
 
 def charged_categories():
     """The fee categories the ledger charges: product orders (Stage 1), and services (stays count as services) and
-    event tickets (Plan 1b's booking sales). Booking sales are charged, but not yet in this module's rows (spec §13
-    (lxxxiii))."""
+    event tickets (Plan 1b's booking sales)."""
     return CHARGED
 
 

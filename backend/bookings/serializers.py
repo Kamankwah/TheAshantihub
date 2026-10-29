@@ -19,6 +19,22 @@ class BookingSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class CustomerBookingSerializer(BookingSerializer):
+    """The customer's own view of a booking: BookingSerializer plus the read-only `money` block (None without a paid
+    sale or with the ledger off). Owner views keep BookingSerializer and carry no `money` key."""
+
+    money = serializers.SerializerMethodField()
+
+    class Meta(BookingSerializer.Meta):
+        fields = BookingSerializer.Meta.fields + ["money"]
+        read_only_fields = fields
+
+    def get_money(self, obj):
+        from ledger.customer_money import money_block
+
+        return money_block(getattr(obj, "sale", None))
+
+
 class BookingCreateSerializer(serializers.Serializer):
     """Input for a customer booking. Availability, pricing, and listing
     validation happen in the view so they can return specific errors.

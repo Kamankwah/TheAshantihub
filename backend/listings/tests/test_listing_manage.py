@@ -7,9 +7,12 @@ from listings.models import Category, Listing, Zone
 
 
 class ListingManageTests(TestCase):
-    """Light edit of operational fields on a published listing without
-    re-moderation (business item 2 / Wave H).
-    """
+    """The live edit of a published listing without re-moderation (business item 2 / Wave H).
+
+    Narrowed in marketplace Plan 2 (decision V5): `manage` now carries only price, the sale price and the price unit
+    (stock has `restock`). Specs, tag, contact phone and the other fields a shopper sees used to go through here
+    unmoderated; they now need approval through a revision (test_listing_revisions), so the two tests that edited
+    them here assert the refusal instead."""
 
     def setUp(self):
         self.client = APIClient()
@@ -41,24 +44,24 @@ class ListingManageTests(TestCase):
         # The listing stays PUBLISHED — not pulled back to moderation.
         self.assertEqual(self.listing.status, Listing.PUBLISHED)
 
-    def test_owner_edits_specs(self):
+    def test_specs_are_no_longer_a_live_edit(self):
         self._auth(self.owner)
         response = self.client.patch(
             self._url(), {"specs": [{"label": "Size", "value": "Large"}]}, format="json",
         )
-        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("specs", response.json())
         self.listing.refresh_from_db()
-        self.assertEqual(self.listing.specs, [{"label": "Size", "value": "Large"}])
+        self.assertEqual(self.listing.specs, [{"label": "Color", "value": "Gold"}])
 
-    def test_manage_cannot_change_moderated_fields(self):
-        """name is not in the manage serializer, so it's silently ignored —
-        the content-moderated fields still require the full edit + re-review.
-        """
+    def test_manage_refuses_moderated_fields_and_changes_nothing(self):
+        """name was silently ignored before; now any field that is not live is a 400 and the request is not applied."""
         self._auth(self.owner)
-        self.client.patch(self._url(), {"name": "Something Else", "price_amount": "99.00"}, format="json")
+        response = self.client.patch(self._url(), {"name": "Something Else", "price_amount": "99.00"}, format="json")
+        self.assertEqual(response.status_code, 400)
         self.listing.refresh_from_db()
-        self.assertEqual(self.listing.name, "Kente Cloth")  # unchanged
-        self.assertEqual(str(self.listing.price_amount), "99.00")  # changed
+        self.assertEqual(self.listing.name, "Kente Cloth")
+        self.assertEqual(str(self.listing.price_amount), "100.00")
 
     def test_another_owner_cannot_manage_your_listing(self):
         self._auth(self.other_owner)

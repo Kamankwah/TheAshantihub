@@ -11,6 +11,7 @@ import ThemeToggle from "../ThemeToggle.jsx";
 import OperationsOverviewPanel from "./panels/OperationsOverviewPanel.jsx";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
 import SuperAdminOverviewPanel from "./panels/SuperAdminOverviewPanel.jsx";
+import AshantiDirectPanel from "./panels/AshantiDirectPanel.jsx";
 import ServiceIssuesPanel from "./panels/ServiceIssuesPanel.jsx";
 import DeliveriesReturnsPanel from "./panels/DeliveriesReturnsPanel.jsx";
 import SupportTeamPanel from "./panels/SupportTeamPanel.jsx";
@@ -57,7 +58,10 @@ import SaSessionsPanel from "./panels/SaSessionsPanel.jsx";
 import { startViewAs } from "../../hooks/useViewAs.js";
 import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
 import WalletsPanel from "./panels/WalletsPanel.jsx";
+import RiderMoneyPanel from "./panels/RiderMoneyPanel.jsx";
 import WithdrawalsPanel from "./panels/WithdrawalsPanel.jsx";
+import PickupDeskPanel from "./panels/PickupDeskPanel.jsx";
+import VerificationCallsPanel from "./panels/VerificationCallsPanel.jsx";
 import WalletReconciliationPanel from "./panels/WalletReconciliationPanel.jsx";
 import DisputesPanel from "./panels/DisputesPanel.jsx";
 import TransactionsReportPanel from "./panels/TransactionsReportPanel.jsx";
@@ -69,7 +73,8 @@ import DispatchPanel from "./panels/DispatchPanel.jsx";
 import { useRiderLocation } from "../../lib/riderTracking.js";
 import RiderTracker from "./panels/rider/RiderTracker.jsx";
 import ShiftPanel from "./panels/rider/ShiftPanel.jsx";
-import { EarningsScreen, JobsScreen, ReportIssueScreen, RiderCashScreen, RiderDocumentsScreen, RiderMenuScreen } from "./panels/rider/RiderScreens.jsx";
+import RiderEarningsTab from "./panels/rider/RiderEarningsTab.jsx";
+import { JobsScreen, ReportIssueScreen, RiderCashScreen, RiderDocumentsScreen, RiderMenuScreen } from "./panels/rider/RiderScreens.jsx";
 import RiderBottomBar from "./shell/RiderBottomBar.jsx";
 import DeliveryZonesPanel from "./panels/delivery/DeliveryZonesPanel.jsx";
 import DocumentsPanel from "./panels/delivery/DocumentsPanel.jsx";
@@ -128,6 +133,7 @@ import CommissionPanel from "./panels/CommissionPanel.jsx";
 import LeaderboardPanel from "./panels/LeaderboardPanel.jsx";
 import CommissionPolicyPanel from "./panels/CommissionPolicyPanel.jsx";
 import VisitsPanel from "./panels/VisitsPanel.jsx";
+import ClientListingsPanel from "./panels/ClientListingsPanel.jsx";
 import ProspectsPanel from "./panels/ProspectsPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
 import InvitePanel from "./panels/InvitePanel.jsx";
@@ -138,6 +144,7 @@ import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
 import ApprovalRulesPanel from "./panels/ApprovalRulesPanel.jsx";
 import MoneyRulesPanel from "./panels/MoneyRulesPanel.jsx";
 import RedeliveryFeePanel from "./panels/RedeliveryFeePanel.jsx";
+import RedeliveriesPanel from "./panels/RedeliveriesPanel.jsx";
 import PortfolioPanel from "./panels/PortfolioPanel.jsx";
 import SubscriptionsDuePanel from "./panels/SubscriptionsDuePanel.jsx";
 import FraudCasesPanel from "./panels/FraudCasesPanel.jsx";
@@ -472,13 +479,13 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
 
         <main ref={mainRef} className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
           <AnnouncementBanner />
-          {activeTab === "overview" && role !== "cosigner" && (role === "scout"
+          {activeTab === "overview" && role !== "cosigner" && role !== "pickup_desk" && (role === "scout"
             ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
             : role === "dispatch" && auth.hasPermission("delivery.dispatch")
               ? <ShiftPanel />
             : role === "delivery_manager"
               ? <LiveOperationsPanel auth={auth} onNavigate={selectTab} onOpenDelivery={(id) => openAt("dm-active", id)} onOpenCase={(id) => openAt("dm-cases", id)} />
-            : role === "super_admin"
+            : role === "super_admin" || role === "general_manager"
               ? <SuperAdminOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} />
             : role === "accountant" && auth.hasPermission("transactions.report")
               ? <AccountingOverviewPanel auth={auth} onNavigate={selectTab} />
@@ -488,9 +495,10 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
               ? <OperationsOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} onOpenBusiness={openBusiness} />
               : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
           {activeTab === "kyc" && <KYCQueuePanel auth={auth} />}
-          {activeTab === "moderation" && (role === "super_admin" ? <SaListingsPanel auth={auth} onOpenBusiness={openBusiness} /> : <ListingsModerationPanel auth={auth} />)}
+          {activeTab === "moderation" && (role === "super_admin" || role === "general_manager" ? <SaListingsPanel auth={auth} onOpenBusiness={openBusiness} /> : <ListingsModerationPanel auth={auth} />)}
           {activeTab === "hero" && <HeroApprovalPanel auth={auth} />}
-          {activeTab === "events-moderation" && (role === "super_admin" ? <SaEventsPanel /> : <EventsModerationPanel auth={auth} />)}
+          {activeTab === "ashanti-direct" && <AshantiDirectPanel />}
+          {activeTab === "events-moderation" && (role === "super_admin" || role === "general_manager" ? <SaEventsPanel /> : <EventsModerationPanel auth={auth} />)}
           {activeTab === "event-pricing" && <EventPricingPanel auth={auth} />}
           {activeTab === "reviews" && (role === "support" ? <SupportReviewsPanel /> : <ReviewsModerationPanel auth={auth} />)}
           {activeTab === "subscription-plans" && <SubscriptionPlansManagePanel />}
@@ -511,7 +519,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "scout-assignments" && <ScoutAssignmentsPanel />}
           {activeTab === "field-verification" && <ScoutPanel />}
           {activeTab === "dr-jobs" && <JobsScreen />}
-          {activeTab === "dr-earnings" && <EarningsScreen />}
+          {activeTab === "dr-earnings" && <RiderEarningsTab onNavigate={selectTab} />}
           {activeTab === "dr-cash" && <RiderCashScreen />}
           {activeTab === "dr-issue" && <ReportIssueScreen />}
           {activeTab === "dr-documents" && <RiderDocumentsScreen />}
@@ -540,11 +548,11 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "tasks" && (role === "scout"
             ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} leadName={leadName} />
             : <TasksPanel auth={auth} />)}
-          {activeTab === "activity" && (role === "operations" || role === "super_admin" ? <StaffActivityPanel live={live.live} superAdmin={role === "super_admin"} /> : <ActivityPanel />)}
+          {activeTab === "activity" && (role === "operations" || role === "super_admin" || role === "general_manager" ? <StaffActivityPanel live={live.live} superAdmin={role === "super_admin"} /> : <ActivityPanel />)}
           {activeTab === "visit-map" && <TeamVisitMapPanel onOpenBusiness={openBusiness} />}
           {activeTab === "calls" && <CallLogPanel auth={auth} onLogCall={() => selectTab("support-log-call")} />}
           {activeTab === "support-log-call" && <SupportLogCallPage presetLink={callLink} onDone={() => selectTab("calls")} onSeeLog={() => selectTab("calls")} />}
-          {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
+          {activeTab === "prospects" && <ProspectsPanel auth={auth} onRegister={openRegisterFromProspect} />}
           {activeTab === "targets" && (role === "super_admin" ? <TargetLimitsPanel onOpenApproval={openApproval} /> : role !== "super_admin" && auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
           {activeTab === "ops-scouts" && <OpsScoutsPanel auth={auth} onNavigate={selectTab} onOpenScout={openScoutPortfolio} />}
           {activeTab === "leave" && <LeavePanel auth={auth} />}
@@ -577,7 +585,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} showTaxRuling={role === "super_admin" || auth.hasPermission("commission.tax_ruling")} onOpenApproval={role === "super_admin" ? openApproval : undefined} />}
           {activeTab === "payouts-payroll" && <PayoutsPayrollPanel onNavigate={selectTab} />}
           {activeTab === "reconciliation" && <WalletReconciliationPanel fallback={<ReconciliationPanel />} onNavigate={auth.hasPermission("fraud.manage") || auth.hasPermission("fraud.flag") ? selectTab : undefined} />}
-          {activeTab === "wallets" && <WalletsPanel />}
+          {activeTab === "wallets" && <WalletsPanel auth={auth} />}
           {activeTab === "withdrawals" && <WithdrawalsPanel auth={auth} />}
           {activeTab === "delivery-pricing" && <DeliveryPricingPanel auth={auth} />}
           {activeTab === "tax-tables" && <TaxTablesPanel onNavigate={selectTab} />}
@@ -589,7 +597,8 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "team-reports" && (role === "super_admin" ? <ReportsHubPanel /> : <TeamReportsPanel auth={auth} />)}
           {activeTab === "commissions" && <CommissionsPanel onNavigate={selectTab} />}
           {activeTab === "refunds" && <RefundsPanel onNavigate={role === "accountant" ? selectTab : undefined} />}
-          {Object.hasOwn(ACCOUNTING_SHELLS, activeTab) && <AccountingShellPanel id={activeTab} />}
+          {activeTab === "acct-rider-payouts" && <RiderMoneyPanel auth={auth} fallback={<AccountingShellPanel id="acct-rider-payouts" />} />}
+          {activeTab !== "acct-rider-payouts" && Object.hasOwn(ACCOUNTING_SHELLS, activeTab) && <AccountingShellPanel id={activeTab} />}
           {activeTab === "acct-collections" && <CollectionsPanel />}
           {activeTab === "acct-audit-chain" && <AuditChainPanel />}
           {activeTab === "acct-alerts" && <MoneyAlertsPanel />}
@@ -603,13 +612,17 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "staff-announcements" && <StaffAnnouncementsPanel />}
           {activeTab === "sessions" && (role === "super_admin" ? <SaSessionsPanel /> : <SessionsPanel auth={auth} />)}
           {activeTab === "invites" && <SaInvitesPanel />}
-          {activeTab === "my-team" && (role === "operations" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
+          {activeTab === "my-team" && (role === "operations" || role === "general_manager" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "approval-rules" && <ApprovalRulesPanel onNavigate={selectTab} />}
-          {activeTab === "money-rules" && <MoneyRulesPanel />}
+          {activeTab === "money-rules" && <MoneyRulesPanel canPropose={auth.hasPermission("fees.manage")} superAdmin={role === "super_admin"} />}
           {activeTab === "redelivery-fee" && <RedeliveryFeePanel />}
+          {activeTab === "redeliveries" && <RedeliveriesPanel />}
           {/* The external co-signer has one screen: the requests waiting for their second approval. */}
           {activeTab === "overview" && role === "cosigner" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "overview" && role === "pickup_desk" && <PickupDeskPanel auth={auth} />}
+          {activeTab === "pickup-desk" && <PickupDeskPanel auth={auth} />}
+          {activeTab === "support-verification" && (role === "support" || role === "super_admin") && <VerificationCallsPanel auth={auth} onNavigate={role === "support" ? supportNavigate : undefined} />}
           {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "all-portfolios" && role === "super_admin" && <SaBusinessesPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "all-portfolios" && role !== "super_admin" && <PortfolioPanel key={scoutFilter ?? "any"} mode="all" initialScout={scoutFilter} auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
@@ -617,6 +630,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "subscriptions-due" && <SubscriptionsDuePanel auth={auth} onOpenBusiness={openBusiness} />}
           {activeTab === "fraud-cases" && (role === "super_admin" ? <FraudAlertsPanel auth={auth} onOpenBusiness={openBusiness} /> : <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />)}
           {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "client-listings" && <ClientListingsPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
         </main>
       </div>
 

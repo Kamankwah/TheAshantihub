@@ -1,10 +1,10 @@
 """Public feeds for the storefront (Plan M1). Deals: live goods and food listings (cart.guard.deliverable_q, the same
 listings a sale price can apply to) with a real discount, plus sponsored ones.
 
-A discount counts only while `sale_price < price_amount`. `was_price` and `discount_percent` appear only when the
+A discount counts only while it is live (listings.pricing.live_discount_q: sale price below the regular price, not past its end date). `was_price` and `discount_percent` appear only when the
 listing really held its regular price for the previous 7 days (listings.pricing); otherwise the row shows the sale
 price alone. Rows carry no phone, email or business detail (businesses are never contacted directly)."""
-from django.db.models import F, Q
+from django.db.models import Q
 from django.utils import timezone
 
 from cart.guard import deliverable_q
@@ -21,7 +21,7 @@ MAX_LIMIT = 48
 
 def deals(limit=DEFAULT_LIMIT, request=None):
     limit = max(1, min(int(limit), MAX_LIMIT))
-    discounted = Q(sale_price__isnull=False, sale_price__lt=F("price_amount"))
+    discounted = pricing.live_discount_q()
     queryset = (
         _with_rating_annotations(Listing.objects.filter(live_q()).filter(deliverable_q()))
         .filter(discounted | Q(sponsored=True))
@@ -33,7 +33,7 @@ def deals(limit=DEFAULT_LIMIT, request=None):
     started = {
         listing_id: started_at
         for listing_id, price, started_at in ListingPriceHistory.objects
-        .filter(listing_id__in=list(price_of), ended_at__isnull=True).order_by("started_at")
+        .filter(listing_id__in=list(price_of), variant__isnull=True, ended_at__isnull=True).order_by("started_at")
         .values_list("listing_id", "price", "started_at")
         if price == price_of[listing_id]
     }

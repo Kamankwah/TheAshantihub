@@ -93,5 +93,5 @@ def _consequences(request):
 DELIVERY_PROMO_FUNDING = ApprovalKind(
     key=KEY, label="Approve an AshantiHub-funded free-delivery promo", pool_permission=APPROVE_PERM, current_state=_state, apply=_apply,
     response_hours=48, chain_note="Operations or Super Admin", resolve_approver=_approvers, render_diff=_diff, validate=_validate,
-    on_rejected=_on_rejected, consequences=_consequences, requires_sudo=True, amount_of=_amount,
+    on_rejected=_on_rejected, consequences=_consequences, requires_sudo=True, money=True, amount_of=_amount,
 )

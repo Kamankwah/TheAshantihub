@@ -2,6 +2,7 @@ import { useState } from "react";
 import { apiPost } from "../../../../apiClient.js";
 import { apiErrorMessage } from "../../../../lib/apiErrorMessage.js";
 import { useDeliveryCash, useDeliveryPayoutLines, useDeliveryPayouts } from "../../../../hooks/useDelivery.js";
+import { formatGhs } from "../../../wallet/walletMoney.js";
 import { D } from "../../theme.js";
 import { button, chip, dim, field } from "../panelStyles.js";
 import { scroll, table, td, th } from "../opsPeopleParts.jsx";
@@ -120,6 +121,22 @@ function Lines({ staffId, weeks, onClose }) {
           </div>
         ))}
       </Status>
+      {data?.redeliveries?.length > 0 && (
+        <div style={{ display: "grid", gap: 6 }}>
+          <h4 style={sectionTitle}>Re-delivery trips</h4>
+          <div style={scroll}>
+            <table style={table}>
+              <thead><tr>{["Order", "Trip", "Done", "Fee owed"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
+              <tbody>{data.redeliveries.map((r) => (
+                <tr key={r.id}>
+                  <td style={td}>#{r.order}</td><td style={td}>Re-delivery {r.attempt}</td><td style={td}>{dayTime(r.completed_at)}</td>
+                  <td style={{ ...td, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{formatGhs(r.fee)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -158,6 +175,23 @@ export function PayoutsPanel() {
               )}
               <span style={dim}>Pay for a job is recorded when it is delivered, from the rate card in force then{data.card ? ` (version ${data.card.version}: ${money(data.card.rider_per_job)} a job + ${money(data.card.rider_per_km)} a km + ${money(data.card.wait_per_min)} a minute waited after ${data.card.wait_after_min})` : ""}. You check the jobs and waiting; Accounting prepares any payout run and works out tax withheld; a Super Admin approves. Nothing is paid from this screen.</span>
             </section>
+            {data.redeliveries?.length > 0 && (
+              <section aria-labelledby="redeliveries" style={section}>
+                <h3 id="redeliveries" style={sectionTitle}>Re-delivery trips owed through payroll</h3>
+                <span style={dim}>The customer paid each re-delivery fee. It is owed to the AshantiHub rider who made the second trip and is paid through payroll, not from this screen.</span>
+                <div style={scroll}>
+                  <table style={table}>
+                    <thead><tr>{["Rider", "Trips", "Owed"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
+                    <tbody>{data.redeliveries.map((r) => (
+                      <tr key={r.staff_id}>
+                        <td style={td}>{r.full_name}</td><td style={td}>{r.trips}</td>
+                        <td style={{ ...td, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{formatGhs(r.owed)}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              </section>
+            )}
             {open != null && <Lines staffId={open} weeks={weeks} onClose={() => setOpen(null)} />}
           </>
         )}

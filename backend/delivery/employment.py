@@ -338,5 +338,5 @@ def consequences(request):
 EMPLOYMENT_KIND = ApprovalKind(
     key=KIND, label="Change who a rider works for", pool_permission="", current_state=current_state, apply=apply,
     response_hours=48, resolve_approver=lambda request: [(ApprovalRequest.SUPER_ADMIN, None)], render_diff=render_diff,
-    validate=validate, consequences=consequences, requires_sudo=True, chain_note="Super Admin only",
+    validate=validate, consequences=consequences, requires_sudo=True, money=True, chain_note="Super Admin only",
 )

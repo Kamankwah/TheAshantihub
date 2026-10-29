@@ -34,6 +34,8 @@ ALREADY_DECIDED = "This business has already been decided."
 SELF_DEALING_HOLD = "Decide the self-dealing case in Fraud cases first."
 REASON_REQUIRED = "Write the reason the owner will see."
 ADDRESS_FIRST = "Record the Ghana Post address decision first."
+CONFIRMATION_MISSING = "The owner has not confirmed this registration yet."
+CONFIRMATION_MISSING_CODE = "confirmation_missing"
 # Every KYC door's refusal of a submitter (is_kyc_submitter). The approvals
 # engine's own maker refusal is unchanged; the queue door maps it to this.
 OWN_REGISTRATION = "You supplied or changed this business's details, so someone else decides its KYC."
@@ -41,10 +43,11 @@ NOT_FOUND = "We couldn't find that business."
 
 
 class KycError(Exception):
-    def __init__(self, message, status_code=400):
+    def __init__(self, message, status_code=400, code=""):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
+        self.code = code  # a machine-readable reason the API answers beside the message, when there is one
 
 
 def self_dealing_open(owner):
@@ -115,6 +118,31 @@ def address_decision_missing(owner):
     return profile is None or profile.address_verified_at is None
 
 
+def confirmation_missing(owner):
+    """A business a staff member registered cannot be verified until its owner confirms the registration from the
+    texted link (portfolio.confirmations). Either door refuses it with 409 `confirmation_missing`. An online owner, or
+    one from before the pipeline, has no registration row and counts as confirmed."""
+    from portfolio.confirmations import registration_confirmed  # portfolio imports accounts: keep the import lazy
+
+    return not registration_confirmed(owner)
+
+
+SIMULATED_NOTE = " Texts are simulated on this server, so no link went out."
+
+
+def confirmation_missing_message(owner):
+    """The 409 text for an unconfirmed registration. When the owner's latest registration link was only simulated
+    (nothing was texted), it says so instead of letting staff wait for a message that never left."""
+    from portfolio.models import OwnerConfirmation  # lazy, as above
+
+    latest = OwnerConfirmation.objects.filter(
+        business_owner=owner, scope=OwnerConfirmation.REGISTRATION,
+    ).order_by("-pk").first()
+    if latest is not None and latest.confirmed_at is None and latest.send_state == OwnerConfirmation.SIMULATED:
+        return CONFIRMATION_MISSING + SIMULATED_NOTE
+    return CONFIRMATION_MISSING
+
+
 def _close_pending(owner_id, staff, *, approved, note):
     """close_pending_for_target for the queue door, with the KYC refusal: the
     maker of a pending business.kyc request is a KYC submitter."""
@@ -141,6 +169,8 @@ def approve_owner(owner_id, staff, *, http_request=None, from_approval=None):
             raise KycError(ADDRESS_FIRST)
         if self_dealing_open(owner):
             raise KycError(SELF_DEALING_HOLD)
+        if confirmation_missing(owner):
+            raise KycError(confirmation_missing_message(owner), status_code=409, code=CONFIRMATION_MISSING_CODE)
         owner.kyc_status = BusinessOwner.VERIFIED
         owner.kyc_rejection_reason = None
         owner.reviewed_by = staff
@@ -154,6 +184,11 @@ def approve_owner(owner_id, staff, *, http_request=None, from_approval=None):
         from commission import services as commission  # commission imports accounts
 
         commission.accrue_registration(owner, now=owner.reviewed_at)  # idempotent; nothing without an approved policy
+        # Listings staff made for this business that the owner already confirmed were waiting for this KYC. Both doors
+        # (the queue and the business.kyc approval) end here, so this is the one place they are sent on.
+        from portfolio.staff_listing_kind import submit_waiting
+
+        transaction.on_commit(lambda: submit_waiting(owner.pk))
         if from_approval is None:
             after = {"via": "kyc-queue", "approval_ids": [approval.pk for approval in closed]}
         else:

@@ -12,7 +12,7 @@ const FINAL = ['succeeded', 'failed', 'cancelled']
 // The holder's withdrawals, newest first. Cancel is offered on every row that
 // is not final and the server decides: its reply (the updated row, or e.g.
 // "Only a withdrawal not sent yet can be cancelled.") is what is shown.
-export default function WithdrawalHistory({ tone = 'light', basePath = '/api/wallet' }) {
+export default function WithdrawalHistory({ tone = 'light', basePath = '/api/wallet', onChanged }) {
   const s = walletStyles(tone)
   const queryClient = useQueryClient()
   const { query, loaded, rows, hasMore, loadMore, loadError } = usePagedRows((page) => useWithdrawals(page, { basePath }))
@@ -34,8 +34,10 @@ export default function WithdrawalHistory({ tone = 'light', basePath = '/api/wal
       const res = await apiPost(`${basePath}/withdrawals/${id}/cancel/`, {})
       setUpdated((u) => ({ ...u, [id]: res }))
       queryClient.invalidateQueries({ queryKey: ['wallet'] })
+      if (onChanged) onChanged()
     } catch (err) {
       setNotes((n) => ({ ...n, [id]: walletMessage(err).text }))
+      if (onChanged) onChanged()
     } finally {
       setCancelling(null)
     }

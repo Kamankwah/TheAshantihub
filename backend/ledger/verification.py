@@ -1,6 +1,7 @@
 """Support's verification of a product order that has reached the customer, and the release it triggers. A positive
 result releases the money immediately; a negative one raises a dispute due within `verification_overdue_hours` of
 purchase and releases nothing; "could not reach" is only recorded (the order stays on Support's list)."""
+import hmac
 import logging
 from datetime import timedelta
 
@@ -17,11 +18,12 @@ logger = logging.getLogger(__name__)
 
 
 class VerificationError(Exception):
-    def __init__(self, message, status_code=409, code=None):
+    def __init__(self, message, status_code=409, code=None, **extra):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
         self.code = code
+        self.extra = extra
 
 
 def check_for(order):
@@ -100,14 +102,13 @@ def record(order, staff, outcome, *, note="", customer_confirmed_by_phone=False,
         return check
 
 
-def awaiting(now=None):
-    """Paid orders that have reached the customer and are not yet verified positive, oldest first, with what Support
-    needs on the call. `overdue` means more than `verification_overdue_hours` have passed since purchase."""
-    from orders.models import Order
+def awaiting_queryset(now=None):
+    """Paid orders that have reached the customer and still have something left to release, oldest first. The hand-over
+    rule is `handed_over()` in SQL: a collected store pickup, or any other order whose delivery was marked done and did
+    not fail."""
+    from orders.models import DeliveryAssignment, Order
 
-    now = now or timezone.now()
-    limit = timedelta(hours=settings_store.current("verification_overdue_hours", now))
-    orders = (
+    return (
         # A snapshot neither released nor refunded in full, or (every item refunded, the order not wholly) a delivery
         # fee still held in the order's Delivery payable: both wait for Support's call. A wholly refunded order holds nothing.
         Order.objects.annotate(delivery_held=Exists(Account.objects.filter(
@@ -115,49 +116,135 @@ def awaiting(now=None):
             owner_id=Cast(OuterRef("pk"), CharField()),
         ))).filter(status=Order.PAID).filter(
             Q(fee_snapshots__released_at__isnull=True, fee_snapshots__reversed_at__isnull=True) | Q(delivery_held=True)
+        ).filter(
+            Q(delivery_method=Order.STORE_PICKUP, fulfilment_check__collected_at__isnull=False)
+            | (
+                ~Q(delivery_method=Order.STORE_PICKUP) & Q(delivery_assignment__delivered_at__isnull=False)
+                & ~Q(delivery_assignment__status=DeliveryAssignment.FAILED)
+            )
         ).distinct()
-        .select_related("customer").prefetch_related("items__listing__business_owner").order_by("placed_at", "id")
+        .select_related("customer", "fulfilment_check", "delivery_assignment")
+        .prefetch_related("items__listing__business_owner__profile").order_by("placed_at", "id")
     )
-    rows = []
-    for order in orders:
-        check = FulfilmentCheck.objects.filter(order=order).first() or FulfilmentCheck(order=order)
-        if not handed_over(order, check):
-            continue
-        rows.append({
-            "order_id": order.pk, "placed_at": order.placed_at, "due_by": order.placed_at + limit,
-            "overdue": now > order.placed_at + limit, "delivery_method": order.delivery_method,
-            "customer_name": order.customer.full_name, "customer_phone": order.delivery_phone or order.customer.phone,
-            "items": [
-                {"name": item.listing.name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
-                for item in order.items.all()
-            ],
-            "customer_confirmed": customer_confirmed(order, check),
-            "outcome": check.outcome, "outcome_note": check.outcome_note, "released": False,
-        })
-    return rows
 
 
-def mark_collected(order, staff, now=None):
-    """The pickup desk hands a paid store-pickup order to the customer. Idempotent: a second call keeps the first stamp."""
+def _overdue_limit(now):
+    return timedelta(hours=settings_store.current("verification_overdue_hours", now))
+
+
+def awaiting_row(order, now, limit=None):
+    """What Support needs on the call for one order. The order comes from `awaiting_queryset`, so its check and
+    delivery are already loaded; a caller building many rows passes `limit` (`_overdue_limit`) so it is read once."""
+    limit = limit if limit is not None else _overdue_limit(now)
+    check = getattr(order, "fulfilment_check", None) or FulfilmentCheck(order=order)
+    return {
+        "order_id": order.pk, "placed_at": order.placed_at, "due_by": order.placed_at + limit,
+        "overdue": now > order.placed_at + limit, "delivery_method": order.delivery_method,
+        "customer_name": order.customer.full_name, "customer_phone": order.delivery_phone or order.customer.phone,
+        "items": [
+            {"name": item.line_name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
+            for item in order.items.all()
+        ],
+        "customer_confirmed": customer_confirmed(order, check),
+        "outcome": check.outcome, "outcome_note": check.outcome_note, "released": False,
+    }
+
+
+def awaiting(now=None):
+    """The awaiting rows, oldest first. `overdue` means more than `verification_overdue_hours` have passed since purchase."""
+    now = now or timezone.now()
+    limit = _overdue_limit(now)
+    return [awaiting_row(order, now, limit) for order in awaiting_queryset(now)]
+
+
+CODE_ATTEMPT_LIMIT = 5   # wrong collection codes on one order before the desk is locked out and Support is told
+
+
+def collection_code(order):
+    """The order's one-time pickup code, for a ledger-recorded, not-yet-collected store-pickup order; otherwise None. An
+    order paid before codes existed gets one on first call (created under the order row lock). Only the customer's own
+    order serializer shows it."""
+    from orders.models import Order
+
+    if order.status != Order.PAID or order.delivery_method != Order.STORE_PICKUP:
+        return None
+    check = getattr(order, "fulfilment_check", None)
+    if check is not None and check.collected_at is not None:
+        return None
+    if check is not None and check.collection_code:
+        return check.collection_code  # only ever created by the ledger's payment, or below
+    recorded = getattr(order, "pay_recorded", None)   # annotated by the customer's order list, so no query per order
+    if recorded is None:
+        recorded = Journal.objects.filter(key=escrow.pay_key(order)).exists()
+    if not recorded:
+        return None
+    with transaction.atomic():
+        locked = Order.objects.select_for_update(of=("self",)).get(pk=order.pk)
+        check = check_for(locked)
+        if check.collected_at is not None:
+            return None
+        if not check.collection_code:
+            check.collection_code = escrow.new_collection_code()
+            check.save(update_fields=["collection_code", "updated_at"])
+    order.fulfilment_check = check
+    return check.collection_code
+
+
+def _tell_support_of_lock(order):
+    from notifications.services import notify_staff_role
+
+    notify_staff_role(
+        "orders.verify", "pickup_code_locked", "A collection code was entered wrongly 5 times",
+        body=f"Order #{order.pk} is locked at the pickup desk. Look it up by number in Order status.", link="support-order-status", icon="🔒",
+    )
+
+
+def mark_collected(order, staff, code=None, now=None):
+    """The pickup desk hands a paid store-pickup order to the customer who reads out the order's collection code. A
+    ledger-recorded order needs the right code (an order the ledger never recorded has none, so it stays with a person);
+    five wrong codes lock it, and a collected order's code works no more."""
     from orders.models import Order
 
     now = now or timezone.now()
+    refusal = None
     with transaction.atomic():
         order = Order.objects.select_for_update().get(pk=order.pk)
         if order.status != Order.PAID or order.delivery_method != Order.STORE_PICKUP:
             raise VerificationError("Only a paid store-pickup order can be marked collected.")
-        from . import refunds
-
-        if refunds.is_wholly_refunded(order):
-            raise VerificationError("This order was refunded in full, so it cannot be handed over.")
         check = check_for(order)
-        if check.collected_at is None:
+        order.fulfilment_check = check
+        if check.collected_at is not None:
+            raise VerificationError("This order has already been collected.")
+        expected = collection_code(order)
+        if expected:
+            if check.code_attempts >= CODE_ATTEMPT_LIMIT:
+                raise VerificationError("Too many wrong codes for this order. Support has been told.", 423, "code_locked")
+            given = code.strip() if isinstance(code, str) else ""
+            if not given:
+                raise VerificationError("Ask the customer for their collection code.", 400, "code_required")
+            if not hmac.compare_digest(expected.encode(), given.encode()):
+                check.code_attempts += 1
+                check.save(update_fields=["code_attempts", "updated_at"])
+                if check.code_attempts >= CODE_ATTEMPT_LIMIT:
+                    _tell_support_of_lock(order)
+                if check.code_attempts >= CODE_ATTEMPT_LIMIT:
+                    refusal = VerificationError("Too many wrong codes for this order. Support has been told.", 423, "code_locked")
+                else:
+                    refusal = VerificationError(
+                        "That code is not right.", 400, "wrong_code", attempts_left=CODE_ATTEMPT_LIMIT - check.code_attempts,
+                    )
+        if refusal is None:
+            from . import refunds
+
+            if refunds.is_wholly_refunded(order):
+                raise VerificationError("This order was refunded in full, so it cannot be handed over.")
             check.collected_at, check.collected_by = now, staff
             check.save(update_fields=["collected_at", "collected_by", "updated_at"])
             # A pickup order has no delivery to finish, so collection is its delivery: Support can no longer cancel it.
             order.delivery_status = Order.DELIVERED
             order.save(update_fields=["delivery_status"])
-        return check
+            return check
+    raise refusal  # raised outside the transaction, so the counter saved above is kept
 
 
 def _clock_start(order):
@@ -165,29 +252,57 @@ def _clock_start(order):
     return max(order.placed_at, order.ready_not_before) if order.ready_not_before else order.placed_at
 
 
-def pickup_queue(now=None):
-    """Paid store-pickup orders not yet collected, oldest first. Deliberately carries no phone number: the desk
-    hands over goods, it does not call customers."""
+def pickup_queryset(now=None, q=""):
+    """Paid store-pickup orders not yet collected, oldest first, that the ledger recorded the payment of (an older
+    order stays for a person, as in `expire_uncollected`). `q`: a number (`#` allowed, at most 9 digits) finds an order
+    by its number, any other text a customer by name."""
     from orders.models import Order
 
-    now = now or timezone.now()
-    window = timedelta(hours=settings_store.current("pickup_window_hours", now))
-    orders = (
-        Order.objects.filter(status=Order.PAID, delivery_method=Order.STORE_PICKUP)
+    queryset = (
+        Order.objects.annotate(pay_key=Concat(Value("order-pay-"), Cast("pk", CharField())))
+        .filter(Exists(Journal.objects.filter(key=OuterRef("pay_key"))))
+        .filter(status=Order.PAID, delivery_method=Order.STORE_PICKUP)
         .exclude(fulfilment_check__collected_at__isnull=False).exclude(refunds__whole=True)
-        .select_related("customer").prefetch_related("items__listing__business_owner").order_by("placed_at", "id")
+        .select_related("customer").prefetch_related("items__listing__business_owner__profile").order_by("placed_at", "id")
     )
-    return [
-        {
-            "order_id": order.pk, "placed_at": order.placed_at, "collect_by": _clock_start(order) + window,
-            "overdue": now > _clock_start(order) + window, "customer_name": order.customer.full_name,
-            "items": [
-                {"name": item.listing.name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
-                for item in order.items.all()
-            ],
-        }
-        for order in orders
-    ]
+    q = (q or "").strip()
+    if q:
+        number = q.lstrip("#").strip()
+        if number.isascii() and number.isdigit():
+            queryset = queryset.filter(pk=int(number)) if len(number) <= 9 else queryset.none()
+        else:
+            queryset = queryset.filter(customer__full_name__icontains=q)
+    return queryset
+
+
+def _pickup_window(now):
+    return timedelta(hours=settings_store.current("pickup_window_hours", now))
+
+
+def collect_by(order, now, window=None):
+    """The time a store-pickup order must be collected by (a caller building many passes `window`, `_pickup_window`)."""
+    return _clock_start(order) + (window if window is not None else _pickup_window(now))
+
+
+def pickup_row(order, now, window=None):
+    """One desk row (a caller building many passes `window`, `_pickup_window`, so it is read once). Deliberately
+    carries no phone number: the desk hands over goods, it does not call customers."""
+    window = window if window is not None else _pickup_window(now)
+    return {
+        "order_id": order.pk, "placed_at": order.placed_at, "collect_by": collect_by(order, now, window),
+        "overdue": now > collect_by(order, now, window), "customer_name": order.customer.full_name,
+        "items": [
+            {"name": item.line_name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
+            for item in order.items.all()
+        ],
+    }
+
+
+def pickup_queue(now=None):
+    """The pickup rows, oldest first."""
+    now = now or timezone.now()
+    window = _pickup_window(now)
+    return [pickup_row(order, now, window) for order in pickup_queryset(now)]
 
 
 def expire_uncollected(now=None):

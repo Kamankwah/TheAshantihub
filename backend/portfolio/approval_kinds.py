@@ -5,7 +5,17 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from accounts.kyc import ADDRESS_FIRST, KYC_KIND, SELF_DEALING_HOLD, KycError, approve_owner, self_dealing_open
+from accounts.kyc import (
+    ADDRESS_FIRST,
+    CONFIRMATION_MISSING_CODE,
+    KYC_KIND,
+    SELF_DEALING_HOLD,
+    KycError,
+    approve_owner,
+    confirmation_missing,
+    confirmation_missing_message,
+    self_dealing_open,
+)
 from accounts.models import BusinessOwner, BusinessOwnerProfile
 from accounts.phones import mask_phone
 from approvals.registry import ApprovalKind
@@ -13,7 +23,7 @@ from approvals.services import ApprovalError
 from staff_tasks.models import Task
 from staff_tasks.services import create_task
 
-from . import detail_changes
+from . import confirmations, detail_changes, staff_listing_kind
 from .proposals import (
     BUSINESS_UPDATE_KEY,
     LISTING_CREATE_KEY,
@@ -31,8 +41,16 @@ from .proposals import (
     validate_listing_photos,
     validate_update,
 )
+from .models import ListingDraft
 
 NOT_WAITING = "This business isn't waiting for KYC any more."
+
+
+class ConfirmationMissing(ApprovalError):
+    """The owner has not confirmed the registration: 409 with `code: confirmation_missing`."""
+
+    status_code = 409
+    code = CONFIRMATION_MISSING_CODE
 
 
 def _profile(owner_id):
@@ -53,6 +71,8 @@ def _kyc_validate(request):
         raise ApprovalError(ADDRESS_FIRST)
     if self_dealing_open(owner):
         raise ApprovalError(SELF_DEALING_HOLD)
+    if confirmation_missing(owner):
+        raise ConfirmationMissing(confirmation_missing_message(owner))
 
 
 def _kyc_apply(request):
@@ -61,6 +81,8 @@ def _kyc_apply(request):
     try:
         approve_owner(int(request.target_id), request.decided_by, from_approval=request)
     except KycError as exc:
+        if exc.code == CONFIRMATION_MISSING_CODE:
+            raise ConfirmationMissing(exc.message) from exc
         raise ApprovalError(exc.message) from exc
 
 
@@ -70,6 +92,11 @@ def _address_text(profile):
     if profile.address_verified_at is None:
         return f"{profile.gps_address} · not checked yet"
     return f"{profile.gps_address} · {'verified' if profile.address_verified else 'marked wrong'}"
+
+
+def _confirmation_rows(owner):
+    line = confirmations.registration_line(owner)
+    return [] if line is None else [{"field": "Owner confirmation", "before": None, "after": line}]
 
 
 def _kyc_diff(request):
@@ -83,6 +110,7 @@ def _kyc_diff(request):
         {"field": "Owner", "before": None, "after": f"{owner.full_name} · {mask_phone(owner.login_phone)}"},
         {"field": "Registered by", "before": None, "after": registered_by},
         {"field": "Ghana Post address", "before": None, "after": _address_text(_profile(owner.pk))},
+        *_confirmation_rows(owner),
     ]
 
 
@@ -92,6 +120,9 @@ RETURNED_DUE_IN = timedelta(hours=24)
 def _business_of(request):
     """The business a request is about: its target for KYC and detail changes,
     the listing's business for product and photo requests."""
+    if request.target_type == staff_listing_kind.TARGET_TYPE:
+        draft = ListingDraft.objects.select_related("business_owner").filter(pk=request.target_id).first()
+        return draft.business_owner if draft is not None else None
     if request.target_type == "listings.listing":
         from listings.models import Listing
 
@@ -120,6 +151,9 @@ def _kyc_consequences(request):
     if owner is None:
         return []
     lines = ["The business is verified and can go live."]
+    line = confirmations.registration_line(owner)
+    if line is not None:
+        lines.insert(0, f"Owner confirmation: {line}.")
     registrar = owner.registered_by
     if registrar is not None and registrar.role.name == "scout":
         first = registrar.full_name.split(" ")[0]
@@ -154,6 +188,7 @@ BUSINESS_KYC = ApprovalKind(
     validate=_kyc_validate,
     on_rejected=returned_task,
     consequences=_kyc_consequences,
+    two_people=True,  # a Super Admin's own registration waits for someone else too: nobody verifies their own business
 )
 
 BUSINESS_UPDATE = ApprovalKind(
@@ -178,6 +213,29 @@ LISTING_CREATE = ApprovalKind(
     render_diff=listing_create_diff,
     validate=validate_listing_create,  # KYC approved, subscription live and within its limit, photos unused
     on_rejected=returned_task,
+)
+
+def _staff_listing_returned(request):
+    """Returned by the approver: the draft goes back to the maker, who is given the follow-up task."""
+    staff_listing_kind.reopen(request)
+    returned_task(request)
+
+
+# A listing staff made for a client: live only after the owner confirmed it and a second person approved it. Two people,
+# so not even a Super Admin's own draft applies directly; the maker never decides. Not money: the General Manager checks.
+LISTING_STAFF_CREATE = ApprovalKind(
+    key=staff_listing_kind.KEY,
+    label="Listing made for a client",
+    pool_permission="listings.approve_staffed",
+    current_state=staff_listing_kind.current_state,
+    apply=staff_listing_kind.apply,
+    response_hours=24,
+    render_diff=staff_listing_kind.render_diff,
+    validate=staff_listing_kind.validate,  # owner confirmed, KYC verified, subscription live and within its limit, photos unused
+    on_rejected=_staff_listing_returned,
+    on_cancelled=staff_listing_kind.reopen,
+    consequences=staff_listing_kind.consequences,
+    two_people=True,
 )
 
 LISTING_PHOTOS = ApprovalKind(
@@ -210,8 +268,9 @@ BUSINESS_DETAIL_CHANGE = ApprovalKind(
     consequences=detail_changes.approval_consequences,
     public_payload=detail_changes.approval_public_payload,
     requires_sudo=True,
+    money=True,  # it controls who can reach the business's money
     two_people=True,
-    chain_note="One approval from another holder of portfolio.manage, or a Super Admin; never the scout who verified",
+    chain_note="One approval from another holder of portfolio.manage (not a General Manager), or a Super Admin; never the scout who verified",
 )
 
-KINDS = (BUSINESS_KYC, BUSINESS_UPDATE, LISTING_CREATE, LISTING_PHOTOS, BUSINESS_DETAIL_CHANGE)
+KINDS = (BUSINESS_KYC, BUSINESS_UPDATE, LISTING_CREATE, LISTING_STAFF_CREATE, LISTING_PHOTOS, BUSINESS_DETAIL_CHANGE)

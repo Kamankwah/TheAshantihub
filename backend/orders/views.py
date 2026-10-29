@@ -10,14 +10,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import StaffUser
+from accounts.models import BusinessOwner, StaffUser
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner, IsCustomer
 from cart import guard as cart_guard
 from cart.models import Cart
 from delivery.models import DeliveryEvent
 from disputes.models import Dispute
-from listings.models import Listing
+from listings import variants as variants_module
+from listings.models import Listing, ListingVariant
+from listings.visibility import hidden_business_q
 from disputes.serializers import DisputeSerializer
 from notifications.services import notify_customer
 from payments.models import CheckoutSession
@@ -54,15 +56,22 @@ WALLET_TOO_LOW = "Your AshantiHub wallet doesn't hold enough for this order."
 
 
 class DeliveryPreviewView(APIView):
-    """GET /api/orders/delivery-preview/?fulfilment=door_to_door — read from the caller's cart, independent of promotions:
-    when delivery would wait for a closed vendor to open ({delivery_from, delivered_from, deferred, source})."""
+    """GET /api/orders/delivery-preview/?fulfilment=door_to_door[&lat=&lng=] — read from the caller's cart, independent of
+    promotions: when delivery would wait for a closed vendor to open ({delivery_from, delivered_from, deferred, source}),
+    plus `delivery`, the fee block checkout will add for the pin given by `lat`/`lng` (null for store pickup or fees off)."""
 
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def get(self, request):
         cart = Cart.objects.filter(customer=request.user).first()
         items = list(cart.items.select_related("listing")) if cart is not None else []
-        return Response(hold.quote(items, request.query_params.get("fulfilment") or Order.DOOR_TO_DOOR))
+        fulfilment = request.query_params.get("fulfilment") or Order.DOOR_TO_DOOR
+        params = request.query_params
+        # The delivery fee checkout will add, whether or not promotions are on (null for store pickup or fees off).
+        from delivery.rates import cart_delivery_quote
+
+        delivery = cart_delivery_quote(items, fulfilment, params.get("lat"), params.get("lng"))
+        return Response({**hold.quote(items, fulfilment), "delivery": delivery})
 
 
 class OrderCheckoutView(APIView):
@@ -89,9 +98,23 @@ class OrderCheckoutView(APIView):
 
     def post(self, request):
         cart = Cart.objects.filter(customer=request.user).first()
-        items = list(cart.items.select_related("listing__business_owner__profile", "listing__category")) if cart is not None else []
+        items = list(cart.items.select_related("listing__business_owner__profile", "listing__category", "variant")) if cart is not None else []
         if not items:
             return Response({"detail": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
+        # A line whose listing was dropped, discontinued or unpublished, or whose business is hidden, is refused
+        # before any stock is touched; the cart is left as it is for the shopper to fix.
+        hidden_ids = set(
+            BusinessOwner.objects.filter(
+                pk__in={item.listing.business_owner_id for item in items}
+            ).filter(hidden_business_q("")).values_list("pk", flat=True)
+        )
+        for item in items:
+            if item.listing.status != Listing.PUBLISHED or item.listing.business_owner_id in hidden_ids:
+                return Response(
+                    {"detail": f"“{item.listing.name}” is no longer available. Remove it from your cart.",
+                     "code": "listing_unavailable"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         payment_method = request.data.get("payment_method") or MOMO
         if payment_method not in PAYMENT_METHODS:
@@ -170,18 +193,75 @@ class OrderCheckoutView(APIView):
             # tracked (services, or products the owner hasn't set a count on)
             # and is never decremented. Mirrors the ticket flow's optimistic
             # reserve-at-checkout, rolled back on payment failure below.
-            reservations = []
+            #
+            # Variant lines (listings.ListingVariant) reserve from the variant's own stock. Locks are taken in one global
+            # order, every Listing row by primary key and then every ListingVariant row by primary key, so two checkouts
+            # can never wait on each other; the stock is checked for the whole cart before anything is decremented.
+            locked = {
+                row.pk: row
+                for row in Listing.objects.select_for_update().filter(pk__in={i.listing_id for i in items}).order_by("pk")
+            }
+            locked_variants = {
+                row.pk: row
+                for row in ListingVariant.objects.select_for_update()
+                .filter(pk__in={i.variant_id for i in items if i.variant_id}).order_by("pk")
+            }
+            with_variants = set(
+                ListingVariant.objects.filter(listing_id__in=locked, is_active=True).values_list("listing_id", flat=True)
+            )
             for item in items:
-                listing = Listing.objects.select_for_update().get(pk=item.listing_id)
-                if listing.stock_quantity is not None:
-                    if listing.stock_quantity < item.quantity:
+                if item.variant_id is None and item.listing_id in with_variants:
+                    # A plain line from before the listing gained variants: its stock is the derived total, so refuse.
+                    return Response(
+                        {"detail": f"Choose an option for “{locked[item.listing_id].name}”: remove it from your cart and add it again.",
+                         "code": "choose_variant"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            for item in items:
+                listing = locked[item.listing_id]
+                if listing.status != Listing.PUBLISHED:  # taken down or dropped since the check above: re-read under the lock
+                    return Response(
+                        {"detail": f"“{listing.name}” is no longer available. Remove it from your cart.",
+                         "code": "listing_unavailable"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if item.variant_id is None:
+                    if listing.stock_quantity is not None and listing.stock_quantity < item.quantity:
                         return Response(
                             {"detail": f"Only {listing.stock_quantity} of “{listing.name}” left in stock."},
                             status=status.HTTP_400_BAD_REQUEST,
                         )
-                    listing.stock_quantity -= item.quantity
-                    listing.save(update_fields=["stock_quantity"])
-                    reservations.append({"listing_id": listing.id, "quantity": item.quantity})
+                    continue
+                variant = locked_variants.get(item.variant_id)
+                if variant is None or not variant.is_active:
+                    return Response(
+                        {"detail": f"“{listing.name} ({item.variant.label})” is no longer available. Remove it from your cart.",
+                         "code": "listing_unavailable"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if variant.stock_quantity is not None and variant.stock_quantity < item.quantity:
+                    return Response(
+                        {"detail": f"Only {variant.stock_quantity} of “{listing.name} ({variant.label})” left in stock."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            reservations = []
+            touched = {}
+            for item in items:
+                listing = locked[item.listing_id]
+                if item.variant_id is None:
+                    if listing.stock_quantity is not None:
+                        listing.stock_quantity -= item.quantity
+                        listing.save(update_fields=["stock_quantity"])
+                        reservations.append({"listing_id": listing.id, "quantity": item.quantity})
+                    continue
+                variant = locked_variants[item.variant_id]
+                if variant.stock_quantity is not None:
+                    variant.stock_quantity -= item.quantity
+                    variant.save(update_fields=["stock_quantity"])
+                    reservations.append({"listing_id": listing.id, "variant_id": variant.id, "quantity": item.quantity})
+                touched[listing.pk] = listing
+            for listing in touched.values():
+                variants_module.sync_listing(listing)
 
             total = sum(
                 (item.unit_price_snapshot * item.quantity for item in items), Decimal("0.00")
@@ -220,6 +300,8 @@ class OrderCheckoutView(APIView):
                     OrderItem.objects.create(
                         order=order,
                         listing=item.listing,
+                        variant=item.variant,
+                        variant_label=item.variant.label if item.variant_id else "",
                         quantity=item.quantity,
                         unit_price=item.unit_price_snapshot,
                         line_total=line_total,
@@ -305,8 +387,15 @@ _LEGACY_STOP_READS = ("items__listing__business_owner__profile", "items__listing
 
 
 def _customer_orders(customer):
+    from django.db.models import CharField, Exists, OuterRef, Value
+    from django.db.models.functions import Cast, Concat
+
+    from ledger.models import Journal
+
+    # Whether the ledger recorded the payment, read by ledger.verification.collection_code without a query per order.
+    recorded = Exists(Journal.objects.filter(key=Concat(Value("order-pay-"), Cast(OuterRef("pk"), CharField()))))
     return (
-        Order.objects.filter(customer=customer).select_related("delivery_assignment", "coupon")
+        Order.objects.filter(customer=customer).annotate(pay_recorded=recorded).select_related("delivery_assignment", "coupon", "fulfilment_check")
         .prefetch_related("delivery_assignment__stops", *_LEGACY_STOP_READS, _open_redeliveries())
     )
 
@@ -403,6 +492,10 @@ class OwnerOrderListView(generics.ListAPIView):
 
 
 # ── Owner sales report (business item 4 / Wave I) ──────────────────────────
+def _owner_report_shows_customers():
+    return not escrow.enabled()
+
+
 class _OwnerSalesReportBase(APIView):
     """Shared query for the owner's sales report: their own OrderItems in PAID
     orders, with date-range and product/service-kind filters. The owner sees
@@ -431,18 +524,23 @@ class _OwnerSalesReportBase(APIView):
         kind = request.query_params.get("kind")
         if kind in ("product", "service"):
             qs = qs.filter(listing__category__kind=kind)
-        return [
-            {
+        # G8 / V5: once the ledger is on the owner's sales report carries no
+        # customer name; with it off the rows are as they always were.
+        names = _owner_report_shows_customers()
+        rows = []
+        for item in qs:
+            row = {
                 "order_id": item.order_id,
                 "date": item.order.placed_at.isoformat(),
-                "customer": item.order.customer.full_name,
-                "item": item.listing.name,
+                "item": item.line_name,
                 "kind": item.listing.category.kind if item.listing.category else "",
                 "quantity": item.quantity,
                 "line_total": str(item.line_total),
             }
-            for item in qs
-        ]
+            if names:
+                row["customer"] = item.order.customer.full_name
+            rows.append(row)
+        return rows
 
 
 class OwnerSalesReportView(_OwnerSalesReportBase):
@@ -466,6 +564,7 @@ class OwnerSalesReportView(_OwnerSalesReportBase):
             "series": [{"month": m, "amount": str(a)} for m, a in sorted(series.items())],
             # The table shows a capped preview; the CSV export carries every row.
             "rows": rows[:200],
+            "customer_names": _owner_report_shows_customers(),
         })
 
 
@@ -482,9 +581,16 @@ class OwnerSalesReportExportView(_OwnerSalesReportBase):
         response = HttpResponse(content_type="text/csv")
         response["Content-Disposition"] = 'attachment; filename="ashantihub-sales.csv"'
         writer = csv.writer(response)
-        writer.writerow(["Order", "Date", "Customer", "Item", "Kind", "Quantity", "Line total (GHS)"])
+        names = _owner_report_shows_customers()
+        writer.writerow(
+            ["Order", "Date"] + (["Customer"] if names else [])
+            + ["Item", "Kind", "Quantity", "Line total (GHS)"]
+        )
         for r in self._rows(request):
-            writer.writerow([r["order_id"], r["date"][:10], r["customer"], r["item"], r["kind"], r["quantity"], r["line_total"]])
+            writer.writerow(
+                [r["order_id"], r["date"][:10]] + ([r["customer"]] if names else [])
+                + [r["item"], r["kind"], r["quantity"], r["line_total"]]
+            )
         return response
 
 

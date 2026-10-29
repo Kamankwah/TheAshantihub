@@ -54,6 +54,25 @@ def can_lead_team(staff):
     )
 
 
+def sees_every_team(user):
+    """Whose READ views span every team: a Super Admin, and the General Manager who reports to
+    one. Writes keep checking the Super Admin role itself."""
+    return isinstance(user, StaffUser) and user.role.name in (Role.SUPER_ADMIN, Role.GENERAL_MANAGER)
+
+
+GM_MANAGER_MESSAGE = "A General Manager reports to a Super Admin."
+
+
+def general_manager_manager_problem(role_name, manager):
+    """The one rule for who a General Manager reports to: an active Super Admin, never nobody.
+    Returns the refusal message, or None when `role_name` is not General Manager or the manager is fine."""
+    if role_name != Role.GENERAL_MANAGER:
+        return None
+    if manager is None or manager.role.name != Role.SUPER_ADMIN or not manager.is_active:
+        return GM_MANAGER_MESSAGE
+    return None
+
+
 class IsStaff(BasePermission):
     def has_permission(self, request, view):
         return isinstance(request.user, StaffUser)
@@ -81,3 +100,17 @@ class RequiresSudo(BasePermission):
 
         sessions.require_sudo(request)
         return True
+
+
+def can_stage_for(staff, owner):
+    """Whether `staff` may register, photograph and draft listings for the business `owner` on its behalf (plan M3).
+    Needs listings.stage (the General Manager never holds it). A scout acts only for a business they manage;
+    Operations and Super Admin act for any business. This is a WRITE rule: `sees_every_team` is for reads."""
+    if not isinstance(staff, StaffUser):
+        return False
+    perms = staff.effective_permission_codenames()
+    if "listings.stage" not in perms or staff.role.name == Role.GENERAL_MANAGER:
+        return False
+    if owner.account_manager_id == staff.pk:
+        return True
+    return "portfolio.manage" in perms or staff.role.name == Role.SUPER_ADMIN

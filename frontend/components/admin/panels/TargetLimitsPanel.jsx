@@ -14,12 +14,12 @@ import { Status, Title, page, section, sectionTitle } from "./insightsParts.jsx"
 // (targets.limits). Inside them a lead's changes apply at once and are recorded;
 // a cut to a scout's month after the 1st waits here as an approval. Actual
 // numbers are counted from records, never typed.
-const LABEL = { registrations: "Registrations", visits: "Visits", calls: "Calls", renewals: "Renewals" };
+const LABEL = { registrations: "Registrations", visits: "Visits", calls: "Calls", listings: "Listings" };
 const HOW = {
   registrations: "Businesses a scout registers",
   visits: "Visits a scout logs at a business",
   calls: "Calls a scout logs",
-  renewals: "Renewals a scout brings in",
+  listings: "Listings a scout gets approved",
 };
 const toInt = (text) => (/^\d+$/.test(String(text).trim()) ? Number(text) : null);
 

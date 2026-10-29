@@ -39,7 +39,11 @@ const supportOnly = (auth, ...perms) => auth.user?.role === "support" && perms.s
 // The Marketing canvas (2026-10-13, 22 screens): its own screens are Marketing's alone. A
 // screen not built yet is a placeholder (`placeholder: "marketing"`) until its package lands.
 const mkOnly = (auth, ...perms) => auth.user?.role === "marketing" && perms.some((perm) => auth.hasPermission(perm));
-const opsOrSa = (auth, ...perms) => ["operations", "super_admin"].includes(auth.user?.role) && perms.some((perm) => auth.hasPermission(perm));
+const opsOrSa = (auth, ...perms) => ["operations", "super_admin", "general_manager"].includes(auth.user?.role) && perms.some((perm) => auth.hasPermission(perm));
+// The General Manager (marketplace M3): a checker who reports to the Super Admin. Its menu is an explicit list
+// (ROLE_MENUS.general_manager) of Super Admin's screens minus money editing/approval and Super Admin-only
+// configuration; the only NAV_ITEMS entry it adds is a read-only view of a money screen, gated on the read permission.
+const gmOnly = (auth, ...perms) => auth.user?.role === "general_manager" && perms.some((perm) => auth.hasPermission(perm));
 
 export const NAV_ITEMS = [
   { id: "kyc", icon: "🪪", label: "KYC Queue", show: (auth) => auth.hasPermission("kyc.approve") },
@@ -63,8 +67,11 @@ export const NAV_ITEMS = [
   { id: "commission", icon: "💷", label: "Commission", show: (auth) => auth.hasPermission("commission.view_own") },
   { id: "leaderboard", icon: "🏆", label: "Leaderboard", show: (auth) => auth.hasPermission("businesses.manage_portfolio") },
   { id: "commission-policy", icon: "🧾", label: "Commission policy", show: (auth) => auth.hasPermission("commission.policy") || auth.hasPermission("commission.view_all") },
-  { id: "prospects", icon: "🌱", label: "Prospects", show: (auth) => auth.hasPermission("businesses.register") && auth.hasPermission("businesses.manage_portfolio") },
+  { id: "prospects", icon: "🌱", label: "Prospects", show: (auth) => auth.hasPermission("businesses.register") },
   { id: "register-business", icon: "➕", label: "Register a business", show: (auth) => auth.hasPermission("businesses.register") },
+  // Drafts a product, service, event or stay for a client business, to be confirmed by the owner's text. The makers only
+  // (scout, Operations, Super Admin): the General Manager is a checker and never holds listings.stage.
+  { id: "client-listings", icon: "🛍️", label: "Client listings", show: (auth) => ["scout", "operations", "super_admin"].includes(auth.user?.role) && auth.hasPermission("listings.stage") },
   { id: "portfolio", icon: "🏪", label: "Portfolio", show: (auth) => auth.hasPermission("businesses.manage_portfolio") },
   { id: "all-portfolios", icon: "🗂️", label: "All portfolios", show: (auth) => auth.hasPermission("portfolio.manage") },
   { id: "at-risk", icon: "⚠️", label: "At risk", show: (auth) => auth.hasPermission("portfolio.manage") },
@@ -74,6 +81,10 @@ export const NAV_ITEMS = [
   // The Scheduled list for whoever manages deliveries without the Delivery Manager menu (orders.manage_delivery reads it
   // and, since Director ruling 7, may Send now as well). The Delivery Manager has dm-scheduled instead.
   { id: "delivery-scheduled", icon: "🕒", label: "Scheduled orders", show: (auth) => (auth.hasPermission("orders.manage_delivery") || auth.hasPermission("delivery.manage")) && auth.user?.role !== "delivery_manager" },
+  // Support rings the customer before a product order's money is paid out; the Super Admin opens it from Marketplace (Director ruling 8).
+  { id: "support-verification", icon: "📞", label: "Verification calls", show: (auth) => supportOnly(auth, "orders.verify") || (saOnly(auth) && auth.hasPermission("orders.verify")) },
+  // The Pickup Desk's own screen is its overview (no nav item); the Super Admin opens it here (Director ruling 8).
+  { id: "pickup-desk", icon: "🏬", label: "Pickup desk", show: (auth) => saOnly(auth) && auth.hasPermission("pickup.confirm") },
   { id: "my-deliveries", icon: "📦", label: "My Deliveries", show: (auth) => auth.hasPermission("delivery.dispatch") },
   { id: "categories-zones", icon: "🗂️", label: "Categories & Zones", show: (auth) => auth.hasPermission("categories.manage") || auth.hasPermission("zones.manage") },
   { id: "promotions", icon: "🎯", label: "Promotions", show: (auth) => auth.hasPermission("promotions.manage") },
@@ -128,6 +139,11 @@ export const NAV_ITEMS = [
   // The re-delivery fee (Director ruling 1, 2026-10-20): Operations proposes and decides it; a Super Admin edits it on
   // Money rules, so this screen is Operations' alone.
   { id: "redelivery-fee", icon: "🛵", label: "Re-delivery fee", show: (auth) => opsOnly(auth, "redelivery_fee.manage") },
+  // Ashanti Direct (Plan 2 Task 12): Operations and Super Admin run the company-owned business through the listing tools.
+  { id: "ashanti-direct", icon: "🏬", label: "Ashanti Direct", show: (auth) => auth.hasPermission("direct.operate") },
+  // Re-deliveries (wallet 5F, Director ruling 8): the Super Admin and the Pickup Desk ask for an order to be delivered
+  // again. Support keeps the same block inside Order status and gets no second item.
+  { id: "redeliveries", icon: "🔁", label: "Re-deliveries", show: (auth) => auth.hasPermission("orders.redeliver") && auth.user?.role !== "support" },
   // Support canvas screens (see supportOnly).
   { id: "support-mine", icon: "📥", label: "Mine", show: (auth) => supportOnly(auth, "messaging.manage") },
   { id: "support-unassigned", icon: "🙋", label: "Unassigned", show: (auth) => supportOnly(auth, "messaging.manage") },
@@ -152,7 +168,7 @@ export const NAV_ITEMS = [
   { id: "mk-consent", icon: "✅", label: "Consent & opt-outs", show: (auth) => mkOnly(auth, "consent.view") },
   { id: "mk-flash-sales", icon: "⚡", label: "Flash sales", show: (auth) => mkOnly(auth, "site_promo.manage") },
   { id: "mk-coupons", icon: "🏷️", label: "Coupons", show: (auth) => mkOnly(auth, "coupons.manage") },
-  { id: "mk-delivery-promos", icon: "🚚", label: "Free delivery", show: (auth) => mkOnly(auth, "site_promo.manage") },
+  { id: "mk-delivery-promos", icon: "🚚", label: "Free delivery", show: (auth) => mkOnly(auth, "site_promo.manage") || saOnly(auth) },
   { id: "mk-banners", icon: "🖼️", label: "Banners", show: (auth) => mkOnly(auth, "site_promo.manage") },
   { id: "mk-featured", icon: "⭐", label: "Featured listings", show: (auth) => mkOnly(auth, "site_promo.manage") },
   { id: "mk-results", icon: "📈", label: "Campaign results", show: (auth) => mkOnly(auth, "campaigns.manage") },
@@ -165,7 +181,7 @@ export const NAV_ITEMS = [
   { id: "step-in-marketing", icon: "👁️", label: "Marketing", show: canStepIn },
   { id: "step-in-accounting", icon: "👁️", label: "Accounting", show: canStepIn },
   { id: "payouts-payroll", icon: "🏦", label: "Payouts & payroll", show: saOnly },
-  { id: "commissions", icon: "💷", label: "Commissions", show: (auth) => saOrAcct(auth, "commission.view_all") },
+  { id: "commissions", icon: "💷", label: "Commissions", show: (auth) => saOrAcct(auth, "commission.view_all") || gmOnly(auth, "commission.view_all") },
   { id: "refunds", icon: "↩️", label: "Refunds", show: (auth) => saOrAcct(auth) },
   { id: "reconciliation", icon: "🧮", label: "Reconciliation", show: (auth) => saOrAcct(auth) },
   { id: "wallets", icon: "👛", label: "Wallets", show: (auth) => auth.hasPermission("wallets.view") },
@@ -177,7 +193,7 @@ export const NAV_ITEMS = [
   { id: "notification-center", icon: "🔔", label: "Notification center", show: saOnly },
   { id: "staff-announcements", icon: "📣", label: "Staff announcements", show: saOnly },
   { id: "approval-rules", icon: "⏱️", label: "Approval rules & timers", show: saOnly },
-  { id: "money-rules", icon: "💰", label: "Money rules", show: saOnly },
+  { id: "money-rules", icon: "💰", label: "Money rules", show: (auth) => saOnly(auth) || acctOnly(auth, "fees.view") || acctOnly(auth, "fees.manage") },
   { id: "delivery-pricing", icon: "🛵", label: "Delivery pricing", show: saOnly },
   { id: "tax-tables", icon: "📑", label: "Tax tables", show: saOnly },
   { id: "integrations", icon: "🔌", label: "Integrations", show: saOnly },
@@ -208,12 +224,12 @@ export const NAV_ITEMS = [
 // [group id, group label, item ids]. The original (pre-1B) grouping, used for
 // any session whose role has no menu below.
 const DEFAULT_GROUPS = [
-  ["moderation", "Moderation", ["kyc", "moderation", "hero", "events-moderation", "reviews", "fraud-cases"]],
+  ["moderation", "Moderation", ["kyc", "moderation", "hero", "events-moderation", "reviews", "fraud-cases", "ashanti-direct"]],
   ["finance", "Finance", ["event-pricing", "subscription-plans", "subscription-plans-approval", "commission-policy", "escrow", "disputes", "transactions", "wallets", "withdrawals", "credit"]],
   ["users-roles", "Users & Roles", ["users", "staff", "sessions"]],
   ["field-ops", "Field Operations", ["scout-assignments", "field-verification", "visits", "targets", "commission", "leaderboard", "prospects", "register-business", "delivery-coordination", "my-deliveries", "portfolio", "all-portfolios", "at-risk", "subscriptions-due"]],
   ["content", "Content", ["categories-zones", "promotions", "site-settings"]],
-  ["system", "System", ["delivery", "delivery-scheduled", "contact-messages", "messaging", "analytics"]],
+  ["system", "System", ["delivery", "delivery-scheduled", "redeliveries", "contact-messages", "messaging", "analytics"]],
   ["my-work", "My Work", ["approvals", "tasks", "calls", "reports", "team-reports", "activity", "my-team", "security"]],
 ];
 
@@ -231,16 +247,34 @@ const ROLE_MENUS = {
     ["people", "People", ["staff", "teams-reporting", "invites", "roles-permissions", "sessions", "leave"]],
     ["teams", "Teams (step in)", ["step-in-operations", "step-in-support", "step-in-delivery", "step-in-marketing", "step-in-accounting"]],
     // Scheduled orders (paid orders held until their shops open, with Send now) sits beside Orders & deliveries:
-    // Director ruling 7 (2026-10-20) added it to the canvas menu.
-    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "events-moderation", "hero", "disputes"]],
+    // Director ruling 7 (2026-10-20) added it to the canvas menu. Verification calls and Pickup desk (Plan 1F),
+    // then Re-deliveries and Free delivery (wallet 5F, Director ruling 8) follow it.
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "delivery-scheduled", "support-verification", "pickup-desk", "redeliveries", "mk-delivery-promos", "events-moderation", "hero", "disputes", "ashanti-direct"]],
+    ["listing-for-clients", "Listing for clients", ["prospects", "register-business", "client-listings"]],
     ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation", "wallets", "withdrawals"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
     ["communication", "Communication", ["notification-center", "staff-announcements"]],
     ["settings", "Settings", ["approval-rules", "money-rules", "commission-policy", "delivery-pricing", "subscription-plans-approval", "targets", "tax-tables", "categories-zones", "integrations", "system-health", "opening"]],
   ],
-  // Operations, as the approved canvas draws it plus the Director's 2026-10-20 additions (Overview is pinned
-  // above the groups). Users, Scout Assignments, Register a business, Field
+  // General Manager: Super Admin's menu minus (a) every screen that edits or approves money (Money rules, Payouts &
+  // payroll, Refunds, Reconciliation, Delivery pricing, Tax tables, Plans & prices, Approval rules, Disputes & returns),
+  // (b) Super Admin-only configuration (staff and roles, sessions, view-as, target limits, integrations, system health,
+  // opening, exports and announcements) and (c) the maker screens (Register, Prospects, Client listings: the GM is a
+  // checker). Revenue & sales, Commissions and Commission policy stay as read-only views, each on its read permission.
+  // An explicit list, so a future money entry added to Super Admin's menu never reaches the GM by copy.
+  general_manager: [
+    ["home", "Home", ["approvals"]],
+    ["people", "People", ["my-team", "leave"]],
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "events-moderation", "hero"]],
+    ["money", "Money (read only)", ["transactions", "commissions"]],
+    ["insights", "Insights", ["analytics", "team-reports"]],
+    ["security-audit", "Security & audit", ["activity", "fraud-cases", "security"]],
+    ["settings", "Settings", ["commission-policy"]],
+  ],
+  // Operations, as the approved canvas draws it plus the Director's 2026-10-20 additions. Operations also makes
+  // listings for clients (Prospects, Register a business, Client listings: marketplace plan M3). Overview is pinned
+  // above the groups. Users, Scout Assignments, Field
   // Verification and Delivery Management are not in this menu (Sign-in & Security is kept
   // so a lead can still manage their own sign-in); their panels and
   // permissions are untouched (see EXHAUSTIVE_MENU_ROLES).
@@ -248,7 +282,8 @@ const ROLE_MENUS = {
     ["approvals", "Approvals", ["approvals"]],
     ["people", "People", ["ops-scouts", "support-team", "my-team", "targets", "leave"]],
     ["businesses", "Businesses", ["all-portfolios", "at-risk", "subscriptions-due"]],
-    ["moderation", "Moderation", ["kyc", "moderation", "hero-events", "reviews"]],
+    ["listing-for-clients", "Listing for clients", ["prospects", "register-business", "client-listings"]],
+    ["moderation", "Moderation", ["kyc", "moderation", "hero-events", "reviews", "ashanti-direct"]],
     // Scheduled orders beside Deliveries & returns (Director ruling 7, 2026-10-20).
     ["service", "Service", ["support-issues", "deliveries-returns", "delivery-scheduled", "fraud-cases"]],
     ["activity", "Activity", ["activity", "visit-map"]],
@@ -291,7 +326,7 @@ const ROLE_MENUS = {
   // their panels and permissions are untouched (see EXHAUSTIVE_MENU_ROLES).
   support: [
     ["inbox", "Inbox", ["support-mine", "support-unassigned", "support-all-open", "support-past-limit", "support-snoozed", "support-resolved"]],
-    ["calls", "Calls", ["calls", "support-log-call"]],
+    ["calls", "Calls", ["calls", "support-log-call", "support-verification"]],
     ["queues", "Queues", ["contact-messages", "reviews", "disputes", "support-order-status"]],
     ["knowledge", "Knowledge", ["support-canned", "support-tags"]],
     ["people", "People", ["users"]],
@@ -299,7 +334,7 @@ const ROLE_MENUS = {
     ["reports", "Reports", ["reports"]],
   ],
   scout: [
-    ["pipeline", "Pipeline", ["prospects", "register-business"]],
+    ["pipeline", "Pipeline", ["prospects", "register-business", "client-listings"]],
     ["my-businesses", "My businesses", ["portfolio", "tasks", "approvals"]],
     ["activity", "Activity", ["calls", "visits", "field-verification"]],
     ["performance", "Performance", ["targets", "commission", "leaderboard"]],
@@ -327,11 +362,17 @@ const ROLE_MENUS = {
     ["decisions", "Decisions", ["approvals"]],
     ["account", "Account", ["security"]],
   ],
+  // The pickup desk: its one screen is the Overview; Re-deliveries (wallet 5F, gated by orders.redeliver)
+  // and the account tools sit in the menu.
+  pickup_desk: [
+    ["desk", "Desk", ["redeliveries"]],
+    ["account", "Account", ["security", "activity"]],
+  ],
 };
 
 // Roles whose menu is the whole menu: a screen the canvas leaves out is not
 // offered under "More tools" either (its permission and panel stay).
-const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner", "support", "delivery_manager", "dispatch", "marketing"]);
+const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "general_manager", "cosigner", "support", "delivery_manager", "dispatch", "marketing", "pickup_desk"]);
 
 // Nav ids whose screen is not built yet, per role; AdminCommandCenter renders the
 // "being built" panel for them. A package that builds one swaps its panel in and
@@ -364,6 +405,8 @@ const ROLE_LABELS = {
   marketing: {
     hero: "Hero approval", "events-moderation": "Events", reports: "Reports", "categories-zones": "Categories",
   },
+  // The General Manager reads the Super Admin words only where it gets the Super Admin read screen.
+  general_manager: { approvals: "Approvals inbox", "my-team": "Invite", moderation: "Listings & services", "events-moderation": "Events & tickets", activity: "Staff activity", "team-reports": "Team reports" },
   // Super Admin reads the canvas's words; the ids (and every other role's labels) stay.
   super_admin: {
     approvals: "My approvals", staff: "Staff directory", sessions: "Sessions & devices", leave: "Leave & holidays",
@@ -374,7 +417,7 @@ const ROLE_LABELS = {
   },
 };
 // The pinned Overview: "Today" for a scout, the canvas's "Command center" for Super Admin, "Live operations" for the Delivery Manager.
-export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" ? "Command center" : role === "delivery_manager" ? "Live operations" : role === "dispatch" ? "Shift" : "Overview");
+export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" || role === "general_manager" ? "Command center" : role === "delivery_manager" ? "Live operations" : role === "dispatch" ? "Shift" : role === "pickup_desk" ? "Pickup desk" : "Overview");
 const toNavItem = ({ id, icon, label }, role) => ({ id, icon, label: ROLE_LABELS[role]?.[id] || label });
 
 export function buildNavGroups(auth) {

@@ -338,4 +338,89 @@ describe('BusinessRegistrationFlow', () => {
     expect(screen.getByPlaceholderText('Full name')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Password (min 8 characters)')).toHaveValue('')
   })
+
+  describe('with no plans offered', () => {
+    const noPlans = () => server.use(http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])))
+    const renderTypeStep = (auth = makeAuth()) => renderFlow(
+      <BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="plan_selection" setPage={vi.fn()} setShowBizDash={vi.fn()} />,
+    )
+
+    it('with no plans offered it asks only for the business type', async () => {
+      noPlans()
+      renderTypeStep()
+      expect(await screen.findByText('What kind of business is this?')).toBeInTheDocument()
+      expect(screen.getByText(/I sell products/)).toBeInTheDocument()
+      expect(screen.getByText(/I offer services/)).toBeInTheDocument()
+      expect(screen.getByText('This is set once and decides which tools your dashboard shows.')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+      fireEvent.click(screen.getByText(/I offer services/))
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
+    })
+
+    it('the step label reads Your Business Type', async () => {
+      noPlans()
+      renderTypeStep()
+      expect(await screen.findByText(/3 of 5: Your Business Type/)).toBeInTheDocument()
+      expect(screen.queryByText(/Choose Your Plan/)).not.toBeInTheDocument()
+    })
+
+    it('continue posts business_kind and goes to the step the server names', async () => {
+      noPlans()
+      let posted = null
+      server.use(http.post('http://localhost:8000/api/billing/business-kind/', async ({ request }) => {
+        posted = await request.json()
+        return HttpResponse.json({ business_kind: 'product', registration_step: 'payment_info' })
+      }))
+      const auth = makeAuth()
+      renderTypeStep(auth)
+      fireEvent.click(await screen.findByText(/I sell products/))
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      expect(await screen.findByText(/How should we pay you/)).toBeInTheDocument()
+      expect(posted).toEqual({ business_kind: 'product' })
+      expect(auth.refreshUser).toHaveBeenCalled()
+      expect(auth.submitPlanSelection).not.toHaveBeenCalled()
+    })
+
+    it('no price, plan, trial or cycle text appears with no plans offered', async () => {
+      noPlans()
+      renderTypeStep()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      const text = document.body.textContent
+      expect(text).not.toMatch(/GHS|free|trial|billing cycle|\/ month|plan/i)
+    })
+
+    it('a use_plan_selection answer shows the server text and reloads the plans', async () => {
+      noPlans()
+      let planLoads = 0
+      server.use(
+        http.get('http://localhost:8000/api/billing/plans/', () => { planLoads += 1; return HttpResponse.json(planLoads === 1 ? [] : PLANS) }),
+        http.post('http://localhost:8000/api/billing/business-kind/', () =>
+          HttpResponse.json({ detail: 'Choose a plan to continue.', code: 'use_plan_selection' }, { status: 409 })),
+      )
+      renderTypeStep()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      expect(await screen.findByText('Choose a plan to continue.')).toBeInTheDocument()
+      await waitFor(() => expect(planLoads).toBe(2))
+      expect(await screen.findByText(/Choose Your Plan/)).toBeInTheDocument()
+    })
+
+    it('a 400 shows the server message', async () => {
+      noPlans()
+      server.use(http.post('http://localhost:8000/api/billing/business-kind/', () =>
+        HttpResponse.json({ business_kind: 'Your business type is already set.' }, { status: 400 })))
+      renderTypeStep()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      expect(await screen.findByText('Your business type is already set.')).toBeInTheDocument()
+    })
+
+    it('while plans are loading the plan screen is shown, not the type step', async () => {
+      server.use(http.get('http://localhost:8000/api/billing/plans/', () => new Promise(() => {})))
+      renderTypeStep()
+      expect(screen.getByText(/3 of 5: Choose Your Plan/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Start Free Trial' })).toBeInTheDocument()
+      expect(screen.queryByText('What kind of business is this?')).not.toBeInTheDocument()
+    })
+  })
 })

@@ -426,7 +426,7 @@ describe('ListingDetailPage — seller-rating badge', () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)))
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(await screen.findByText('Sold by Ama Boateng')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /^Sold by Ama Boateng/ })).toBeInTheDocument()
   })
 
   it('expands to show the seller review list when clicked', async () => {
@@ -440,7 +440,7 @@ describe('ListingDetailPage — seller-rating badge', () => {
     )
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    fireEvent.click(await screen.findByText(/Sold by Ama Boateng/))
+    fireEvent.click(await screen.findByRole('button', { name: /Sold by Ama Boateng/ }))
     expect(await screen.findByText('Great seller!')).toBeInTheDocument()
   })
 
@@ -708,5 +708,357 @@ describe('ListingDetailPage price', () => {
     await screen.findByText('Royal Ashanti Lodge')
     expect(screen.getByText('GHS 400.00/night')).toBeInTheDocument()
     expect(container.querySelector('s')).toBeNull()
+  })
+})
+
+// Plan 2 task 10: sections show only what the listing really offers.
+const VARIANT_BASE = { price_amount: '50.00', effective_price: '50.00', sale_price: null, was_price: null, sale_ends_at: null, attributes: {}, position: 0 }
+const WITH_VARIANTS = {
+  ...LISTING,
+  id: 1,
+  category: { ...LISTING.category, kind: 'product' },
+  price_unit: '',
+  price_amount: '50.00',
+  has_variants: true,
+  variants: [
+    { ...VARIANT_BASE, id: 11, label: 'Small', stock_quantity: 3 },
+    { ...VARIANT_BASE, id: 12, label: 'Large', price_amount: '70.00', effective_price: '60.00', sale_price: '60.00', was_price: '70.00', stock_quantity: null },
+    { ...VARIANT_BASE, id: 13, label: 'Giant', stock_quantity: 0 },
+    { ...VARIANT_BASE, id: 14, label: 'Mini', price_amount: '40.00', effective_price: '35.00', sale_price: '35.00', was_price: null, stock_quantity: 5 },
+  ],
+}
+function showListing(listing) {
+  server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(listing)))
+}
+
+describe('ListingDetailPage — variants', () => {
+  it('shows one row per variant, striking through a price only when was_price is set', async () => {
+    showListing(WITH_VARIANTS)
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    const picker = screen.getByTestId('variant-picker')
+    expect(within(picker).getAllByTestId('variant-row')).toHaveLength(4)
+    const large = within(picker).getByText('Large').closest('[data-testid="variant-row"]')
+    expect(within(large).getByText('GHS 60.00')).toBeInTheDocument()
+    expect([...large.querySelectorAll('s')].map((n) => n.textContent)).toEqual(['Was GHS 70.00'])
+    const mini = within(picker).getByText('Mini').closest('[data-testid="variant-row"]')
+    expect(within(mini).getByText('GHS 35.00')).toBeInTheDocument()
+    expect(mini.querySelector('s')).toBeNull()
+  })
+
+  it('marks a zero-stock variant "Out of stock" with no stepper', async () => {
+    showListing(WITH_VARIANTS)
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    const giant = screen.getByText('Giant').closest('[data-testid="variant-row"]')
+    expect(within(giant).getByText('Out of stock')).toBeInTheDocument()
+    expect(within(giant).queryByRole('button', { name: /more/i })).toBeNull()
+  })
+
+  it('bounds the stepper by stock when stock is counted, and leaves it open when it is not', async () => {
+    showListing(WITH_VARIANTS)
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    const small = screen.getByText('Small').closest('[data-testid="variant-row"]')
+    for (let i = 0; i < 6; i++) fireEvent.click(within(small).getByRole('button', { name: 'One more Small' }))
+    expect(within(small).getByTestId('variant-qty')).toHaveTextContent('3')
+    const large = screen.getByText('Large').closest('[data-testid="variant-row"]')
+    for (let i = 0; i < 6; i++) fireEvent.click(within(large).getByRole('button', { name: 'One more Large' }))
+    expect(within(large).getByTestId('variant-qty')).toHaveTextContent('6')
+  })
+
+  it('adds only the rows with a quantity, as lines', async () => {
+    showListing(WITH_VARIANTS)
+    const onAddToCart = vi.fn().mockResolvedValue(undefined)
+    renderPage({ onAddToCart })
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.getByRole('button', { name: 'Add to cart' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'One more Small' }))
+    fireEvent.click(screen.getByRole('button', { name: 'One more Small' }))
+    fireEvent.click(screen.getByRole('button', { name: 'One more Mini' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }))
+    expect(onAddToCart).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1 }), 1, [{ variant: 11, quantity: 2 }, { variant: 14, quantity: 1 }],
+    )
+    expect(await screen.findByText('Added to Cart ✓')).toBeInTheDocument()
+  })
+
+  it('labels the price of a listing with options "From"', async () => {
+    showListing(WITH_VARIANTS)
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.getAllByTestId('price-line')[0]).toHaveTextContent(/^From\s*GHS/)
+  })
+
+  it('keeps the single Add to Cart for a listing without variants', async () => {
+    showListing({ ...LISTING, variants: [], has_variants: false })
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.queryByTestId('variant-picker')).toBeNull()
+    expect(screen.getByText('Add to Cart')).toBeInTheDocument()
+  })
+
+  it('shows the staff notice instead of adding for a staff session', async () => {
+    showListing(WITH_VARIANTS)
+    const onAddToCart = vi.fn()
+    renderPage({ user: STAFF, onAddToCart })
+    await screen.findByText('Royal Ashanti Lodge')
+    fireEvent.click(screen.getByRole('button', { name: 'One more Small' }))
+    const before = screen.queryAllByText(STAFF_NOTICE).length
+    fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }))
+    expect(screen.getAllByText(STAFF_NOTICE)).toHaveLength(before + 1)
+    expect(onAddToCart).not.toHaveBeenCalled()
+  })
+
+  it('is greyed with the opening date before the marketplace opens', async () => {
+    server.use(
+      gatedOpening({ opensAt: '2026-11-06T06:00:00Z', serverNow: '2026-11-01T06:00:00Z' }),
+      http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({ id: 4, can_buy: false })),
+    )
+    showListing(WITH_VARIANTS)
+    setStoredAuth({ token: 't', account_type: 'customer' })
+    try {
+      renderPage({ user: { id: 4, fullName: 'Ama', accountType: 'customer' } })
+      await screen.findByText('Royal Ashanti Lodge')
+      expect(await screen.findByRole('button', { name: 'Opens 6 Nov' })).toBeDisabled()
+      expect(screen.queryByRole('button', { name: 'Add to cart' })).toBeNull()
+    } finally { setStoredAuth(null) }
+  })
+})
+
+describe('ListingDetailPage — videos and seller link', () => {
+  const YT = { id: 2, kind: 'youtube', youtube_id: 'dQw4w9WgXcQ', poster: null, position: 1 }
+  const UP = { id: 1, kind: 'upload', url: 'http://localhost:8000/media/v/1.mp4', poster: 'http://localhost:8000/media/v/1.jpg', position: 0 }
+
+  it('plays an uploaded video in a controls player with its poster', async () => {
+    showListing({ ...LISTING, videos: [UP] })
+    const { container } = renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    const video = container.querySelector('video')
+    expect(video).toHaveAttribute('controls')
+    expect(video).toHaveAttribute('src', UP.url)
+    expect(video).toHaveAttribute('poster', UP.poster)
+  })
+
+  it('embeds a YouTube video through youtube-nocookie only for a well-formed id', async () => {
+    showListing({ ...LISTING, videos: [YT, { id: 3, kind: 'youtube', youtube_id: 'bad"><script>', poster: null, position: 2 }] })
+    const { container } = renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    const frames = container.querySelectorAll('iframe')
+    expect(frames).toHaveLength(1)
+    expect(frames[0]).toHaveAttribute('src', 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')
+  })
+
+  it('renders no video section for a listing without videos', async () => {
+    showListing({ ...LISTING, videos: [] })
+    const { container } = renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(container.querySelector('video, iframe')).toBeNull()
+    expect(screen.queryByTestId('media-videos')).toBeNull()
+  })
+
+  it('links "Sold by <business>" to the seller page, with no contact action', async () => {
+    showListing(LISTING)
+    const onOpenSeller = vi.fn()
+    renderPage({ onOpenSeller })
+    await screen.findByText('Royal Ashanti Lodge')
+    const link = screen.getByRole('link', { name: 'Sold by Ama Boateng' })
+    expect(link).toHaveAttribute('href', '/seller/9')
+    fireEvent.click(link)
+    expect(onOpenSeller).toHaveBeenCalledWith(9)
+  })
+
+  it('has no seller link when the listing has no business_owner', async () => {
+    showListing({ ...LISTING, business_owner: null })
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.queryByRole('link', { name: /Sold by/ })).toBeNull()
+  })
+})
+
+describe('ListingDetailPage — Ashanti Direct (marketplace plan 2)', () => {
+  it('product page shows the Ashanti Direct badge only when the API says so', async () => {
+    showListing({ ...LISTING, business_owner: { id: 3, full_name: 'ops login', name: 'Ashanti Direct', kyc_status: 'verified', is_ashanti_direct: true } })
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.getByRole('link', { name: 'Sold by Ashanti Direct' })).toBeInTheDocument()
+    expect(screen.getByText('Ashanti Direct', { selector: 'span' })).toBeInTheDocument()
+  })
+
+  it('no badge for a partner', async () => {
+    showListing({ ...LISTING, business_owner: { id: 9, full_name: 'Ama Boateng', name: 'Ama Boateng Crafts', kyc_status: 'verified', is_ashanti_direct: false } })
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.getByRole('link', { name: 'Sold by Ama Boateng Crafts' })).toBeInTheDocument()
+    expect(screen.queryByText('Ashanti Direct')).not.toBeInTheDocument()
+  })
+
+  it('clears the variant quantities when the page switches to another listing', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(WITH_VARIANTS)),
+      http.get('http://localhost:8000/api/listings/2/', () => HttpResponse.json({ ...WITH_VARIANTS, id: 2, name: 'Second thing' })),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const tree = (id) => (
+      <QueryClientProvider client={queryClient}>
+        <ListingDetailPage id={id} onBack={vi.fn()} user={null} favourites={[]} onFavourite={vi.fn()} currency="GHS" onMessage={vi.fn()} onAddToCart={vi.fn()} CardComponent={StubCard} />
+      </QueryClientProvider>
+    )
+    const { rerender } = render(tree(1))
+    await screen.findByText('Royal Ashanti Lodge')
+    fireEvent.click(screen.getByRole('button', { name: 'One more Small' }))
+    expect(screen.getByText('Small').closest('[data-testid="variant-row"]')).toHaveTextContent('1')
+    rerender(tree(2))
+    await screen.findByText('Second thing')
+    const qty = within(screen.getByText('Small').closest('[data-testid="variant-row"]')).getByTestId('variant-qty')
+    expect(qty).toHaveTextContent('0')
+  })
+})
+
+describe('ListingDetailPage — booking a stay with the wallet ledger (plan 1F)', () => {
+  const API = 'http://localhost:8000'
+  const CUSTOMER = { id: 5, fullName: 'Kofi', accountType: 'customer' }
+  const STAY = { ...LISTING, id: 3, category: { ...LISTING.category, kind: 'service', is_accommodation: true } }
+  let posts
+  let quotes
+
+  const setup = ({ ledgerOff = false, balance = '900.00', post } = {}) => {
+    posts = []
+    quotes = 0
+    server.use(
+      http.get(`${API}/api/listings/3/`, () => HttpResponse.json(STAY)),
+      http.get(`${API}/api/wallet/`, () => (ledgerOff
+        ? HttpResponse.json({ code: 'ledger_off', detail: 'Wallets are not switched on.' }, { status: 409 })
+        : HttpResponse.json({ kind: 'customer', balance }))),
+      http.get(`${API}/api/wallet/processing/`, ({ request }) => {
+        const amount = new URL(request.url).searchParams.get('amount')
+        return HttpResponse.json({ amount, payment_processing: '3.00', you_pay: '303.00', provider: 'simulated' })
+      }),
+      http.get(`${API}/api/bookings/availability/`, ({ request }) => {
+        quotes += 1
+        const q = new URL(request.url).searchParams
+        return HttpResponse.json({
+          units_free: 5, available: true, nights: 3, nightly_rate: '100.00', units: Number(q.get('units')), total_price: (300 * Number(q.get('units'))).toFixed(2),
+        })
+      }),
+      http.post(`${API}/api/bookings/`, async ({ request }) => {
+        posts.push(await request.json())
+        return post ? post() : HttpResponse.json({ id: 1, status: 'confirmed', check_in: '2030-06-10', check_out: '2030-06-13', total_price: '300.00', payment_processing: '3.00' }, { status: 201 })
+      }),
+    )
+  }
+  const pickDates = async (PaymentComponent) => {
+    renderPage({ id: 3, user: CUSTOMER, PaymentComponent })
+    await screen.findByText('Book your stay')
+    fireEvent.change(screen.getByLabelText('Check-in'), { target: { value: '2030-06-10' } })
+    fireEvent.change(screen.getByLabelText('Check-out'), { target: { value: '2030-06-13' } })
+  }
+
+  it("with the ledger on the stay shows the server's total and processing before booking", async () => {
+    setup()
+    await pickDates()
+    expect(await screen.findByTestId('stay-total')).toHaveTextContent('3 nights × 1: GH₵ 300.00')
+    expect(await screen.findByTestId('processing-line')).toHaveTextContent('GH₵ 3.00')
+    expect(screen.getByLabelText(/AshantiHub wallet/)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Book and pay' })).not.toBeDisabled())
+    expect(posts).toHaveLength(0)
+  })
+
+  it('book posts payment_method and follows a redirect', async () => {
+    setup({ post: () => HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.example/c/9' }) })
+    const PaymentComponent = vi.fn(({ onSuccess }) => <button onClick={onSuccess}>confirm momo</button>)
+    const original = window.location
+    Object.defineProperty(window, 'location', { configurable: true, value: { href: 'http://localhost/' } })
+    try {
+      await pickDates(PaymentComponent)
+      await screen.findByTestId('processing-line')
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Book and pay' })).not.toBeDisabled())
+      fireEvent.click(screen.getByRole('button', { name: 'Book and pay' }))
+      fireEvent.click(await screen.findByText('confirm momo'))
+      await waitFor(() => expect(window.location.href).toBe('https://pay.example/c/9'))
+      expect(posts).toEqual([{ listing: 3, check_in: '2030-06-10', check_out: '2030-06-13', units: 1, payment_method: 'momo' }])
+      expect(PaymentComponent.mock.calls[0][0].processing).toBe('3.00')
+      expect(screen.queryByText(/Booked!/)).not.toBeInTheDocument()
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: original })
+    }
+  })
+
+  it('a wallet booking posts once', async () => {
+    setup()
+    const PaymentComponent = vi.fn(() => null)
+    await pickDates(PaymentComponent)
+    fireEvent.click(await screen.findByLabelText(/AshantiHub wallet/))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Book and pay' })).not.toBeDisabled())
+    const book = screen.getByRole('button', { name: 'Book and pay' })
+    fireEvent.click(book)
+    fireEvent.click(book)
+    expect(await screen.findByText(/Booked!/)).toHaveTextContent('Payment processing GH₵ 3.00')
+    expect(posts).toEqual([{ listing: 3, check_in: '2030-06-10', check_out: '2030-06-13', units: 1, payment_method: 'wallet' }])
+    expect(PaymentComponent).not.toHaveBeenCalled()
+  })
+
+  it('a 409 with a code shows the server text, not the dates message', async () => {
+    setup({ post: () => HttpResponse.json({ code: 'insufficient_funds', detail: 'Your wallet balance is too low for this stay.' }, { status: 409 }) })
+    await pickDates(() => null)
+    fireEvent.click(await screen.findByLabelText(/AshantiHub wallet/))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Book and pay' })).not.toBeDisabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Book and pay' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your wallet balance is too low for this stay.')
+    expect(screen.queryByText(/Those dates aren't available/)).not.toBeInTheDocument()
+  })
+
+  it('a 409 without a code keeps the dates message', async () => {
+    setup({ post: () => HttpResponse.json({ detail: 'Those dates aren\'t available for the number of units requested.' }, { status: 409 }) })
+    await pickDates(() => null)
+    fireEvent.click(await screen.findByLabelText(/AshantiHub wallet/))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Book and pay' })).not.toBeDisabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Book and pay' }))
+    expect(await screen.findByText("Those dates aren't available — try different dates.")).toBeInTheDocument()
+  })
+
+  it('an unknown wallet answer blocks booking', async () => {
+    setup()
+    server.use(http.get(`${API}/api/wallet/`, () => HttpResponse.json({ detail: 'boom' }, { status: 500 })))
+    await pickDates()
+    await new Promise((r) => setTimeout(r, 120))
+    expect(screen.queryByRole('button', { name: 'Book and pay' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Book/ })).toBeDisabled()
+    expect(quotes).toBe(0)
+    expect(posts).toHaveLength(0)
+  })
+
+  it('ledger off keeps the old stay flow and asks for no quote', async () => {
+    setup({ ledgerOff: true })
+    await pickDates()
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Book · GHS 450.00\/night/ })).not.toBeDisabled())
+    await new Promise((r) => setTimeout(r, 80))
+    expect(quotes).toBe(0)
+    expect(screen.queryByTestId('stay-total')).not.toBeInTheDocument()
+    expect(screen.queryByText('Pay with')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^Book/ }))
+    expect(await screen.findByText(/Booked!/)).toBeInTheDocument()
+    expect(posts).toEqual([{ listing: 3, check_in: '2030-06-10', check_out: '2030-06-13', units: 1 }])
+  })
+
+  it('a wallet failure shows its reason and keeps Book disabled', async () => {
+    setup()
+    server.use(http.get(`${API}/api/wallet/`, () => HttpResponse.json({ detail: 'boom' }, { status: 500 })))
+    await pickDates()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('boom')
+    expect(screen.getByRole('button', { name: /^Book/ })).toBeDisabled()
+    expect(posts).toHaveLength(0)
+  })
+
+  it('warns when fewer units are free than asked for', async () => {
+    setup()
+    server.use(http.get(`${API}/api/bookings/availability/`, () => HttpResponse.json({
+      units_free: 1, available: true, nights: 3, nightly_rate: '100.00', units: 2, total_price: '600.00',
+    })))
+    await pickDates()
+    fireEvent.change(screen.getByLabelText('Units / rooms'), { target: { value: '2' } })
+    expect(await screen.findByText('Only 1 free for those dates.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Book and pay' })).toBeDisabled()
   })
 })

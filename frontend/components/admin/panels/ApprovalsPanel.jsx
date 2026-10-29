@@ -114,6 +114,29 @@ function DiffValue({ value, label }) {
   );
 }
 
+// "Text sent to" on a staff-made listing: the number is masked like every phone. "Show full phone number" is the same
+// recorded step as the KYC review (password re-entry first, written to the activity log) - never a raw-phone path.
+function MaskedPhoneReveal({ ownerId }) {
+  const [full, setFull] = useState(null);
+  const [error, setError] = useState(null);
+  const reveal = async () => {
+    setError(null);
+    try {
+      setFull((await apiPost(`/api/portfolio/businesses/${ownerId}/reveal-phone/`, {})).login_phone);
+    } catch (err) {
+      setError(apiErrorMessage(err, "Could not show the phone number."));
+    }
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start", marginTop: 4 }}>
+      {full
+        ? <span style={dim}>{`Owner's sign-in number: ${full} (recorded in the activity log). It is the number on the owner's account now, which may not be the one the text went to.`}</span>
+        : <button type="button" onClick={reveal} style={button(D.panelBg, D.text)}>Show full phone number (recorded)</button>}
+      {error && <div role="alert" style={{ color: D.red, fontSize: "0.75rem" }}>{error}</div>}
+    </div>
+  );
+}
+
 // /staff/approvals (inbox) and /staff/approvals/<id> (one request).
 export default function ApprovalsPanel({ detailId, onOpenDetail }) {
   // /staff/approvals/made opens the inbox on a box (Today's "See all").
@@ -433,7 +456,10 @@ function ApprovalRequest({ id, onBack }) {
                 <tr key={row.field || "value"} style={{ borderTop: `1px solid ${D.divider}`, color: D.text }}>
                   <td style={{ padding: "6px 8px", fontWeight: 700 }}>{String(row.field || "").replace(/_/g, " ")}</td>
                   <td style={{ padding: "6px 8px" }}><DiffValue value={row.before} label={String(row.field || "").replace(/_/g, " ")} /></td>
-                  <td style={{ padding: "6px 8px" }}><DiffValue value={row.after} label={String(row.field || "").replace(/_/g, " ")} /></td>
+                  <td style={{ padding: "6px 8px" }}>
+                    <DiffValue value={row.after} label={String(row.field || "").replace(/_/g, " ")} />
+                    {a.kind === "listing.staff_create" && row.field === "Text sent to" && a.payload?.business_owner_id != null && <MaskedPhoneReveal key={`${a.id}-${a.payload.business_owner_id}`} ownerId={a.payload.business_owner_id} />}
+                  </td>
                 </tr>
               ))}
             </tbody>

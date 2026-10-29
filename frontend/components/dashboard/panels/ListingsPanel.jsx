@@ -1,12 +1,16 @@
 import { useState } from "react";
-import CancellationPolicyField from "../../CancellationPolicyField.jsx";
 import { apiPost, apiPatch, apiPostForm } from "../../../apiClient.js";
-import { useMyListings } from "../../../hooks/useMyListings.js";
+import { useMyListings, DEFAULT_LISTINGS_PATH } from "../../../hooks/useMyListings.js";
 import { useMyHeroSubmission } from "../../../hooks/useMyHeroSubmission.js";
 import HeroSlideForm from "../HeroSlideForm.jsx";
+import PromotionsHubPanel from "./PromotionsHubPanel.jsx";
 import { useCategories } from "../../../hooks/useCategories.js";
 import { CategoryOptions } from "../../../lib/categoryOptions.jsx";
 import { useZones } from "../../../hooks/useZones.js";
+import VariantEditor from "./VariantEditor.jsx";
+import MediaManager, { postPendingMedia } from "./MediaManager.jsx";
+import { canHaveVariants } from "./listingEditorShared.jsx";
+import { DecisionFields, inputStyle, labelStyle, textareaStyle, fieldGrid2, policyHint } from "./listingFormFields.jsx";
 import { D, glassCard, LISTING_STATUS_META, HERO_STATUS_META, tint } from "../theme.js";
 
 // Listings & Prices panel — ported from App.jsx's BusinessDashboard "listings"
@@ -14,16 +18,6 @@ import { D, glassCard, LISTING_STATUS_META, HERO_STATUS_META, tint } from "../th
 // promote state and mutations (plain apiPost/apiPatch + refetch, the app
 // convention). The simulated-pay modal is passed in as `PaymentComponent`
 // (App.jsx's MoMoPayment) to avoid an App.jsx ⇄ components/ circular import.
-const inputStyle = {
-  width: "100%", padding: "8px", borderRadius: 8, border: `1.5px solid ${D.cardBorder}`,
-  fontSize: "0.8rem", fontFamily: "inherit", outline: "none", boxSizing: "border-box",
-  background: D.panelBg2, color: D.text,
-};
-const labelStyle = { fontSize: "0.68rem", fontWeight: 700, color: D.textDim, display: "block", marginBottom: 3 };
-const textareaStyle = { ...inputStyle, minHeight: 56, resize: "vertical" };
-const fieldGrid2 = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 };
-const policyHint = { fontSize: "0.66rem", color: D.textFaint, marginTop: 3 };
-
 const PRICE_UNITS = ["per night", "per person", "per day", "per item", "per service"];
 
 // Blank state for the create form. Booleans the owner must consciously answer
@@ -99,143 +93,9 @@ function SpecsEditor({ specs, onChange }) {
   );
 }
 
-// Kind-branched decision fields. Product: warranty/expiry conscious-answer
-// selects with conditional detail inputs, required return policy, plus the
-// Amazon-style attributes. Service: Fiverr-style gig fields. `update(field,
-// value)` patches a single key on the owning form state.
-function DecisionFields({ kind, isAccommodation, form, update }) {
-  // Accommodation (hotel / real estate / Airbnb) — a distinct form from the
-  // generic service form: rooms/units + nightly-rate framing + amenities and
-  // house rules, since these listings are booked by date, not requested.
-  if (isAccommodation) {
-    return (
-      <>
-        <div style={{ background: `${D.gold}14`, border: `1px solid ${D.gold}44`, borderRadius: 10, padding: "8px 12px", marginBottom: 10, color: D.textDim, fontSize: "0.72rem" }}>
-          🏨 Accommodation listing — the <b>price above is charged per night</b>, and guests book it by date in the Bookings tab.
-        </div>
-        <div style={fieldGrid2}>
-          <div>
-            <label style={labelStyle}>Rooms / units available *</label>
-            <input type="number" min={1} value={form.units_total ?? ""} placeholder="e.g. 8" onChange={e => update("units_total", e.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>Check-in / check-out</label>
-            <input value={form.service_duration || ""} placeholder="e.g. Check-in 2pm · Check-out 11am" onChange={e => update("service_duration", e.target.value)} style={inputStyle} />
-          </div>
-        </div>
-        <div style={{ marginBottom: 10 }}>
-          <label style={labelStyle}>Amenities</label>
-          <textarea value={form.whats_included || ""} placeholder="e.g. Free Wi-Fi, air conditioning, breakfast, parking, 24/7 security" onChange={e => update("whats_included", e.target.value)} style={textareaStyle} />
-        </div>
-        <div style={{ marginBottom: 10 }}>
-          <label style={labelStyle}>House rules</label>
-          <textarea value={form.requirements || ""} placeholder="e.g. No smoking indoors. Quiet after 10pm." onChange={e => update("requirements", e.target.value)} style={textareaStyle} />
-        </div>
-        <CancellationPolicyField value={form.cancellation_policy} onChange={v => update("cancellation_policy", v)} labelStyle={labelStyle} inputStyle={inputStyle} hintStyle={policyHint} />
-      </>
-    );
-  }
-  if (kind === "product") {
-    return (
-      <>
-        <div style={fieldGrid2}>
-          <div>
-            <label style={labelStyle}>Warranty? *</label>
-            <select value={form.has_warranty || ""} onChange={e => update("has_warranty", e.target.value)} style={inputStyle}>
-              <option value="">— Please answer —</option>
-              <option value="yes">Yes — comes with a warranty</option>
-              <option value="no">No warranty</option>
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>Expires? *</label>
-            <select value={form.has_expiry || ""} onChange={e => update("has_expiry", e.target.value)} style={inputStyle}>
-              <option value="">— Please answer —</option>
-              <option value="yes">Yes — has an expiry date</option>
-              <option value="no">No expiry date</option>
-            </select>
-          </div>
-        </div>
-        {form.has_warranty === "yes" && (
-          <div style={{ marginBottom: 10 }}>
-            <label style={labelStyle}>Warranty details *</label>
-            <textarea value={form.warranty_details || ""} placeholder="e.g. 12-month manufacturer warranty covering defects" onChange={e => update("warranty_details", e.target.value)} style={textareaStyle} />
-          </div>
-        )}
-        {form.has_expiry === "yes" && (
-          <div style={{ marginBottom: 10 }}>
-            <label style={labelStyle}>Expiry date *</label>
-            <input type="date" value={form.expiry_date || ""} onChange={e => update("expiry_date", e.target.value)} style={inputStyle} />
-          </div>
-        )}
-        <div style={{ marginBottom: 10 }}>
-          <label style={labelStyle}>Return policy *</label>
-          <textarea value={form.return_policy || ""} placeholder="e.g. Returns accepted within 7 days if unused, buyer covers transport" onChange={e => update("return_policy", e.target.value)} style={textareaStyle} />
-        </div>
-        <div style={fieldGrid2}>
-          <div>
-            <label style={labelStyle}>Brand</label>
-            <input value={form.brand || ""} placeholder="e.g. Bonwire Weavers" onChange={e => update("brand", e.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>Condition</label>
-            <select value={form.condition || ""} onChange={e => update("condition", e.target.value)} style={inputStyle}>
-              <option value="">Not specified</option>
-              <option value="new">New</option>
-              <option value="used">Used</option>
-              <option value="refurbished">Refurbished</option>
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>Dimensions</label>
-            <input value={form.dimensions || ""} placeholder="e.g. 180cm x 30cm" onChange={e => update("dimensions", e.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>Weight</label>
-            <input value={form.weight || ""} placeholder="e.g. 0.4 kg" onChange={e => update("weight", e.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>Stock quantity</label>
-            <input type="number" min={0} value={form.stock_quantity ?? ""} placeholder="Leave blank if not tracked" onChange={e => update("stock_quantity", e.target.value)} style={inputStyle} />
-          </div>
-        </div>
-      </>
-    );
-  }
-  if (kind === "service") {
-    return (
-      <>
-        {/* A service has no scheduled start, so no policy tiers apply: it is cancelled in full until the job is done. */}
-        <div style={{ ...policyHint, marginBottom: 10 }}>Customers can cancel a service for a full refund until you mark the job done.</div>
-        <div style={{ marginBottom: 10 }}>
-          <label style={labelStyle}>Service duration (e.g. '1 hour', '2-3 days')</label>
-          <input value={form.service_duration || ""} placeholder="e.g. 2 hours" onChange={e => update("service_duration", e.target.value)} style={inputStyle} />
-        </div>
-        <div style={{ marginBottom: 10 }}>
-          <label style={labelStyle}>What's included</label>
-          <textarea value={form.whats_included || ""} placeholder="What the customer gets — e.g. transport, materials, consultation" onChange={e => update("whats_included", e.target.value)} style={textareaStyle} />
-        </div>
-        <div style={{ marginBottom: 10 }}>
-          <label style={labelStyle}>Requirements from the customer</label>
-          <textarea value={form.requirements || ""} placeholder="What you need from the customer before you can start" onChange={e => update("requirements", e.target.value)} style={textareaStyle} />
-        </div>
-        <div style={fieldGrid2}>
-          <div>
-            <label style={labelStyle}>Revisions</label>
-            <input value={form.revisions || ""} placeholder="e.g. 2 free revisions" onChange={e => update("revisions", e.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>Delivery time</label>
-            <input value={form.delivery_time || ""} placeholder="e.g. 3-5 business days" onChange={e => update("delivery_time", e.target.value)} style={inputStyle} />
-          </div>
-        </div>
-      </>
-    );
-  }
-  return null;
-}
-
-export default function ListingsPanel({ user, PaymentComponent, showToast, businessKind }) {
+export default function ListingsPanel({ user, PaymentComponent, showToast, businessKind, basePath = DEFAULT_LISTINGS_PATH, direct = false }) {
+  // `direct` (Ashanti Direct's operators): no hero cards (Marketing owns Direct's hero ads) and no
+  // business-to-support WhatsApp button; a new listing says a second person must approve it.
   // A business owner registers as a "product" or "service" business
   // (BusinessOwnerProfile.business_kind). When set, the create form is locked to
   // that kind: only matching categories are selectable and only that kind's
@@ -253,6 +113,8 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [createPhoto, setCreatePhoto] = useState(null);
+  const [createVariants, setCreateVariants] = useState([]);
+  const [createMedia, setCreateMedia] = useState([]);
   const [createError, setCreateError] = useState(null);
   const [creating, setCreating] = useState(false);
   const [showSlides, setShowSlides] = useState(false);
@@ -262,15 +124,9 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   const [heroExtendDays, setHeroExtendDays] = useState(7);
   const [showHeroExtendPay, setShowHeroExtendPay] = useState(false);
   const [promoteListingId, setPromoteListingId] = useState(null);
-  const [promoteKind, setPromoteKind] = useState("featured");
-  const [promoteDays, setPromoteDays] = useState(7);
-  const [promoteKeywords, setPromoteKeywords] = useState("");
-  const [promoteActionError, setPromoteActionError] = useState(null);
-  const [promoteResult, setPromoteResult] = useState(null);
-  const [showPromotePay, setShowPromotePay] = useState(false);
 
-  const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings();
-  const { data: heroSubmission, refetch: refetchHeroSubmission } = useMyHeroSubmission();
+  const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings(true, basePath);
+  const { data: heroSubmission, refetch: refetchHeroSubmission } = useMyHeroSubmission(!direct);
   const { data: categories } = useCategories();
   const { data: zones } = useZones();
   const listingList = listings || [];
@@ -289,6 +145,8 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
 
   const updateCreate = (field, value) => setCreateForm(f => ({ ...f, [field]: value }));
   const createKind = categoryKindById(createForm.category);
+  const categoryById = (id) => (categories || []).find(c => c.id === Number(id));
+  const createCanHaveVariants = canHaveVariants(categoryById(createForm.category));
   const createIsAccommodation = categoryIsAccommodationById(createForm.category);
   // Client-side mirror of OwnerListingSerializer.validate()'s product rules,
   // so the button stays disabled until the owner has consciously answered.
@@ -308,7 +166,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
     if (!canSubmitCreate || creating) return;
     setCreateError(null); setCreating(true);
     try {
-      const created = await apiPost("/api/listings/mine/", {
+      const created = await apiPost(`${basePath}/`, {
         category: Number(createForm.category), zone: Number(createForm.zone),
         name: createForm.name.trim(), description: createForm.description.trim(),
         price_amount: createForm.price_amount === "" ? null : createForm.price_amount,
@@ -326,12 +184,28 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
           const fd = new FormData();
           fd.append("image", createPhoto);
           fd.append("order", "0");
-          await apiPostForm(`/api/listings/mine/${created.id}/photos/`, fd);
+          await apiPostForm(`${basePath}/${created.id}/photos/`, fd);
         } catch {
           setActionError("Your listing was created, but the photo failed to upload — you can add it again later.");
         }
       }
-      setShowCreate(false); setCreateForm(emptyCreateForm()); setCreatePhoto(null);
+      // Variants and extra media follow the same "create, then add" two steps; a refusal is
+      // shown in the server's words and never rolls the created listing back.
+      if (createCanHaveVariants && createVariants.length > 0) {
+        for (const row of createVariants) {
+          try {
+            await apiPost(`${basePath}/${created.id}/variants/`, { attributes: row.attributes, price_amount: row.price_amount, stock_quantity: row.stock_quantity });
+          } catch (err) {
+            setActionError(`Your listing was created, but a variant was not added: ${formatApiError(err, "please add it again from the listing.")}`);
+            break;
+          }
+        }
+      }
+      if (createMedia.length > 0) {
+        const refused = await postPendingMedia(basePath, created.id, createMedia, createPhoto ? 1 : 0);
+        if (refused) setActionError(`Your listing was created, but some media was not added: ${refused}`);
+      }
+      setShowCreate(false); setCreateForm(emptyCreateForm()); setCreatePhoto(null); setCreateVariants([]); setCreateMedia([]);
       toast(); refetchListings();
     } catch (err) {
       setCreateError(formatApiError(err, "Could not create this listing. Please check the fields and try again."));
@@ -343,7 +217,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   const saveEdit = async (id) => {
     setActionError(null);
     try {
-      await apiPatch(`/api/listings/mine/${id}/`, {
+      await apiPatch(`${basePath}/${id}/`, {
         name: editForm.name, price_amount: editForm.price_amount, price_unit: editForm.price_unit,
         specs: editForm.specs,
         ...decisionFieldsBody(editForm),
@@ -357,7 +231,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
 
   const submitForReview = async (id) => {
     setActionError(null);
-    try { await apiPost(`/api/listings/mine/${id}/submit/`, {}); toast(); refetchListings(); }
+    try { await apiPost(`${basePath}/${id}/submit/`, {}); toast(); refetchListings(); }
     catch (err) { setActionError("Could not submit this listing for review."); }
   };
 
@@ -395,37 +269,6 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
     catch (err) { setHeroActionError("Payment was confirmed but we couldn't extend your Hero Spotlight. Please contact support with reference " + ref + "."); }
   };
 
-  const submitPromotion = async () => {
-    if (!promoteListingId) return;
-    if (promoteKind === "boost" && !promoteKeywords.trim()) return;
-    setPromoteActionError(null);
-    try {
-      const body = { kind: promoteKind, days: promoteDays };
-      if (promoteKind === "boost") body.keywords = promoteKeywords.trim();
-      const res = await apiPost(`/api/listings/${promoteListingId}/promote/`, body);
-      // Hubtel integration (docs/HUBTEL_INTEGRATION.md) — same "added for
-      // consistency, currently inert" note as extendHeroSubmission above:
-      // ListingPromoteView isn't routed through process_payment() yet, so
-      // `res` never actually carries a "mode" field today. Checked here
-      // (right after this apiPost, not in confirmPromotion below) because
-      // this flow is apiPost-first — the promotion is already fully applied
-      // by the time PaymentComponent opens, unlike the pay-first call sites
-      // elsewhere in this app.
-      if (res?.mode === "redirect") {
-        window.location.href = res.checkout_url;
-        return;
-      }
-      setPromoteResult(res); setPromoteListingId(null); setShowPromotePay(true);
-    } catch (err) {
-      setPromoteActionError("Could not create this promotion — it may already be active on this listing, or the listing isn't published yet.");
-    }
-  };
-
-  const confirmPromotion = () => {
-    setShowPromotePay(false); setPromoteResult(null); setPromoteKind("featured");
-    setPromoteDays(7); setPromoteKeywords(""); toast(); refetchListings();
-  };
-
   const daysSince = (date) => Math.floor((new Date() - new Date(date)) / 86400000);
   const freshnessColor = (date) => { const d = daysSince(date); return d <= 7 ? D.green : d <= 30 ? D.amber : D.red; };
   const freshnessLabel = (date) => { const d = daysSince(date); return d === 0 ? "Today" : d <= 7 ? `${d}d ago` : d <= 30 ? `${d}d ago ⚠️` : `${d}d ago 🔴`; };
@@ -435,15 +278,12 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       {showHeroExtendPay && heroSubmission?.id && PaymentComponent && (
         <PaymentComponent amount={heroExtendDays * 5} purpose={`Extend Hero Spotlight — ${heroExtendDays} day${heroExtendDays === 1 ? "" : "s"}`} businessName={user?.fullName || "Your Business"} onSuccess={extendHeroSubmission} onClose={() => setShowHeroExtendPay(false)} />
       )}
-      {showPromotePay && promoteResult && PaymentComponent && (
-        <PaymentComponent amount={Number(promoteResult.amount_paid)} purpose={`${promoteResult.kind === "boost" ? "Boost" : "Featured"} promotion — ${promoteResult.kind === "boost" ? promoteResult.keywords : "listing"}`} businessName={user?.fullName || "Your Business"} onSuccess={confirmPromotion} onClose={() => setShowPromotePay(false)} />
-      )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <h2 style={{ margin: 0, color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>🏷️ Listings &amp; Prices</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={() => { setShowCreate(s => !s); setCreateError(null); }} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "7px 16px", fontSize: "0.72rem", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>{createButtonLabel}</button>
-          <a href="https://wa.me/233244000000?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>
+          {!direct && <a href="https://wa.me/233244000000?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>}
         </div>
       </div>
 
@@ -499,8 +339,10 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
             <label style={labelStyle}>Photo (optional)</label>
             <input type="file" accept="image/jpeg,image/png" onChange={e => setCreatePhoto(e.target.files?.[0] || null)} style={{ ...inputStyle, padding: "6px" }} />
           </div>
-          {createError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{createError}</div>}
-          <div style={{ display: "flex", gap: 6 }}>
+          {createCanHaveVariants && <VariantEditor rows={createVariants} onRowsChange={setCreateVariants} basePath={basePath} />}
+          <MediaManager pending={createMedia} onPendingChange={setCreateMedia} baseImageCount={createPhoto ? 1 : 0} basePath={basePath} />
+          {createError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8, marginTop: 8 }}>{createError}</div>}
+          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
             <button onClick={() => { setShowCreate(false); setCreateError(null); }} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
             <button onClick={submitCreate} disabled={!canSubmitCreate || creating} style={{ flex: 2, background: canSubmitCreate && !creating ? D.gold : D.panelBg2, color: canSubmitCreate && !creating ? "#1a1205" : D.textFaint, border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: canSubmitCreate && !creating ? "pointer" : "default", fontFamily: "inherit" }}>{creating ? "Creating…" : "✓ Create Listing"}</button>
           </div>
@@ -526,15 +368,15 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       )}
 
       {/* Dated, free homepage-slider slides (image, video or YouTube link). The one-photo Hero Spotlight below is the older flow and stays for existing submissions. */}
-      <div style={{ ...glassCard, padding: "12px 16px", marginBottom: 14 }}>
+      {!direct && <div style={{ ...glassCard, padding: "12px 16px", marginBottom: 14 }}>
         <button type="button" onClick={() => setShowSlides((v) => !v)} aria-expanded={showSlides} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontWeight: 800, fontSize: "0.82rem", color: D.text, fontFamily: "inherit" }}>🌟 Homepage slider slides {showSlides ? "▲" : "▼"}</button>
         {showSlides && <div style={{ marginTop: 10 }}><HeroSlideForm mode="business" /></div>}
-      </div>
+      </div>}
 
       {/* Discoverability: when the owner has no hero submission yet, explain the
           feature so it's obvious how to get featured (they were previously left
           to notice the small per-photo button on their own). */}
-      {!heroSubmission?.id && !heroSubmitPhoto && (
+      {!direct && !heroSubmission?.id && !heroSubmitPhoto && (
         <div style={{ ...glassCard, padding: "12px 16px", marginBottom: 14, borderLeft: `4px solid ${D.gold}` }}>
           <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text }}>🌟 Hero Spotlight</div>
           <div style={{ fontSize: "0.72rem", color: D.textDim, marginTop: 2, lineHeight: 1.5 }}>
@@ -565,32 +407,11 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
 
       {promoteListingId && (
         <div style={{ ...glassCard, padding: "14px 16px", marginBottom: 14, border: `2px solid ${D.cardBorderStrong}` }}>
-          <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text, marginBottom: 10 }}>📣 Promote "{listingList.find(l => l.id === promoteListingId)?.name}"</div>
-          <div style={{ display: "grid", gridTemplateColumns: promoteKind === "boost" ? "1fr 1fr 1fr" : "1fr 1fr", gap: 10, marginBottom: 10 }}>
-            <div>
-              <label style={labelStyle}>Type</label>
-              <select value={promoteKind} onChange={e => setPromoteKind(e.target.value)} style={inputStyle}>
-                <option value="featured">Featured</option>
-                <option value="boost">Boost</option>
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Days</label>
-              <input type="number" min={1} value={promoteDays} onChange={e => setPromoteDays(Math.max(1, Number(e.target.value) || 1))} style={inputStyle} />
-            </div>
-            {promoteKind === "boost" && (
-              <div>
-                <label style={labelStyle}>Keywords</label>
-                <input value={promoteKeywords} onChange={e => setPromoteKeywords(e.target.value)} placeholder="e.g. jollof, catering" style={inputStyle} />
-              </div>
-            )}
-          </div>
-          <div style={{ color: D.textFaint, fontSize: "0.68rem", marginBottom: 8 }}>ℹ️ Promotions are reviewed by our team before they go live. Your listing starts ranking higher once approved.</div>
-          {promoteActionError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{promoteActionError}</div>}
-          <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={() => { setPromoteListingId(null); setPromoteActionError(null); }} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-            <button onClick={submitPromotion} disabled={promoteKind === "boost" && !promoteKeywords.trim()} style={{ flex: 2, background: (promoteKind === "boost" && !promoteKeywords.trim()) ? D.panelBg2 : D.kente1, color: (promoteKind === "boost" && !promoteKeywords.trim()) ? D.textFaint : "#fff", border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: (promoteKind === "boost" && !promoteKeywords.trim()) ? "default" : "pointer", fontFamily: "inherit" }}>📣 Promote {promoteDays}d</button>
-          </div>
+          <PromotionsHubPanel
+            basePath={basePath} promoteBase={basePath === DEFAULT_LISTINGS_PATH ? "/api/listings" : basePath} listingId={promoteListingId} direct={direct}
+            user={user} PaymentComponent={PaymentComponent} showToast={showToast} onChanged={refetchListings}
+            onClose={() => setPromoteListingId(null)}
+          />
         </div>
       )}
 
@@ -603,7 +424,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {listingList.map(item => {
           const statusMeta = LISTING_STATUS_META[item.status] || { label: item.status, color: D.textDim };
-          const canEdit = item.status !== "published";
+          const canEdit = !["published", "dropped", "discontinued"].includes(item.status);
           return (
             <div key={item.id} style={{ ...glassCard, padding: "14px 16px", border: editingId === item.id ? `2px solid ${D.cardBorderStrong}` : `1px solid ${D.cardBorder}` }}>
               {editingId === item.id ? (
@@ -629,7 +450,11 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                       always-show-service_duration behavior. */}
                   <DecisionFields kind={categoryKindById(item.category) || "service"} isAccommodation={categoryIsAccommodationById(item.category)} form={editForm} update={(field, value) => setEditForm(f => ({ ...f, [field]: value }))} />
                   <SpecsEditor specs={editForm.specs} onChange={specs => setEditForm(f => ({ ...f, specs }))} />
-                  <div style={{ display: "flex", gap: 6 }}>
+                  {canHaveVariants(categoryById(item.category)) && <VariantEditor listing={item} basePath={basePath} onChanged={refetchListings} />}
+                  {item.status === "pending_review"
+                    ? <div style={{ fontSize: "0.72rem", color: D.textDim, marginTop: 10 }}>Photos and videos cannot change while this listing is waiting for review.</div>
+                    : <MediaManager listing={item} basePath={basePath} onChanged={refetchListings} />}
+                  <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                     <button onClick={() => setEditingId(null)} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
                     <button onClick={() => saveEdit(item.id)} style={{ flex: 2, background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>✓ Save</button>
                   </div>
@@ -650,6 +475,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                         </div>
                       </>
                     )}
+                    {direct && ["draft", "pending_review"].includes(item.status) && <div style={{ fontSize: "0.68rem", color: D.amber, fontWeight: 700, marginTop: 3 }}>Needs a second person to approve</div>}
                     {item.status === "rejected" && item.rejection_reason && <div style={{ fontSize: "0.65rem", color: D.red, marginTop: 3 }}>Rejected: {item.rejection_reason}</div>}
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -672,11 +498,11 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                       units_total: item.units_total ?? "",
                     }); }} style={{ background: D.goldSoft, color: D.gold, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>✏️ Edit</button>}
                     {(item.status === "draft" || item.status === "rejected") && <button onClick={() => submitForReview(item.id)} style={{ background: D.kente2, color: "#fff", border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📤 Submit for Review</button>}
-                    {item.status === "published" && <button onClick={() => { setPromoteListingId(item.id); setPromoteKind("featured"); setPromoteDays(7); setPromoteKeywords(""); setPromoteActionError(null); }} style={{ background: tint(D.red, "18"), color: D.red, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📣 Promote</button>}
+                    {item.status === "published" && <button onClick={() => setPromoteListingId(item.id)} style={{ background: tint(D.red, "18"), color: D.red, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📣 Promote</button>}
                   </div>
                 </div>
               )}
-              {item.photos.length > 0 ? (
+              {direct ? null : item.photos.length > 0 ? (
                 <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${D.divider}` }}>
                   <div style={{ fontSize: "0.66rem", fontWeight: 700, color: D.textDim, marginBottom: 6 }}>🌟 Feature a photo on the homepage — pick one to submit:</div>
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>

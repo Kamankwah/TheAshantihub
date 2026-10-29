@@ -28,7 +28,7 @@ def alert_owners_of_paid_order(order):
         lines_by_owner.setdefault(item.listing.business_owner, []).append(item)
 
     for owner, items in lines_by_owner.items():
-        lines = [(item.quantity, item.listing.name, item.line_total) for item in items]
+        lines = [(item.quantity, item.line_name, item.line_total) for item in items]
         subtotal = sum((item.line_total for item in items), Decimal("0.00"))
         summary = ", ".join(f"{quantity} × {name}" for quantity, name, _ in lines)
         body = f"{summary} — GHS {subtotal}"

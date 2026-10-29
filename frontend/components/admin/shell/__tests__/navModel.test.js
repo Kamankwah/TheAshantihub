@@ -90,13 +90,14 @@ describe('My Work group', () => {
 })
 
 // Super Admin screens that are built (no longer placeholders) but still no other role's.
-const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'money-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center', 'opening']
+const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'money-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center', 'opening', 'pickup-desk', 'support-verification']
 const SA_ONLY = NAV_ITEMS.filter((i) => i.placeholder === 'super_admin').map((i) => i.id).concat('invites', SA_BUILT)
 // 'leave' is also Super Admin's (the canvas's Leave & holidays), but no other role's.
 // The Accounting canvas screens (2026-10-07): the Accountant's alone, except Commissions, Refunds and
 // Reconciliation, which are Super Admin's panels opened to the Accountant as well.
 const ACCT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('acct-')).map((i) => i.id)
-const ACCT_SHARED = ['commissions', 'refunds', 'reconciliation']
+// 1F opens Money rules to the Accountant, who proposes fee and setting changes
+const ACCT_SHARED = ['commissions', 'refunds', 'reconciliation', 'money-rules']
 // The Support canvas screens (placeholder or built) appear for no other role.
 const SUPPORT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('support-') && !['support-team', 'support-issues'].includes(i.id)).map((i) => i.id)
 // The Marketing canvas screens are Marketing's alone.
@@ -118,6 +119,13 @@ describe('per-role menus', () => {
     expect(groupOf(groups, 'activity')).toBe('Activity')
     expect(groupOf(groups, 'calls')).toBe('My work')
     expect(groupOf(groups, 'site-settings')).toBe('Settings')
+  })
+
+  it("adds Verification calls to Support's Calls group only with orders.verify", () => {
+    const base = ['messaging.manage', 'calls.log']
+    const calls = (perms) => buildNavGroups(authAs('support', perms)).find((g) => g.label === 'Calls').items.map((i) => i.label)
+    expect(calls(base)).toEqual(['Call log', 'Log a call'])
+    expect(calls([...base, 'orders.verify'])).toEqual(['Call log', 'Log a call', 'Verification calls'])
   })
 
   it("gives Support the canvas's seven groups and eighteen items, in order", () => {
@@ -152,7 +160,7 @@ describe('per-role menus', () => {
       expect(new Set(ids).size).toBe(ids.length)
       // The Operations canvas screens appear for no other role.
       const accountant = role === 'accountant'
-      const expected = NAV_ITEMS.filter((i) => !ACCT_ONLY.includes(i.id) && !DM_ONLY.includes(i.id) && !DR_ONLY.includes(i.id) && !(OPS_ONLY.includes(i.id) && !(accountant && ACCT_SHARED.includes(i.id)))).map((i) => i.id)
+      const expected = NAV_ITEMS.filter((i) => !(accountant && i.id === 'client-listings') && !ACCT_ONLY.includes(i.id) && !DM_ONLY.includes(i.id) && !DR_ONLY.includes(i.id) && !(OPS_ONLY.includes(i.id) && !(accountant && ACCT_SHARED.includes(i.id)))).map((i) => i.id)
       expect([...ids].sort()).toEqual((accountant ? expected.concat(ACCT_ONLY) : expected).sort())
       expect(groups.every((g) => g.items.length > 0)).toBe(true)
     }
@@ -161,6 +169,17 @@ describe('per-role menus', () => {
   it('keeps the original grouping for a session without a known role', () => {
     const groups = buildNavGroups({ user: { role: 'not-a-role' }, hasPermission: () => true })
     expect(groups.map((g) => g.id)).toEqual(['moderation', 'finance', 'users-roles', 'field-ops', 'content', 'system', 'my-work'])
+  })
+})
+
+describe('Money rules for the Accountant (1F)', () => {
+  it('the Accountant reaches Money rules under More tools', () => {
+    for (const perm of ['fees.view', 'fees.manage']) {
+      const accountant = buildNavGroups({ user: { role: 'accountant' }, hasPermission: (c) => c === perm })
+      expect(accountant.find((g) => g.label === 'More tools').items.map((i) => i.id)).toContain('money-rules')
+    }
+    const none = buildNavGroups({ user: { role: 'accountant' }, hasPermission: () => false }).flatMap((g) => g.items.map((i) => i.id))
+    expect(none).not.toContain('money-rules')
   })
 })
 
@@ -190,13 +209,14 @@ describe('Register a business (staff phase 2A)', () => {
     expect(groupOf(groups, 'field-verification')).toBe('Activity')
   })
 
-  it("is not in Operations' menu (the 2026-10-12 canvas leaves it out; the permission stays)", () => {
+  // Marketplace M3 (intentional change): Operations and Super Admin make listings for clients, so they register businesses too.
+  it("is in Operations' menu, under Listing for clients", () => {
     const groups = buildNavGroups(authAs('operations', ['businesses.register', 'staff.invite_team']))
-    expect(allIds(groups)).not.toContain('register-business')
+    expect(groupOf(groups, 'register-business')).toBe('Listing for clients')
   })
 
-  it("is not in Super Admin's menu either (the 2026-10-07 canvas has no such item; the permission stays)", () => {
-    expect(allIds(buildNavGroups(authAs('super_admin', ['businesses.register'])))).not.toContain('register-business')
+  it("is in Super Admin's menu, under Listing for clients", () => {
+    expect(groupOf(buildNavGroups(authAs('super_admin', ['businesses.register'])), 'register-business')).toBe('Listing for clients')
   })
 
   it('sits with the field tools for a session without a known role', () => {
@@ -355,9 +375,11 @@ describe('Visits (staff WP1)', () => {
 describe('Prospects menu item', () => {
   const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
   const idsOf = (auth) => buildNavGroups(auth).flatMap((g) => g.items.map((i) => i.id))
-  it('is scout-only: it needs both registering and managing a portfolio', () => {
+  // Marketplace M3 (intentional change): Operations and Super Admin gain Prospects, so it needs registering only.
+  it('needs the permission to register a business', () => {
     expect(idsOf(authAs('scout', ['businesses.register', 'businesses.manage_portfolio']))).toContain('prospects')
-    expect(idsOf(authAs('scout', ['businesses.register']))).not.toContain('prospects')
+    expect(idsOf(authAs('operations', ['businesses.register']))).toContain('prospects')
+    expect(idsOf(authAs('super_admin', ['businesses.register']))).toContain('prospects')
     expect(idsOf(authAs('operations', ['businesses.manage_portfolio']))).not.toContain('prospects')
     expect(idsOf(authAs('scout', ['calls.log']))).not.toContain('prospects')
   })
@@ -404,7 +426,7 @@ describe('Operations menu (canvas 2026-10-12)', () => {
   const OPS = [
     'kyc.approve', 'scouts.assign', 'listings.moderate', 'hero_media.approve', 'event.approve', 'reviews.moderate', 'users.view', 'users.manage',
     'orders.manage_delivery', 'site_settings.manage', 'zones.manage', 'contact_messages.manage', 'staff.invite_team', 'activity.view_team',
-    'calls.log', 'businesses.register', 'portfolio.manage', 'targets.manage', 'leave.record', 'fraud.manage', 'fraud.flag', 'service_issues.view',
+    'calls.log', 'businesses.register', 'listings.stage', 'portfolio.manage', 'targets.manage', 'leave.record', 'fraud.manage', 'fraud.flag', 'service_issues.view',
     'redelivery_fee.manage',
   ]
   const auth = { user: { role: 'operations' }, hasPermission: (c) => OPS.includes(c) }
@@ -417,6 +439,7 @@ describe('Operations menu (canvas 2026-10-12)', () => {
       ['Approvals', ['Approvals inbox']],
       ['People', ['Scouts', 'Support team', 'Invite', 'Targets', 'Leave & calendar']],
       ['Businesses', ['All portfolios', 'At risk', 'Subscriptions due']],
+      ['Listing for clients', ['Prospects', 'Register a business', 'Client listings']],
       ['Moderation', ['KYC queue', 'Listings', 'Hero & events', 'Reviews']],
       ['Service', ['Support issues', 'Deliveries & returns', 'Scheduled orders', 'Fraud cases']],
       ['Activity', ['Staff activity', 'Visit map']],
@@ -437,9 +460,9 @@ describe('Operations menu (canvas 2026-10-12)', () => {
     }
   })
 
-  it('drops Users, Scout Assignments, Register a business, Field Verification and Delivery Management, with no More tools', () => {
+  it('drops Users, Scout Assignments, Field Verification and Delivery Management, with no More tools', () => {
     const ids = groups.flatMap((g) => g.items.map((i) => i.id))
-    for (const gone of ['users', 'scout-assignments', 'register-business', 'field-verification', 'delivery']) expect(ids).not.toContain(gone)
+    for (const gone of ['users', 'scout-assignments', 'field-verification', 'delivery']) expect(ids).not.toContain(gone)
     expect(groups.some((g) => g.id === 'more')).toBe(false)
   })
 
@@ -496,13 +519,17 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
   const auth = { user: { role: 'super_admin' }, hasPermission: () => true }
   const groups = buildNavGroups(auth)
 
-  // The canvas, plus Scheduled orders beside Orders & deliveries (Director ruling 7, 2026-10-20).
+  // The canvas, plus Scheduled orders beside Orders & deliveries (Director ruling 7, 2026-10-20), and Re-deliveries and
+  // Free delivery after it (wallet 5F, Director ruling 8).
   it('has exactly the canvas groups and items, in order, with the Security settings item', () => {
     expect(groups.map((g) => [g.label, g.items.map((i) => i.label)])).toEqual([
       ['Home', ['My approvals']],
       ['People', ['Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays']],
       ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
-      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Scheduled orders', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
+      // Verification calls and Pickup desk (Plan 1F), then Re-deliveries and Free delivery (wallet 5F), joined
+      // Marketplace after Scheduled orders (Director ruling 8, 2026-10-20).
+      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Scheduled orders', 'Verification calls', 'Pickup desk', 'Re-deliveries', 'Free delivery', 'Events & tickets', 'Homepage slider', 'Disputes & returns', 'Ashanti Direct']],
+      ['Listing for clients', ['Prospects', 'Register a business', 'Client listings']],
       ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets', 'Withdrawals']],
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
       ['Security & audit', ['Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings']],
@@ -513,15 +540,16 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
 
   it('shows Scheduled orders under Marketplace with orders.manage_delivery or delivery.manage', () => {
     const marketplace = (perms) => buildNavGroups({ user: { role: 'super_admin' }, hasPermission: (c) => perms.includes(c) }).find((g) => g.id === 'marketplace')?.items.map((i) => i.id) || []
-    expect(marketplace(['orders.manage_delivery'])).toEqual(['delivery', 'delivery-scheduled'])
-    expect(marketplace(['delivery.manage'])).toEqual(['delivery-scheduled'])
+    // Free delivery is the Super Admin's whatever the permissions (wallet 5F, Director ruling 8), so it follows the delivery items.
+    expect(marketplace(['orders.manage_delivery'])).toEqual(['delivery', 'delivery-scheduled', 'mk-delivery-promos'])
+    expect(marketplace(['delivery.manage'])).toEqual(['delivery-scheduled', 'mk-delivery-promos'])
     expect(marketplace(['users.view'])).not.toContain('delivery-scheduled')
   })
 
   it('is exhaustive: no More tools, and dropped screens keep their permission', () => {
     expect(groups.some((g) => g.id === 'more')).toBe(false)
     const ids = groups.flatMap((g) => g.items.map((i) => i.id))
-    for (const gone of ['kyc', 'reviews', 'escrow', 'credit', 'messaging', 'tasks', 'calls', 'reports', 'at-risk', 'register-business', 'scout-assignments', 'site-settings']) expect(ids).not.toContain(gone)
+    for (const gone of ['kyc', 'reviews', 'escrow', 'credit', 'messaging', 'tasks', 'calls', 'reports', 'at-risk', 'scout-assignments', 'site-settings']) expect(ids).not.toContain(gone)
     expect(NAV_ITEMS.find((i) => i.id === 'kyc').show(auth)).toBe(true) // the permission and panel are untouched
   })
 
@@ -595,12 +623,201 @@ describe('Marketing menu (canvas 2026-10-13)', () => {
   it('gates each screen on its permission and shows none to another role', () => {
     const ids = (a) => buildNavGroups(a).flatMap((g) => g.items.map((i) => i.id))
     expect(ids({ user: { role: 'marketing' }, hasPermission: (c) => c === 'promotions.manage' })).toEqual(['promotions', 'mk-quiet-hours', 'reports'])
-    for (const role of ['super_admin', 'operations', 'support']) {
+    for (const role of ['operations', 'support']) {
       expect(ids({ user: { role }, hasPermission: () => true }).filter((id) => id.startsWith('mk-'))).toEqual([])
     }
+    // The Super Admin gets the one Free delivery screen and no other Marketing screen (wallet 5F, Director ruling 8).
+    expect(ids({ user: { role: 'super_admin' }, hasPermission: () => true }).filter((id) => id.startsWith('mk-'))).toEqual(['mk-delivery-promos'])
   })
 
   it('reads the promotions badge from the new staff-badges key', () => {
     expect(makeBadgeFor({ promotions_pending: 3, hero: 2, events: 1 }, 'marketing')('promotions')).toBe(3)
+  })
+})
+
+describe('Ashanti Direct (marketplace plan 2)', () => {
+  const idsFor = (role, perms) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
+
+  it('panel shows only to staff holding direct.operate', () => {
+    expect(idsFor('operations', ['direct.operate'])).toContain('ashanti-direct')
+    expect(idsFor('super_admin', ['direct.operate'])).toContain('ashanti-direct')
+    expect(idsFor('operations', ['listings.moderate'])).not.toContain('ashanti-direct')
+    expect(idsFor('support', ['messaging.manage'])).not.toContain('ashanti-direct')
+  })
+
+  it('sits beside Moderation in Operations and in the Marketplace group for Super Admin', () => {
+    const groupOfId = (role) => buildNavGroups({ user: { role }, hasPermission: () => true }).find((g) => g.items.some((i) => i.id === 'ashanti-direct'))?.label
+    expect(groupOfId('operations')).toBe('Moderation')
+    expect(groupOfId('super_admin')).toBe('Marketplace')
+  })
+})
+
+describe('General Manager menu (marketplace M3, Task 0)', () => {
+  // The seeded GM: Operations' permissions minus businesses.register and users.manage, plus the read views.
+  const GM = [
+    'kyc.approve', 'scouts.assign', 'listings.moderate', 'listings.approve_staffed', 'hero_media.approve', 'event.approve', 'reviews.moderate', 'users.view',
+    'orders.manage_delivery', 'site_settings.manage', 'zones.manage', 'contact_messages.manage', 'staff.invite_team', 'activity.view_team',
+    'calls.log', 'portfolio.manage', 'targets.manage', 'leave.record', 'fraud.manage', 'fraud.flag', 'service_issues.view',
+    'approvals.view_all', 'activity.view_all', 'analytics.view', 'calls.view_all', 'calls.view_peers', 'commission.view_all', 'escrow.view', 'fees.view',
+    'wallets.view', 'reports.view_all', 'transactions.report',
+  ]
+  const gmAuth = (perms = GM) => ({ user: { role: 'general_manager' }, hasPermission: (c) => perms.includes(c) })
+  const idsOf = (auth) => buildNavGroups(auth).flatMap((g) => g.items.map((i) => i.id))
+  const MONEY_OR_SA_CONFIG = [
+    'money-rules', 'payouts-payroll', 'refunds', 'reconciliation', 'delivery-pricing', 'tax-tables', 'subscription-plans-approval',
+    'subscription-plans', 'event-pricing', 'approval-rules', 'escrow', 'disputes', 'credit', 'promotions',
+    'integrations', 'system-health', 'opening', 'staff', 'sessions', 'teams-reporting', 'roles-permissions', 'invites', 'growth-funnel',
+    'scheduled-exports', 'sign-in-history', 'data-exports-log', 'notification-center', 'staff-announcements', 'targets',
+    'step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting',
+  ]
+
+  it('GM menu hides money approvals and Money rules editing', () => {
+    // Even holding every permission, the explicit menu never places a money or Super Admin configuration screen.
+    for (const auth of [gmAuth(), { user: { role: 'general_manager' }, hasPermission: () => true }]) {
+      const ids = idsOf(auth)
+      for (const hidden of MONEY_OR_SA_CONFIG) expect(ids).not.toContain(hidden)
+      expect(buildNavGroups(auth).some((g) => g.id === 'more')).toBe(false)
+    }
+    const ids = idsOf(gmAuth())
+    for (const shown of ['approvals', 'moderation', 'events-moderation', 'hero']) expect(ids).toContain(shown)
+  })
+
+  it('has exactly the explicit menu, in order, with read-only money views', () => {
+    expect(buildNavGroups(gmAuth()).map((g) => [g.label, g.items.map((i) => [i.id, i.label])])).toEqual([
+      ['Home', [['approvals', 'Approvals inbox']]],
+      ['People', [['my-team', 'Invite'], ['leave', 'Leave & calendar']]],
+      ['Marketplace', [['all-portfolios', 'All portfolios'], ['users', 'Users'], ['moderation', 'Listings & services'], ['delivery', 'Delivery Management'], ['events-moderation', 'Events & tickets'], ['hero', 'Hero Approval']]],
+      ['Money (read only)', [['transactions', 'Transactions Report'], ['commissions', 'Commissions']]],
+      ['Insights', [['analytics', 'Analytics'], ['team-reports', 'Team reports']]],
+      ['Security & audit', [['activity', 'Staff activity'], ['fraud-cases', 'Fraud cases'], ['security', 'Sign-in & Security']]],
+      ['Settings', [['commission-policy', 'Commission policy']]],
+    ])
+  })
+
+  it('leaves a read-only money view out when the GM lacks its read permission', () => {
+    const ids = idsOf(gmAuth(GM.filter((p) => !['commission.view_all', 'transactions.report'].includes(p))))
+    expect(ids).not.toContain('commissions')
+    expect(ids).not.toContain('transactions')
+    expect(ids).not.toContain('commission-policy')
+  })
+
+  it('GM menu has no Register, Prospects or Client listings entries', () => {
+    for (const auth of [gmAuth(), { user: { role: 'general_manager' }, hasPermission: () => true }]) {
+      const items = buildNavGroups(auth).flatMap((g) => g.items)
+      for (const gone of ['register-business', 'prospects', 'client-listings']) expect(items.map((i) => i.id)).not.toContain(gone)
+      expect(items.map((i) => i.label)).not.toContain('Client listings')
+    }
+  })
+
+  it('GM menu keeps origin money and delivery items off, even holding every permission', () => {
+    // Origin's wallet/withdrawal views, re-delivery fee editing and re-delivery requests are money or dispatch screens the
+    // General Manager (a checker) does not get; Scheduled orders (Send now) and Free delivery (a promo) stay off too.
+    for (const auth of [gmAuth(), { user: { role: 'general_manager' }, hasPermission: () => true }]) {
+      const ids = idsOf(auth)
+      for (const gone of ['wallets', 'withdrawals', 'redelivery-fee', 'redeliveries', 'delivery-scheduled', 'mk-delivery-promos']) expect(ids).not.toContain(gone)
+    }
+  })
+
+  it('reads Command center as the overview label, and other roles keep theirs', () => {
+    expect(overviewLabel('general_manager')).toBe('Command center')
+    expect(overviewLabel('operations')).toBe('Overview')
+  })
+
+  it('reads the approvals and team-reports badges the Operations menu reads, not Super Admin-only keys', () => {
+    const badgeFor = makeBadgeFor({ approvals_waiting: 4, team_reports_waiting: 3, reports_hub: 9, invites_open: 2, disputes_open: 1 }, 'general_manager')
+    expect(badgeFor('approvals')).toBe(4)
+    expect(badgeFor('team-reports')).toBe(3)
+    expect(badgeFor('invites')).toBe(0)
+  })
+
+  it('has no placeholder screens', () => {
+    expect(PLACEHOLDER_TABS.general_manager.size).toBe(0)
+  })
+})
+
+describe('listing for clients (marketplace M3)', () => {
+  const as = (role) => ({ user: { role }, hasPermission: () => true })
+  const idsFor = (role) => buildNavGroups(as(role)).flatMap((g) => g.items.map((i) => i.id))
+
+  it('gives the makers Client listings: scout, Operations and Super Admin', () => {
+    for (const role of ['scout', 'operations', 'super_admin']) expect(idsFor(role)).toContain('client-listings')
+  })
+
+  it('gives Operations and Super Admin Register and Prospects, and the scout keeps both', () => {
+    for (const role of ['scout', 'operations', 'super_admin']) {
+      expect(idsFor(role)).toEqual(expect.arrayContaining(['register-business', 'prospects']))
+    }
+  })
+
+  it('keeps the General Manager a checker: no Register, Prospects or Client listings', () => {
+    const gm = idsFor('general_manager')
+    for (const id of ['register-business', 'prospects', 'client-listings']) expect(gm).not.toContain(id)
+  })
+
+  it('does not put Client listings in any other role menu', () => {
+    for (const role of ['support', 'accountant', 'marketing', 'delivery_manager', 'dispatch', 'cosigner']) {
+      expect(idsFor(role)).not.toContain('client-listings')
+    }
+  })
+
+  it('needs the listings.stage permission', () => {
+    const noStage = { user: { role: 'operations' }, hasPermission: (code) => code !== 'listings.stage' }
+    expect(buildNavGroups(noStage).flatMap((g) => g.items.map((i) => i.id))).not.toContain('client-listings')
+  })
+
+  it('leaves the scout menu as it was apart from the new item', () => {
+    const pipeline = buildNavGroups(as('scout')).find((g) => g.id === 'pipeline')
+    expect(pipeline.items.map((i) => i.id)).toEqual(['prospects', 'register-business', 'client-listings'])  })
+})
+
+describe('Re-deliveries and Free delivery (wallet 5F, Director ruling 8)', () => {
+  const ids = (role, perms) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
+  const groupLabel = (role, perms, id) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).find((g) => g.items.some((i) => i.id === id))?.label
+
+  it('the Pickup Desk finds Re-deliveries in its own Desk group (Plan 1F menu)', () => {
+    expect(groupLabel('pickup_desk', ['orders.redeliver'], 'redeliveries')).toBe('Desk')
+    expect(ids('pickup_desk', [])).not.toContain('redeliveries')
+  })
+
+  it('Support gets no Re-deliveries item (its block sits inside Order status)', () => {
+    expect(ids('support', ['orders.redeliver', 'orders.support_update'])).not.toContain('redeliveries')
+    expect(ids('support', ['orders.redeliver', 'orders.support_update'])).toContain('support-order-status')
+  })
+
+  it('the Super Admin finds Re-deliveries under Marketplace, after Scheduled orders', () => {
+    expect(groupLabel('super_admin', ['orders.redeliver'], 'redeliveries')).toBe('Marketplace')
+    expect(ids('super_admin', [])).not.toContain('redeliveries')
+  })
+
+  it('Marketing keeps Free delivery in On the site', () => {
+    expect(groupLabel('marketing', ['site_promo.manage'], 'mk-delivery-promos')).toBe('On the site')
+    expect(ids('operations', ['site_promo.manage'])).not.toContain('mk-delivery-promos')
+  })
+})
+
+describe('Pickup Desk role menu', () => {
+  const auth = { user: { role: 'pickup_desk' }, hasPermission: () => true }
+
+  it('gives the Pickup Desk only Re-deliveries and its Account tools, exhaustively', () => {
+    // Every permission granted, yet nothing leaks into "More tools": the menu is exhaustive.
+    expect(buildNavGroups(auth).map((g) => [g.label, g.items.map((i) => i.id)])).toEqual([['Desk', ['redeliveries']], ['Account', ['security', 'activity']]])
+  })
+
+  it('drops the Desk group when orders.redeliver is not granted (wallet 5F gate)', () => {
+    const noRedeliver = { user: { role: 'pickup_desk' }, hasPermission: (c) => c !== 'orders.redeliver' }
+    expect(buildNavGroups(noRedeliver).map((g) => [g.label, g.items.map((i) => i.id)])).toEqual([['Account', ['security', 'activity']]])
+  })
+
+  it('names the Pickup Desk overview "Pickup desk"', () => {
+    expect(overviewLabel('pickup_desk')).toBe('Pickup desk')
+  })
+
+  it('gives the Super Admin Pickup desk in Marketplace after Scheduled orders', () => {
+    const marketplace = (perms) => buildNavGroups({ user: { role: 'super_admin' }, hasPermission: (c) => perms.includes(c) }).find((g) => g.id === 'marketplace')?.items.map((i) => i.id) || []
+    // 5F's Free delivery is always the Super Admin's; Re-deliveries needs orders.redeliver, not granted here.
+    expect(marketplace(['orders.manage_delivery', 'pickup.confirm'])).toEqual(['delivery', 'delivery-scheduled', 'pickup-desk', 'mk-delivery-promos'])
+    expect(marketplace(['users.view'])).not.toContain('pickup-desk')
+    const other = buildNavGroups({ user: { role: 'operations' }, hasPermission: () => true }).flatMap((g) => g.items.map((i) => i.id))
+    expect(other).not.toContain('pickup-desk')
   })
 })

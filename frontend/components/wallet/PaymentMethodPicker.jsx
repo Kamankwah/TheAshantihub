@@ -9,8 +9,9 @@ import { walletStyles } from './walletStyles.js'
 // looks exactly as it did before wallets. The wallet option is disabled when
 // the balance is below `amount` (two server strings compared as whole pesewas,
 // display only: the server still decides and answers insufficient_funds).
-// The server's processing line sits under mobile money; none for the wallet.
-export default function PaymentMethodPicker({ value = 'momo', onChange, amount, tone = 'light' }) {
+// The server's processing line sits under mobile money; none for the wallet, and none while `quoteWaits` (the caller
+// has not yet got every part of the charge from the server, e.g. the delivery fee).
+export default function PaymentMethodPicker({ value = 'momo', onChange, amount, tone = 'light', quoteWaits = false }) {
   const s = walletStyles(tone)
   const { data: wallet } = useWallet()
   const hasWallet = !!wallet && wallet.balance !== undefined
@@ -39,7 +40,7 @@ export default function PaymentMethodPicker({ value = 'momo', onChange, amount, 
           </span>
         </label>
       )}
-      {value !== 'wallet' && <ProcessingLine amount={amount} tone={tone} method="momo" />}
+      {value !== 'wallet' && !quoteWaits && <ProcessingLine amount={amount} tone={tone} method="momo" />}
     </fieldset>
   )
 }

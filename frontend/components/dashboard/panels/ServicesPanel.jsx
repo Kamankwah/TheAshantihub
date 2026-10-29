@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
+import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
+import { formatAccra } from "../../../lib/bookingTerms.js";
 import { useIncomingServiceRequests } from "../../../hooks/useIncomingServiceRequests.js";
-import { useMyListings } from "../../../hooks/useMyListings.js";
+import { useMyListings, DEFAULT_LISTINGS_PATH } from "../../../hooks/useMyListings.js";
 import { useCategories } from "../../../hooks/useCategories.js";
 import { D, glassCard, sectionTitle, tint } from "../theme.js";
 import OwnerListingCard from "./OwnerListingCard.jsx";
@@ -23,9 +25,19 @@ const STATUS_META = {
   cancelled: { label: "Cancelled", color: D.textFaint },
 };
 
+// Ledger 7E: one line about a completed service's payment. First match wins;
+// no sale (paid before the ledger, or ledger off) -> no line. No customer, no reason.
+function releaseLine(sr) {
+  if (sr.status !== "completed") return null;
+  if (sr.problem_reported) return "Payment on hold: a problem was reported. AshantiHub Support is checking it.";
+  if (sr.settled) return "Payment settled. The amount is on the Money tab.";
+  if (sr.auto_accept_at) return `The customer can accept now. If they do not, it is accepted automatically from ${formatAccra(new Date(sr.auto_accept_at))} and your money is released.`;
+  return null;
+}
+
 function RequestCard({ sr, onChanged }) {
   const [mode, setMode] = useState(null); // "accept" | "decline" | "progress" | null
-  const [price, setPrice] = useState(sr.budget || "");
+  const [price, setPrice] = useState(sr.budget != null ? String(sr.budget) : "");
   const [reason, setReason] = useState("");
   const [note, setNote] = useState(sr.progress_note || "");
   const [actionError, setActionError] = useState(null);
@@ -34,7 +46,7 @@ function RequestCard({ sr, onChanged }) {
   const call = async (path, body) => {
     setActionError(null);
     try { await apiPost(`/api/services/requests/${sr.id}/${path}/`, body || {}); setMode(null); onChanged(); }
-    catch { setActionError("Could not complete that action. Please try again."); }
+    catch (err) { setActionError(apiErrorMessage(err, "Could not complete that action. Please try again.")); }
   };
 
   return (
@@ -55,6 +67,8 @@ function RequestCard({ sr, onChanged }) {
       {sr.progress_note && sr.status !== "requested" && <div style={{ color: D.textFaint, fontSize: "0.7rem", marginTop: 4 }}>Last update: {sr.progress_note}</div>}
       {sr.decline_reason && <div style={{ color: D.red, fontSize: "0.7rem", marginTop: 4 }}>Declined: {sr.decline_reason}</div>}
 
+      {releaseLine(sr) && <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 6 }}>{releaseLine(sr)}</div>}
+
       {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
 
       <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
@@ -74,8 +88,8 @@ function RequestCard({ sr, onChanged }) {
 
       {mode === "accept" && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <input type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="Your price (GHS)" style={{ ...inputStyle, width: 160 }} />
-          <button onClick={() => call("respond", { action: "accept", price })} disabled={!price} style={{ ...btn, background: D.green, color: "#fff", cursor: price ? "pointer" : "default" }}>Send quote</button>
+          <input type="text" inputMode="decimal" value={price} onChange={e => setPrice(e.target.value)} placeholder="Your price (GHS)" style={{ ...inputStyle, width: 160 }} />
+          <button onClick={() => call("respond", { action: "accept", price: price.trim() })} disabled={!price.trim()} style={{ ...btn, background: D.green, color: "#fff", cursor: price.trim() ? "pointer" : "default" }}>Send quote</button>
         </div>
       )}
       {mode === "decline" && (
@@ -94,13 +108,15 @@ function RequestCard({ sr, onChanged }) {
   );
 }
 
-export default function ServicesPanel() {
-  const { data, isLoading, isError, refetch } = useIncomingServiceRequests();
-  const listings = useMyListings();
+// `direct` (Ashanti Direct): the incoming-request queue is a business owner's own inbox, which a staff
+// operator does not have, so it is neither fetched nor shown; only the listings are.
+export default function ServicesPanel({ basePath = DEFAULT_LISTINGS_PATH, direct = false }) {
+  const { data, isLoading, isError, refetch } = useIncomingServiceRequests({ enabled: !direct });
+  const listings = useMyListings(true, basePath);
   const categories = useCategories();
 
-  if (isLoading) return <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading your requests…</div>;
-  if (isError) return <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your service requests.</div>;
+  if (!direct && isLoading) return <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading your requests…</div>;
+  if (!direct && isError) return <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your service requests.</div>;
   const requests = data || [];
   const active = requests.filter(r => !["completed", "declined", "cancelled"].includes(r.status));
 
@@ -108,7 +124,7 @@ export default function ServicesPanel() {
   // service listings belong here; accommodation ones are managed in Bookings.
   const catMap = Object.fromEntries((categories.data || []).map(c => [c.id, c]));
   const myServices = (listings.data || []).filter(l => {
-    if (l.status !== "published") return false;
+    if (!["published", "dropped"].includes(l.status)) return false;
     const cat = catMap[l.category];
     return cat && cat.kind === "service" && !cat.is_accommodation;
   });
@@ -117,14 +133,16 @@ export default function ServicesPanel() {
     <div style={{ maxWidth: 720 }}>
       {/* Your listings — view/edit price, specs and photos (bug fix 4) */}
       <div style={{ ...sectionTitle, marginBottom: 4 }}>Your service listings</div>
-      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>Approved services. Edit price, specs and add photos here — changes go live without re-approval.</div>
+      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>Approved services. Price changes go live at once. Anything else you change waits for our approval, and your approved version stays live meanwhile. Discontinued listings are listed under the Listings tab.</div>
       {!listings.isLoading && myServices.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem", marginBottom: 20 }}>No approved service listings yet. Once a service is approved it appears here.</div>}
-      {myServices.map(l => <OwnerListingCard key={l.id} listing={l} onChanged={listings.refetch} variant="service" />)}
+      {myServices.map(l => <OwnerListingCard key={l.id} listing={l} onChanged={listings.refetch} variant="service" basePath={basePath} />)}
 
+      {!direct && <>
       <div style={{ ...sectionTitle, marginTop: 28, marginBottom: 4 }}>Service requests</div>
       <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>{active.length} active. Accept a request with a quote, then track it to completion once the customer pays.</div>
       {requests.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem" }}>No service requests yet. They'll appear here when a customer requests one of your services.</div>}
       {requests.map(r => <RequestCard key={r.id} sr={r} onChanged={refetch} />)}
+      </>}
     </div>
   );
 }

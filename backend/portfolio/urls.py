@@ -1,8 +1,12 @@
 from django.urls import path
 
-from . import oversight, views
+from . import oversight, views, views_confirm
 
 urlpatterns = [
+    # The owner's side of a texted confirmation link. Public; POST only so the token never lands in an access log.
+    path("confirm/preview/", views_confirm.ConfirmPreviewView.as_view(), name="portfolio-confirm-preview"),
+    path("confirm/decline/", views_confirm.ConfirmDeclineView.as_view(), name="portfolio-confirm-decline"),
+    path("confirm/", views_confirm.ConfirmView.as_view(), name="portfolio-confirm"),
     path("register/check/", views.RegisterCheckView.as_view(), name="portfolio-register-check"),
     path("register/", views.RegisterBusinessView.as_view(), name="portfolio-register"),
     path("businesses/<int:pk>/kyc/", views.KycResubmitView.as_view(), name="portfolio-kyc-resubmit"),
@@ -25,6 +29,21 @@ urlpatterns = [
     path("businesses/<int:pk>/follow-up/", views.BusinessFollowUpView.as_view(), name="portfolio-follow-up"),
     path("leaderboard/", views.LeaderboardView.as_view(), name="portfolio-leaderboard"),
     path("subscriptions-due/", views.SubscriptionsDueView.as_view(), name="portfolio-subscriptions-due"),
+    path("businesses/<int:pk>/drafts/", views.DraftListCreateView.as_view(), name="portfolio-drafts"),
+    path("businesses/<int:pk>/drafts/send/", views.DraftSendView.as_view(), name="portfolio-drafts-send"),
+    path("businesses/<int:pk>/drafts/<int:draft_id>/", views.DraftDetailView.as_view(), name="portfolio-draft-detail"),
+    path(
+        "businesses/<int:pk>/drafts/<int:draft_id>/resend/", views.DraftResendView.as_view(),
+        name="portfolio-draft-resend",
+    ),
+    path(
+        "businesses/<int:pk>/drafts/<int:draft_id>/submit/", views.DraftSubmitView.as_view(),
+        name="portfolio-draft-submit",
+    ),
+    path(
+        "businesses/<int:pk>/confirmation/registration/", views.RegistrationConfirmationView.as_view(),
+        name="portfolio-registration-confirmation",
+    ),
     path("businesses/<int:pk>/photos/", views.PhotoStageView.as_view(), name="portfolio-photo-stage"),
     path("businesses/<int:pk>/changes/", views.ProposeChangeView.as_view(), name="portfolio-propose-change"),
     path("businesses/<int:pk>/listings/", views.ProposeListingView.as_view(), name="portfolio-propose-listing"),

@@ -52,6 +52,8 @@ export function kpiCards(data) {
 export default function SuperAdminOverviewPanel({ auth, onNavigate, onOpenApproval }) {
   const { data, isLoading, isError, refetch } = useSaOverview();
   const feed = useActivity();
+  // Step-in and Sessions & devices are Super Admin's alone; the General Manager sees the same figures without those links.
+  const canStepIn = auth?.user?.role !== "general_manager";
   const events = (feed.data?.results || []).slice(0, 8);
   const cards = data ? kpiCards(data) : null;
   const now = data ? new Date(data.now) : new Date();
@@ -69,7 +71,7 @@ export default function SuperAdminOverviewPanel({ auth, onNavigate, onOpenApprov
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
             <Kpi {...cards.decisions} subColor={cards.decisions.color} onClick={() => onNavigate?.("approvals")} />
-            <Kpi {...cards.online} onClick={() => onNavigate?.("sessions")} />
+            <Kpi {...cards.online} onClick={canStepIn ? () => onNavigate?.("sessions") : undefined} />
             <Kpi {...cards.fraud} subColor={cards.fraud.color} onClick={() => onNavigate?.("fraud-cases")} />
             <Kpi {...cards.issues} />
             <Kpi {...cards.at_risk} subColor={cards.at_risk.color} onClick={() => onNavigate?.("all-portfolios")} />
@@ -133,7 +135,7 @@ export default function SuperAdminOverviewPanel({ auth, onNavigate, onOpenApprov
 
           <section aria-labelledby="sa-teams" style={section}>
             <h3 id="sa-teams" style={{ ...h2, fontSize: "0.95rem" }}>Teams right now</h3>
-            <div style={dim}>Open a team to see its workspace read-only.</div>
+            {canStepIn && <div style={dim}>Open a team to see its workspace read-only.</div>}
             <div style={scroll}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
                 {data.teams.map((t) => (
@@ -143,7 +145,7 @@ export default function SuperAdminOverviewPanel({ auth, onNavigate, onOpenApprov
                     {t.work.map((line) => <div key={line} style={{ fontSize: "0.78rem", color: D.text }}>{line}</div>)}
                     {t.work.length === 0 && <div style={dim}>No work figures for this team yet.</div>}
                     {t.flag && <div style={{ fontSize: "0.78rem", color: warn, fontWeight: 700 }}>{t.flag}</div>}
-                    <button type="button" aria-label={`Step in: ${t.label}`} onClick={() => onNavigate?.(t.step_in)} style={{ ...linkStyle, alignSelf: "flex-start" }}>Step in · read-only</button>
+                    {canStepIn && <button type="button" aria-label={`Step in: ${t.label}`} onClick={() => onNavigate?.(t.step_in)} style={{ ...linkStyle, alignSelf: "flex-start" }}>Step in · read-only</button>}
                   </div>
                 ))}
               </div>

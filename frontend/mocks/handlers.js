@@ -97,7 +97,7 @@ export const handlers = [
       facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
       tiktok_url: 'https://tiktok.com/@ashantihub', youtube_url: 'https://youtube.com/@ashantihub',
       whatsapp_number: '233244000000', support_hours: 'Mon–Sat, 8:00am – 8:00pm GMT',
-      warranty_returns_policy: '', service_dispute_policy: '',
+      warranty_returns_policy: '', service_dispute_policy: '', pickup_office_address: '',
     })
   }),
   http.patch('http://localhost:8000/api/core/site-settings/', async ({ request }) => {
@@ -118,7 +118,7 @@ export const handlers = [
     shops: [], food_shops: 0, at_shop_limit: false, at_food_limit: false, checkout: { any: null, door_to_door: null },
   })),
   http.get('http://localhost:8000/api/orders/delivery-preview/', () => HttpResponse.json({
-    delivery_from: null, delivered_from: null, deferred: false, source: null,
+    delivery_from: null, delivered_from: null, deferred: false, source: null, delivery: null,
   })),
   http.get('http://localhost:8000/api/cart/', () => {
     return HttpResponse.json({ id: 1, items: [], total: '0.00', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' })
@@ -351,6 +351,16 @@ export const handlers = [
   http.get('http://localhost:8000/api/listings/moderation/pending/', () => {
     return HttpResponse.json([])
   }),
+  // Owners' changes to live listings (staff review): empty queue by default; tests override.
+  http.get('http://localhost:8000/api/listings/revisions/pending/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/listings/revisions/:id/', ({ params }) => HttpResponse.json({
+    id: Number(params.id), listing: 1, listing_name: 'Listing', business_owner_name: 'Business', status: 'pending',
+    changed_fields: [], made_by_staff: false, created_by_staff: null,
+    diff: { fields: {}, media: { staged_photos: [], remove_photos: [], staged_videos: [], remove_videos: [], remove_video_ids: [] }, variants: [] },
+  })),
+  http.post('http://localhost:8000/api/listings/revisions/:id/approve/', ({ params }) => HttpResponse.json({ id: Number(params.id), listing: 1, status: 'approved' })),
+  http.post('http://localhost:8000/api/listings/revisions/:id/reject/', ({ params }) => HttpResponse.json({ id: Number(params.id), listing: 1, status: 'rejected' })),
+  http.post('http://localhost:8000/api/listings/revisions/:id/re-review/', ({ params }) => HttpResponse.json({ id: Number(params.id), listing: 1, status: 'pending' })),
   http.get('http://localhost:8000/api/listings/hero/pending/', () => {
     return HttpResponse.json([])
   }),
@@ -389,6 +399,13 @@ export const handlers = [
   http.post('http://localhost:8000/api/accounts/customers/:id/unsuspend/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), is_suspended: false })
   }),
+  // Owner confirmation (staff listing pipeline): POST-only, token in the body (never a URL query).
+  http.post('http://localhost:8000/api/portfolio/confirm/preview/', () => HttpResponse.json({
+    business_name: "Akosua's Kitchen", owner_name_first: 'Akosua', registration: false,
+    items: [{ kind: 'product', name: 'Banku and tilapia', price: '35.00' }], expires_at: '2099-01-01T00:00:00Z',
+  })),
+  http.post('http://localhost:8000/api/portfolio/confirm/', () => HttpResponse.json({ confirmed: true })),
+  http.post('http://localhost:8000/api/portfolio/confirm/decline/', () => HttpResponse.json({ declined: true })),
   // Owner claim (staff phase 2A) — placed before business-owners/:id/,
   // which would otherwise read "claim" as an owner id. The preview's
   // login_phone is masked by the server to its last 3 digits (email_on_file
@@ -481,6 +498,15 @@ export const handlers = [
   // Bookings (bookings app, business item 2 / Wave H3) — default handlers.
   http.get('http://localhost:8000/api/bookings/mine/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/bookings/incoming/', () => HttpResponse.json([])),
+  // The stay quote: 100.00 a night, 5 units free; the server prices nights x units.
+  http.get('http://localhost:8000/api/bookings/availability/', ({ request }) => {
+    const q = new URL(request.url).searchParams
+    const nights = Math.round((Date.parse(q.get('check_out')) - Date.parse(q.get('check_in'))) / 86400000)
+    const units = Number(q.get('units') || 1)
+    return HttpResponse.json({
+      units_free: 5, available: true, nights, nightly_rate: '100.00', units, total_price: (100 * nights * units).toFixed(2),
+    })
+  }),
   http.post('http://localhost:8000/api/bookings/', () => HttpResponse.json({ id: 1, status: 'confirmed', check_in: '2026-08-01', check_out: '2026-08-03', total_price: '400.00' }, { status: 201 })),
   http.post('http://localhost:8000/api/bookings/:id/cancel/', () => HttpResponse.json({ id: 1, status: 'cancelled' })),
   http.post('http://localhost:8000/api/bookings/:id/check-in/', () => HttpResponse.json({ id: 1, status: 'checked_in' })),
@@ -580,8 +606,34 @@ export const handlers = [
   // Wallets (Plan 3F): ledger ON and empty by default; a test needing the "off" state overrides with a 409 {code:'ledger_off'}.
   http.get('http://localhost:8000/api/wallet/', () => HttpResponse.json({ kind: 'customer', balance: '0.00' })),
   http.get('http://localhost:8000/api/wallet/vendor/', () => HttpResponse.json({
-    pending: '0.00', available: '0.00', withdrawable: '0.00', negative: false, awaiting_call: false, fee_cap: '0.00',
+    pending: '0.00', available: '0.00', withdrawable: '0.00', negative: false, awaiting_call: 0,
+    fee_cap: { limit: null, used: '0.00', remaining: null }, withdrawing: '0.00',
   })),
+  // The business's own money screens (Plan 4F): ledger ON and empty.
+  http.get('http://localhost:8000/api/wallet/vendor/sales/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/wallet/vendor/bookings/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/wallet/vendor/daily/', () => HttpResponse.json({
+    from: '2026-09-21', to: '2026-10-20', days: [],
+    totals: { orders: 0, sold: '0.00', fees: '0.00', released: '0.00', refunded: '0.00', free_delivery_promo: '0.00', withdrawn: '0.00', other: '0.00', net_change: '0.00' },
+  })),
+  http.get('http://localhost:8000/api/wallet/vendor/fees/', () => {
+    const band = [{ from: '0.00', to: null, percent: '1', flat: null, fee: '1%' }]
+    const category = (key, label, applies_to) => ({ category: key, label, applies_to, charged: true, in_force_from: null, bands: band, next: null })
+    return HttpResponse.json({
+      categories: [category('product', 'Products', 'Product orders'), category('service', 'Services', 'Services and stays'), category('event', 'Events', 'Event tickets')],
+      fee_base: 'Worked out per order or booking on your items\' total after your own sale prices, never on delivery. It is taken when the money is released to you.',
+      fee_cap: { limit: null, used: '0.00', remaining: null },
+    })
+  }),
+  http.get('http://localhost:8000/api/wallet/vendor/texts/', () => HttpResponse.json({
+    order_texts: true, daily_digest: false, phone: null,
+    note: 'Money texts go only to a Ghana mobile number you have confirmed with a code. Yours is not confirmed, so your money notices stay in the app.',
+    recent: [],
+  })),
+  http.patch('http://localhost:8000/api/wallet/vendor/texts/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json({ order_texts: true, daily_digest: body.daily_digest, phone: null, note: null, recent: [] })
+  }),
   http.get('http://localhost:8000/api/wallet/transactions/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/wallet/destinations/', () => HttpResponse.json({ results: [], cooling_hours: 24 })),
   http.get('http://localhost:8000/api/wallet/withdrawals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
@@ -590,7 +642,18 @@ export const handlers = [
     if (!amount) return HttpResponse.json({ amount: ['Enter an amount.'] }, { status: 400 })
     return HttpResponse.json({ amount, payment_processing: '0.00', you_pay: amount, provider: 'simulated' })
   }),
+  // The third-party rider's wallet (Plan 5F): off by default, so an unexpected mount shows the payroll screen; tests override.
+  http.get('http://localhost:8000/api/delivery/rider/wallet/*', () => HttpResponse.json({ detail: "Wallets aren't switched on yet.", code: 'ledger_off' }, { status: 409 })),
+  http.post('http://localhost:8000/api/delivery/rider/wallet/*', () => HttpResponse.json({ detail: "Wallets aren't switched on yet.", code: 'ledger_off' }, { status: 409 })),
+  http.get('http://localhost:8000/api/ledger/pickup/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/ledger/orders/awaiting-verification/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/ledger/bookings/', () => HttpResponse.json({ results: [] })),
+  http.get('http://localhost:8000/api/ledger/bookings/awaiting-verification/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.patch('http://localhost:8000/api/core/site-settings/pickup-address/', async ({ request }) => HttpResponse.json(await request.json())),
   http.get('http://localhost:8000/api/wallet/staff/wallets/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  // Staff rider money (Plan 5F): no commission posted, and a rider with no wallet.
+  http.get('http://localhost:8000/api/delivery/rider-commission/', () => HttpResponse.json({ day: '2026-10-19', results: [], totals: { deliveries: 0, gross: '0.00', commission: '0.00', net: '0.00', given_back: '0.00' } })),
+  http.get('http://localhost:8000/api/delivery/riders/:id/wallet/', () => HttpResponse.json({ detail: 'This rider is paid through payroll.', code: 'wallet_disabled' }, { status: 409 })),
   http.get('http://localhost:8000/api/wallet/staff/withdrawals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/wallet/staff/reconciliation/', () => HttpResponse.json({ results: [] })),
   // The staff wallet's fail-a-withdrawal door answers 201 {approval_id, status:'pending'}: a second person approves.
@@ -617,7 +680,7 @@ export const handlers = [
   http.get('http://localhost:8000/api/targets/me/', () => HttpResponse.json({
     period: 'week', label: 'Mon 5 – Sun 11 October', start: '2026-10-05', end: '2026-10-11', today: '2026-10-07',
     working_days: 6, leave_days: 0, holiday_days: 0, has_targets: false,
-    measures: ['registrations', 'visits', 'calls', 'renewals'].map((metric) => ({
+    measures: ['registrations', 'visits', 'calls', 'listings'].map((metric) => ({
       metric, label: metric[0].toUpperCase() + metric.slice(1), how: '', done: 0, target: null, today_done: 0, today_target: null,
     })),
     days: [], daily: [], set_by: null, effective_from: null, sunday_off: true, leave: [], holidays: [], lead: null,
@@ -751,10 +814,28 @@ export const handlers = [
     stage: 'assigned', pickup: { lat: 5.6037, lng: -0.187, name: 'Akosua Ntoma' }, rider: { lat: 5.605, lng: -0.19, age_s: 45, stale: false },
     leg: { to: 'pickup', distance_km: 1.1, duration_s: 240, basis: 'road route' }, route: [[5.605, -0.19], [5.6037, -0.187]],
   })),
-  // Re-delivery at the customer's request (Plan 7F-E Task 7): no request by default; paying succeeds at once.
-  http.get('http://localhost:8000/api/delivery/redeliveries/', () => HttpResponse.json({ results: [] })),
+  // Re-delivery at the customer's request (Plan 7F-E Task 7): no request by default (the order qualifies at GH₵ 15.00); paying succeeds at once.
+  http.get('http://localhost:8000/api/delivery/redeliveries/', () => HttpResponse.json({
+    results: [], redeliverable: true, redelivery_fee: '15.00', not_redeliverable_reason: null,
+  })),
   http.post('http://localhost:8000/api/orders/:id/redelivery/pay/', () => HttpResponse.json({
     mode: 'immediate', payment_method: 'wallet', payment_processing: '0.00',
     redelivery: { id: 1, order: 7, attempt: 1, status: 'paid', status_label: 'Paid, waiting for a rider', fee: '15.00', fee_pesewas: 1500 },
+  })),
+  // Listing editor (marketplace Plan 2): no open edit by default (the server answers 404), and the owner's
+  // Ashanti Direct tree answers the same shapes as the business one.
+  http.get('http://localhost:8000/api/listings/mine/:id/revision/', () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })),
+  http.get('http://localhost:8000/api/direct/listings/:id/revision/', () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })),
+  http.get('http://localhost:8000/api/direct/listings/', () => HttpResponse.json([])),
+  // Discounts: nothing running by default (DiscountsPanel); a test overrides these for a running or refused one.
+  http.get('http://localhost:8000/api/listings/mine/:id/discounts/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/direct/listings/:id/discounts/', () => HttpResponse.json([])),
+  // Promotion hub: sponsored ads are free until priced; no flash-sale invitations by default.
+  http.get('http://localhost:8000/api/listings/promotions/pricing/', () => HttpResponse.json({ enabled: false })),
+  http.get('http://localhost:8000/api/marketing/owner/flash-sales/', () => HttpResponse.json({ results: [] })),
+  // Public seller page: a seller with nothing live by default; the lists it reads honour ?seller= in the tests that need them.
+  http.get('http://localhost:8000/api/listings/sellers/:id/', ({ params }) => HttpResponse.json({
+    id: Number(params.id), name: 'Adwoa Fabrics', since: '2026-03-02T10:00:00Z',
+    counts: { products: 0, services: 0, stays: 0, events: 0 },
   })),
 ]

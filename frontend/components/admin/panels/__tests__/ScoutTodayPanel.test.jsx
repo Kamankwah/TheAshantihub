@@ -18,11 +18,11 @@ const targets = (period, rows, over = {}) => ({
 })
 const WEEK = targets('week', [
   measure('registrations', 'Registrations', 2, 5, 1, 1), measure('visits', 'Visits', 10, 30, 3, 6),
-  measure('calls', 'Calls', 18, 50, 7, 10), measure('renewals', 'Renewals', 1, 5, 0, 1),
+  measure('calls', 'Calls', 18, 50, 7, 10), measure('listings', 'Listings', 1, 5, 0, 1),
 ])
 const MONTH = targets('month', [
   measure('registrations', 'Registrations', 5, 26, 1, 1), measure('visits', 'Visits', 33, 156, 3, 6),
-  measure('calls', 'Calls', 55, 260, 7, 10), measure('renewals', 'Renewals', 4, 26, 0, 1),
+  measure('calls', 'Calls', 55, 260, 7, 10), measure('listings', 'Listings', 4, 26, 0, 1),
 ])
 const task = (over = {}) => ({
   id: 1, title: 'Promised to pay by Friday', notes: '', due_at: hours(-30), status: 'open', kind: 'subscription_overdue',
@@ -63,7 +63,7 @@ describe('ScoutTodayPanel', () => {
     expect(greeting(8)).toBe('Good morning')
     expect(greeting(13)).toBe('Good afternoon')
     expect(greeting(19)).toBe('Good evening')
-    expect(await screen.findByText('Registrations count when Operations approves KYC. Renewals count when the owner pays in the app.')).toBeInTheDocument()
+    expect(await screen.findByText('Registrations count when Operations approves KYC. Listings count when Operations approves them.')).toBeInTheDocument()
   })
 
   it('leaves the area out when the scout manages no businesses yet', async () => {
@@ -79,11 +79,15 @@ describe('ScoutTodayPanel', () => {
     expect(visits).toHaveTextContent('3 / 6')
     expect(visits).toHaveTextContent('Week 10 of 30 · October 33 of 156')
     expect(within(visits).getByRole('progressbar', { name: 'Visits today' })).toHaveAttribute('aria-valuenow', '3')
+    const listings = within(card("Today's targets")).getByRole('group', { name: 'Listings' })
+    expect(listings).toHaveTextContent('0 / 1')
+    expect(listings).toHaveTextContent('Week 1 of 5 · October 4 of 26')
+    expect(within(card("Today's targets")).queryByRole('group', { name: 'Renewals' })).not.toBeInTheDocument()
     expect(within(card("Today's targets")).getAllByRole('group')).toHaveLength(4)
   })
 
   it('says "No targets set yet" and never shows a made-up target', async () => {
-    const none = targets('week', ['registrations', 'visits', 'calls', 'renewals'].map((m) => measure(m, m, 0, null, 0, null)), { has_targets: false })
+    const none = targets('week', ['registrations', 'visits', 'calls', 'listings'].map((m) => measure(m, m, 0, null, 0, null)), { has_targets: false })
     serve({ week: none, month: { ...none, period: 'month' } })
     renderPanel()
     expect(await screen.findByText('No targets set yet')).toBeInTheDocument()

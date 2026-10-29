@@ -326,7 +326,12 @@ another scout's assignment.
 **Duties.** The AshantiHub office desk. Holds only `pickup.confirm`: it hands paid store-pickup
 orders to customers and marks them collected. Collecting also marks the order delivered, which
 starts Support's verification. The desk never sees a customer's phone number. Only a Super Admin
-invites it. The Pickup Queue dashboard tab is planned; today the desk works through the API only.
+invites it. Its overview is the desk (`PickupDeskPanel`): paid store-pickup orders waiting at the
+AshantiHub office with a collect-by time and an Overdue word, and a hand-over that asks the customer
+for their one-time collection code (five wrong tries lock the order and tell Support). The desk shows
+the office address from site settings ("address to be confirmed" while blank; only the Super Admin
+sets it). A Super Admin sees the same desk as the Pickup desk item, and Support's queue as the
+Verification calls item (both in the Marketplace group after Scheduled orders).
 
 ---
 

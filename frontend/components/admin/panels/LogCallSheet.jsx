@@ -90,7 +90,12 @@ export default function LogCallSheet({ preset = null, call = null, onClose, onSa
   const businesses = preset?.type === "business_owner" && preset.label && !listed.some((b) => b.id === preset.id)
     ? [...listed, { id: preset.id, business_name: preset.label, owner_name: preset.ownerName || "owner", phone_masked: "" }]
     : listed;
-  const prospects = who?.prospects || [];
+  // Likewise a prospect opened by Operations may be another scout's: it is pickable with just its name (no number is
+  // shown, because the list holds none for it).
+  const listedProspects = who?.prospects || [];
+  const prospects = preset?.type === "prospect" && preset.label && !listedProspects.some((p) => p.id === preset.id)
+    ? [...listedProspects, { id: preset.id, name: preset.label, phone_masked: "" }]
+    : listedProspects;
   const [kind, id] = form.who.split(":");
   const chosen = kind === "business_owner" ? businesses.find((b) => String(b.id) === id) : kind === "prospect" ? prospects.find((p) => String(p.id) === id) : null;
   const purposeOptions = purposes || [{ value: "other", label: "Other" }];

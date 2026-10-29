@@ -54,7 +54,7 @@ class OperationsProviderTests(TestCase):
     def test_per_scout_table_has_a_row_for_each_scout_and_the_day_report(self):
         StaffReport.objects.create(staff=self.kwame, period="day", period_start=TODAY, period_end=TODAY, status=StaffReport.SUBMITTED)
         section = self.sections()["team_scouts"]
-        self.assertEqual(section["columns"], ["Registrations", "Visits", "Calls", "Renewals", "Day reports"])
+        self.assertEqual(section["columns"], ["Registrations", "Visits", "Calls", "Listings", "Day reports"])
         cells = {r["label"]: r["cells"] for r in section["rows"]}
         self.assertEqual(set(cells), {"Kwame", "Efua"})
         self.assertEqual(cells["Kwame"][0], "0 / 3")

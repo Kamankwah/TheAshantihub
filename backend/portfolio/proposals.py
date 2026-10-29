@@ -670,11 +670,13 @@ def _scout_wording(owner, detail):
     return errors
 
 
-def check_listing(owner, listing):
+def check_listing(owner, listing, *, require_kyc=True):
     """(validated_data, errors) for a listing this business would add now:
     KYC approved, subscription not paused, then the owner's own listing rules
-    (listings.serializers.validate_listing_for_owner) in scout wording."""
-    if owner.kyc_status != BusinessOwner.VERIFIED:
+    (listings.serializers.validate_listing_for_owner) in scout wording.
+    A staff draft (portfolio.drafts) passes require_kyc=False: it is written while the business waits for KYC and is
+    checked again, with KYC, when it is submitted for approval."""
+    if require_kyc and owner.kyc_status != BusinessOwner.VERIFIED:
         return None, {"business": [KYC_FIRST]}
     if subscription_state(getattr(owner, "subscription", None))["state"] == "paused":
         return None, {"subscription": [SUBSCRIPTION_PAUSED]}
@@ -742,21 +744,23 @@ def listing_create_state(approval):
     return {"business_owner_id": BusinessOwner.objects.get(pk=approval.payload["business_owner_id"]).pk}
 
 
+LEGACY_LISTING_CREATE = (
+    "This listing was proposed before owner confirmation existed. Draft it again so the owner can confirm it."
+)
+
+
 def validate_listing_create(approval):
-    payload = approval.payload
-    owner = BusinessOwner.objects.select_related("profile").get(pk=payload["business_owner_id"])
-    _, errors = check_listing(owner, payload.get("listing") or {})
-    if not errors:
-        errors = photo_errors(owner, _listing_photo_ids(payload))
-    if errors:
-        raise ApprovalError(first_message(errors))
+    """A scout's old `listing.create` proposal (made before staff listings needed the owner's confirmation) can no
+    longer publish: nothing goes live without the owner's confirmed text. The approver returns it; the scout drafts the
+    listing again. New listings go through `listing.staff_create`."""
+    raise ApprovalError(LEGACY_LISTING_CREATE)
 
 
-def apply_listing_create(approval):
-    """Publish the listing: this approval is its moderation (spec S4)."""
-    payload = approval.payload
-    owner = BusinessOwner.objects.select_for_update().get(pk=payload["business_owner_id"])
-    serializer = ProposedListingSerializer(data=payload.get("listing") or {})
+def publish_listing(owner, listing_data, photos, *, maker, decided_by):
+    """Create the published listing both listing kinds end in: the listing, its staged photos copied across and marked
+    used. The caller holds the owner's row lock and has checked the data; this is the one place a made-for-a-client
+    listing becomes live, with the maker and the decider on it. `photos` is (main_photo_id, [gallery ids])."""
+    serializer = ProposedListingSerializer(data=listing_data)
     if not serializer.is_valid():
         raise ApprovalError(first_message(serializer.errors))
     data = dict(serializer.validated_data)
@@ -766,12 +770,11 @@ def apply_listing_create(approval):
     if data.get("lat") is None and data.get("lng") is None and profile.lat is not None:
         data["lat"], data["lng"] = profile.lat, profile.lng
     now = timezone.now()
-    main_id = payload.get("main_photo_id")
-    gallery = payload.get("photo_ids") or []
-    staged = _locked_staged(owner, _listing_photo_ids(payload))
+    main_id, gallery = photos
+    staged = _locked_staged(owner, _listing_photo_ids({"main_photo_id": main_id, "photo_ids": gallery}))
     listing = Listing(
-        business_owner=owner, status=Listing.PUBLISHED, created_by_staff=approval.maker,
-        reviewed_by=approval.decided_by, reviewed_at=now, **data,
+        business_owner=owner, status=Listing.PUBLISHED, created_by_staff=maker,
+        reviewed_by=decided_by, reviewed_at=now, **data,
     )
     if main_id:
         _copy_image(staged[main_id].image, listing.main_photo)
@@ -781,7 +784,21 @@ def apply_listing_create(approval):
         _copy_image(staged[pk].image, photo.image)
         photo.save()
     StagedPhoto.objects.filter(pk__in=list(staged)).update(used_at=now)
-    _applied(approval, owner, summary=f"Added “{listing.name}”", result={"listing_id": listing.pk}, applied_at=now)
+    return listing
+
+
+def apply_listing_create(approval):
+    """Publish the listing: this approval is its moderation (spec S4)."""
+    payload = approval.payload
+    owner = BusinessOwner.objects.select_for_update().get(pk=payload["business_owner_id"])
+    listing = publish_listing(
+        owner, payload.get("listing") or {}, (payload.get("main_photo_id"), payload.get("photo_ids") or []),
+        maker=approval.maker, decided_by=approval.decided_by,
+    )
+    _applied(
+        approval, owner, summary=f"Added “{listing.name}”", result={"listing_id": listing.pk},
+        applied_at=listing.reviewed_at,
+    )
     _tell_owner(owner, approval, f"added “{listing.name}”", f"It's live on AshantiHub now. {UNDO_HINT}")
 
 
@@ -795,22 +812,38 @@ def _listing_shown(key, value):
     return value
 
 
-def listing_create_diff(approval):
-    payload = approval.payload
-    listing = payload.get("listing") or {}
+def listing_rows(listing, main_photo_id, photo_ids):
+    """The diff rows for a listing's details and photos (listing.create and listing.staff_create)."""
     rows = [
         {"field": label, "before": None, "after": _listing_shown(key, listing[key])}
         for key, label in LISTING_LABELS
         if key in listing
     ]
-    if payload.get("main_photo_id"):
-        rows.append({"field": "Main photo", "before": None, "after": {"images": _image_urls([payload["main_photo_id"]])}})
-    if payload.get("photo_ids"):
-        rows.append({"field": "Photos", "before": None, "after": {"images": _image_urls(payload["photo_ids"])}})
+    if main_photo_id:
+        rows.append({"field": "Main photo", "before": None, "after": {"images": _image_urls([main_photo_id])}})
+    if photo_ids:
+        rows.append({"field": "Photos", "before": None, "after": {"images": _image_urls(photo_ids)}})
     return rows
 
 
+def listing_create_diff(approval):
+    payload = approval.payload
+    return listing_rows(payload.get("listing") or {}, payload.get("main_photo_id"), payload.get("photo_ids"))
+
+
 # ── listing.photos ──────────────────────────────────────────────────────────
+
+def _photo_room(listing, count):
+    """The listing's photo cap (listings.media: 9 images, the main photo included, counting any edit being prepared)
+    as it would stand after `count` more photos; a plain message when it would go over."""
+    from listings import media
+
+    # Applying copies the first photo into main_photo when the listing has none, which is one more image.
+    extra = 0 if listing.main_photo or not count else 1
+    if media.image_count(listing) + count + extra > media.MAX_IMAGES:
+        return f"A listing can have at most {media.MAX_IMAGES} images, the main photo included. Remove some first."
+    return None
+
 
 def propose_photos(scout, listing, *, photo_ids, reason, http_request=None):
     listing = Listing.objects.select_related("business_owner").get(pk=listing.pk)
@@ -825,6 +858,9 @@ def propose_photos(scout, listing, *, photo_ids, reason, http_request=None):
     errors = photo_errors(owner, ids)
     if errors:
         raise ValidationError(errors)
+    full = _photo_room(listing, len(ids))
+    if full:
+        raise ValidationError({"photo_ids": [full]})
     with transaction.atomic():
         approval = submit(
             scout, LISTING_PHOTOS_KEY, title=f"{_photo_count(len(ids))} for {listing.name} — {owner.display_name}",
@@ -845,11 +881,15 @@ def listing_photos_state(approval):
 def validate_listing_photos(approval):
     payload = approval.payload
     owner = BusinessOwner.objects.get(pk=payload["business_owner_id"])
-    if not Listing.objects.filter(pk=payload["listing_id"], business_owner=owner).exists():
+    listing = Listing.objects.filter(pk=payload["listing_id"], business_owner=owner).first()
+    if listing is None:
         raise ApprovalError(LISTING_MOVED)
     errors = photo_errors(owner, payload.get("photo_ids") or [])
     if errors:
         raise ApprovalError(first_message(errors))
+    full = _photo_room(listing, len(payload.get("photo_ids") or []))
+    if full:
+        raise ApprovalError(full)
 
 
 def apply_listing_photos(approval):

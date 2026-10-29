@@ -92,6 +92,16 @@ class OrderItem(models.Model):
     line_total = models.DecimalField(max_digits=10, decimal_places=2)
     # Set when unit_price is a flash-sale price (the sellers pay for that discount).
     flash_sale = models.ForeignKey("marketing.FlashSale", on_delete=models.PROTECT, null=True, blank=True, related_name="order_items")
+    # The variant bought and its label at checkout (the label stays even if the variant is later renamed or switched off).
+    variant = models.ForeignKey("listings.ListingVariant", on_delete=models.PROTECT, null=True, blank=True, related_name="order_items")
+    variant_label = models.CharField(max_length=100, blank=True)
+
+    @property
+    def line_name(self):
+        """What to pack or check: the listing name, plus the variant bought."""
+        if self.variant_label:
+            return f"{self.listing.name} ({self.variant_label})"
+        return self.listing.name
 
     def __str__(self):
         return f"{self.quantity} x {self.listing.name} (Order {self.order_id})"

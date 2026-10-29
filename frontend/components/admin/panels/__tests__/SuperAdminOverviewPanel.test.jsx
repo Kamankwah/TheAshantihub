@@ -76,4 +76,13 @@ describe('SuperAdminOverviewPanel', () => {
     renderPanel()
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load the command center")
   })
+
+  it("offers a General Manager the same figures without the Super Admin-only step-in links", async () => {
+    server.use(http.get(`${API}/api/operations/superadmin-overview/`, () => HttpResponse.json(overview())))
+    const onNavigate = vi.fn()
+    renderPanel({ onNavigate, auth: { user: { full_name: 'Esi Manu', role: 'general_manager' } } })
+    expect(await screen.findByRole('group', { name: 'Operations & scouts' })).toHaveTextContent('2 of 5 online')
+    expect(screen.queryByRole('button', { name: /Step in/ })).toBeNull()
+    expect(screen.queryByText(/Open a team to see its workspace/)).toBeNull()
+  })
 })

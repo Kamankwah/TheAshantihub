@@ -21,6 +21,8 @@ import { Title, page } from "./insightsParts.jsx";
 // No realtime key exists: the list refetches on window focus and on Refresh.
 // useStaffWithdrawals returns a DRF envelope: read data.results.
 const STATUSES = [["open", "Open"], ["succeeded", "Paid"], ["failed", "Failed"], ["cancelled", "Cancelled"], ["all", "All"]];
+// Only riders hold staff wallets (spec S5-7), so "staff" reads as Rider.
+const HOLDER_WORDS = { customer: "Customer", business_owner: "Business", staff: "Rider" };
 const MIN_EVIDENCE = 10;
 const td = { padding: "8px 8px", borderBottom: `1px solid ${D.divider}`, verticalAlign: "top", fontSize: "0.8rem", color: D.text };
 const th = { ...dim, textAlign: "left", fontWeight: 700, padding: "6px 8px" };
@@ -79,9 +81,9 @@ function ResolveSheet({ row, onClose, onSent, onStale }) {
   );
 }
 
-function Rows({ status, canManage, onResolve }) {
+function Rows({ status, holderType, canManage, onResolve }) {
   const s = walletStyles("dashboard");
-  const { query, loaded, rows, hasMore, loadMore, loadError } = usePagedRows((pageNo) => useStaffWithdrawals({ status, page: pageNo }));
+  const { query, loaded, rows, hasMore, loadMore, loadError } = usePagedRows((pageNo) => useStaffWithdrawals({ status, page: pageNo, holderType }));
   const failure = query.error ? walletMessage(query.error) : null;
   if (failure?.kind === "off" && !loaded.length) return <div role="status" style={dim}>{failure.text}</div>;
   if (failure && !loaded.length) return <div role="alert" style={s.error}>{failure.text}</div>;
@@ -98,7 +100,7 @@ function Rows({ status, canManage, onResolve }) {
             {rows.map((r) => (
               <tr key={r.id}>
                 <td style={td}>{r.reference}</td>
-                <td style={td}>{r.holder_name || `Holder ${r.holder_id}`}<div style={dim}>{r.holder_type}</div></td>
+                <td style={td}>{r.holder_name || `Holder ${r.holder_id}`}<div style={dim}>{HOLDER_WORDS[r.holder_type] || r.holder_type}</div></td>
                 <td style={{ ...td, ...money }}>{formatGhs(r.amount)}</td>
                 <td style={{ ...td, ...money }}>{formatGhs(r.charge)}</td>
                 <td style={td}>{r.status_label}{r.stuck && <> <span style={chip(D.amber)}>Stuck</span></>}</td>
@@ -116,7 +118,7 @@ function Rows({ status, canManage, onResolve }) {
   );
 }
 
-export default function WithdrawalsPanel({ auth }) {
+export default function WithdrawalsPanel({ auth, holderType, title = "Withdrawals" }) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState("open");
   const [round, setRound] = useState(0);
@@ -134,7 +136,7 @@ export default function WithdrawalsPanel({ auth }) {
   };
   return (
     <div style={page}>
-      <Title right={<button type="button" onClick={refresh} style={button(D.panelBg, D.text, false)}>Refresh</button>}>Withdrawals</Title>
+      <Title right={<button type="button" onClick={refresh} style={button(D.panelBg, D.text, false)}>Refresh</button>}>{title}</Title>
       <div role="group" aria-label="Withdrawal status" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {STATUSES.map(([id, label]) => (
           <button key={id} type="button" aria-pressed={status === id} onClick={() => setStatus(id)} style={pill(status === id)}>{label}</button>
@@ -143,7 +145,7 @@ export default function WithdrawalsPanel({ auth }) {
       {sent && <div role="status" style={callout(D.green)}>{sent}</div>}
       {resolving && <ResolveSheet row={resolving} onClose={() => setResolving(null)} onSent={onSent} onStale={refresh} />}
       <section aria-label="Withdrawals list" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-        <Rows key={`${status}-${round}`} status={status} canManage={canManage} onResolve={(r) => { setSent(""); setResolving(r); }} />
+        <Rows key={`${status}-${round}`} status={status} holderType={holderType} canManage={canManage} onResolve={(r) => { setSent(""); setResolving(r); }} />
       </section>
     </div>
   );

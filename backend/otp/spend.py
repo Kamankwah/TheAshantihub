@@ -42,11 +42,22 @@ def business_texts_sent_on(day):
     ).exclude(provider="simulated").count()
 
 
+def owner_confirmation_texts_sent_on(day):
+    """Owner confirmation texts (portfolio.OwnerConfirmation) actually sent on `day`. Simulated ones went nowhere and are
+    a different send state, so they are not counted. Never an OtpEvent."""
+    from portfolio.models import OwnerConfirmation
+
+    start, end = _bounds(day)
+    return OwnerConfirmation.objects.filter(
+        send_state=OwnerConfirmation.SENT, sent_at__gte=start, sent_at__lt=end,
+    ).count()
+
+
 def texts_sent_on(day):
     """Messages sent on `day`: code texts plus business money texts (marketing campaign texts are not counted). Business
     texts are never OtpEvents (the code send limits count those), so they are counted from their own outbox. This counts
     messages, not billed SMS parts: a two-part business text counts once."""
-    return code_texts_sent_on(day) + business_texts_sent_on(day)
+    return code_texts_sent_on(day) + business_texts_sent_on(day) + owner_confirmation_texts_sent_on(day)
 
 
 def check(now=None):
@@ -59,7 +70,8 @@ def check(now=None):
         return False  # already alerted today: no need to count
     threshold = policy.otp_sms_daily_alert()
     codes, business = code_texts_sent_on(day), business_texts_sent_on(day)  # each counted once
-    sent = codes + business
+    owners = owner_confirmation_texts_sent_on(day)
+    sent = codes + business + owners
     if sent < threshold:
         return False
     with transaction.atomic():
@@ -72,7 +84,7 @@ def check(now=None):
         "security.manage", ALERT_KIND, f"Texts reached {threshold} today",
         body=(
             f"{sent} texts have been sent today ({day:%d %b}): {codes} one-time codes and {business} business money "
-            "texts. A sudden rise in codes can mean someone is abusing the code requests. Look at the code log and the "
+            f"texts{f' and {owners} owner confirmation texts' if owners else ''}. A sudden rise in codes can mean someone is abusing the code requests. Look at the code log and the "
             "text balance."
         ),
         link="security", icon="📱",

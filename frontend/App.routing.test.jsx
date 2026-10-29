@@ -380,6 +380,37 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
   )
 
   it(
+    'mounting directly at /seller/9 renders the public seller page, not the 404 page, and a card opens its listing',
+    async () => {
+      window.history.pushState({}, '', '/seller/9')
+      server.use(
+        http.get('http://localhost:8000/api/listings/sellers/9/', () =>
+          HttpResponse.json({ id: 9, name: 'Adwoa Fabrics', since: '2026-03-02T10:00:00Z', counts: { products: 1, services: 0, stays: 0, events: 0 } }),
+        ),
+        http.get('http://localhost:8000/api/listings/', () =>
+          HttpResponse.json({
+            count: 1, next: null, previous: null,
+            results: [{ id: 31, name: 'Kente cloth', price_amount: '90.00', photos: [], main_photo: null, category: { kind: 'product', color: '#000080', label: 'Shops' }, zone: { name: 'Manhyia' }, business_owner: { id: 9, full_name: 'Adwoa', kyc_status: 'verified' } }],
+          }),
+        ),
+      )
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      render(
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <AshantiHub />
+          </BrowserRouter>
+        </QueryClientProvider>,
+      )
+      expect(await screen.findByRole('heading', { name: 'Adwoa Fabrics' }, { timeout: 4000 })).toBeInTheDocument()
+      expect(screen.queryByText(/page not found/i)).not.toBeInTheDocument()
+      expect(await screen.findByText('Kente cloth')).toBeInTheDocument()
+      window.history.pushState({}, '', '/')
+    },
+    10000,
+  )
+
+  it(
     'clicking ListingDetailPage\'s "Back to results" navigates the URL from /business/123 back to /business',
     async () => {
       window.history.pushState({}, '', '/business/123')
@@ -904,6 +935,30 @@ describe('AshantiHub routing — /business/claim', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save my login' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }))
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+  }, 8000)
+})
+
+// Staff listing pipeline — /business/confirm also matches /business/:id, but it is the owner's texted confirmation
+// page (token in the #fragment), never a listing whose id is "confirm".
+describe('AshantiHub routing — /business/confirm', () => {
+  it('opens the owner confirmation page, not a listing called "confirm"', async () => {
+    let listingFetched = false
+    let body = null
+    server.use(
+      http.get('http://localhost:8000/api/listings/confirm/', () => { listingFetched = true; return HttpResponse.json({ detail: 'Not found.' }, { status: 404 }) }),
+      http.post('http://localhost:8000/api/portfolio/confirm/preview/', async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json({ business_name: "Akosua's Kitchen", owner_name_first: 'Akosua', registration: false, items: [{ kind: 'product', name: 'Banku', price: '12.00' }], expires_at: '2099-01-01T00:00:00Z' })
+      }),
+    )
+    window.history.replaceState(null, '', '/business/confirm#token=frag-tok')
+    renderStaffAt('/business/confirm')
+    expect(await screen.findByText("Akosua's Kitchen", {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByTestId('location').textContent).toBe('/business/confirm')
+    expect(body).toEqual({ token: 'frag-tok' })
+    expect(screen.queryByText('Page Not Found')).not.toBeInTheDocument()
+    expect(listingFetched).toBe(false)
+    window.history.replaceState(null, '', '/')
   }, 8000)
 })
 

@@ -186,6 +186,47 @@ describe('Escrow', () => {
     await waitFor(() => expect(post).toHaveBeenCalledWith('/api/events/tickets/7/escrow/refund/', { reason: 'Event cancelled' }))
     post.mockRestore()
   })
+
+  it('a ledger ticket offers no release or hold and says the ledger pays it out', async () => {
+    server.use(
+      http.get(`${API}/api/events/tickets/escrow/summary/`, () => HttpResponse.json(summary)),
+      http.get(`${API}/api/events/tickets/escrow/`, () => HttpResponse.json({ count: 2, results: [{ ...ticket, in_ledger: true }, { ...ticket, id: 8, code: 'TK8', escrow_status: 'released', in_ledger: true }] })),
+      http.get(`${API}/api/ledger/booking-terms/`, () => HttpResponse.json({ enabled: true, event_release_delay_hours: 48 })),
+    )
+    wrap(<EscrowLedgerPanel auth={staff('escrow.view', 'escrow.release', 'escrow.refund')} />)
+    await screen.findAllByText(/Paid out by the ledger/)
+    await waitFor(() => expect(screen.getAllByText(/48 hours after the event day ends, unless a dispute is open/)).toHaveLength(2))
+    expect(screen.queryByRole('button', { name: 'Release' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Hold' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refund' })).toBeInTheDocument()
+  })
+
+  it('a ledger refund says where the money went', async () => {
+    server.use(
+      http.get(`${API}/api/events/tickets/escrow/summary/`, () => HttpResponse.json(summary)),
+      http.get(`${API}/api/events/tickets/escrow/`, () => HttpResponse.json({ count: 1, results: [{ ...ticket, in_ledger: true }] })),
+    )
+    const post = vi.spyOn(apiClient, 'apiPost').mockResolvedValue({ wallet_refund: '80.00' })
+    wrap(<EscrowLedgerPanel auth={staff('escrow.view', 'escrow.refund')} />)
+    await screen.findByText(/Akwasidae — Regular/)
+    fireEvent.change(screen.getByLabelText('Note for ticket TK7'), { target: { value: 'Event cancelled' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Refund' }))
+    expect(await screen.findByText("Refunded: GH₵ 80.00 went back to the buyer's AshantiHub wallet.")).toBeInTheDocument()
+    post.mockRestore()
+  })
+
+  it('a legacy ticket keeps release, hold and refund', async () => {
+    server.use(
+      http.get(`${API}/api/events/tickets/escrow/summary/`, () => HttpResponse.json(summary)),
+      http.get(`${API}/api/events/tickets/escrow/`, () => HttpResponse.json({ count: 2, results: [{ ...ticket, in_ledger: false }, { ...ticket, id: 8, code: 'TK8', escrow_status: 'released', in_ledger: false }] })),
+    )
+    wrap(<EscrowLedgerPanel auth={staff('escrow.view', 'escrow.release', 'escrow.refund')} />)
+    await screen.findAllByText(/Akwasidae — Regular/)
+    expect(screen.getByRole('button', { name: 'Release' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hold' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refund' })).toBeInTheDocument()
+    expect(screen.queryByText(/Paid out by the ledger/)).not.toBeInTheDocument()
+  })
 })
 
 describe('Refunds for the Accountant', () => {

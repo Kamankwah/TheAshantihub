@@ -148,7 +148,7 @@ describe('Teams (step in)', () => {
             checked_in: { count: 0, working: 0, on_leave: [], flagged: 0 }, at_risk: { count: 0, needs_attention: 0 },
             issues: { total: 0, fraud: 0, support: null, delivery: null },
           },
-          scouts: [], totals: { registrations: { done: 0, target: 0 }, visits: { done: 0, target: 0 }, calls: { done: 0, target: 0 }, renewals: { done: 0, target: 0 }, visits_flagged: 0 },
+          scouts: [], totals: { registrations: { done: 0, target: 0 }, visits: { done: 0, target: 0 }, calls: { done: 0, target: 0 }, listings: { done: 0, target: 0 }, visits_flagged: 0 },
           waiting: [], issues: [], issue_total: 0,
         })
       }),

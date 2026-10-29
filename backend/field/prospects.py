@@ -10,7 +10,7 @@ from django.utils import timezone
 from accounts.phones import normalize_gh_phone, phone_key
 from activity.services import record
 from calls.models import CallLog
-from portfolio import checks
+from portfolio import checks, confirmations
 from staff_tasks.models import Task
 from staff_tasks.services import create_task
 
@@ -22,6 +22,13 @@ OWN_PHONE = "You already have a prospect with this phone number."
 FOLLOW_UP_PAST = "Pick a follow-up time in the future."
 REGISTERED = "This prospect is registered, so it can't be changed here."
 OPEN_STATUSES = (Prospect.NEW, Prospect.INTERESTED, Prospect.FOLLOW_UP)
+
+
+def manages_prospects(user):
+    """Operations and Super Admin (portfolio.manage with the prospect right, businesses.register) work every scout's
+    prospects; a scout only their own. The General Manager holds portfolio.manage but no prospect right: a checker."""
+    perms = user.effective_permission_codenames()
+    return "portfolio.manage" in perms and "businesses.register" in perms
 
 
 def masked_phone(raw):
@@ -78,7 +85,9 @@ def sync_follow_up(prospect):
         task.save(update_fields=["status"])
 
 
-def create_prospect(scout, data, *, request=None):
+def create_prospect(scout, data, *, request=None, actor=None):
+    """Add a prospect to `scout`'s list. `actor` is the Operations or Super Admin member adding it on the scout's
+    behalf (the activity log says so); the scout owns it and gets the follow-up task."""
     phone = _clean_phone(data["phone"], scout=scout)
     _check_follow_up(data.get("next_follow_up_at"), None)
     status = data.get("status") or Prospect.NEW
@@ -88,13 +97,17 @@ def create_prospect(scout, data, *, request=None):
             status=status, next_follow_up_at=None if status == Prospect.NOT_INTERESTED else data.get("next_follow_up_at"),
         )
         sync_follow_up(prospect)
-        record(scout, "prospect.create", target=prospect,
-               after={"name": prospect.name, "status": prospect.status}, request=request)
+        record(actor or scout, "prospect.create", target=prospect,
+               after={"name": prospect.name, "status": prospect.status}, request=request,
+               on_behalf_of=scout if actor else None)
     return prospect
 
 
-def update_prospect(prospect, data, *, request=None):
+def update_prospect(prospect, data, *, request=None, actor=None):
+    """`actor` is the staff member making the edit (default: the prospect's scout). When it is Operations or Super Admin
+    editing a scout's prospect, the activity log credits them and names the scout through on_behalf_of."""
     scout = prospect.scout
+    actor = actor or scout
     changed = []
     with transaction.atomic():
         locked = Prospect.objects.select_for_update().get(pk=prospect.pk)
@@ -121,16 +134,19 @@ def update_prospect(prospect, data, *, request=None):
             changed.append("pin")
         locked.save()
         sync_follow_up(locked)
-        record(scout, "prospect.update", target=locked, before=before,
-               after={"status": locked.status, "changed": changed}, request=request)
+        record(actor, "prospect.update", target=locked, before=before,
+               after={"status": locked.status, "changed": changed}, request=request,
+               on_behalf_of=scout if actor != scout else None)
     return locked
 
 
-def registrable(scout, prospect_id):
-    """The scout's own, not yet registered prospect (locked), else None."""
-    return Prospect.objects.select_for_update().filter(pk=prospect_id, scout=scout).exclude(
-        status=Prospect.REGISTERED,
-    ).first()
+def registrable(registrar, prospect_id):
+    """The not yet registered prospect (locked) the registrar may register from, else None: a scout's own, or any
+    scout's for a manager (manages_prospects)."""
+    rows = Prospect.objects.select_for_update().filter(pk=prospect_id).exclude(status=Prospect.REGISTERED)
+    if not manages_prospects(registrar):
+        rows = rows.filter(scout=registrar)
+    return rows.first()
 
 
 def link_registration(prospect, owner, business_name):
@@ -144,6 +160,94 @@ def link_registration(prospect, owner, business_name):
     prospect.save(update_fields=["status", "registered_business", "registered_at", "next_follow_up_at"])
     sync_follow_up(prospect)
     VisitCheckIn.objects.filter(prospect=prospect, business_owner__isnull=True).update(business_owner=owner)
-    CallLog.objects.filter(related_type="prospect", related_id=str(prospect.pk), staff=prospect.scout).update(
+    # Every call filed under the prospect moves, whoever logged it (the scout, or Operations on their behalf).
+    CallLog.objects.filter(related_type="prospect", related_id=str(prospect.pk)).update(
         related_type="business_owner", related_id=str(owner.pk), related_label=business_name[:200],
     )
+
+
+STAGES = ("prospect", "registered", "awaiting_owner", "confirmed", "listing", "live")
+
+
+def attach_pipelines(prospects):
+    """Set `.pipeline` on each prospect: {stage, registration (none | waiting | confirmed | not_confirmed), listings: {drafts, awaiting_owner, lapsed, pending_approval, live}}.
+    Four queries however many prospects there are. The counts are the prospect's own scout's work on the business:
+    drafts = with the scout (unsent, owner-declined, or a returned submission), awaiting_owner / lapsed = sent and waiting / link ran out
+    (confirmations.is_lapsed), pending_approval = owner-confirmed or submitted and undecided (an approved submission shows once, in live), live = published listings plus
+    approved events. Stage is the furthest step reached (see STAGES): `awaiting_owner` is an open, unexpired
+    registration link, `registered` is registered with the owner neither confirmed nor waiting, `confirmed` is
+    confirmations.registration_confirmed (grandfathered owners included), `listing` is any non-withdrawn draft or any
+    listing or event by the scout, `live` is a published listing or approved event."""
+    from events.models import Event
+    from listings.models import Listing
+    from portfolio.models import ListingDraft
+
+    prospects = list(prospects)
+    owner_ids = {p.registered_business_id for p in prospects if p.registered_business_id}
+    scout_ids = {p.scout_id for p in prospects}
+    now = timezone.now()
+    states = confirmations.registration_states(owner_ids, now) if owner_ids else {}
+    counts = {}
+
+    def empty():
+        return {"drafts": 0, "awaiting_owner": 0, "lapsed": 0, "pending_approval": 0, "live": 0, "made": 0}
+
+    def bucket(owner_id, scout_id):
+        return counts.setdefault((owner_id, scout_id), empty())
+
+    if owner_ids:
+        drafts = ListingDraft.objects.filter(business_owner_id__in=owner_ids, created_by_id__in=scout_ids).exclude(
+            status=ListingDraft.WITHDRAWN,
+        ).values_list(
+            "business_owner_id", "created_by_id", "status", "confirmation__confirmed_at", "confirmation__expires_at",
+            "approval__status",
+        )
+        for owner_id, scout_id, status, confirmed_at, expires_at, approval_status in drafts:
+            row = bucket(owner_id, scout_id)
+            row["made"] += 1
+            if status == ListingDraft.AWAITING_OWNER:
+                lapsed = expires_at is not None and confirmations.is_lapsed(status, confirmed_at, expires_at, now)
+                row["lapsed" if lapsed else "awaiting_owner"] += 1
+            elif status == ListingDraft.OWNER_CONFIRMED:
+                row["pending_approval"] += 1  # waits on staff, not the owner
+            elif status == ListingDraft.SUBMITTED:
+                if approval_status == "pending":
+                    row["pending_approval"] += 1
+                elif approval_status != "approved":  # approved: counted through its published listing or event (live)
+                    row["drafts"] += 1  # returned or cancelled (normally reopened already): back with the scout
+            else:  # draft, owner_declined: with the scout to finish, fix or withdraw
+                row["drafts"] += 1
+        for owner_id, scout_id, status in Listing.objects.filter(
+            business_owner_id__in=owner_ids, created_by_staff_id__in=scout_ids,
+        ).values_list("business_owner_id", "created_by_staff_id", "status"):
+            row = bucket(owner_id, scout_id)
+            row["made"] += 1
+            row["live"] += status == Listing.PUBLISHED
+        for owner_id, scout_id, status in Event.objects.filter(
+            submitted_by_business_id__in=owner_ids, created_by_staff_id__in=scout_ids,
+        ).values_list("submitted_by_business_id", "created_by_staff_id", "status"):
+            row = bucket(owner_id, scout_id)
+            row["made"] += 1
+            row["live"] += status == Event.APPROVED
+
+    for prospect in prospects:
+        owner_id = prospect.registered_business_id
+        row = dict(counts.get((owner_id, prospect.scout_id)) or empty())
+        made = row.pop("made")
+        if owner_id is None:
+            stage = "prospect"
+        elif row["live"]:
+            stage = "live"
+        elif made:
+            stage = "listing"
+        else:
+            stage = {
+                confirmations.CONFIRMED: "confirmed", confirmations.WAITING: "awaiting_owner",
+            }.get(states[owner_id], "registered")
+        # The owner's answer to the registration text, separate from the stage: a draft moves the stage to `listing`
+        # whatever the owner has said, so a screen showing "Owner confirmed" must read this (R-T11b).
+        registration = {
+            None: "none", confirmations.CONFIRMED: "confirmed", confirmations.WAITING: "waiting",
+        }.get(states[owner_id] if owner_id is not None else None, "not_confirmed")
+        prospect.pipeline = {"stage": stage, "registration": registration, "listings": row}
+    return prospects

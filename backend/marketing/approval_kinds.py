@@ -84,7 +84,7 @@ def _policy_consequences(request):
 
 SEND_POLICY_KIND = ApprovalKind(
     key=SEND_POLICY, label="Change the marketing send window or limits", pool_permission="", current_state=_policy_current_state,
-    apply=_policy_apply, response_hours=48, chain_note="Super Admin only", resolve_approver=_super_admin_only,
+    apply=_policy_apply, response_hours=48, chain_note="Super Admin or General Manager", resolve_approver=_super_admin_only,
     render_diff=_policy_diff, validate=_policy_validate, consequences=_policy_consequences,
 )
 

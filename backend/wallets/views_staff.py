@@ -27,6 +27,7 @@ from .views import Pagination, ledger_off
 
 logger = logging.getLogger(__name__)
 VIEW, MANAGE = "wallets.view", "wallets.manage"
+HOLDER_TYPES = ("customer", "business_owner", "staff")
 
 
 def rider_rows(page, ids):
@@ -122,7 +123,8 @@ def staff_row(withdrawal, holders):
 
 class StaffWithdrawalsView(APIView):
     """GET staff/withdrawals/?status=open|succeeded|failed|cancelled|all — newest first, 20 a page; `open` (held or sent,
-    not settled) by default and for an unknown value. Destinations are masked."""
+    not settled) by default and for an unknown value. Destinations are masked. `holder_type=customer|business_owner|staff`
+    narrows to one kind of holder ("staff" is a third-party rider); any other non-empty value is a 400."""
 
     def get_permissions(self):
         return [HasRolePermission(VIEW)]
@@ -131,7 +133,12 @@ class StaffWithdrawalsView(APIView):
         if not escrow.enabled():
             return ledger_off()
         wanted = STATUS_FILTERS.get(request.query_params.get("status") or "open", Withdrawal.OPEN)
+        holder_type = request.query_params.get("holder_type") or ""
+        if holder_type and holder_type not in HOLDER_TYPES:
+            return Response({"holder_type": "Choose customer, business_owner or staff."}, status=status.HTTP_400_BAD_REQUEST)
         rows = Withdrawal.objects.select_related("destination")
+        if holder_type:
+            rows = rows.filter(holder_type=holder_type)
         if wanted is not None:
             rows = rows.filter(status__in=wanted)
         paginator = Pagination()

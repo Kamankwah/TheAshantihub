@@ -103,3 +103,15 @@ class ChangeTestBase(TestCase):
 
     def staged(self, owner=None, by=None, name="photo.jpg"):
         return stage_photo(owner or self.owner, by or self.scout, jpeg(name))
+
+
+def allow_legacy_listing_create(testcase):
+    """Let a test approve a scout's old `listing.create` proposal. Production refuses to apply those (they predate owner
+    confirmation, see proposals.validate_listing_create); tests of what an applied one leaves behind (the undo, the
+    publish) switch the refusal off for the test."""
+    from portfolio import approval_kinds
+
+    kind = approval_kinds.LISTING_CREATE
+    original = kind.validate
+    object.__setattr__(kind, "validate", None)  # the kind is a frozen dataclass
+    testcase.addCleanup(object.__setattr__, kind, "validate", original)

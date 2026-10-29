@@ -173,10 +173,10 @@ describe('PlansPricesPanel', () => {
 
 describe('TargetLimitsPanel', () => {
   const plans = {
-    metrics: ['registrations', 'visits', 'calls', 'renewals'], today: '2026-10-13',
-    limits: [{ metric: 'registrations', min_daily: 1, max_daily: 5 }, { metric: 'visits', min_daily: 2, max_daily: 12 }, { metric: 'calls', min_daily: 0, max_daily: 20 }, { metric: 'renewals', min_daily: 0, max_daily: 6 }],
+    metrics: ['registrations', 'visits', 'calls', 'listings'], today: '2026-10-13',
+    limits: [{ metric: 'registrations', min_daily: 1, max_daily: 5 }, { metric: 'visits', min_daily: 2, max_daily: 12 }, { metric: 'calls', min_daily: 0, max_daily: 20 }, { metric: 'listings', min_daily: 0, max_daily: 6 }],
     staff: [
-      { id: 5, full_name: 'Yaw Owusu', role: 'scout', daily: { registrations: 3, visits: 6, calls: 8, renewals: null }, state: 'working', areas: [], pending_cut: { approval_id: 31, requested_at: '2026-10-13T08:00:00Z', metrics: { registrations: 1 } } },
+      { id: 5, full_name: 'Yaw Owusu', role: 'scout', daily: { registrations: 3, visits: 6, calls: 8, listings: null }, state: 'working', areas: [], pending_cut: { approval_id: 31, requested_at: '2026-10-13T08:00:00Z', metrics: { registrations: 1 } } },
       { id: 6, full_name: 'Ama Lead', role: 'operations', daily: {}, state: 'working', areas: [], pending_cut: null },
     ],
   }
@@ -189,6 +189,9 @@ describe('TargetLimitsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Review and decide' }))
     expect(open).toHaveBeenCalledWith(31)
     expect(screen.getByLabelText('Visits highest a day')).toHaveValue('12')
+    expect(screen.getByLabelText('Listings highest a day')).toHaveValue('6')
+    expect(screen.getByText('Listings a scout gets approved')).toBeInTheDocument()
+    expect(screen.queryByText(/Renewals/)).not.toBeInTheDocument()
     expect(screen.getByRole('cell', { name: 'Yaw Owusu' })).toBeInTheDocument()
     expect(screen.queryByRole('cell', { name: 'Ama Lead' })).not.toBeInTheDocument()
     expect(screen.getByRole('cell', { name: 'Not set' })).toBeInTheDocument()
@@ -223,7 +226,7 @@ describe('TargetLimitsPanel', () => {
     expect(save).toBeEnabled()
     fireEvent.click(save)
     await waitFor(() => expect(sent).not.toBeNull())
-    expect(sent.limits).toEqual(['registrations', 'visits', 'calls', 'renewals'].map((metric) => ({ metric, min_daily: 0, max_daily: 1000 })))
+    expect(sent.limits).toEqual(['registrations', 'visits', 'calls', 'listings'].map((metric) => ({ metric, min_daily: 0, max_daily: 1000 })))
   })
 
   it('keeps Save disabled for existing limits until one is edited', async () => {

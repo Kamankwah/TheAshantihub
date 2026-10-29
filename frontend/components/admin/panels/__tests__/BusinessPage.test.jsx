@@ -26,11 +26,11 @@ vi.mock('../../../../hooks/useDevicePosition.js', () => ({
 const API = 'http://localhost:8000'
 const SCOUT = {
   user: { id: 7, full_name: 'Kwame Asante', role: 'scout' },
-  hasPermission: (c) => ['businesses.manage_portfolio', 'businesses.register', 'calls.log'].includes(c),
+  hasPermission: (c) => ['businesses.manage_portfolio', 'businesses.register', 'calls.log', 'listings.stage'].includes(c),
 }
 const OPS = {
   user: { id: 2, full_name: 'Ama Boateng', role: 'operations' },
-  hasPermission: (c) => ['portfolio.manage', 'calls.log', 'staff.invite_team'].includes(c),
+  hasPermission: (c) => ['portfolio.manage', 'calls.log', 'staff.invite_team', 'listings.stage'].includes(c),
 }
 const BOSS = { user: { id: 1, full_name: 'Simon Peter', role: 'super_admin' }, hasPermission: () => true }
 const business = (overrides = {}) => ({
@@ -189,38 +189,32 @@ describe('BusinessPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent("Add the owner's email first — text messages (SMS) aren't connected yet.")
   })
 
-  it('gives the account manager the change, product and photo screens', async () => {
+  // Marketplace M3 (intentional change): "Add a product" posted to the retired listing-proposal endpoint (it answers 410).
+  // Staff list for a client through drafts, which need neither KYC nor a subscription to write.
+  it('gives the account manager the change, listing and photo screens', async () => {
     serve(business({ subscription: { state: 'active', plan_name: 'Monthly', monthly_price: '120.00', current_period_end: '2026-11-04T00:00:00Z' } }))
     renderPage()
     expect(await screen.findByRole('button', { name: 'Add photos' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Add a product' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Add a product' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'List for this business' })).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: 'Propose a change' }))
     expect(await screen.findByRole('heading', { name: 'Propose a change' })).toBeInTheDocument()
   })
 
-  it('keeps Add a product closed until KYC is approved', async () => {
-    serve(business({ kyc_status: 'pending' }))
+  it('opens the client listings for the business, even while KYC or the subscription is not settled', async () => {
+    server.use(http.get(`${API}/api/portfolio/businesses/12/drafts/`, () => HttpResponse.json([])))
+    serve(business({ kyc_status: 'pending', subscription: { state: 'none' } }))
     renderPage()
-    expect(await screen.findByRole('button', { name: 'Add a product' })).toBeDisabled()
-    expect(screen.getByText('Products can be added once KYC is approved.')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'List for this business' }))
+    expect(await screen.findByRole('heading', { name: /Listings for|Client listings/ })).toBeInTheDocument()
+    expect(await screen.findByText(/No drafts yet/)).toBeInTheDocument()
   })
 
-  it.each([
-    ['overdue', { state: 'overdue', overdue_day: 4 }],
-    ['paused', { state: 'paused' }],
-    ['absent', { state: 'none' }],
-  ])('keeps Add a product closed while the subscription is %s, and says why', async (_name, subscription) => {
-    serve(business({ subscription }))
-    renderPage()
-    expect(await screen.findByRole('button', { name: 'Add a product' })).toBeDisabled()
-    expect(screen.getByText('Products can be added once Adwoa has an active subscription.')).toBeInTheDocument()
-    expect(screen.queryByText('Products can be added once KYC is approved.')).not.toBeInTheDocument()
-  })
-
-  it('opens Add a product for a business on a trial', async () => {
-    serve(business({ subscription: { state: 'trial', is_trial: true } }))
-    renderPage()
-    expect(await screen.findByRole('button', { name: 'Add a product' })).toBeEnabled()
+  it('does not offer listing to a staff member without listings.stage', async () => {
+    serve(business())
+    renderPage({ auth: { ...SCOUT, hasPermission: (c) => c !== 'listings.stage' } })
+    await screen.findByRole('button', { name: 'Add photos' })
+    expect(screen.queryByRole('button', { name: 'List for this business' })).not.toBeInTheDocument()
   })
 
   it('lists what is waiting for approval', async () => {
@@ -593,5 +587,20 @@ describe('BusinessPage — orders and delivery problems (staff WP3)', () => {
       fireEvent.click(screen.getByRole('button', { name: 'See all' }))
       expect(screen.getByText('Item 6')).toBeInTheDocument()
     })
+  })
+
+  it('offers "Ask the owner to confirm again" on the page when the owner confirmation lapsed (F1)', async () => {
+    serve(business({ owner_confirmation: { confirmed: false, line: 'Waiting — the link expired 5 Oct', state: 'lapsed', can_ask_again: true } }))
+    server.use(http.post(`${API}/api/portfolio/businesses/12/confirmation/registration/`, () => HttpResponse.json({ state: 'awaiting_owner', sent_to_masked: '024 *** 118', expires_at: '2026-11-04T10:00:00Z', send_note: 'Text sent' })))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask the owner to confirm again' }))
+    expect(await screen.findByText(/Text sent to 024 \*\*\* 118/)).toBeInTheDocument()
+  })
+
+  it('does not offer it when the server says it cannot be asked again', async () => {
+    serve(business({ owner_confirmation: { confirmed: false, line: 'Waiting — text sent', state: 'waiting', can_ask_again: false } }))
+    renderPage()
+    await screen.findByRole('heading', { name: 'Adwoa Fabrics' })
+    expect(screen.queryByRole('button', { name: 'Ask the owner to confirm again' })).toBeNull()
   })
 })

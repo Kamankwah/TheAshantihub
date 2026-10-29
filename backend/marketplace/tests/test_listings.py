@@ -48,6 +48,9 @@ class ListingOversightTests(MarketplaceTestCase):
         self.assertNotIn(self.waiting.name, self.names("?type=product"))
         self.assertEqual(set(self.names("?added_by=scout")), {self.waiting.name})
         self.assertEqual(self.names()[self.waiting.name]["added_by"], self.support.full_name)
+        # the lister's real role, so the table never calls an Operations or Super Admin listing "scout" (final-fix M3)
+        self.assertEqual(self.names()[self.waiting.name]["added_by_role"], "Support")
+        self.assertIsNone(self.names()[self.listing.name]["added_by_role"])
 
     def test_counts_separate_suspended_from_unpaid(self):
         body = self.client.get("/api/marketplace/listings/counts/").json()
@@ -86,3 +89,13 @@ class ListingOversightTests(MarketplaceTestCase):
     def test_needs_the_moderation_permission(self):
         self.sign_in(self.support)
         self.assertEqual(self.client.get("/api/marketplace/listings/").status_code, 403)
+
+
+class StateOfLifecycleTests(MarketplaceTestCase):
+    def test_state_of_labels_dropped_and_discontinued(self):
+        from marketplace.listings import state_of
+
+        dropped = Listing(status=Listing.DROPPED)
+        discontinued = Listing(status=Listing.DISCONTINUED)
+        self.assertEqual(state_of(dropped, False), ("dropped", "Hidden by the business"))
+        self.assertEqual(state_of(discontinued, False), ("discontinued", "No longer sold"))

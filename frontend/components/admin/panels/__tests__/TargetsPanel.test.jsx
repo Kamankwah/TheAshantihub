@@ -8,9 +8,9 @@ import TargetsPanel, { calendarNote, periodLine } from '../TargetsPanel.jsx'
 const API = 'http://localhost:8000'
 const HOW = {
   registrations: 'Count when Operations approves KYC', visits: 'Count when you check out',
-  calls: 'Calls you log', renewals: 'Owner pays the subscription in the app',
+  calls: 'Calls you log', listings: 'Count when Operations approves a listing you made for a business',
 }
-const LABEL = { registrations: 'Registrations', visits: 'Visits', calls: 'Calls', renewals: 'Renewals' }
+const LABEL = { registrations: 'Registrations', visits: 'Visits', calls: 'Calls', listings: 'Listings' }
 const measure = (metric, done, target, today = [0, null]) => ({
   metric, label: LABEL[metric], how: HOW[metric], done, target, today_done: today[0], today_target: today[1],
 })
@@ -18,9 +18,9 @@ const day = (n, state, extra = {}) => ({ date: `2026-10-${String(n).padStart(2, 
 const week = (over = {}) => ({
   period: 'week', label: 'Mon 5 – Sun 11 October', start: '2026-10-05', end: '2026-10-11', today: '2026-10-07',
   working_days: 5, leave_days: 1, holiday_days: 0, has_targets: true,
-  measures: [measure('registrations', 2, 5, [1, 1]), measure('visits', 10, 30, [3, 6]), measure('calls', 18, 50, [7, 10]), measure('renewals', 0, 5, [0, 1])],
+  measures: [measure('registrations', 2, 5, [1, 1]), measure('visits', 10, 30, [3, 6]), measure('calls', 18, 50, [7, 10]), measure('listings', 0, 5, [0, 1])],
   days: [day(5, 'done'), day(6, 'done'), day(7, 'today'), day(8, 'ahead'), day(9, 'ahead'), day(10, 'leave')],
-  daily: [{ metric: 'registrations', label: 'Registrations', value: 1 }, { metric: 'visits', label: 'Visits', value: 6 }, { metric: 'calls', label: 'Calls', value: 10 }, { metric: 'renewals', label: 'Renewals', value: 1 }],
+  daily: [{ metric: 'registrations', label: 'Registrations', value: 1 }, { metric: 'visits', label: 'Visits', value: 6 }, { metric: 'calls', label: 'Calls', value: 10 }, { metric: 'listings', label: 'Listings', value: 1 }],
   set_by: 'Ama Boateng', effective_from: '2026-10-01', sunday_off: true,
   leave: [{ start: '2026-10-10', end: '2026-10-10', kind: 'sick', recorded_by: 'Ama Boateng' }], holidays: [], lead: { id: 2, name: 'Ama Boateng' },
   ...over,
@@ -52,7 +52,7 @@ describe('TargetsPanel', () => {
     expect(within(visits).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '10')
     expect(screen.getByRole('group', { name: 'Registrations' })).toHaveTextContent('Count when Operations approves KYC')
     expect(screen.getByRole('group', { name: 'Calls' })).toHaveTextContent('18 of 50')
-    expect(screen.getByRole('group', { name: 'Renewals' })).toHaveTextContent('Owner pays the subscription in the app')
+    expect(screen.getByRole('group', { name: 'Listings' })).toHaveTextContent('Count when Operations approves a listing you made for a business')
   })
 
   it('draws the working days with Done, Today, Ahead and Leave', async () => {
@@ -81,7 +81,7 @@ describe('TargetsPanel', () => {
   it('says no targets are set, names the lead, and never shows a made-up target', async () => {
     serve(() => week({
       has_targets: false, set_by: null, effective_from: null, daily: [], leave: [], leave_days: 0, working_days: 6,
-      measures: [measure('registrations', 0, null, [0, null]), measure('visits', 2, null, [1, null]), measure('calls', 0, null, [0, null]), measure('renewals', 0, null, [0, null])],
+      measures: [measure('registrations', 0, null, [0, null]), measure('visits', 2, null, [1, null]), measure('calls', 0, null, [0, null]), measure('listings', 0, null, [0, null])],
     }))
     renderPanel()
     expect(await screen.findByRole('status')).toHaveTextContent('No targets set yet — Ama Boateng sets them.')
@@ -100,7 +100,7 @@ describe('TargetsPanel', () => {
   })
 
   it('shows 0 of T for a target with no work yet', async () => {
-    serve(() => week({ measures: [measure('registrations', 0, 5, [0, 1]), measure('visits', 0, 30), measure('calls', 0, 50), measure('renewals', 0, 5)] }))
+    serve(() => week({ measures: [measure('registrations', 0, 5, [0, 1]), measure('visits', 0, 30), measure('calls', 0, 50), measure('listings', 0, 5)] }))
     renderPanel()
     expect(await screen.findByRole('group', { name: 'Registrations' })).toHaveTextContent('0 of 5')
     expect(screen.getByRole('group', { name: 'Registrations' })).toHaveTextContent('Today 0 of 1')

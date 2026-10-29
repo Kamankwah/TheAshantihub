@@ -9,6 +9,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 from accounts.models import BusinessOwner, Role, StaffUser
+from accounts.permissions import sees_every_team
 from fraud.models import FraudFlag
 from field.models import VisitCheckIn
 from portfolio import health
@@ -27,7 +28,7 @@ def scouts_in_scope(user, scope="team"):
     """Active, activated scouts: the caller's own team, or every scout. A Super
     Admin's team is every scout."""
     scouts = StaffUser.objects.filter(role__name=Role.SCOUT, is_active=True, invite_token__isnull=True).select_related("manager", "role")
-    if scope == "team" and user.role.name != Role.SUPER_ADMIN:
+    if scope == "team" and not sees_every_team(user):
         scouts = scouts.filter(manager=user)
     return scouts.order_by("full_name")
 

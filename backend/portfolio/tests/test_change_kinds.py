@@ -17,7 +17,14 @@ from listings.serializers import validate_listing_for_owner
 from notifications.models import Notification
 from portfolio import proposals
 from portfolio.models import AppliedChange, StagedPhoto
-from portfolio.tests.change_fixtures import ChangeTestBase, jpeg, make_business, make_listing, product_body
+from portfolio.tests.change_fixtures import (
+    ChangeTestBase,
+    allow_legacy_listing_create,
+    jpeg,
+    make_business,
+    make_listing,
+    product_body,
+)
 
 
 class KindsRegisteredTests(TestCase):
@@ -183,6 +190,7 @@ class ListingCreateKindTests(ChangeTestBase):
         return approval, main, extra
 
     def test_approving_publishes_the_listing_for_the_public(self):
+        allow_legacy_listing_create(self)
         approval, main, extra = self.propose()
         services.approve(approval.pk, self.lead)
         listing = Listing.objects.get(business_owner=self.owner)
@@ -207,32 +215,22 @@ class ListingCreateKindTests(ChangeTestBase):
         public = self.client.get("/api/listings/").json()["results"]
         self.assertIn(listing.pk, [row["id"] for row in public])
 
-    def test_approving_while_kyc_is_pending_is_refused(self):
+    def test_a_legacy_proposal_cannot_be_approved_it_must_be_drafted_again(self):
+        # M10: a scout's old listing.create proposal still pending at deploy predates owner confirmation.
         approval, _, _ = self.propose()
-        BusinessOwner.objects.filter(pk=self.owner.pk).update(kyc_status=BusinessOwner.PENDING)
+        with self.assertRaisesMessage(ApprovalError, proposals.LEGACY_LISTING_CREATE):
+            services.approve(approval.pk, self.lead)
         self.as_staff(self.lead)
         response = self.client.post(f"/api/approvals/{approval.pk}/approve/", {}, format="json")
-        self.assertEqual((response.status_code, response.json()["detail"]), (400, "Approve the business's KYC first."))
+        self.assertEqual((response.status_code, response.json()["detail"]), (400, proposals.LEGACY_LISTING_CREATE))
+        self.assertIn("Draft it again so the owner can confirm it", response.json()["detail"])
         self.assertFalse(Listing.objects.filter(business_owner=self.owner).exists())
         self.assertEqual(ApprovalRequest.objects.get(pk=approval.pk).status, ApprovalRequest.PENDING)
 
-    def test_a_photo_can_only_be_used_once(self):
-        main = self.staged()
-        first = proposals.propose_listing(self.scout, self.owner, product_body(), main_photo_id=main.pk,
-                                          photo_ids=[], reason="Owner asked")
-        second = proposals.propose_listing(self.scout, self.owner, product_body(name="Kente cloth"),
-                                           main_photo_id=main.pk, photo_ids=[], reason="Owner asked")
-        services.approve(first.pk, self.lead)
-        with self.assertRaisesMessage(ApprovalError, proposals.PHOTOS_UNAVAILABLE):
-            services.approve(second.pk, self.lead)
-        self.assertEqual(Listing.objects.filter(business_owner=self.owner).count(), 1)
-
-    def test_the_plans_listing_limit_is_checked_again_on_approval(self):
+    def test_a_legacy_proposal_can_still_be_returned(self):
         approval, _, _ = self.propose()
-        for n in range(5):
-            make_listing(self.owner, name=f"Stole {n}")
-        with self.assertRaisesMessage(ApprovalError, proposals.LISTING_LIMIT):
-            services.approve(approval.pk, self.lead)
+        services.reject(approval.pk, self.lead, "Draft it again")
+        self.assertEqual(ApprovalRequest.objects.get(pk=approval.pk).status, ApprovalRequest.REJECTED)
 
     def test_the_approver_sees_the_listing_and_its_photos(self):
         approval, main, extra = self.propose()
@@ -277,6 +275,30 @@ class ListingPhotosKindTests(ChangeTestBase):
         self.listing.refresh_from_db()
         self.assertEqual(self.listing.main_photo.name, original)
         self.assertFalse(AppliedChange.objects.get(approval=approval).result["set_main_photo"])
+
+    def test_the_nine_image_cap_holds_for_a_scouts_photos_too(self):
+        # listings.media: 9 images, the main photo included. The listing has 1 gallery photo; 8 more would make 9 + main.
+        for order in range(4, 10):
+            ListingPhoto.objects.create(listing=self.listing, image=jpeg(f"g{order}.jpg"), order=order)
+        self.listing.main_photo.save("main.jpg", jpeg("main.jpg"), save=True)  # 1 main + 7 gallery = 8
+        with self.assertRaises(ValidationError) as ctx:
+            proposals.propose_photos(self.scout, self.listing, photo_ids=[self.staged().pk, self.staged().pk], reason="More")
+        self.assertIn("at most 9 images", str(ctx.exception.detail))
+        approval = proposals.propose_photos(self.scout, self.listing, photo_ids=[self.staged().pk], reason="One more")
+        # an owner adds a photo meanwhile: the request now fails when approved
+        ListingPhoto.objects.create(listing=self.listing, image=jpeg("late.jpg"), order=20)
+        with self.assertRaisesMessage(ApprovalError, "at most 9 images"):
+            services.approve(approval.pk, self.lead)
+
+    def test_a_listing_without_a_main_photo_counts_the_main_photo_the_apply_will_set(self):
+        # 8 gallery photos and no main photo: one more photo also becomes the main photo, so that would be 10 images
+        for order in range(4, 11):
+            ListingPhoto.objects.create(listing=self.listing, image=jpeg(f"g{order}.jpg"), order=order)
+        self.assertEqual(self.listing.photos.count(), 8)
+        self.assertFalse(self.listing.main_photo)
+        with self.assertRaises(ValidationError) as ctx:
+            proposals.propose_photos(self.scout, self.listing, photo_ids=[self.staged().pk], reason="More")
+        self.assertIn("at most 9 images", str(ctx.exception.detail))
 
     def test_a_deleted_listing_makes_the_request_stale(self):
         approval = proposals.propose_photos(self.scout, self.listing, photo_ids=[self.staged().pk], reason="More angles")
