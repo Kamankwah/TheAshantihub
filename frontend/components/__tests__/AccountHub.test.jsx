@@ -106,10 +106,10 @@ describe('AccountHub sections', () => {
     })
   })
 
-  it('test_deep_link_to_payments_wallet_opens_that_tab', () => {
+  it('test_deep_link_to_payments_wallet_opens_that_tab', async () => {
     renderHub('/my-account/payments/wallet')
     expect(screen.getByRole('tab', { name: 'Wallet' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('This part of Your Payments is not available yet.')).toBeInTheDocument()
+    expect(await screen.findByText('Mobile money numbers for withdrawals')).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Your Account')
     expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Your Payments')
   })

@@ -5,6 +5,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../../mocks/server.js'
 import TopUpDialog from '../../account/wallet/TopUpDialog.jsx'
+import WalletAccounts from '../../account/wallet/WalletAccounts.jsx'
+import WalletSettings from '../../account/wallet/WalletSettings.jsx'
 import WalletOverview from '../../account/wallet/WalletOverview.jsx'
 import WalletTransactions from '../../account/wallet/WalletTransactions.jsx'
 import WalletsPanel from '../../admin/panels/WalletsPanel.jsx'
@@ -63,6 +65,8 @@ const scenarios = [
   ['VendorPayouts', vendorWallet, () => <VendorPayouts />, 'Pending'],
   ['WalletOverview', customerData, () => <MemoryRouter><WalletOverview /></MemoryRouter>, 'Order payment'],
   ['WalletTransactions', customerData, () => <MemoryRouter><WalletTransactions /></MemoryRouter>, 'Order payment'],
+  ['WalletAccounts', customerData, () => <MemoryRouter><WalletAccounts /></MemoryRouter>, 'Processing'],
+  ['WalletSettings', null, () => <MemoryRouter><WalletSettings /></MemoryRouter>, 'Your default purchase preference'],
   ['TopUpDialog', null, () => <TopUpDialog onClose={() => {}} />, /Amount to add/],
   ['WalletsPanel', () => server.use(http.get(`${API}/api/wallet/staff/wallets/`, () => envelope([{ holder_id: 1, name: 'Ama Mensah', balance: '25.50' }]))), () => <WalletsPanel />, 'Ama Mensah'],
   ['WithdrawalsPanel', () => server.use(http.get(`${API}/api/wallet/staff/withdrawals/`, () => envelope([staffWd]))), () => <WithdrawalsPanel auth={{ hasPermission: () => true }} />, 'WD-1'],
