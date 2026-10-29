@@ -384,6 +384,18 @@ describe('ProductPage', () => {
     expect(screen.getByRole('button', { name: 'Small' })).toHaveAttribute('aria-pressed', 'false')
   })
 
+  test('test_a_successful_add_tells_the_app_so_the_mini_cart_can_open', async () => {
+    showListing(WITH_VARIANTS)
+    const onAddedToCart = vi.fn()
+    renderPage({ user: CUSTOMER, onAddedToCart })
+    await screen.findByTestId('product-page')
+    fireEvent.click(screen.getByRole('button', { name: 'Small' }))
+    expect(onAddedToCart).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }))
+    await screen.findByText('Added to cart ✓')
+    expect(onAddedToCart).toHaveBeenCalledTimes(1)
+  })
+
   test('test_a_signed_out_add_goes_to_the_app_sign_in_and_posts_nothing', async () => {
     let posted = 0
     server.use(http.post(`${API}/api/cart/items/`, () => { posted += 1; return HttpResponse.json({}, { status: 201 }) }))

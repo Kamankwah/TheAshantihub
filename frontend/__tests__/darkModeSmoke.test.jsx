@@ -12,6 +12,7 @@ import StorefrontHeader from '../components/storefront/StorefrontHeader.jsx'
 import StorefrontHome from '../components/storefront/StorefrontHome.jsx'
 import ListingDetailPage from '../components/ListingDetailPage.jsx'
 import CartDrawer from '../components/CartDrawer.jsx'
+import CheckoutPage from '../components/shop/CheckoutPage.jsx'
 
 // Per-area smoke tests: render a key page with <html data-theme="dark"> and
 // assert nothing on it is a light-only inline surface or light-only text.
@@ -198,12 +199,12 @@ describe('dark mode smoke: listing detail', () => {
 })
 
 describe('dark mode smoke: cart drawer', () => {
-  it('the cart drawer (items, totals, checkout button) renders with theme tokens and no light-only surfaces', async () => {
+  it('the cart drawer (items, subtotal, Go to cart) renders with theme tokens and no light-only surfaces', async () => {
     server.use(http.get(`${API}/api/cart/`, () => HttpResponse.json({
       id: 1, total: '300.00', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-10T00:00:00Z',
       items: [{ id: 10, listing: 5, listing_name: 'Kente Cloth', quantity: 2, unit_price_snapshot: '150.00', line_total: '300.00', added_at: '2026-07-10T00:00:00Z' }],
     })))
-    withClient(<CartDrawer onClose={vi.fn()} user={{ fullName: 'Ama Boateng', accountType: 'customer' }} currency="GHS" PaymentComponent={() => null} />)
+    withClient(<CartDrawer onClose={vi.fn()} user={{ fullName: 'Ama Boateng', accountType: 'customer' }} onGoToCart={vi.fn()} />)
     await screen.findByText('Kente Cloth')
     expect(usesThemeTokens()).toBe(true)
     expect(lightOnlyStyles()).toEqual([])
@@ -286,16 +287,22 @@ describe('dark mode smoke: modals, drawers and panels', () => {
     expect(lightOnlyStyles()).toEqual([])
   })
 
-  it('cart checkout confirmation: total uses the price token', async () => {
-    server.use(http.get(`${API}/api/cart/`, () => HttpResponse.json({
-      id: 1, total: '300.00', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-10T00:00:00Z',
-      items: [{ id: 10, listing: 5, listing_name: 'Kente Cloth', quantity: 2, unit_price_snapshot: '150.00', line_total: '300.00', added_at: '2026-07-10T00:00:00Z' }],
-    })))
-    withClient(<CartDrawer onClose={vi.fn()} user={{ fullName: 'Ama Boateng', accountType: 'customer' }} currency="GHS" PaymentComponent={() => null} />)
-    fireEvent.click(await screen.findByText('Checkout →'))
-    await screen.findByText('Confirm your order')
-    const totalRow = screen.getByText('Total').closest('div')
-    expect(totalRow.getAttribute('style')).toContain('var(--ah-price')
+  it('secure checkout: the order total uses the price token and nothing is light-only', async () => {
+    server.use(
+      http.get(`${API}/api/cart/`, () => HttpResponse.json({
+        id: 1, total: '300.00', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-10T00:00:00Z',
+        items: [{ id: 10, listing: 5, listing_name: 'Kente Cloth', quantity: 2, unit_price_snapshot: '150.00', line_total: '300.00', added_at: '2026-07-10T00:00:00Z' }],
+      })),
+      http.get(`${API}/api/accounts/addresses/`, () => HttpResponse.json([{
+        id: 1, label: 'Home', recipient_name: 'Ama Boateng', phone: '0241234567', gps_address: 'AK-039-5028', landmark: 'Opposite Total',
+        address_text: '', lat: null, lng: null, is_default: true, created_at: '2026-10-28T09:15:22Z',
+      }])),
+    )
+    withClient(<CheckoutPage user={{ fullName: 'Ama Boateng', accountType: 'customer' }} currency="GHS" PaymentComponent={() => null} onNavigate={vi.fn()} />)
+    await screen.findByText('AK-039-5028')
+    expect(await screen.findByTestId('summary-total')).toHaveTextContent('GH₵ 300.00')
+    expect(screen.getByTestId('summary-total').getAttribute('style')).toContain('var(--ah-price')
+    expect(usesThemeTokens()).toBe(true)
     expect(lightOnlyStyles()).toEqual([])
   })
 

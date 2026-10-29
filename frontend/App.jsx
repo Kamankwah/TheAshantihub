@@ -71,6 +71,7 @@ import UnsubscribePage from "./components/UnsubscribePage.jsx";
 import TrackedLinkPage from "./components/TrackedLinkPage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
 import CartPage from "./components/shop/CartPage.jsx";
+import CheckoutPage from "./components/shop/CheckoutPage.jsx";
 import FlashPriceTag from "./components/FlashPriceTag.jsx";
 import PriceLine from "./components/PriceLine.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
@@ -2648,6 +2649,8 @@ const PATH_TO_PAGE = {
   "/business/confirm": "business-confirm",
   // The full shopping cart (Marketplace Plan 4); the Navbar/StorefrontHeader cart icons go here.
   "/cart": "cart",
+  // The secure checkout (Marketplace Plan 4): a standalone page with its own slim header, no Navbar/Footer.
+  "/checkout": "checkout",
 };
 const PAGE_TO_PATH = {
   home: "/",
@@ -2663,6 +2666,7 @@ const PAGE_TO_PATH = {
   "business-claim": "/business/claim",
   "business-confirm": "/business/confirm",
   cart: "/cart",
+  checkout: "/checkout",
 };
 // Full-page dashboard "routes" (isAdmin/showBizDash-style early returns) that
 // now have real URLs too. Same two-map convention as PATH_TO_PAGE/
@@ -3187,6 +3191,7 @@ export default function AshantiHub() {
   if(page==="staff-install") return <StaffInstallPage/>;
   if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
   if(page==="payment-return") return <PaymentReturnPage setPage={setPage}/>;
+  if(page==="checkout") return <CheckoutPage user={user} currency={currency} PaymentComponent={MoMoPayment} onNavigate={navigate} onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
   if(page==="business-confirm") return <OwnerConfirmPage/>;
   if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
@@ -3248,7 +3253,7 @@ export default function AshantiHub() {
       {showIntake&&<ChatIntake user={user} onClose={()=>setShowIntake(false)} onContinue={()=>{setShowIntake(false);setShowMessaging(true);}}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
-      {showCart&&isCustomer&&<CartDrawer user={user} currency={currency} onClose={()=>setShowCart(false)} onGoToCart={()=>{setShowCart(false);navigate("/cart");}} PaymentComponent={MoMoPayment}/>}
+      {showCart&&isCustomer&&<CartDrawer onClose={()=>setShowCart(false)} onGoToCart={()=>{setShowCart(false);navigate("/cart");}}/>}
       {/* Referral feature hidden until it's built properly (see note below). */}
       {/* On "/" the marketplace home's own StorefrontHeader replaces this bar
           (it is passed to StorefrontHome below); every other page keeps it. */}
@@ -3384,6 +3389,8 @@ export default function AshantiHub() {
               onOpenListing={(otherId)=>setSelectedListingId(otherId)}
               onOpenSeller={(sellerId)=>navigate(`/seller/${sellerId}`)}
               onAddToCart={handleAddToCart}
+              // The slim mini-cart opens after a successful add on the product page (the cart icons go to /cart).
+              onAddedToCart={()=>setShowCart(true)}
               // The product page's "More from Ashanti Direct": the sidebar's own "Sold by Ashanti Direct" filter, on the browse grid.
               onShowDirect={()=>{setFilters(f=>({...f,directOnly:true}));setSelectedListingId(null);}}
               CardComponent={Card}

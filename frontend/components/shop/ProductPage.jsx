@@ -60,7 +60,7 @@ export function reconcileSelection(selection, variants) {
   return out;
 }
 
-export default function ProductPage({ id, onBack, user, currency = "GHS", onMessage, onOpenListing, onOpenSeller, onAddToCart, onShowDirect }) {
+export default function ProductPage({ id, onBack, user, currency = "GHS", onMessage, onOpenListing, onOpenSeller, onAddToCart, onShowDirect, onAddedToCart }) {
   const { data: item } = useListing(id);
   const reviewsQuery = useListingReviews(id);
   const alsoViewed = useAlsoViewed(id);
@@ -219,7 +219,7 @@ export default function ProductPage({ id, onBack, user, currency = "GHS", onMess
         onOpenSeller={onOpenSeller}
         onShowDirect={onShowDirect}
         onSignIn={handleGuestAdd}
-        onAdded={() => { setSelection({}); setPreview(null); setPickerRound((n) => n + 1); }}
+        onAdded={() => { setSelection({}); setPreview(null); setPickerRound((n) => n + 1); if (onAddedToCart) onAddedToCart(); }}
       />
       {guestNote && <div role="alert" style={note(false)}>{guestNote}</div>}
       {listNote && <div role={listNote.ok ? "status" : "alert"} style={note(listNote.ok)}>{listNote.text}</div>}

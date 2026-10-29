@@ -47,6 +47,17 @@ describe('AshantiHub routing', () => {
   )
 
   it(
+    'checkout_path_renders_the_checkout_page: "/checkout" is a real standalone page (signed out it asks for sign-in)',
+    async () => {
+      renderAtPath('/checkout')
+      expect(await screen.findByText('Sign in to check out.', {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Secure checkout' })).toBeInTheDocument()
+      expect(screen.queryByText(/page not found/i)).not.toBeInTheDocument()
+    },
+    8000,
+  )
+
+  it(
     'root_renders_storefront_home: "/" is the marketplace home, not the old Hero landing',
     async () => {
       renderAtPath('/')
