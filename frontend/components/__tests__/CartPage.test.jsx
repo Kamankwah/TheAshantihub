@@ -133,6 +133,16 @@ describe('CartPage', () => {
     expect(within(sub).getByText('GHS 300.00')).toBeInTheDocument()
   })
 
+  test('test_cart_money_stays_in_ghs_whatever_the_display_currency', async () => {
+    serve(TWO())
+    renderPage({ currency: 'USD' })
+    const sub = await screen.findByTestId('cart-subtotal')
+    expect(within(sub).getByText('GHS 300.00')).toBeInTheDocument()
+    expect(screen.getByText('GHS 260.00')).toBeInTheDocument()
+    expect(screen.getByText('GHS 130.00 each')).toBeInTheDocument()
+    expect(screen.queryByText(/USD/)).toBeNull()
+  })
+
   test('test_proceed_goes_to_checkout_when_allowed', async () => {
     serve(TWO())
     const { onNavigate } = renderPage()

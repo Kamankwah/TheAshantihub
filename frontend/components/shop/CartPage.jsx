@@ -26,6 +26,7 @@ function stockText(line) {
 // later), the server's subtotal and the one gold action, Proceed to checkout, which navigates to /checkout via
 // `onNavigate`. Everything shown comes from GET /api/cart/ (and the cart guard); nothing is computed here but the
 // item count. `onSignIn` is offered to a signed-out visitor. Mutations are plain api calls with a per-line message.
+// Cart money is always GHS (what is charged, Ruling P26); `currency` only reaches the carousels.
 export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn }) {
   const queryClient = useQueryClient();
   const phone = useBreakpoint() === "phone";
@@ -167,8 +168,8 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn 
                         <div style={{ fontSize: "0.8rem", marginTop: 2, fontWeight: 600, color: stock.bad ? C.errInk : C.trust }}>{stock.text}</div>
                       </div>
                       <div style={{ textAlign: "right", flex: "0 0 auto" }}>
-                        <PriceTag price={line.line_total} currency={currency} size="1.15rem" />
-                        {Number(line.quantity) > 1 && <div style={{ fontSize: "0.75rem", color: C.price, marginTop: 2, ...TABULAR }}>{`${currency} ${line.unit_price_snapshot} each`}</div>}
+                        <PriceTag price={line.line_total} currency="GHS" size="1.15rem" />
+                        {Number(line.quantity) > 1 && <div style={{ fontSize: "0.75rem", color: C.price, marginTop: 2, ...TABULAR }}>{`GHS ${line.unit_price_snapshot} each`}</div>}
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 16px", marginTop: 10 }}>
@@ -197,7 +198,7 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn 
 
         <aside data-testid="cart-subtotal" style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 16, padding: 18 }}>
           <div style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: 4 }}>{`Subtotal (${count} ${count === 1 ? "item" : "items"})`}</div>
-          <PriceTag price={cartQuery.data.total} currency={currency} />
+          <PriceTag price={cartQuery.data.total} currency="GHS" />
           <p style={{ margin: "10px 0 14px", fontSize: "0.78rem", color: C.inkDim, lineHeight: 1.5 }}>Delivery fee is worked out at checkout from your GhanaPost address.</p>
           <button type="button" disabled={!!reason} aria-describedby={reason ? "cart-proceed-reason" : undefined} onClick={proceedToCheckout} style={goldBtn(!!reason)}>Proceed to checkout</button>
           {reason && <div id="cart-proceed-reason" data-testid="cart-proceed-reason" style={{ marginTop: 10, fontSize: "0.8rem", fontWeight: 600, color: C.inkDim, lineHeight: 1.5 }}>{reason}</div>}
