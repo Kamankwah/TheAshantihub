@@ -155,7 +155,8 @@ class OrderCheckoutView(APIView):
                 delivery_gps_address = validate_ashanti_gps(request.data.get("delivery_gps_address"))
             except DRFValidationError as exc:
                 return Response({"delivery_gps_address": [str(m) for m in exc.detail]}, status=status.HTTP_400_BAD_REQUEST)
-            delivery_landmark = str(request.data.get("delivery_landmark") or "").strip()
+            raw_landmark = request.data.get("delivery_landmark") or ""
+            delivery_landmark = raw_landmark.strip() if isinstance(raw_landmark, str) else ""  # a non-string reads as missing
             if not delivery_landmark:
                 return Response(
                     {"delivery_landmark": ["Add a landmark near your door so the rider can find you."]},
@@ -172,6 +173,10 @@ class OrderCheckoutView(APIView):
             lat, lng = request.data.get("delivery_lat"), request.data.get("delivery_lng")
             if lat not in (None, "") and lng not in (None, "") and not region.in_service_area(lat, lng):
                 return Response({"detail": region.OUT_OF_AREA_MESSAGE, "code": "out_of_area"}, status=status.HTTP_400_BAD_REQUEST)
+            from delivery.rates import PIN_REQUIRED_MESSAGE, pin_required
+
+            if pin_required(lat, lng):
+                return Response({"delivery_lat": [PIN_REQUIRED_MESSAGE]}, status=status.HTTP_400_BAD_REQUEST)
 
         # The pickup route and the fee may call the road-routing service (a network round trip), so both are worked out
         # before the transaction opens: they need no row lock and must not hold a database transaction open while they wait.

@@ -1,8 +1,15 @@
+from unittest import mock
+
+from django.test import override_settings
+
 from cart.models import Cart
 from orders.models import Order, OrderItem
 from orders.tests.test_fulfilment_spine import FulfilmentSpineTestsBase
 
 PHONE = "+233200770001"
+PIN_MESSAGE = "Pin your door on the map so we can work out the delivery fee."
+FEE = {"total": "15.00", "lines": [], "distance_km": "3", "distance_basis": "test"}
+PIN = {"delivery_lat": 6.6885, "delivery_lng": -1.6244}
 LANDMARK_MESSAGE = "Add a landmark near your door so the rider can find you."
 
 
@@ -45,6 +52,22 @@ class CheckoutGpsAddressTests(FulfilmentSpineTestsBase):
                 self.assertEqual(
                     response.json()["delivery_gps_address"], ["Enter a valid Ghana Post GPS address, e.g. AK-039-5028."],
                 )
+
+    def test_a_non_string_code_is_a_field_error_not_a_500(self):
+        for value in (123, ["AK-039-5028"], {"code": "AK-039-5028"}, True):
+            with self.subTest(value=value):
+                response = self.checkout(delivery_gps_address=value)
+                self.assertRefused(response, "delivery_gps_address")
+                self.assertEqual(
+                    response.json()["delivery_gps_address"], ["Enter a valid Ghana Post GPS address, e.g. AK-039-5028."],
+                )
+
+    def test_a_non_string_landmark_is_a_field_error(self):
+        for value in (123, ["Blue gate"], {"a": "b"}):
+            with self.subTest(value=value):
+                response = self.checkout(delivery_landmark=value)
+                self.assertRefused(response, "delivery_landmark")
+                self.assertEqual(response.json()["delivery_landmark"], [LANDMARK_MESSAGE])
 
     def test_a_code_outside_ashanti_is_refused(self):
         response = self.checkout(delivery_gps_address="GA-123-4567")
@@ -105,3 +128,42 @@ class CheckoutGpsAddressTests(FulfilmentSpineTestsBase):
         self.assertEqual(row["delivery_landmark"], "Blue gate opposite the pharmacy")
         self.assertNotIn("delivery_phone", row)
         self.assertNotIn(PHONE.encode(), response.content)
+
+    # Ruling P45: while delivery fees are on and a rate card is live, a door-to-door order needs a map pin.
+    def live_card(self):
+        from delivery.models import RateCard
+
+        return RateCard.objects.create(
+            version=1, customer_base="5", customer_per_km="1.5", customer_min_fee="8", rider_per_job="3", rider_per_km="1",
+        )
+
+    @override_settings(DELIVERY_FEE_ENABLED=True)
+    def test_fees_on_without_a_pin_is_refused_and_nothing_is_created(self):
+        self.live_card()
+        with mock.patch("delivery.stops.plan_with_distances") as plan:
+            for extra in ({}, {"delivery_lat": "", "delivery_lng": ""}, {"delivery_lat": 6.6885}):
+                response = self.checkout(**extra)
+                self.assertRefused(response, "delivery_lat")
+                self.assertEqual(response.json()["delivery_lat"], [PIN_MESSAGE])
+        plan.assert_not_called()  # refused before any routing
+
+    @override_settings(DELIVERY_FEE_ENABLED=True)
+    def test_fees_on_with_a_pin_checks_out(self):
+        self.live_card()
+        with mock.patch("delivery.rates.checkout_fee", lambda items, lat, lng, **kw: (None, dict(FEE))):
+            self.assertEqual(self.checkout(**PIN).status_code, 201)
+
+    @override_settings(DELIVERY_FEE_ENABLED=True)
+    def test_fees_on_store_pickup_needs_no_pin(self):
+        self.live_card()
+        response = self.checkout(delivery_method="store_pickup")
+        self.assertEqual(response.status_code, 201, response.content)
+
+    @override_settings(DELIVERY_FEE_ENABLED=False)
+    def test_fees_off_needs_no_pin(self):
+        self.live_card()
+        self.assertEqual(self.checkout().status_code, 201)
+
+    @override_settings(DELIVERY_FEE_ENABLED=True)
+    def test_fees_on_with_no_rate_card_adds_no_fee_so_needs_no_pin(self):
+        self.assertEqual(self.checkout().status_code, 201)
