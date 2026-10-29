@@ -51,6 +51,14 @@ class SupportOrderTests(TestCase):
         self.assertEqual(row["customer_phone"], "024 *** 0123")
         self.assertNotIn("245550123", str(row))
 
+    def test_detail_carries_the_ghanapost_code_and_landmark_blank_on_old_orders(self):
+        self.auth(self.support)
+        body = self.client.get(f"/api/orders/support/{self.order.pk}/").json()
+        self.assertEqual((body["delivery_gps_address"], body["delivery_landmark"]), ("", ""))
+        Order.objects.filter(pk=self.order.pk).update(delivery_gps_address="AK-039-5028", delivery_landmark="Blue gate")
+        body = self.client.get(f"/api/orders/support/{self.order.pk}/").json()
+        self.assertEqual((body["delivery_gps_address"], body["delivery_landmark"]), ("AK-039-5028", "Blue gate"))
+
     def test_search_finds_nothing_for_an_unknown_term(self):
         self.auth(self.support)
         self.assertEqual(self.client.get("/api/orders/support/", {"q": "nobody"}).json()["results"], [])
