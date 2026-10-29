@@ -19,7 +19,8 @@ class DealsBase(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.zone = Zone.objects.get(name="Manhyia")
-        self.owner = BusinessOwner.objects.create(full_name="Deal Owner", login_phone="+233207661001", password_hash="x")
+        self.owner = BusinessOwner.objects.create(full_name="Deal Owner", login_phone="+233207661001", password_hash="x",
+            kyc_status=BusinessOwner.VERIFIED)
         self.cat = Category.objects.create(slug="zz-deals", label="ZZ Deals", icon="x", color="#000", kind=Category.PRODUCT)
 
     def listing(self, name="Kente", **extra):

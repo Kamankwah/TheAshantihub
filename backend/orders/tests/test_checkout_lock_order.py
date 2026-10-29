@@ -1,7 +1,5 @@
 """Checkout takes its listing row locks in primary-key order whatever order the cart was filled in (spec (xvii)), so
 two carts holding the same listings can never wait on each other."""
-import re
-
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
@@ -26,10 +24,8 @@ class CheckoutLockOrderTests(CheckoutTestsBase):
         self.assertEqual(response.status_code, 201, response.content)
         locks = [q["sql"] for q in queries if "FOR UPDATE" in q["sql"] and 'FROM "listings_listing"' in q["sql"]]
         self.assertTrue(locks)
-        ids = [int(n) for n in re.findall(r"\d+", re.search(r'"listings_listing"\."id" IN \(([^)]*)\)', locks[0]).group(1))]
-        self.assertEqual(ids, sorted(ids))
-        self.assertIn("ORDER BY", locks[0])
-        self.assertRegex(locks[0], r'ORDER BY "listings_listing"\."id"')
+        self.assertEqual(len(locks), 1)
+        self.assertIn('ORDER BY "listings_listing"."id" ASC', locks[0])
 
     def test_stock_is_still_reserved_for_every_line(self):
         self._add_to_cart(self.listing_b, 2)
