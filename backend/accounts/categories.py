@@ -54,7 +54,8 @@ def set_categories(profile, category_ids):
     """
     try:
         ids = _clean_ids(list(category_ids))
-    except TypeError:
+    except (TypeError, ValueError):
+        # Not iterable, or a digit string too long for int() (Python caps it near 4300 digits).
         raise InvalidCategories("That category doesn't exist.")
     if len(set(ids)) != len(ids):
         raise InvalidCategories("Pick each category once.")
@@ -87,8 +88,9 @@ def set_categories(profile, category_ids):
         )
         locked.business_category = ordered[0]
         locked.save(update_fields=["business_category"])
-        # Keep the caller's instance in step with what was saved.
+        # Keep the caller's instance in step with what was saved, including a prefetch it was loaded with.
         profile.business_category = ordered[0]
+        getattr(profile, "_prefetched_objects_cache", {}).pop("category_links", None)
         return ordered
 
 

@@ -211,6 +211,18 @@ class FixRoundTests(TestCase):
             set_categories(self.profile, None)
         self.assertEqual(self.ids(), [self.cats[1].pk, self.cats[0].pk])
 
+    def test_a_huge_digit_string_is_not_found_rather_than_a_server_error(self):
+        with self.assertRaises(InvalidCategories) as ctx:
+            set_categories(self.profile, ["9" * 5000])
+        self.assertEqual(ctx.exception.message, "That category doesn't exist.")
+
+    def test_set_categories_drops_a_stale_prefetch_so_categories_of_is_current(self):
+        set_categories(self.profile, [self.cats[0].pk, self.cats[1].pk])
+        profile = BusinessOwnerProfile.objects.prefetch_related("category_links__category").get(pk=self.profile.pk)
+        self.assertEqual([c.pk for c in categories_of(profile)], [self.cats[0].pk, self.cats[1].pk])
+        set_categories(profile, [self.cats[1].pk, self.cats[2].pk])
+        self.assertEqual([c.pk for c in categories_of(profile)], [self.cats[1].pk, self.cats[2].pk])
+
     def test_length_and_duplicates_are_checked_before_any_query(self):
         with self.assertNumQueries(0):
             for bad in ([], [1, 1], list(range(1, 12))):
