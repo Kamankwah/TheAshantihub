@@ -141,6 +141,9 @@ describe('PaymentVerifyPage', () => {
     const calls = apiFetch.mock.calls.length
     await flush(20000)
     expect(apiFetch).toHaveBeenCalledTimes(calls)
+    // It says "check Your Orders", so it offers them.
+    fireEvent.click(screen.getByRole('button', { name: 'View your orders' }))
+    expect(screen.getByTestId('loc')).toHaveTextContent('/my-account/orders')
   })
 
   test('the return url alone never shows success', async () => {
@@ -159,6 +162,17 @@ describe('PaymentVerifyPage', () => {
     expect(screen.getByText('Payment confirmed')).toBeInTheDocument()
     expect(screen.getByText('GHS 265.00')).toBeInTheDocument()
     expect(screen.getByText('#214')).toBeInTheDocument()
+    // The order total, not a payment "Amount": no session was read.
+    expect(screen.getByText('Order total')).toBeInTheDocument()
+    expect(screen.queryByText('Amount')).not.toBeInTheDocument()
+  })
+
+  test('a session still shows its payment Amount', async () => {
+    apiFetch.mockResolvedValue({ ...SESSION, status: 'success' })
+    renderAt('/payment/return?reference=R')
+    await flush()
+    expect(screen.getByText('Amount')).toBeInTheDocument()
+    expect(screen.queryByText('Order total')).not.toBeInTheDocument()
   })
 
   test('an order-only link to an unpaid order says it is pending, not paid', async () => {

@@ -90,7 +90,7 @@ export default function PaymentVerifyPage() {
 
   const rows = [["Merchant", "AshantiHub"]];
   if (session?.purpose && session.purpose.trim()) rows.push(["For", session.purpose]);
-  if (money(amount)) rows.push(["Amount", money(amount)]);
+  if (money(amount)) rows.push([session ? "Amount" : "Order total", money(amount)]);
   if (session && hasFee(session.processing_fee)) rows.push(["Payment processing", money(session.processing_fee)]);
   if (session) rows.push(["Method", wallet ? "AshantiHub wallet" : "Mobile money"]);
   if (session?.reference) rows.push(["Reference", session.reference]);
@@ -142,7 +142,7 @@ export default function PaymentVerifyPage() {
               {rows.map(([k, v]) => (
                 <tr key={k} style={{ borderTop: `1px solid ${C.line}` }}>
                   <th scope="row" style={{ textAlign: "left", fontWeight: 500, color: C.inkDim, padding: "9px 0" }}>{k}</th>
-                  <td style={{ textAlign: "right", padding: "9px 0", fontWeight: 600, color: k === "Amount" || k === "Payment processing" ? C.price : C.ink, ...TABULAR, wordBreak: "break-all" }}>{v}</td>
+                  <td style={{ textAlign: "right", padding: "9px 0", fontWeight: 600, color: k === "Amount" || k === "Order total" || k === "Payment processing" ? C.price : C.ink, ...TABULAR, wordBreak: "break-all" }}>{v}</td>
                 </tr>
               ))}
             </tbody>
@@ -164,6 +164,7 @@ export default function PaymentVerifyPage() {
                 <button type="button" onClick={go("/checkout")} style={btn(true)}>Try again</button>
                 <button type="button" onClick={go("/cart")} style={btn(false)}>Exit</button>
               </>}
+              {timedOut && !order && <button type="button" onClick={go("/my-account/orders")} style={btn(false)}>View your orders</button>}
               {((status !== "success" && status !== "pending" && !isOrder) || (status === "pending" && !order)) && (
                 <button type="button" onClick={go("/")} style={btn(true)}>Back to AshantiHub</button>
               )}
