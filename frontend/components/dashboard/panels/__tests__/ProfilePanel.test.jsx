@@ -18,6 +18,14 @@ function renderPanel(rows = []) {
 }
 
 describe('ProfilePanel: request a change', () => {
+  it('shows Get verified, the approved chip and a footer that does not call documents mandatory', async () => {
+    renderPanel()
+    expect(await screen.findByText('Upload your Ghana Card to earn the verified check mark on your products. AshantiHub staff review it before the mark appears.')).toBeInTheDocument()
+    expect(screen.getByText('✓ Business approved')).toBeInTheDocument()
+    expect(screen.queryByText(/KYC Verified/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Your Ghana Card is managed under Get verified above\./)).toBeInTheDocument()
+  })
+
   it('says a scout will visit and two staff approve, and shows an honest empty list', async () => {
     renderPanel()
     expect(await screen.findByText(/scout will visit your business, then two AshantiHub staff approve/)).toBeInTheDocument()

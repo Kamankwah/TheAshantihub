@@ -603,6 +603,16 @@ export const handlers = [
   }),
   // The business's own change requests (Profile & Settings): none by default.
   http.get('http://localhost:8000/api/accounts/business-owners/me/detail-changes/', () => HttpResponse.json({ results: [] })),
+  // The business's own identity check (Profile & Settings "Get verified"): not submitted by default; the POST body
+  // is never read (a multipart body holding a jsdom File hangs), it just answers pending like the real endpoint.
+  http.get('http://localhost:8000/api/accounts/business-owners/me/identity/', () => HttpResponse.json({
+    identity_status: 'not_submitted', identity_rejection_reason: '', identity_submitted_at: null,
+    is_formal: false, has_certificate: false, has_tin: false,
+  })),
+  http.post('http://localhost:8000/api/accounts/business-owners/me/identity/', () => HttpResponse.json({
+    identity_status: 'pending', identity_rejection_reason: '', identity_submitted_at: '2026-10-29T10:00:00Z',
+    is_formal: false, has_certificate: false, has_tin: false,
+  }, { status: 201 })),
   // Wallets (Plan 3F): ledger ON and empty by default; a test needing the "off" state overrides with a 409 {code:'ledger_off'}.
   http.get('http://localhost:8000/api/wallet/', () => HttpResponse.json({ kind: 'customer', balance: '0.00' })),
   http.get('http://localhost:8000/api/wallet/vendor/', () => HttpResponse.json({
