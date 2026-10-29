@@ -6,6 +6,7 @@ import { clockTime, shortDay } from "../../../lib/timeAgo.js";
 import { D } from "../theme.js";
 import ModerationQueueTabs, { ApprovedByLine, RejectedReason, ReviewAgainButton } from "../ModerationQueueTabs.jsx";
 import { callout, dim } from "./panelStyles.js";
+import { VideoLine } from "./listingReviewParts.jsx";
 
 // Staff review of owners' changes to listings that are already live. Same
 // shape as the other moderated queues (Pending / Approved / Rejected), with
@@ -31,37 +32,17 @@ function valueText(v) {
 const thumb = { width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${D.divider}` };
 const subHead = { color: D.textFaint, fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", margin: "10px 0 4px" };
 const cell = { padding: "5px 8px", fontSize: "0.72rem", verticalAlign: "top", borderBottom: `1px solid ${D.divider}`, wordBreak: "break-word" };
-const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
-
-function VideoLine({ video, removed = false }) {
-  const prefix = removed ? "To be removed: " : "";
-  let body;
-  if (video.kind === "youtube") {
-    body = YOUTUBE_ID.test(video.youtube_id || "")
-      ? <iframe title="YouTube video" src={`https://www.youtube-nocookie.com/embed/${video.youtube_id}`} allowFullScreen loading="lazy" style={{ width: 240, height: 135, border: 0, borderRadius: 8 }} />
-      : null;
-  } else if (video.status === "ready" && video.url) {
-    body = <video controls src={video.url} style={{ width: 240, maxHeight: 160, borderRadius: 8, background: "#000" }} />;
-  } else if (video.status === "failed") {
-    body = <span style={{ color: D.red, fontSize: "0.72rem" }}>Video could not be processed</span>;
-  } else {
-    body = <span style={{ color: D.amber, fontSize: "0.72rem" }}>Video is still being processed</span>;
-  }
-  if (body === null) return null;
-  return (
-    <div style={{ marginBottom: 6, opacity: removed ? 0.6 : 1 }}>
-      {removed && <div style={{ color: D.red, fontSize: "0.66rem", fontWeight: 700 }}>{prefix.trim()}</div>}
-      {body}
-    </div>
-  );
-}
-
-function variantText(op) {
+export function variantText(op) {
   if (op.op === "add") return `Add “${op.label || "new option"}”${op.price_amount != null ? ` at GHS ${op.price_amount}` : ""}${op.stock_quantity != null ? `, ${op.stock_quantity} in stock` : ""}`;
   if (op.op === "remove") return `Remove “${op.current_label || `option ${op.id}`}”`;
   const bits = [];
   if (op.label && op.label !== op.current_label) bits.push(`Rename “${op.current_label || `option ${op.id}`}” to “${op.label}”`);
-  if (op.attributes) bits.push(`change the details of “${op.label || op.current_label || `option ${op.id}`}”`);
+  if (op.attributes) {
+    const name = op.current_label || `option ${op.id}`;
+    const now = Object.entries(op.current_attributes || {}).map(([k, v]) => `${k}: ${v}`).join(", ") || "none";
+    const next = Object.entries(op.attributes).map(([k, v]) => `${k}: ${v}`).join(", ") || "none";
+    bits.push(`change the details of “${name}” from ${now} to ${next}`);
+  }
   if (op.position != null) bits.push(`move “${op.label || op.current_label || `option ${op.id}`}” to position ${op.position}`);
   const text = bits.join("; ") || `Update “${op.current_label || `option ${op.id}`}”`;
   return text.charAt(0).toUpperCase() + text.slice(1);

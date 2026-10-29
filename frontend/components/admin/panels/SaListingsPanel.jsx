@@ -8,6 +8,7 @@ import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
 import { button, callout, dim, field } from "./panelStyles.js";
 import ListingRevisionsPanel from "./ListingRevisionsPanel.jsx";
+import { VariantsTable, VideosBlock } from "./listingReviewParts.jsx";
 import SponsoredToggle, { isProductListing } from "./SponsoredToggle.jsx";
 import { Chip, CountCell, CountHead, ExportButton, FilterBar, KpiStrip, LoadState, Pager, ScreenHeader, col, dateOnly, dateTime, showing, tableStyle, td, th } from "./marketplaceParts.jsx";
 import { card, errorStyle, h3, labelStyle, money, useDebounced } from "./portfolioParts.jsx";
@@ -88,6 +89,8 @@ function ReviewSheet({ listing, canModerate, approving, onApprove, onClose }) {
             {rows.map(([k, v]) => <div key={k} style={{ display: "contents" }}><dt style={dim}>{k}</dt><dd style={{ margin: 0 }}>{String(v)}</dd></div>)}
             {(d.specs || []).map((s, i) => <div key={`s${i}`} style={{ display: "contents" }}><dt style={dim}>{s.label}</dt><dd style={{ margin: 0 }}>{s.value}</dd></div>)}
           </dl>
+          <VariantsTable variants={d.variants} />
+          <VideosBlock videos={d.videos} />
           {d.open_fraud_cases > 0 && <div role="alert" style={callout(D.red)}>{`This business has ${d.open_fraud_cases} open fraud ${d.open_fraud_cases === 1 ? "case" : "cases"}.`}</div>}
         </>
       )}

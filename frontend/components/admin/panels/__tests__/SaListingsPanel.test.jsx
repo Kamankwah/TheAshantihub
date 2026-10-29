@@ -107,6 +107,29 @@ describe('SaListingsPanel', () => {
     expect(screen.queryByRole('region', { name: 'Review Graduation stole' })).not.toBeInTheDocument()
   })
 
+  it('shows the variants and plays the videos on the review sheet', async () => {
+    setup()
+    server.use(http.get(`${API}/api/listings/moderation/2/`, () => HttpResponse.json({
+      id: 2, name: 'Graduation stole', description: 'D', price_amount: '1.00', category: { label: 'Fashion', kind: 'product' }, zone: { name: 'Manhyia' },
+      main_photo: null, photos: [], specs: [],
+      variants: [
+        { id: 7, label: 'Red / Large', attributes: { colour: 'Red', size: 'Large' }, price_amount: '40.00', stock_quantity: 3, is_active: true },
+        { id: 8, label: 'Blue', attributes: {}, price_amount: '45.00', stock_quantity: null, is_active: false },
+      ],
+      videos: [{ id: 4, kind: 'upload', status: 'ready', url: 'http://localhost:8000/media/v.mp4', youtube_id: null }],
+    })))
+    renderPanel(<SaListingsPanel auth={SA} />)
+    const table = await screen.findByRole('table', { name: 'Listings' })
+    fireEvent.click(within(table).getByRole('button', { name: 'View or approve Graduation stole' }))
+    const sheet = await screen.findByRole('region', { name: 'Review Graduation stole' })
+    const variants = await within(sheet).findByRole('table', { name: 'Variants' })
+    const red = within(variants).getByText('Red / Large').closest('tr')
+    expect(red).toHaveTextContent('colour: Red, size: Large')
+    expect(red).toHaveTextContent('GHS 40.00')
+    expect(within(variants).getByText('Blue').closest('tr')).toHaveTextContent('Switched off')
+    expect(sheet.querySelector('video[src$="v.mp4"]')).not.toBeNull()
+  })
+
   it('says so when no picture was uploaded', async () => {
     setup()
     server.use(http.get(`${API}/api/listings/moderation/2/`, () => HttpResponse.json({ id: 2, name: 'Graduation stole', description: 'D', price_amount: '1.00', category: { label: 'Fashion', kind: 'product' }, zone: { name: 'Manhyia' }, main_photo: null, photos: [], specs: [] })))

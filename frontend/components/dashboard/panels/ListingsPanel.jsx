@@ -451,7 +451,9 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                   <DecisionFields kind={categoryKindById(item.category) || "service"} isAccommodation={categoryIsAccommodationById(item.category)} form={editForm} update={(field, value) => setEditForm(f => ({ ...f, [field]: value }))} />
                   <SpecsEditor specs={editForm.specs} onChange={specs => setEditForm(f => ({ ...f, specs }))} />
                   {canHaveVariants(categoryById(item.category)) && <VariantEditor listing={item} basePath={basePath} onChanged={refetchListings} />}
-                  <MediaManager listing={item} basePath={basePath} onChanged={refetchListings} />
+                  {item.status === "pending_review"
+                    ? <div style={{ fontSize: "0.72rem", color: D.textDim, marginTop: 10 }}>Photos and videos cannot change while this listing is waiting for review.</div>
+                    : <MediaManager listing={item} basePath={basePath} onChanged={refetchListings} />}
                   <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                     <button onClick={() => setEditingId(null)} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
                     <button onClick={() => saveEdit(item.id)} style={{ flex: 2, background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>✓ Save</button>

@@ -5,6 +5,7 @@ import { useListingsStats } from "../../../hooks/useQueueStats.js";
 import { D } from "../theme.js";
 import { chip, dim } from "./panelStyles.js";
 import ListingRevisionsPanel from "./ListingRevisionsPanel.jsx";
+import { VariantsTable, VideosBlock } from "./listingReviewParts.jsx";
 import SponsoredToggle, { isProductListing } from "./SponsoredToggle.jsx";
 import ModerationQueueTabs, {
   ApprovedByLine,
@@ -116,6 +117,8 @@ export default function ListingsModerationPanel({ auth }) {
                 ))}
               </div>
             )}
+            <VariantsTable variants={l.variants} />
+            <VideosBlock videos={l.videos} />
             {(l.photos || []).length > 0 ? (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {l.photos.map(p => <img key={p.id} src={p.image} alt="" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${D.divider}` }} />)}

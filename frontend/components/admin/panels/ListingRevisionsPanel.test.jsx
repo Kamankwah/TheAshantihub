@@ -87,6 +87,17 @@ describe('ListingRevisionsPanel', () => {
     expect(screen.getByText(/Remove “Small”/)).toBeInTheDocument()
   })
 
+  it('shows the old and new attribute values of a variant edit, and the label that follows', async () => {
+    mock({ pending: [row({ changed_fields: ['variants'] })] }, {
+      5: detail({}, {
+        variants: [{ op: 'update', id: 1, label: 'Extra large', attributes: { Size: 'Extra large' }, current_label: 'Large', current_attributes: { Size: 'Large' } }],
+      }),
+    })
+    renderPanel()
+    expect(await screen.findByText(/Rename “Large” to “Extra large”/)).toBeInTheDocument()
+    expect(screen.getByText(/from Size: Large to Size: Extra large/)).toBeInTheDocument()
+  })
+
   it('approve posts and refetches', async () => {
     let approved = 0
     let listed = 0
