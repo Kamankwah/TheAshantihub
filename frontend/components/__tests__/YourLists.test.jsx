@@ -83,6 +83,30 @@ describe('YourLists', () => {
     expect(within(items[1]).queryByRole('button', { name: /Add to cart/ })).not.toBeInTheDocument()
   })
 
+  it('test_adding_to_the_cart_refreshes_the_cart_and_the_guard', async () => {
+    wishlistServer([KENTE])
+    let cartReads = 0
+    let guardReads = 0
+    server.use(
+      http.post(`${API}/api/cart/items/`, () => HttpResponse.json({ id: 5 }, { status: 201 })),
+      http.get(`${API}/api/cart/`, () => { cartReads += 1; return HttpResponse.json({ id: 1, items: [], total: '0.00' }) }),
+      http.get(`${API}/api/cart/guard/`, () => { guardReads += 1; return HttpResponse.json({ active: false, limits: {}, checkout: { any: null, door_to_door: null } }) }),
+    )
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // The badge and the guard are mounted elsewhere in the app; observe both keys here.
+    const { useCart } = await import('../../hooks/useCart.js')
+    const { useCartGuard } = await import('../../hooks/useCartGuard.js')
+    function Watchers() { useCart(true); useCartGuard(null, { enabled: true }); return null }
+    render(<QueryClientProvider client={qc}><MemoryRouter><Watchers /><YourLists user={customer} /></MemoryRouter></QueryClientProvider>)
+    await screen.findByText('Kente Cloth')
+    await waitFor(() => expect(cartReads).toBe(1))
+    await waitFor(() => expect(guardReads).toBe(1))
+    fireEvent.click(screen.getByRole('button', { name: /Add to cart/ }))
+    await screen.findByText('Added to your cart.')
+    await waitFor(() => expect(cartReads).toBe(2))
+    await waitFor(() => expect(guardReads).toBe(2))
+  })
+
   it('shows the server refusal when adding to the cart fails', async () => {
     wishlistServer([KENTE])
     server.use(http.post(`${API}/api/cart/items/`, () => HttpResponse.json({ detail: 'Your delivery can include up to 4 shops. Remove one to add this.', code: 'shop_limit' }, { status: 400 })))
@@ -136,8 +160,8 @@ describe('YourLists', () => {
 describe('hearts on cards', () => {
   const item = { id: 7, name: 'Palm Oil', category: { icon: '🛢️', label: 'Food' }, price_amount: '30.00', photos: [], avg_rating: null, review_count: 0 }
   function Harness({ user }) {
-    const { favourites, toggleFav, loaded } = useFavourites(user)
-    return <><span data-testid="loaded">{String(loaded)}</span><Card item={item} accentColor="#C9A227" user={user} favourites={favourites} onFavourite={toggleFav} currency="GHS" /></>
+    const { favourites, toggleFav, loaded, failedId } = useFavourites(user)
+    return <><span data-testid="loaded">{String(loaded)}</span><Card item={item} accentColor="#C9A227" user={user} favourites={favourites} onFavourite={toggleFav} favFailed={failedId === item.id} currency="GHS" /></>
   }
   const heart = () => screen.getByRole('button', { name: /Your Lists|Save/ })
 
@@ -158,6 +182,49 @@ describe('hearts on cards', () => {
     wishlistServer([row(7, 'Palm Oil', '30.00', '2026-10-28T09:20:00Z')])
     renderLists(<Harness user={customer} />)
     await waitFor(() => expect(heart()).toHaveTextContent('❤️'))
+  })
+
+  it('test_a_failed_first_read_does_not_leave_the_hearts_inert_a_tap_retries', async () => {
+    let reads = 0
+    server.use(http.get(`${API}/api/wishlist/`, () => { reads += 1; return reads === 1 ? new HttpResponse(null, { status: 500 }) : HttpResponse.json([]) }))
+    renderLists(<Harness user={customer} />)
+    await waitFor(() => expect(reads).toBe(1))
+    await waitFor(() => expect(heart()).toBeInTheDocument())
+    fireEvent.click(heart())
+    await waitFor(() => expect(screen.getByTestId('loaded')).toHaveTextContent('true'))
+    expect(reads).toBe(2)
+  })
+
+  it('test_a_failed_toggle_is_shown_on_the_heart_and_cleared_by_the_next_try', async () => {
+    const state = wishlistServer([])
+    let fail = true
+    server.use(http.post(`${API}/api/wishlist/`, async ({ request }) => {
+      const body = await request.json()
+      if (fail) return HttpResponse.json({ detail: 'nope' }, { status: 400 })
+      state.posted.push(body.listing)
+      state.rows = [row(body.listing, 'Saved', '9.00', '2026-10-29T09:00:00Z')]
+      return HttpResponse.json(state.rows[0], { status: 201 })
+    }))
+    renderLists(<Harness user={customer} />)
+    await waitFor(() => expect(screen.getByTestId('loaded')).toHaveTextContent('true'))
+    fireEvent.click(heart())
+    await waitFor(() => expect(heart()).toHaveAttribute('title', expect.stringMatching(/couldn.t update Your Lists/i)))
+    expect(screen.getByRole('status')).toHaveTextContent(/couldn.t update Your Lists/i)
+    expect(heart()).toHaveTextContent('🤍')
+    fail = false
+    fireEvent.click(heart())
+    await waitFor(() => expect(heart()).toHaveTextContent('❤️'))
+    expect(heart()).not.toHaveAttribute('title')
+  })
+
+  it('test_a_double_tap_adds_once', async () => {
+    const state = wishlistServer([])
+    renderLists(<Harness user={customer} />)
+    await waitFor(() => expect(screen.getByTestId('loaded')).toHaveTextContent('true'))
+    fireEvent.click(heart())
+    fireEvent.click(heart())
+    await waitFor(() => expect(heart()).toHaveTextContent('❤️'))
+    expect(state.posted).toEqual([7])
   })
 
   it('test_signed_out_heart_keeps_the_local_behaviour', async () => {

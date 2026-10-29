@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { apiErrorMessage } from "../../lib/apiErrorMessage.js";
 import { D, glassCard } from "../dashboard/theme.js";
+import { C } from "../../theme.js";
 
 const row = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, fontSize: "0.82rem", padding: "10px 0", borderBottom: `1px solid ${D.divider}` };
 
@@ -8,18 +10,22 @@ const row = { display: "flex", justifyContent: "space-between", alignItems: "cen
 // trusted devices, language, notifications, sign-out), mounted through `render` because
 // those pieces are App-owned. There is no passkey row: the backend has none.
 export default function LoginSecurity({ user, auth, render }) {
-  const [resetState, setResetState] = useState("idle"); // idle | busy | sent
+  const [resetState, setResetState] = useState("idle"); // idle | busy | sent | failed
+  const [resetError, setResetError] = useState("");
   const email = user?.email;
 
   async function resetByEmail() {
     if (!email || resetState === "busy") return;
     setResetState("busy");
     try {
+      // The server answers the same for a registered and an unknown address, so a success says "if".
       await auth.requestPasswordReset(email);
-    } catch {
-      // The server answers the same either way; so does the page.
+      setResetState("sent");
+    } catch (err) {
+      // A real failure (throttled, offline, a server error) is not "sent".
+      setResetError(apiErrorMessage(err, "We couldn't send the reset link. Please try again."));
+      setResetState("failed");
     }
-    setResetState("sent");
   }
 
   return (
@@ -36,6 +42,7 @@ export default function LoginSecurity({ user, auth, render }) {
             <span style={{ color: D.textFaint }}>Add an email address to reset by email</span>
           )}
         </div>
+        {resetState === "failed" && <div role="alert" style={{ color: C.errInk, fontSize: "0.78rem", padding: "0 0 12px" }}>{`We couldn't send the reset link. ${resetError}`}</div>}
         {resetState === "sent" && <div role="status" style={{ color: D.textDim, fontSize: "0.78rem", padding: "0 0 12px" }}>If that email is registered, we have sent a reset link.</div>}
       </div>
       {render.profile?.()}

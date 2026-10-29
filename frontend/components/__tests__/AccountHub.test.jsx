@@ -7,6 +7,7 @@ import { UserPanel } from '../../App.jsx'
 import AccountHub from '../account/AccountHub.jsx'
 import { server } from '../../mocks/server.js'
 import { gatedOpening } from '../../mocks/opening.js'
+import { D } from '../dashboard/theme.js'
 
 const TILES = [
   ['Your Orders', '/my-account/orders'],
@@ -52,7 +53,6 @@ function renderHub(path = '/my-account', props = {}) {
           auth={{ requestPasswordReset: vi.fn().mockResolvedValue({}) }}
           render={slots}
           onContactSupport={vi.fn()}
-          onRegisterBusiness={vi.fn()}
           {...props}
         />
         <Probe />
@@ -177,6 +177,15 @@ describe('AccountHub sections', () => {
     expect(await screen.findByText(/we have sent a reset link/i)).toBeInTheDocument()
     expect(requestPasswordReset).toHaveBeenCalledWith('ama@example.com')
   })
+
+  it('a failed password reset request says so instead of claiming a link was sent', async () => {
+    const requestPasswordReset = vi.fn().mockRejectedValue(Object.assign(new Error('Too many requests'), { status: 429 }))
+    renderHub('/my-account/security', { auth: { requestPasswordReset } })
+    fireEvent.click(screen.getByRole('button', { name: 'Reset by email' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn.t send the reset link/i)
+    expect(screen.queryByText(/we have sent a reset link/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reset by email' })).toBeEnabled()
+  })
 })
 
 describe('UserPanel gates and messages', () => {
@@ -290,7 +299,7 @@ describe('Your Orders (the Orders tab)', () => {
     expect(await screen.findByText(/Added 2 products to your cart/)).toBeInTheDocument()
   })
 
-  it('a variant that is gone is reported by name and the other lines are still added', async () => {
+  it('a version that is gone is named by its label, the server detail is relayed and nothing from that listing is added', async () => {
     const calls = []
     server.use(
       http.post('http://localhost:8000/api/cart/items/bulk/', async ({ request }) => {
@@ -307,8 +316,11 @@ describe('Your Orders (the Orders tab)', () => {
       ],
     })])
     fireEvent.click(await screen.findByRole('button', { name: 'Buy it again' }))
-    expect(await screen.findByText('Kente Stole is no longer available')).toBeInTheDocument()
+    // Only the version is gone, so the listing is not called "no longer available"; bulk add is all-or-nothing.
+    expect(await screen.findByText(/Kente Stole: Gold \/ Large: That version is not available for this listing\. Nothing from Kente Stole was added\./)).toBeInTheDocument()
+    expect(screen.queryByText(/no longer available/)).not.toBeInTheDocument()
     expect(calls).toEqual([12, 13])
+    expect(await screen.findByText(/Added 1 product to your cart/)).toBeInTheDocument()
   })
 
   it('a cart-guard refusal and a stock refusal show the server words, not "no longer available"', async () => {
@@ -328,6 +340,21 @@ describe('Your Orders (the Orders tab)', () => {
     expect(screen.queryByText(/no longer available/)).not.toBeInTheDocument()
   })
 
+  it('each refused line is matched to its own version by index', async () => {
+    server.use(http.post('http://localhost:8000/api/cart/items/bulk/', () => HttpResponse.json({ lines: [
+      { index: 1, detail: 'Only 1 left.' },
+    ] }, { status: 400 })))
+    renderOrders([order({
+      items: [
+        { id: 1, listing: 12, listing_name: 'Kente Stole', variant: 41, variant_label: 'Gold / Large', quantity: 1, line_total: '130.00' },
+        { id: 2, listing: 12, listing_name: 'Kente Stole', variant: 42, variant_label: 'Gold / Small', quantity: 2, line_total: '260.00' },
+      ],
+    })])
+    fireEvent.click(await screen.findByRole('button', { name: 'Buy it again' }))
+    expect(await screen.findByText(/Kente Stole: Gold \/ Small: Only 1 left\. Nothing from Kente Stole was added\./)).toBeInTheDocument()
+    expect(screen.queryByText(/Gold \/ Large: Only/)).not.toBeInTheDocument()
+  })
+
   it('a listing whose variant lines were added but plain line refused is reported as a partial add', async () => {
     server.use(
       http.post('http://localhost:8000/api/cart/items/bulk/', () => HttpResponse.json({ id: 1, items: [] }, { status: 201 })),
@@ -342,6 +369,13 @@ describe('Your Orders (the Orders tab)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Buy it again' }))
     expect(await screen.findByText(/Kente Stole: the versions were added, the rest was not\. Sold out\./)).toBeInTheDocument()
     expect(screen.queryByText(/no longer available/)).not.toBeInTheDocument()
+  })
+
+  it('Confirm receipt text is the page colour on the green fill (readable in both themes), not dark brown', async () => {
+    renderOrders([order({ delivery_assignment_status: 'delivered' })])
+    const btn = await screen.findByRole('button', { name: /Confirm receipt/ })
+    expect(btn.style.color).toBe(D.pageBg)
+    expect(btn.style.color).not.toBe(D.darkBrown)
   })
 
   it('Buy it again is disabled with the opening label before the marketplace opens', async () => {

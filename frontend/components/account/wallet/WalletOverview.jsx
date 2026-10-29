@@ -6,6 +6,7 @@ import { walletStyles } from "../../wallet/walletStyles.js";
 import { paymentsPath } from "../accountNav.js";
 import { ACCOUNT_ORDERS_PATH } from "./WalletTransactions.jsx";
 import TopUpDialog from "./TopUpDialog.jsx";
+import { HEADING_FONT } from "../../storefront/storefrontType.js";
 
 // Your Payments > Overview: the balance with Top up and Withdraw, and the last five
 // transactions. Composes 3F's BalanceSummary and TransactionsList; money, limits and
@@ -25,7 +26,7 @@ export default function WalletOverview() {
       </div>
       <section aria-label="Recent activity">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Recent activity</h2>
+          <h2 style={{ margin: 0, fontFamily: HEADING_FONT, fontWeight: 600, fontSize: "1.1rem" }}>Recent activity</h2>
           <Link to={paymentsPath("transactions")} style={{ ...s.note, textDecoration: "underline" }}>See all</Link>
         </div>
         <TransactionsList tone="light" limit={5} orderHref={() => ACCOUNT_ORDERS_PATH} />

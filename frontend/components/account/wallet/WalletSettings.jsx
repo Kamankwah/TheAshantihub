@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useAddresses } from "../../../hooks/useAddresses.js";
 import { walletStyles } from "../../wallet/walletStyles.js";
 import { ACCOUNT_ROOT } from "../accountNav.js";
+import { HEADING_FONT } from "../../storefront/storefrontType.js";
 
 // Your Payments > Settings: "Your default purchase preference". The default delivery
 // address is the default CustomerAddress; the payment method is never saved (no model), so
@@ -15,7 +16,7 @@ export default function WalletSettings() {
   const link = { ...s.note, textDecoration: "underline" };
   return (
     <section aria-label="Your default purchase preference" style={s.card}>
-      <h2 style={{ margin: "0 0 8px", fontSize: "1.1rem" }}>Your default purchase preference</h2>
+      <h2 style={{ margin: "0 0 8px", fontFamily: HEADING_FONT, fontWeight: 600, fontSize: "1.1rem" }}>Your default purchase preference</h2>
       <div style={row}>
         <div style={s.label}>Default delivery address</div>
         {isLoading ? <div style={s.note}>Loading…</div>

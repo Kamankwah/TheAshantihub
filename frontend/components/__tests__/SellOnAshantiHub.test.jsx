@@ -42,7 +42,8 @@ describe('SellOnAshantiHub', () => {
     renderSell()
     expect(screen.getByRole('heading', { name: 'Why sell on AshantiHub' })).toBeInTheDocument()
     expect(screen.getByText(/shoppers across the Ashanti region/i)).toBeInTheDocument()
-    expect(screen.getByText(/Verified business badge/i)).toBeInTheDocument()
+    expect(screen.getByText('A verified check mark once AshantiHub staff approve your Ghana Card.')).toBeInTheDocument()
+    expect(screen.queryByText(/KYC/)).not.toBeInTheDocument()
     expect(screen.getByText(/mobile money or bank/i)).toBeInTheDocument()
   })
 

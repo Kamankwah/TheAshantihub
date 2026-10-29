@@ -49,11 +49,13 @@ export default function YourAddresses() {
   }
   const makeDefault = (a) => run(a.id, () => apiPost(`${BASE}${a.id}/set-default/`, {}))
   const saved = async () => { setEditing(null); await refetch() }
+  // A save can have worked while its set-default did not, so closing the form always re-reads the book.
+  const cancelEdit = () => { setEditing(null); refetch() }
 
   return (
     <section aria-label="Your addresses" style={{ display: 'grid', gap: 12 }}>
       {actionError && <div role="alert" style={s.error}>{actionError}</div>}
-      {editing === 'new' && <AddressForm onSave={saved} onCancel={() => setEditing(null)} />}
+      {editing === 'new' && <AddressForm onSave={saved} onCancel={cancelEdit} />}
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
         {editing !== 'new' && (
           <button
@@ -66,7 +68,7 @@ export default function YourAddresses() {
         {rows.map((a) => (
           editing === a.id ? (
             <div key={a.id} style={{ gridColumn: '1 / -1' }}>
-              <AddressForm initial={a} onSave={saved} onCancel={() => setEditing(null)} />
+              <AddressForm initial={a} onSave={saved} onCancel={cancelEdit} />
             </div>
           ) : (
             <AddressCard key={a.id} address={a}>

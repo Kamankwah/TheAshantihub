@@ -66,17 +66,28 @@ function withinMonths(iso, months) {
   return t >= cutoff.getTime();
 }
 
-// A 400 that names a bad/hidden listing or a version that is gone means "no longer available"; every other refusal
-// (stock caps, cart guard, sign-in) is the server's own message, never relabelled.
+// Only a listing the server says is gone (a bad/hidden listing id, or a 404) is "no longer available". Everything else
+// (a version that is gone, stock caps, cart guard, sign-in) is the server's own message, never relabelled.
 function isUnavailable(err) {
   const body = err?.body;
-  if (err?.status === 400 && body) {
-    if (body.listing) return true;
-    if (Array.isArray(body.lines)) return body.lines.some((l) => /not available/i.test(typeof l === "string" ? l : l?.detail || ""));
-  }
+  if (err?.status === 400 && body && body.listing) return true;
   return err?.status === 404;
 }
-const refusalText = (err) => bulkErrorMessage(err);
+// A bulk add answers {lines:[{index, detail}]}; each index is a line of the request, so it is named by that order
+// line's own variant label (unless the server's words already start with it).
+function refusalText(err, labels = []) {
+  const lines = err?.body && Array.isArray(err.body.lines) ? err.body.lines : null;
+  if (lines && lines.length) {
+    const parts = lines.map((l) => {
+      const detail = typeof l === "string" ? l : l?.detail;
+      if (!detail) return null;
+      const label = typeof l === "object" && Number.isInteger(l.index) ? labels[l.index] : null;
+      return label && !detail.startsWith(label) ? `${label}: ${detail}` : detail;
+    }).filter(Boolean);
+    if (parts.length) return parts.join(" ");
+  }
+  return bulkErrorMessage(err);
+}
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -113,8 +124,8 @@ export default function OrdersPanel({ user }) {
     const groups = new Map();
     for (const it of o.items || []) {
       if (it.listing == null) { groups.set(`gone-${it.id}`, { gone: true, name: it.listing_name }); continue; }
-      const g = groups.get(it.listing) || { listing: it.listing, name: it.listing_name, variants: [], plain: 0 };
-      if (it.variant != null) g.variants.push({ variant: it.variant, quantity: it.quantity });
+      const g = groups.get(it.listing) || { listing: it.listing, name: it.listing_name, variants: [], labels: [], plain: 0 };
+      if (it.variant != null) { g.variants.push({ variant: it.variant, quantity: it.quantity }); g.labels.push(it.variant_label || ""); }
       else g.plain += it.quantity;
       groups.set(it.listing, g);
     }
@@ -132,7 +143,8 @@ export default function OrdersPanel({ user }) {
       } catch (err) {
         if (didVariants) { added += 1; partial.push(`${g.name}: the versions were added, the rest was not. ${refusalText(err)}`); }
         else if (isUnavailable(err)) missing.push(g.name);
-        else refused.push(`${g.name}: ${refusalText(err)}`);
+        // The bulk add is all-or-nothing, and the plain lines were never tried.
+        else refused.push(`${g.name}: ${refusalText(err, g.labels)} Nothing from ${g.name} was added.`);
       }
     }
     if (added > 0) {
@@ -203,7 +215,7 @@ export default function OrdersPanel({ user }) {
               {o.delivery_assignment_status === "delivered" && (
                 <div style={{ marginTop: 10 }}>
                   <div style={{ color: D.textDim, fontSize: "0.72rem", marginBottom: 6 }}>Your courier marked this delivered. Please confirm you received it.</div>
-                  <button onClick={() => confirmReceipt(o.id)} style={{ background: D.green, color: D.darkBrown, border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.76rem", cursor: "pointer", fontFamily: "inherit" }}>✓ Confirm receipt</button>
+                  <button onClick={() => confirmReceipt(o.id)} style={{ background: D.green, color: D.pageBg, border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.76rem", cursor: "pointer", fontFamily: "inherit" }}>✓ Confirm receipt</button>
                   {confirmError && <div style={{ color: D.red, fontSize: "0.72rem", marginTop: 6 }}>{confirmError}</div>}
                 </div>
               )}

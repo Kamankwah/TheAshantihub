@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { walletStyles } from "../../wallet/walletStyles.js";
+import { HEADING_FONT } from "../../storefront/storefrontType.js";
 import AddDestinationForm from "../../wallet/AddDestinationForm.jsx";
 import DestinationsList from "../../wallet/DestinationsList.jsx";
 import WithdrawForm from "../../wallet/WithdrawForm.jsx";
@@ -12,7 +13,7 @@ import WithdrawalHistory from "../../wallet/WithdrawalHistory.jsx";
 export default function WalletAccounts() {
   const s = walletStyles("light");
   const [adding, setAdding] = useState(false);
-  const h2 = { margin: "0 0 4px", fontSize: "1.1rem" };
+  const h2 = { margin: "0 0 4px", fontFamily: HEADING_FONT, fontWeight: 600, fontSize: "1.1rem" };
   return (
     <div style={{ display: "grid", gap: 24 }}>
       <section aria-label="Payout numbers">

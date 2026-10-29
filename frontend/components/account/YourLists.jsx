@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../apiClient.js";
 import { useCanBuy } from "../../hooks/useCanBuy.js";
 import { useStaffGate } from "../../hooks/useStaffGate.js";
@@ -7,6 +8,7 @@ import { useWishlist } from "../../hooks/useWishlist.js";
 import { apiErrorMessage } from "../../lib/apiErrorMessage.js";
 import { C } from "../../theme.js";
 import { D, glassCard } from "../dashboard/theme.js";
+import { HEADING_FONT } from "../storefront/storefrontType.js";
 import PriceTag from "../shop/PriceTag.jsx";
 import StaffGateNotice from "../StaffGateNotice.jsx";
 
@@ -70,6 +72,7 @@ function Item({ row, grid, canBuy, buyLabel, busy, note, onAdd, onRemove }) {
 // registry (none exist). A plain item goes straight to the cart; one with variants sends the
 // shopper to its page to choose options.
 export default function YourLists({ user }) {
+  const queryClient = useQueryClient();
   const list = useWishlist({ enabled: true });
   const { canBuy, label: buyLabel } = useCanBuy();
   const gate = useStaffGate(user);
@@ -95,6 +98,10 @@ export default function YourLists({ user }) {
     setBusyId(row.id);
     try {
       await apiPost("/api/cart/items/", { listing: row.listing.id, quantity: 1 });
+      // The cart badge, the cart page, the delivery guard and the browse cart tiers all read the cart.
+      queryClient.invalidateQueries({ queryKey: ["cart"] });
+      queryClient.invalidateQueries({ queryKey: ["cart-guard"] });
+      queryClient.invalidateQueries({ queryKey: ["listings"] });
       setNote(row.id, { ok: true, text: "Added to your cart." });
     } catch (err) {
       setNote(row.id, { ok: false, text: apiErrorMessage(err, "Could not add this to your cart.") });
@@ -123,7 +130,7 @@ export default function YourLists({ user }) {
   return (
     <section aria-label="Shopping List" style={{ display: "grid", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-        <h2 style={{ margin: 0, fontSize: "1.1rem", color: D.text }}>Shopping List</h2>
+        <h2 style={{ margin: 0, fontFamily: HEADING_FONT, fontWeight: 600, fontSize: "1.1rem", color: D.text }}>Shopping List</h2>
         <span style={{ fontSize: "0.72rem", fontWeight: 700, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "2px 10px" }}>Private</span>
       </div>
       {list.items.length > 0 && (

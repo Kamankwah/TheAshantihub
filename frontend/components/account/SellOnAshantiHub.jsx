@@ -4,11 +4,11 @@ import { D, glassCard } from "../dashboard/theme.js";
 
 const button = { borderRadius: 10, padding: "10px 18px", fontWeight: 800, fontSize: "0.82rem", cursor: "pointer", fontFamily: "inherit" };
 
-// Only features that exist today: the Ashanti-region shopper base, the Verified business
-// badge a business earns after KYC, and payouts through the AshantiHub wallet.
+// Only features that exist today: the Ashanti-region shopper base, the verified check mark a business earns when
+// AshantiHub staff approve its Ghana Card (identity, not KYC), and payouts through the AshantiHub wallet.
 const WHY = [
   "Reach shoppers across the Ashanti region.",
-  "A Verified business badge once your identity check (KYC) is approved.",
+  "A verified check mark once AshantiHub staff approve your Ghana Card.",
   "Get paid to mobile money or bank through your AshantiHub wallet.",
 ];
 

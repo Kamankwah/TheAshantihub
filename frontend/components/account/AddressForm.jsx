@@ -69,14 +69,21 @@ export default function AddressForm({ initial = null, onSave, onCancel }) {
       lat: lat == null ? null : lat.toFixed(6), lng: lng == null ? null : lng.toFixed(6),
     }
     setBusy(true)
+    let existed = false // this submit's save worked; only the set-default after it can still have failed
     try {
       const existingId = savedRow.current?.id ?? initial?.id
       let row = existingId ? await apiPatch(`${BASE}${existingId}/`, body) : await apiPost(BASE, body)
       savedRow.current = row
+      existed = true
       if (makeDefault && !row.is_default) row = await apiPost(`${BASE}${row.id}/set-default/`, {})
       savedRow.current = row
       onSave?.(row)
     } catch (err) {
+      if (existed) {
+        setErrors({})
+        setActionError('Saved, but we could not make it your default.')
+        return
+      }
       const b = err?.body
       if (b && typeof b === 'object') {
         const fields = {}

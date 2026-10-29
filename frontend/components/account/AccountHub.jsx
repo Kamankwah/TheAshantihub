@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { D, glassCard } from "../dashboard/theme.js";
 import { HEADING_FONT } from "../storefront/storefrontType.js";
 import { ACCOUNT_ROOT, ACCOUNT_TILES, PAYMENT_TABS, parseAccountPath } from "./accountNav.js";
@@ -53,7 +53,6 @@ const TITLES = Object.fromEntries(ACCOUNT_TILES.map((t) => [t.id, t.title]));
 // in `render` as a function returning a node, because components/** never import App.jsx.
 export default function AccountHub({ user, auth, render = {}, onContactSupport, onOpenPage, onStartRegistration }) {
   const { pathname } = useLocation();
-  const navigate = useNavigate();
   const { section, tab } = parseAccountPath(pathname);
 
   const trail = [{ label: "Your Account", to: section ? ACCOUNT_ROOT : null }];

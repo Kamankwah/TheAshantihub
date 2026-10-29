@@ -140,7 +140,62 @@ describe('AddressForm', () => {
   })
 })
 
+describe('a save that works but whose set-default fails', () => {
+  const failingDefault = () => {
+    const state = { rows: [] }
+    server.use(
+      http.get(`${API}/api/accounts/addresses/`, () => HttpResponse.json(state.rows)),
+      http.post(`${API}/api/accounts/addresses/`, () => { state.rows = [row({ id: 9, is_default: false })]; return HttpResponse.json(row({ id: 9, is_default: false }), { status: 201 }) }),
+      http.post(`${API}/api/accounts/addresses/9/set-default/`, () => new HttpResponse(null, { status: 500 })),
+    )
+    return state
+  }
+
+  it('test_the_form_says_saved_but_not_default_instead_of_could_not_save', async () => {
+    failingDefault()
+    wrap(<AddressForm onSave={vi.fn()} />)
+    fillValid()
+    fireEvent.click(screen.getByLabelText(/make this my default/i))
+    fireEvent.click(screen.getByRole('button', { name: /save address/i }))
+    expect(await screen.findByText('Saved, but we could not make it your default.')).toBeInTheDocument()
+    expect(screen.queryByText(/could not save this address/i)).toBeNull()
+  })
+
+  it('test_cancel_in_your_addresses_refetches_so_the_saved_row_shows', async () => {
+    failingDefault()
+    wrap(<YourAddresses />)
+    fireEvent.click(await screen.findByRole('button', { name: /add address/i }))
+    fillValid()
+    fireEvent.click(screen.getByLabelText(/make this my default/i))
+    fireEvent.click(screen.getByRole('button', { name: /save address/i }))
+    await screen.findByText('Saved, but we could not make it your default.')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(await screen.findByText('AK-039-5028')).toBeInTheDocument()
+  })
+
+  it('test_cancel_in_the_picker_refetches_so_the_saved_row_shows', async () => {
+    failingDefault()
+    wrap(<AddressPicker value={null} onChange={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: /add a new address/i }))
+    fillValid()
+    fireEvent.click(screen.getByLabelText(/make this my default/i))
+    fireEvent.click(screen.getByRole('button', { name: /save address/i }))
+    await screen.findByText('Saved, but we could not make it your default.')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(await screen.findByRole('button', { name: /Akosua Mensah, AK-039-5028/ })).toBeInTheDocument()
+  })
+})
+
 describe('AddressPicker', () => {
+  it('test_the_choices_keep_a_visible_keyboard_focus_ring', async () => {
+    book([row()])
+    const { container } = wrap(<AddressPicker value={null} onChange={vi.fn()} />)
+    const choice = await screen.findByRole('button', { name: /Akosua Mensah, AK-039-5028/ })
+    expect(choice.style.outline).not.toBe('none')
+    expect(choice.className).toContain('ah-addr-choice')
+    expect(container.querySelector('style')?.textContent).toMatch(/\.ah-addr-choice:focus-visible\s*\{[^}]*outline:\s*2px solid/)
+  })
+
   it('test_picker_marks_default_and_selects_on_click', async () => {
     book([row(), row({ id: 8, recipient_name: 'Ama Owusu', gps_address: 'AS-123-4567', is_default: false })])
     const onChange = vi.fn()
