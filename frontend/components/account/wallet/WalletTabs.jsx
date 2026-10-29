@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { D } from "../../dashboard/theme.js";
 import { PAYMENT_TABS, paymentsPath } from "../accountNav.js";
+import TabBar from "../TabBar.jsx";
 
 export const PAYMENTS_UNAVAILABLE = "This part of Your Payments is not available yet.";
 
@@ -12,23 +13,7 @@ export default function WalletTabs({ tab, bodies = {} }) {
   const body = bodies[tab];
   return (
     <div>
-      <div role="tablist" aria-label="Your Payments" style={{ display: "flex", gap: 4, borderBottom: `1px solid ${D.divider}`, marginBottom: 18, overflowX: "auto" }}>
-        {PAYMENT_TABS.map((t) => {
-          const on = t.id === tab;
-          return (
-            <button
-              key={t.id}
-              role="tab"
-              type="button"
-              aria-selected={on}
-              onClick={() => { if (!on) navigate(paymentsPath(t.id)); }}
-              style={{ background: "none", border: "none", borderBottom: `3px solid ${on ? D.gold : "transparent"}`, color: on ? D.text : D.textDim, padding: "10px 14px", fontSize: "0.85rem", fontWeight: on ? 800 : 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", marginBottom: -1 }}
-            >
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
+      <TabBar label="Your Payments" tabs={PAYMENT_TABS} current={tab} marginBottom={18} onPick={(id) => { if (id !== tab) navigate(paymentsPath(id)); }} />
       <div role="tabpanel">
         {body ?? <div style={{ color: D.textDim, fontSize: "0.85rem" }}>{PAYMENTS_UNAVAILABLE}</div>}
       </div>

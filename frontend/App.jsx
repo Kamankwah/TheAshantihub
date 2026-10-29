@@ -40,9 +40,6 @@ import ThemeToggle from "./components/ThemeToggle.jsx";
 import Flag from "./components/Flag.jsx";
 import AccountHub from "./components/account/AccountHub.jsx";
 import { ACCOUNT_ROOT, isAccountPath } from "./components/account/accountNav.js";
-import { formatAccraDayTime } from "./lib/accraTime.js";
-import OrderTrackingMap from "./components/OrderTrackingMap.jsx";
-import DeliveryCodeBox from "./components/DeliveryCodeBox.jsx";
 import Navbar from "./components/Navbar.jsx";
 import StorefrontHome from "./components/storefront/StorefrontHome.jsx";
 import StorefrontHeader from "./components/storefront/StorefrontHeader.jsx";
@@ -98,10 +95,9 @@ import { readCookieConsent, saveCookieConsent } from "./lib/cookieConsent.js";
 import useBreakpoint from "./hooks/useBreakpoint.js";
 import SpendAreaChart from "./components/dashboard/charts/SpendAreaChart.jsx";
 import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
-import RaiseDisputeForm from "./components/RaiseDisputeForm.jsx";
+import OrdersPanel from "./components/account/OrdersPanel.jsx";
 import TicketQr from "./components/TicketQr.jsx";
 import StaffGateNotice from "./components/StaffGateNotice.jsx";
-import PickupCollectionNote from "./components/PickupCollectionNote.jsx";
 import StaffViewOnlyBar, { STAFF_VIEW_ONLY_BAR_HEIGHT } from "./components/StaffViewOnlyBar.jsx";
 import { isStaffSession } from "./lib/staffSession.js";
 import { useStaffGate } from "./hooks/useStaffGate.js";
@@ -1713,7 +1709,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
   // App-owned pieces, handed to the hub as render functions (components/** never import App.jsx).
   const render = {
     overview: () => <OverviewPanel favourites={favourites} user={user}/>,
-    orders: (searchQuery) => <OrdersDeliveryTab searchQuery={searchQuery}/>,
+    orders: () => <OrdersPanel user={user}/>,
     requests: () => <ServiceRequestsTab PaymentComponent={PaymentComponent} onContactSupport={contactSupport}/>,
     bookings: () => <MyBookingsTab onContactSupport={contactSupport}/>,
     saved: () => <SavedBusinessesTab favourites={favourites} toggleFav={toggleFav}/>,
@@ -1871,35 +1867,6 @@ function OverviewPanel({ user, favourites }) {
 // account-profile-card.tsx), a shadcn/Tailwind card — see that file for why
 // it replaced this inline D-palette form.
 
-const DELIVERY_STEPS = [
-  { id: "processing", label: "Processing" },
-  { id: "shipped", label: "Shipped" },
-  { id: "out_for_delivery", label: "Out for Delivery" },
-  { id: "delivered", label: "Delivered" },
-];
-
-function DeliveryStepper({ status }) {
-  const activeIndex = DELIVERY_STEPS.findIndex(s=>s.id===status);
-  return <div style={{display:"flex",alignItems:"flex-start",marginTop:12}}>
-    {DELIVERY_STEPS.map((step,i)=>(
-      <div key={step.id} style={{display:"flex",alignItems:"center",flex:i<DELIVERY_STEPS.length-1?1:"none"}}>
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:60}}>
-          <div style={{width:10,height:10,borderRadius:"50%",background:i<=activeIndex?D.gold:D.divider,flexShrink:0}}/>
-          <span style={{fontSize:"0.6rem",color:i<=activeIndex?D.text:D.textFaint,fontWeight:i<=activeIndex?800:600,textAlign:"center"}}>{step.label}</span>
-        </div>
-        {i<DELIVERY_STEPS.length-1&&<div style={{flex:1,height:2,background:i<activeIndex?D.gold:D.divider,margin:"5px 4px 0"}}/>}
-      </div>
-    ))}
-  </div>;
-}
-
-// GET /api/orders/ is NOT paginated (unlike most staff moderation-queue
-// endpoints elsewhere in App.jsx) — reads the array directly, not
-// data?.results. Read-only: no customer-side actions, the delivery stepper
-// is only rendered for a paid order (delivery_status is otherwise still
-// "processing" by default but meaningless until payment clears). `searchQuery`
-// filters client-side by order id or an item's listing_name (see
-// the Orders section's search box in AccountHub).
 // The customer's service requests (business item 2 / Wave H2). Shows each
 // request's status; an accepted request gets a "Pay to start" button that runs
 // the simulated payment then POSTs the pay endpoint (moving it to in_progress).
@@ -1990,76 +1957,6 @@ function MyBookingsTab({ onContactSupport }) {
             </>
           )}
         </div>
-      );
-    })}
-  </div>;
-}
-
-function OrdersDeliveryTab({ searchQuery }) {
-  const { data, isLoading, isError, refetch } = useOrders();
-  const [confirmError, setConfirmError] = useState(null);
-  const orders = data || [];
-
-  const confirmReceipt = async (orderId) => {
-    setConfirmError(null);
-    try { await apiPost(`/api/orders/${orderId}/confirm-receipt/`, {}); refetch(); }
-    catch { setConfirmError("Could not confirm receipt. Please try again."); }
-  };
-  const q = (searchQuery||"").trim().toLowerCase();
-  const filtered = q
-    ? orders.filter(o => String(o.id).includes(q) || (o.items||[]).some(it=>it.listing_name?.toLowerCase().includes(q)))
-    : orders;
-
-  if (isLoading) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>Loading…</div>;
-  if (isError) return <div style={{color:D.red,fontSize:"0.8rem"}}>Could not load your orders.</div>;
-  if (orders.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>No orders yet.</div>;
-  if (filtered.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>No orders match "{searchQuery}".</div>;
-
-  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
-    {filtered.map(o=>{
-      const statusMeta = ORDER_STATUS_META[o.status]||{label:o.status,color:D.textDim};
-      return (
-      <div key={o.id} style={{...glassCard,padding:18}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <div style={{color:D.text,fontWeight:800,fontSize:"0.85rem"}}>Order #{o.id}</div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{color:D.textDim,fontSize:"0.7rem"}}>{o.placed_at?.slice(0,10)}</span>
-            <span style={{background:tint(statusMeta.color, "22"),color:statusMeta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{statusMeta.label}</span>
-          </div>
-        </div>
-        <div style={{marginTop:10}}>
-          {(o.items||[]).map(it=>(
-            <div key={it.id} style={{display:"flex",justifyContent:"space-between",fontSize:"0.76rem",color:D.textDim,padding:"3px 0"}}>
-              <span>{it.listing_name}{it.variant_label ? ` (${it.variant_label})` : ""} × {it.quantity}</span>
-              <span>GHS {it.line_total}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{marginTop:8,color:D.text,fontWeight:800,fontSize:"0.8rem"}}>Total: GHS {o.total_amount}</div>
-        {o.delivery_method && (
-          <div style={{marginTop:4,color:D.textDim,fontSize:"0.72rem"}}>
-            {o.delivery_method==="door_to_door" ? `🚚 Door-to-door${o.delivery_address ? ` — ${o.delivery_address}` : ""}` : "🏬 Store pickup"}
-          </div>
-        )}
-        {o.delivery_method==="store_pickup" && o.collection_code && <div style={{marginTop:8}}><PickupCollectionNote code={o.collection_code ?? null} collectBy={o.collect_by ?? null} tone="dark"/></div>}
-        {o.status==="paid" && o.delivery_method==="door_to_door" && o.ready_not_before && new Date(o.ready_not_before) > new Date() && !["delivered","confirmed"].includes(o.delivery_assignment_status) && o.delivery_status!=="delivered" && formatAccraDayTime(o.ready_not_before) && (
-          <div data-testid="order-scheduled-start" style={{marginTop:6,color:D.textDim,fontSize:"0.72rem",fontWeight:700}}>Delivery scheduled to start {formatAccraDayTime(o.ready_not_before)}</div>
-        )}
-        {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryStepper status={o.delivery_status}/>}
-        {o.status==="paid" && o.delivery_method==="door_to_door" && <OrderTrackingMap orderId={o.id} assignmentStatus={o.delivery_assignment_status ?? null} deliveryStatus={o.delivery_status} stops={o.delivery_stops ?? null} redelivery={o.redelivery ?? null}/>}
-        {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryCodeBox code={o.delivery_code} assignmentStatus={o.delivery_assignment_status ?? null}/>}
-        {o.delivery_assignment_status==="delivered" && (
-          <div style={{marginTop:10}}>
-            <div style={{color:D.textDim,fontSize:"0.72rem",marginBottom:6}}>Your courier marked this delivered. Please confirm you received it.</div>
-            <button onClick={()=>confirmReceipt(o.id)} style={{background:D.green,color:"#fff",border:"none",borderRadius:20,padding:"8px 16px",fontWeight:800,fontSize:"0.76rem",cursor:"pointer",fontFamily:"inherit"}}>✓ Confirm receipt</button>
-            {confirmError && <div style={{color:D.red,fontSize:"0.72rem",marginTop:6}}>{confirmError}</div>}
-          </div>
-        )}
-        {o.delivery_assignment_status==="confirmed" && (
-          <div style={{marginTop:8,color:D.green,fontSize:"0.72rem",fontWeight:700}}>✓ Receipt confirmed</div>
-        )}
-        <RaiseDisputeForm orderId={o.id}/>
-      </div>
       );
     })}
   </div>;

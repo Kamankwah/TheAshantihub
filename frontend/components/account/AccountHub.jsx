@@ -1,10 +1,10 @@
-import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { D, glassCard } from "../dashboard/theme.js";
 import { HEADING_FONT } from "../storefront/storefrontType.js";
-import { ACCOUNT_ROOT, ACCOUNT_TILES, ORDER_TABS, PAYMENT_TABS, parseAccountPath } from "./accountNav.js";
+import { ACCOUNT_ROOT, ACCOUNT_TILES, PAYMENT_TABS, parseAccountPath } from "./accountNav.js";
 import CustomerService from "./CustomerService.jsx";
 import LoginSecurity from "./LoginSecurity.jsx";
+import YourOrders from "./YourOrders.jsx";
 import WalletTabs from "./wallet/WalletTabs.jsx";
 import YourAddresses from "./YourAddresses.jsx";
 
@@ -43,39 +43,6 @@ function Hub({ overview }) {
   );
 }
 
-function OrdersSection({ render }) {
-  const [tab, setTab] = useState("orders");
-  const [query, setQuery] = useState("");
-  const searchable = tab === "orders" || tab === "tickets";
-  const pick = (id) => { setTab(id); setQuery(""); };
-  return (
-    <div>
-      <div role="tablist" aria-label="Your Orders" style={{ display: "flex", gap: 4, borderBottom: `1px solid ${D.divider}`, marginBottom: 16, overflowX: "auto" }}>
-        {ORDER_TABS.map((t) => {
-          const on = t.id === tab;
-          return (
-            <button key={t.id} role="tab" type="button" aria-selected={on} onClick={() => pick(t.id)}
-              style={{ background: "none", border: "none", borderBottom: `3px solid ${on ? D.gold : "transparent"}`, color: on ? D.text : D.textDim, padding: "10px 14px", fontSize: "0.85rem", fontWeight: on ? 800 : 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", marginBottom: -1 }}>
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-      {searchable && (
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={tab === "orders" ? "Search orders…" : "Search tickets…"} aria-label={tab === "orders" ? "Search orders" : "Search tickets"}
-          style={{ width: "100%", maxWidth: 320, marginBottom: 14, background: D.panelBg2, border: `1px solid ${D.divider}`, borderRadius: 10, padding: "8px 12px", fontSize: "0.8rem", color: D.text, fontFamily: "inherit" }} />
-      )}
-      <div role="tabpanel">
-        {tab === "orders" && render.orders?.(query)}
-        {tab === "bookings" && render.bookings?.()}
-        {tab === "requests" && render.requests?.()}
-        {tab === "tickets" && render.tickets?.(query)}
-        {tab === "events" && render.events?.()}
-      </div>
-    </div>
-  );
-}
-
 const TITLES = Object.fromEntries(ACCOUNT_TILES.map((t) => [t.id, t.title]));
 
 // The Your Account hub and its URL-addressable sections (/my-account/<section>,
@@ -101,7 +68,7 @@ export default function AccountHub({ user, auth, render = {}, onContactSupport, 
 
   let body;
   switch (section) {
-    case "orders": body = <OrdersSection render={render} />; break;
+    case "orders": body = <YourOrders render={render} />; break;
     case "security": body = <LoginSecurity user={user} auth={auth} render={render} />; break;
     case "addresses": body = <YourAddresses />; break;
     case "payments": body = <WalletTabs tab={tab} bodies={render.payments} />; break;

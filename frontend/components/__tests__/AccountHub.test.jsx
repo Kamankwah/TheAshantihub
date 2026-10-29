@@ -1,9 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { UserPanel } from '../../App.jsx'
 import AccountHub from '../account/AccountHub.jsx'
+import { server } from '../../mocks/server.js'
+import { gatedOpening } from '../../mocks/opening.js'
 
 const TILES = [
   ['Your Orders', '/my-account/orders'],
@@ -209,5 +212,153 @@ describe('UserPanel gates and messages', () => {
     expect(screen.getByText('Messages with AshantiHub Support')).toBeInTheDocument()
     expect(screen.queryByText(/sellers/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: /email|text|phone/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('Your Orders (the Orders tab)', () => {
+  const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString()
+  const order = (extra) => ({
+    id: 214, status: 'paid', delivery_status: 'processing', total_amount: '265.00', placed_at: daysAgo(3),
+    items: [{ id: 301, listing: 12, listing_name: 'Kente Stole', variant: 41, variant_label: 'Gold / Large', quantity: 2, unit_price: '130.00', line_total: '260.00' }],
+    delivery_method: 'door_to_door', delivery_address: '12 Adum Road, Kumasi', delivery_gps_address: 'AK-039-5028', delivery_landmark: 'Opposite Total filling station',
+    ...extra,
+  })
+  function renderOrders(orders, { user = { fullName: 'Ama Boateng', accountType: 'customer', id: 1 } } = {}) {
+    server.use(http.get('http://localhost:8000/api/orders/', () => HttpResponse.json(orders)))
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/my-account/orders']}>
+          <UserPanel user={user} auth={{}} favourites={[]} toggleFav={vi.fn()} onExit={vi.fn()} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+  }
+
+  it('test_orders_tab_shows_order_header_fields_and_gps_and_landmark', async () => {
+    renderOrders([order(), order({ id: 215, delivery_gps_address: '', delivery_landmark: '' })])
+    const card = (await screen.findByText('Order #214')).closest('[data-testid="order-card"]')
+    expect(within(card).getByText(/Order placed/)).toBeInTheDocument()
+    expect(within(card).getByText('GHS 265.00')).toBeInTheDocument()
+    expect(within(card).getByText(/12 Adum Road, Kumasi/)).toBeInTheDocument()
+    expect(within(card).getByText(/AK-039-5028/)).toBeInTheDocument()
+    expect(within(card).getByText(/Opposite Total filling station/)).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Track package' })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'View order' })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Buy it again' })).toBeInTheDocument()
+    // an old order with blank GhanaPost fields shows neither line
+    const old = screen.getByText('Order #215').closest('[data-testid="order-card"]')
+    expect(within(old).queryByText(/GhanaPost/)).not.toBeInTheDocument()
+    expect(within(old).queryByText(/Landmark/)).not.toBeInTheDocument()
+  })
+
+  it('store pickup says so in Ship to', async () => {
+    renderOrders([order({ delivery_method: 'store_pickup', delivery_address: '', delivery_gps_address: '', delivery_landmark: '' })])
+    const card = (await screen.findByText('Order #214')).closest('[data-testid="order-card"]')
+    expect(within(card).getByText(/Ship to/)).toBeInTheDocument()
+    expect(within(card).getByText(/Store pickup/)).toBeInTheDocument()
+  })
+
+  it('test_buy_it_again_adds_the_lines_and_reports_a_missing_one', async () => {
+    const calls = []
+    server.use(
+      http.post('http://localhost:8000/api/cart/items/bulk/', async ({ request }) => {
+        const body = await request.json()
+        calls.push(['bulk', body])
+        return HttpResponse.json({ id: 1, items: [] }, { status: 201 })
+      }),
+      http.post('http://localhost:8000/api/cart/items/', async ({ request }) => {
+        const body = await request.json()
+        calls.push(['plain', body])
+        if (body.listing === 77) return HttpResponse.json({ listing: ['Invalid pk "77" - object does not exist.'] }, { status: 400 })
+        return HttpResponse.json({ id: 9 }, { status: 201 })
+      }),
+    )
+    renderOrders([order({
+      items: [
+        { id: 1, listing: 12, listing_name: 'Kente Stole', variant: 41, variant_label: 'Gold / Large', quantity: 2, line_total: '260.00' },
+        { id: 2, listing: 12, listing_name: 'Kente Stole', variant: 42, variant_label: 'Gold / Small', quantity: 1, line_total: '130.00' },
+        { id: 3, listing: 50, listing_name: 'Shea Butter', variant: null, variant_label: '', quantity: 3, line_total: '90.00' },
+        { id: 4, listing: 77, listing_name: 'Old Drum', variant: null, variant_label: '', quantity: 1, line_total: '40.00' },
+      ],
+    })])
+    fireEvent.click(await screen.findByRole('button', { name: 'Buy it again' }))
+    expect(await screen.findByText('Old Drum is no longer available')).toBeInTheDocument()
+    expect(calls).toContainEqual(['bulk', { listing: 12, lines: [{ variant: 41, quantity: 2 }, { variant: 42, quantity: 1 }] }])
+    expect(calls).toContainEqual(['plain', { listing: 50, quantity: 3 }])
+    expect(await screen.findByText(/Added 2 products to your cart/)).toBeInTheDocument()
+  })
+
+  it('a variant that is gone is reported by name and the other lines are still added', async () => {
+    const calls = []
+    server.use(
+      http.post('http://localhost:8000/api/cart/items/bulk/', async ({ request }) => {
+        const body = await request.json()
+        calls.push(body.listing)
+        if (body.listing === 12) return HttpResponse.json({ lines: [{ index: 0, detail: 'That version is not available for this listing.' }] }, { status: 400 })
+        return HttpResponse.json({ id: 1, items: [] }, { status: 201 })
+      }),
+    )
+    renderOrders([order({
+      items: [
+        { id: 1, listing: 12, listing_name: 'Kente Stole', variant: 41, variant_label: 'Gold / Large', quantity: 2, line_total: '260.00' },
+        { id: 2, listing: 13, listing_name: 'Batakari', variant: 5, variant_label: 'M', quantity: 1, line_total: '80.00' },
+      ],
+    })])
+    fireEvent.click(await screen.findByRole('button', { name: 'Buy it again' }))
+    expect(await screen.findByText('Kente Stole is no longer available')).toBeInTheDocument()
+    expect(calls).toEqual([12, 13])
+  })
+
+  it('Buy it again is disabled with the opening label before the marketplace opens', async () => {
+    server.use(gatedOpening({ opensAt: '2099-11-06T06:00:00Z' }))
+    renderOrders([order()])
+    const btn = await screen.findByRole('button', { name: 'Buy it again' })
+    await waitFor(() => expect(btn).toBeDisabled())
+    expect(screen.getByText(/Opens 6 Nov/)).toBeInTheDocument()
+  })
+
+  it('test_orders_search_filters_loaded_orders', async () => {
+    renderOrders([
+      order(),
+      order({ id: 300, items: [{ id: 9, listing: 3, listing_name: 'Shea Butter', variant: null, variant_label: '', quantity: 1, line_total: '30.00' }] }),
+    ])
+    await screen.findByText('Order #214')
+    const box = screen.getByRole('searchbox', { name: 'Search all orders' })
+    fireEvent.change(box, { target: { value: 'shea' } })
+    expect(screen.queryByText('Order #214')).not.toBeInTheDocument()
+    expect(screen.getByText('Order #300')).toBeInTheDocument()
+    fireEvent.change(box, { target: { value: '214' } })
+    expect(screen.getByText('Order #214')).toBeInTheDocument()
+    expect(screen.queryByText('Order #300')).not.toBeInTheDocument()
+    fireEvent.change(box, { target: { value: 'zzz' } })
+    expect(screen.getByText(/No orders match/)).toBeInTheDocument()
+  })
+
+  it('the past 3 months / 6 months / all filter works over the loaded orders', async () => {
+    renderOrders([order({ id: 1, placed_at: daysAgo(10) }), order({ id: 2, placed_at: daysAgo(120) }), order({ id: 3, placed_at: daysAgo(400) })])
+    await screen.findByText('Order #1')
+    const select = screen.getByLabelText('Show orders from')
+    expect(select).toHaveValue('all')
+    fireEvent.change(select, { target: { value: '3' } })
+    expect(screen.getByText('Order #1')).toBeInTheDocument()
+    expect(screen.queryByText('Order #2')).not.toBeInTheDocument()
+    fireEvent.change(select, { target: { value: '6' } })
+    expect(screen.getByText('Order #2')).toBeInTheDocument()
+    expect(screen.queryByText('Order #3')).not.toBeInTheDocument()
+  })
+
+  it('View order opens the extra details the server sent, nothing invented', async () => {
+    renderOrders([order({ delivery_fee: '5.00', discount_amount: '10.00', coupon_code: 'WELCOME' })])
+    fireEvent.click(await screen.findByRole('button', { name: 'View order' }))
+    expect(screen.getByText(/Delivery fee/)).toHaveTextContent('GHS 5.00')
+    expect(screen.getByText(/WELCOME/)).toBeInTheDocument()
+  })
+
+  it('Write a product review opens the existing review form for the bought listing', async () => {
+    server.use(http.get('http://localhost:8000/api/reviews/eligibility/', () => HttpResponse.json({ eligible: true, already_reviewed: false })))
+    renderOrders([order()])
+    fireEvent.click(await screen.findByRole('button', { name: 'Write a product review' }))
+    expect(await screen.findByPlaceholderText('Share your experience...')).toBeInTheDocument()
   })
 })
