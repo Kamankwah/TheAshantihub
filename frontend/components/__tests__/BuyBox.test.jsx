@@ -54,9 +54,9 @@ describe('BuyBox', () => {
 
   test('test_no_delivery_date_is_shown', () => {
     renderBox()
-    expect(screen.getByText(/Delivery fee is worked out at checkout from your GhanaPost address/)).toBeInTheDocument()
+    expect(screen.getByText(/Delivery fee is worked out at checkout from your delivery pin/)).toBeInTheDocument()
     expect(screen.queryByText(/arrives|delivered by|get it by|estimated delivery/i)).toBeNull()
-    expect(screen.getByText('Pay with mobile money or your AshantiHub wallet')).toBeInTheDocument()
+    expect(screen.getByText('You choose how to pay at checkout.')).toBeInTheDocument()
   })
 
   test('test_add_is_disabled_with_opens_6_nov_before_opening', async () => {

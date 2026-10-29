@@ -7,9 +7,7 @@ import { useCartGuard } from "../../hooks/useCartGuard.js";
 import { useStaffGate } from "../../hooks/useStaffGate.js";
 import StaffGateNotice from "../StaffGateNotice.jsx";
 import PriceTag from "./PriceTag.jsx";
-
-// A counted stock at or below this reads "Only N left" (the number itself always comes from the server).
-const LOW_STOCK_AT = 5;
+import { LOW_STOCK_AT, OPENS_SOON } from "./shopCopy.js";
 
 const cents = (amount) => Math.round((parseFloat(amount) || 0) * 100);
 const money = (c) => (c / 100).toFixed(2);
@@ -61,7 +59,7 @@ export default function BuyBox({ item, user, selection = {}, currency = "GHS", o
   // The one reason Add to cart cannot be pressed, shown as its label.
   let reason = null;
   if (isBusinessAccount) reason = "Customer accounts only";
-  else if (!canBuy) reason = opensLabel || "Opens soon";
+  else if (!canBuy) reason = opensLabel || OPENS_SOON;
   else if (stock === "out") reason = "Out of stock";
   else if (!priced) reason = "No price set";
   else if (hasVariants && lines.length === 0) reason = "Choose options";
@@ -95,9 +93,9 @@ export default function BuyBox({ item, user, selection = {}, currency = "GHS", o
       )}
 
       <p style={{ margin: "10px 0 0", fontSize: "0.8rem", color: C.inkDim, lineHeight: 1.5 }}>
-        Delivery fee is worked out at checkout from your GhanaPost address.
+        Delivery fee is worked out at checkout from your delivery pin.
       </p>
-      <p style={{ margin: "6px 0 0", fontSize: "0.8rem", color: C.inkDim, lineHeight: 1.5 }}>Pay with mobile money or your AshantiHub wallet</p>
+      <p style={{ margin: "6px 0 0", fontSize: "0.8rem", color: C.inkDim, lineHeight: 1.5 }}>You choose how to pay at checkout.</p>
 
       <div style={{ marginTop: 10, fontSize: "0.95rem", fontWeight: 800, color: stock === "out" ? C.danger : stock === "low" ? C.warnInk : C.trust }}>{stockText}</div>
 

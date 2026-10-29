@@ -28,6 +28,7 @@ import { walletMessage } from "../wallet/walletErrors.js";
 import { addGhs, formatGhs, ghsToPesewas, isPlausibleAmount } from "../wallet/walletMoney.js";
 import { walletStyles } from "../wallet/walletStyles.js";
 import { BODY_FONT, HEADING_FONT, TABULAR } from "../storefront/storefrontType.js";
+import { OPENS_SOON, PIN_YOUR_DOOR, atStockCap, guardUncheckedText } from "./shopCopy.js";
 
 const num = (v) => (v == null || v === "" ? null : Number(v));
 
@@ -163,6 +164,8 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
   const deferredFrom = door && preview?.deferred ? formatAccraDayTime(preview.delivery_from) : null;
   const pinChosen = door && lat != null;
   const outOfArea = door && delivery?.fee_status === "out_of_area";
+  // Delivery fees are on and the server has no pin to price: a saved address without lat/lng lands here too.
+  const needsPin = door && delivery?.fee_status === "needs_location";
   const regionUnchecked = promosOn && pinChosen && (quoting || quotedFor !== pinKey || quoteFailed);
   const itemsGross = promosOn && quote?.items_subtotal ? quote.items_subtotal : cart?.total;
   const itemsTotal = promosOn && quote?.total ? quote.total : cart?.total;
@@ -199,16 +202,18 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
   const [placing, setPlacing] = useState(false);
   const placingRef = useRef(false);
   const [placedNext, setPlacedNext] = useState(null);
+  const [defaultFailed, setDefaultFailed] = useState(false);
   const [cartError, setCartError] = useState(null);
   const [pendingId, setPendingId] = useState(null);
 
-  const regionOk = !door || (!outOfArea && !regionUnchecked);
+  const regionOk = !door || (!outOfArea && !needsPin && !regionUnchecked);
   const ready = canBuy && !staffGate.isStaff && items.length > 0 && !guardAny && !guardUnchecked && addressFilled && regionOk
     && !feeLoading && !walletChecking && !walletFailed && processingReady && !placing;
   let reason = null;
-  if (!canBuy) reason = opensLabel || "Opens soon";
+  if (!canBuy) reason = opensLabel || OPENS_SOON;
   else if (door && !addressFilled) reason = addressesSettled && !typing && !addr ? "Choose where to deliver." : "Add a valid Ghana Post address, a landmark and a phone number to continue.";
   else if (outOfArea) reason = "Choose a delivery point inside the Ashanti Region.";
+  else if (needsPin) reason = PIN_YOUR_DOOR;
 
   const checkoutBody = (extra = {}) => ({
     ...extra,
@@ -239,8 +244,10 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
       queryClient.invalidateQueries({ queryKey: ["cart-guard"] });
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
       const next = `/checkout/verify?order=${response?.id}`;
+      // The server has emptied the cart: hold the placed state first so the refetch cannot replace the page.
+      setPlacedNext(next);
       if (await applyDefault()) { if (onNavigate) onNavigate(next); }
-      else setPlacedNext(next);
+      else setDefaultFailed(true);
     } catch (err) {
       setCheckoutError({ text: apiErrorMessage(err, "We couldn't place your order. Please try again."), ref: payRef });
       if (payRef) setShowPayment(false);
@@ -372,6 +379,19 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
       </div>,
     );
   }
+  if (placedNext && items.length === 0) {
+    return page(
+      <div style={card} data-testid="checkout-placed">
+        <p role="status" style={{ margin: "0 0 12px", color: C.ink, fontWeight: 700 }}>Your order is placed.</p>
+        {defaultFailed ? (
+          <div data-testid="checkout-default-note" role="status" style={note}>
+            <div>Your order is placed, but we could not make this your default address.</div>
+            <button type="button" style={linkBtn} onClick={() => go(placedNext)}>Continue to your order</button>
+          </div>
+        ) : <p style={{ margin: 0, color: C.inkDim }}>Taking you to your order{"…"}</p>}
+      </div>,
+    );
+  }
   if (items.length === 0) {
     return page(
       <div style={card}>
@@ -384,8 +404,10 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
   const deliveryLine = (() => {
     if (!door) return "None for store pickup";
     if (!delivery) {
-      if (!pinChosen) return "Choose a delivery point";
-      return (preview === undefined && !previewFailed) || quoting ? "Checking…" : "No delivery fee";
+      // The server answered delivery: null (fees off, or nothing to price): there is no fee. Never invented before then.
+      if (promosOn ? quoteFailed : previewFailed) return "Not checked yet";
+      if (promosOn ? quoting || quote == null : preview === undefined) return "Checking…";
+      return "No delivery fee";
     }
     if (delivery.waived) return <>Free ({delivery.waiver_name}){delivery.waived_fee != null && <>, saving {formatGhs(delivery.waived_fee)}</>}</>;
     if (delivery.fee != null) return formatGhs(delivery.fee);
@@ -438,7 +460,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
           )}
           {guardUnchecked && !guardAny && !guardDoor && (
             <div data-testid="checkout-guard-unchecked" style={{ ...note, marginTop: 8 }}>
-              {guardQuery.isError ? "We couldn't check your delivery limits yet. Try again shortly." : "Checking your delivery limits…"}
+              {guardUncheckedText(guardQuery.isError)}
             </div>
           )}
         </section>
@@ -550,7 +572,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
                     <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginTop: 8 }}>
                       <button type="button" disabled={busy || Number(line.quantity) <= 1} aria-label={`Decrease quantity of ${line.listing_name}`} onClick={() => updateQuantity(line, Number(line.quantity) - 1)} style={stepBtn(busy || Number(line.quantity) <= 1)}>{"−"}</button>
                       <span aria-live="polite" style={{ minWidth: 20, textAlign: "center", fontWeight: 700, ...TABULAR }}>{line.quantity}</span>
-                      <button type="button" disabled={busy} aria-label={`Increase quantity of ${line.listing_name}`} onClick={() => updateQuantity(line, Number(line.quantity) + 1)} style={stepBtn(busy)}>+</button>
+                      <button type="button" disabled={busy || atStockCap(line)} aria-label={`Increase quantity of ${line.listing_name}`} onClick={() => updateQuantity(line, Number(line.quantity) + 1)} style={stepBtn(busy || atStockCap(line))}>+</button>
                     </div>
                   </div>
                   <div style={{ ...amount, fontWeight: 700 }}>{formatGhs(line.line_total)}</div>
@@ -569,7 +591,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
           <div style={{ ...note, marginBottom: 4 }}>
             <div>{delivery.waived ? "Delivery value (not charged):" : "Delivery breakdown:"}</div>
             <ul aria-label="Delivery fee breakdown" style={{ margin: "2px 0 0", paddingLeft: 16 }}>
-              {delivery.lines.map((l) => <li key={l.label}>{l.label}: {formatGhs(l.amount)}</li>)}
+              {delivery.lines.map((l) => <li key={l.label}>{l.label}: <span style={TABULAR}>{formatGhs(l.amount)}</span></li>)}
             </ul>
             {delivery.route.planned === false && <div>These shops are not on one planned route yet, so the distance is a straight-line estimate.</div>}
           </div>
@@ -586,7 +608,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
           Place your order in GHS
         </button>
         {reason && <div data-testid="checkout-reason" style={{ ...note, marginTop: 10, fontWeight: 600 }}>{reason}</div>}
-        {placedNext && (
+        {placedNext && defaultFailed && (
           <div data-testid="checkout-default-note" role="status" style={{ ...note, marginTop: 10 }}>
             <div>Your order is placed, but we could not make this your default address.</div>
             <button type="button" style={linkBtn} onClick={() => go(placedNext)}>Continue to your order</button>

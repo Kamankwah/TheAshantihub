@@ -72,7 +72,8 @@ describe('CartPage', () => {
     expect(screen.getByText('Sold by Kofi Weaves')).toBeInTheDocument()
     expect(screen.getByText('Only 3 left')).toBeInTheDocument()
     expect(screen.getByText('In stock')).toBeInTheDocument()
-    expect(screen.getByText('Prices and availability are subject to change; the cart shows each item’s latest price.')).toBeInTheDocument()
+    expect(screen.getByText('Prices and availability can change. Each line keeps the price from when you added it; changing the quantity updates it to today’s price.')).toBeInTheDocument()
+    expect(screen.getByText('Delivery fee is worked out at checkout from your delivery pin.')).toBeInTheDocument()
   })
 
   test('test_quantity_plus_minus_patch_the_line_and_refetch', async () => {
@@ -212,7 +213,45 @@ describe('CartPage', () => {
     server.use(http.get(`${API}/api/listings/:id/also-viewed/`, ({ params }) => { anchored = params.id; return HttpResponse.json({ basis: 'same_category', results: [card(31, 'Cousin Stole')] }) }))
     renderPage()
     expect(await screen.findByRole('heading', { name: 'Sponsored products' })).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { name: 'More in this category' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'More like the first item in your cart' })).toBeInTheDocument()
     expect(anchored).toBe('12')
+  })
+
+  test('test_a_failed_cart_read_says_so_and_offers_a_retry_instead_of_blaming_the_account', async () => {
+    let reads = 0
+    server.use(http.get(`${API}/api/cart/`, () => { reads += 1; return reads === 1 ? new HttpResponse(null, { status: 500 }) : HttpResponse.json(TWO()) }))
+    renderPage()
+    expect(await screen.findByText('We couldn\'t load your cart. Try again.')).toBeInTheDocument()
+    expect(screen.queryByText('Carts are for customer accounts.')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('link', { name: 'Kente Stole' })).toBeInTheDocument()
+  })
+
+  test('test_only_a_403_for_a_non_customer_reads_as_carts_are_for_customer_accounts', async () => {
+    server.use(http.get(`${API}/api/cart/`, () => HttpResponse.json({ detail: 'no' }, { status: 403 })))
+    renderPage({ user: { accountType: 'business_owner', id: 9 } })
+    expect(await screen.findByText('Carts are for customer accounts.')).toBeInTheDocument()
+  })
+
+  test('test_a_session_still_loading_never_sees_sign_in_to_see_your_cart', async () => {
+    serve(TWO())
+    renderPage({ user: null, authLoading: true, onSignIn: vi.fn() })
+    expect(screen.getByText(/Loading your cart/)).toBeInTheDocument()
+    expect(screen.queryByText('Sign in to see your cart.')).not.toBeInTheDocument()
+  })
+
+  test('test_plus_stops_at_the_counted_stock', async () => {
+    serve(cartOf([line(88, { quantity: 3, stock_quantity: 3 })], '390.00'))
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'Increase quantity of Kente Stole' })).toBeDisabled()
+  })
+
+  test('test_save_for_later_goes_through_the_one_wishlist_path_and_refreshes_it', async () => {
+    let wishlistReads = 0
+    serve(TWO())
+    server.use(http.get(`${API}/api/wishlist/`, () => { wishlistReads += 1; return HttpResponse.json([]) }))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Kente Stole for later' }))
+    await waitFor(() => expect(wishlistReads).toBeGreaterThan(1))
   })
 })

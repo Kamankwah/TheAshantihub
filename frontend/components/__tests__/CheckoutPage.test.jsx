@@ -805,6 +805,50 @@ describe('CheckoutPage: money-screen correctness', () => {
     expect(onNavigate).toHaveBeenCalledWith('/checkout/verify?order=42')
   })
 
+  // FB1: the server empties the cart the moment the order is accepted, so the refetch must not replace the page.
+  const emptyAfterOrder = () => {
+    let placed = false
+    server.use(
+      http.get(`${API}/api/cart/`, () => HttpResponse.json(placed ? { id: 5, items: [], total: '0.00' } : CART)),
+      http.post(`${API}/api/orders/checkout/`, () => { placed = true; return HttpResponse.json({ ...ORDER, payment_method: 'wallet' }, { status: 201 }) }),
+    )
+  }
+
+  test('test_a_failed_default_still_shows_the_placed_note_when_the_cart_comes_back_empty', async () => {
+    serve({ addresses: [addr(1, { is_default: true }), addr(2, { label: 'Work', gps_address: 'AK-100-2000' })] })
+    emptyAfterOrder()
+    server.use(http.post(`${API}/api/accounts/addresses/:id/set-default/`, () => new HttpResponse(null, { status: 500 })))
+    const { onNavigate } = renderPage()
+    await screen.findByText('AK-039-5028')
+    fireEvent.click(screen.getByRole('button', { name: 'Change' }))
+    fireEvent.click(await screen.findByRole('button', { name: /AK-100-2000/ }))
+    fireEvent.click(await screen.findByLabelText('Default to this address'))
+    await chooseWallet()
+    await waitFor(() => expect(placeButton()).toBeEnabled())
+    fireEvent.click(placeButton())
+    expect(await screen.findByTestId('checkout-default-note')).toHaveTextContent('Your order is placed, but we could not make this your default address.')
+    expect(screen.queryByText('Your cart is empty.')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to your order' }))
+    expect(onNavigate).toHaveBeenCalledWith('/checkout/verify?order=42')
+  })
+
+  test('test_the_empty_cart_text_never_flashes_on_the_happy_path_with_a_default_ticked', async () => {
+    serve({ addresses: [addr(1, { is_default: true }), addr(2, { label: 'Work', gps_address: 'AK-100-2000' })] })
+    emptyAfterOrder()
+    const { onNavigate, container } = renderPage()
+    let flashed = false
+    new MutationObserver(() => { if (container.textContent.includes('Your cart is empty.')) flashed = true }).observe(container, { childList: true, subtree: true, characterData: true })
+    await screen.findByText('AK-039-5028')
+    fireEvent.click(screen.getByRole('button', { name: 'Change' }))
+    fireEvent.click(await screen.findByRole('button', { name: /AK-100-2000/ }))
+    fireEvent.click(await screen.findByLabelText('Default to this address'))
+    await chooseWallet()
+    await waitFor(() => expect(placeButton()).toBeEnabled())
+    fireEvent.click(placeButton())
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('/checkout/verify?order=42'))
+    expect(flashed).toBe(false)
+  })
+
   test('test_a_signed_in_customer_whose_session_is_still_loading_never_sees_sign_in', async () => {
     serve()
     const loading = renderPage({ user: null, authLoading: true, onSignIn: vi.fn() })
@@ -813,5 +857,55 @@ describe('CheckoutPage: money-screen correctness', () => {
     loading.unmount()
     renderPage({ user: null, authLoading: false, onSignIn: vi.fn() })
     expect(screen.getByText('Sign in to check out.')).toBeInTheDocument()
+  })
+})
+
+describe('CheckoutPage: the delivery pin while delivery fees are on (P45)', () => {
+  const NEEDS = { fee: null, fee_status: 'needs_location', waived: false, waiver_name: null, waived_fee: null, mixed_note: null, lines: null, route: null }
+  const PIN_MESSAGE = 'Pin your door on the map so we can work out the delivery fee.'
+  const previewByPin = (request) => {
+    const pinned = new URL(request.url).searchParams.has('lat')
+    return HttpResponse.json({ delivery_from: null, delivered_from: null, deferred: false, source: null, delivery: pinned ? FEE : NEEDS })
+  }
+
+  test('test_a_pinless_saved_address_holds_place_order_until_the_door_is_pinned', async () => {
+    serve({ addresses: [addr(1, { is_default: true, lat: null, lng: null })] })
+    server.use(http.get(`${API}/api/orders/delivery-preview/`, ({ request }) => previewByPin(request)))
+    renderPage()
+    await screen.findByText('AK-039-5028')
+    await chooseWallet()
+    expect(await screen.findByTestId('checkout-reason')).toHaveTextContent(PIN_MESSAGE)
+    expect(placeButton()).toBeDisabled()
+    fireEvent.click(await screen.findByText('drop-pin'))
+    await waitFor(() => expect(placeButton()).toBeEnabled())
+    expect(screen.queryByText(PIN_MESSAGE)).not.toBeInTheDocument()
+  })
+
+  test('test_a_typed_address_needs_the_pin_with_promotions_on_too', async () => {
+    serve({ promos: true, quote: (body) => HttpResponse.json({ enabled: true, total: '300.00', delivery: body.delivery_lat ? FEE : NEEDS }) })
+    renderPage()
+    await fillManual()
+    expect(await screen.findByText(PIN_MESSAGE)).toBeInTheDocument()
+    expect(placeButton()).toBeDisabled()
+    fireEvent.click(await screen.findByText('drop-pin'))
+    await waitFor(() => expect(placeButton()).toBeEnabled())
+  })
+
+  test('test_with_fees_off_no_pin_is_required_and_the_fee_row_says_no_delivery_fee', async () => {
+    serve({ addresses: [addr(1, { is_default: true, lat: null, lng: null })] }) // preview answers delivery: null
+    renderPage()
+    await screen.findByText('AK-039-5028')
+    await chooseWallet()
+    await waitFor(() => expect(placeButton()).toBeEnabled())
+    expect(screen.getByTestId('summary-delivery')).toHaveTextContent('No delivery fee')
+    expect(screen.queryByText(PIN_MESSAGE)).not.toBeInTheDocument()
+  })
+
+  test('test_the_quantity_plus_stops_at_the_counted_stock', async () => {
+    const cart = { ...CART, items: [{ ...CART.items[0], quantity: 2, stock_quantity: 2 }] }
+    serve({ cart, addresses: [addr(1, { is_default: true })] })
+    renderPage()
+    await screen.findByText('AK-039-5028')
+    expect(await screen.findByRole('button', { name: 'Increase quantity of Kente Stole' })).toBeDisabled()
   })
 })

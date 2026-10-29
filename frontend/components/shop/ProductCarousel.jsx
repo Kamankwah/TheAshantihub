@@ -128,8 +128,8 @@ export default function ProductCarousel({ title, subtitle, items, sponsored = fa
 }
 
 // The also-viewed row for a listing, from its own hook, under the honest heading.
-export function AlsoViewedCarousel({ listingId, currency, onOpen, pageSize }) {
+export function AlsoViewedCarousel({ listingId, currency, onOpen, pageSize, fallbackTitle }) {
   const { data } = useAlsoViewed(listingId);
   const items = Array.isArray(data?.results) ? data.results : [];
-  return <ProductCarousel title={alsoViewedTitle(data?.basis)} items={items} currency={currency} onOpen={onOpen} pageSize={pageSize} />;
+  return <ProductCarousel title={data?.basis !== "co_viewed" && fallbackTitle ? fallbackTitle : alsoViewedTitle(data?.basis)} items={items} currency={currency} onOpen={onOpen} pageSize={pageSize} />;
 }

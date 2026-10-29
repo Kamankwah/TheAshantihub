@@ -3,6 +3,7 @@ import { C } from "../theme.js";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCart } from "../hooks/useCart.js";
 import { apiPatch, apiDelete } from "../apiClient.js";
+import { TABULAR } from "./storefront/storefrontType.js";
 
 // ─── CartDrawer ─────────────────────────────────────────────────────────────
 // The slim mini-cart (Marketplace Plan 4). It opens after a product-page add (App.jsx) and shows the cart lines with a
@@ -90,7 +91,7 @@ export default function CartDrawer({ onClose, onGoToCart }) {
               <div key={item.id} style={{ padding: "10px 14px", borderBottom: `1px solid ${C.line}`, display: "flex", gap: 10, alignItems: "center" }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: "0.78rem", color: C.ink }}>{item.listing_name}{item.variant_label ? ` (${item.variant_label})` : ""}</div>
-                  <div style={{ fontSize: "0.65rem", color: C.inkDim }}>{formatAmount(item.unit_price_snapshot)} each</div>
+                  <div style={{ fontSize: "0.65rem", color: C.inkDim, ...TABULAR }}>{formatAmount(item.unit_price_snapshot)} each</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                     <button
                       disabled={pendingId === item.id || item.quantity <= 1}

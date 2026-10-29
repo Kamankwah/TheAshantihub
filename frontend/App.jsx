@@ -3019,7 +3019,7 @@ export default function AshantiHub() {
       {/* A staff session can't register a business — same notice the
           "Register Your Business" CTAs show, for a direct /register visit. */}
       {page==="cart"&&(
-        <CartPage user={user} currency={currency} onNavigate={navigate} onSignIn={()=>setAuthModal("login")}/>
+        <CartPage user={user} currency={currency} onNavigate={navigate} authLoading={auth.isLoading} onSignIn={()=>setAuthModal("login")}/>
       )}
 
       {page==="register"&&staffSession&&(

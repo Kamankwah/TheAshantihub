@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { C } from "../../theme.js";
-import { apiDelete, apiPatch, apiPost } from "../../apiClient.js";
+import { apiDelete, apiPatch } from "../../apiClient.js";
 import { apiErrorMessage } from "../../lib/apiErrorMessage.js";
+import { useWishlist } from "../../hooks/useWishlist.js";
 import { useCart } from "../../hooks/useCart.js";
 import { useCartGuard } from "../../hooks/useCartGuard.js";
 import { useCanBuy } from "../../hooks/useCanBuy.js";
@@ -12,9 +13,8 @@ import useBreakpoint from "../../hooks/useBreakpoint.js";
 import StaffGateNotice from "../StaffGateNotice.jsx";
 import { BODY_FONT, HEADING_FONT, TABULAR } from "../storefront/storefrontType.js";
 import PriceTag from "./PriceTag.jsx";
+import { LOW_STOCK_AT, OPENS_SOON, atStockCap, guardUncheckedText } from "./shopCopy.js";
 import ProductCarousel, { AlsoViewedCarousel } from "./ProductCarousel.jsx";
-
-const LOW_STOCK_AT = 5;
 
 function stockText(line) {
   if (line.in_stock === false || line.stock_quantity === 0) return { text: "Out of stock", bad: true };
@@ -27,12 +27,13 @@ function stockText(line) {
 // `onNavigate`. Everything shown comes from GET /api/cart/ (and the cart guard); nothing is computed here but the
 // item count. `onSignIn` is offered to a signed-out visitor. Mutations are plain api calls with a per-line message.
 // Cart money is always GHS (what is charged, Ruling P26); `currency` only reaches the carousels.
-export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn }) {
+export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn, authLoading = false }) {
   const queryClient = useQueryClient();
   const phone = useBreakpoint() === "phone";
   const staffGate = useStaffGate(user);
   const isCustomer = user?.accountType === "customer";
   const cartQuery = useCart(!!user);
+  const wishlist = useWishlist({ enabled: isCustomer });
   const guardQuery = useCartGuard(null, { enabled: isCustomer });
   const { canBuy, label: opensLabel } = useCanBuy();
   const sponsoredQuery = useSponsored({ all: true });
@@ -67,8 +68,7 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn 
   const remove = (line) => run(line, () => apiDelete(`/api/cart/items/${line.id}/`), "Could not remove this item.");
   // Save for later = Your Lists first; the line goes only once the list accepted it, so a refusal never loses the item.
   const saveForLater = (line) => run(line, async () => {
-    await apiPost("/api/wishlist/", { listing: line.listing });
-    queryClient.invalidateQueries({ queryKey: ["wishlist"] });
+    await wishlist.add(line.listing);
     await apiDelete(`/api/cart/items/${line.id}/`);
   }, "Could not save this for later.");
 
@@ -77,9 +77,9 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn 
   const doorBlock = !guardBlock ? guard?.checkout?.door_to_door || null : null;
   const guardUnchecked = isCustomer && (guardQuery.isPending || guardQuery.isError);
   let reason = null;
-  if (!canBuy) reason = opensLabel || "Opens soon";
+  if (!canBuy) reason = opensLabel || OPENS_SOON;
   else if (guardBlock) reason = guardBlock.detail;
-  else if (guardUnchecked) reason = guardQuery.isError ? "We couldn't check your delivery limits yet. Try again shortly." : "Checking your delivery limits…";
+  else if (guardUnchecked) reason = guardUncheckedText(guardQuery.isError);
 
   const proceedToCheckout = () => {
     if (reason) return;
@@ -103,6 +103,9 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn 
 
   const sponsoredRow = <ProductCarousel title="Sponsored products" items={sponsored} sponsored currency={currency} onOpen={(id) => go(`/business/${id}`)} />;
 
+  if (!user && authLoading) {
+    return <main style={shell}><h1 style={h1}>Shopping Cart</h1><p style={{ color: C.inkDim }}>Loading your cart{"…"}</p></main>;
+  }
   if (!user) {
     return (
       <main style={shell}>
@@ -117,11 +120,19 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn 
     return <main style={shell}><h1 style={h1}>Shopping Cart</h1><p style={{ color: C.inkDim }}>Loading your cart{"…"}</p></main>;
   }
   if (cartQuery.isError) {
+    // Only the server's 403 for a non-customer account means "not for you"; any other failure is just a failed read.
+    const notCustomer = !isCustomer && cartQuery.error?.status === 403;
     return (
       <main style={shell}>
         <h1 style={h1}>Shopping Cart</h1>
-        <p role="alert" style={{ color: C.errInk }}>{isCustomer ? "We couldn't load your cart." : "Carts are for customer accounts."}</p>
-        {isCustomer && <button type="button" onClick={() => cartQuery.refetch()} style={linkBtn}>Try again</button>}
+        {notCustomer ? (
+          <p role="alert" style={{ color: C.errInk }}>Carts are for customer accounts.</p>
+        ) : (
+          <>
+            <p role="alert" style={{ color: C.errInk }}>{"We couldn't load your cart. Try again."}</p>
+            <button type="button" onClick={() => cartQuery.refetch()} style={linkBtn}>Try again</button>
+          </>
+        )}
       </main>
     );
   }
@@ -180,7 +191,7 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn 
                           <button type="button" disabled={busy} aria-label={`Decrease quantity of ${name}`} onClick={() => setQuantity(line, Number(line.quantity) - 1)} style={stepBtn(busy)}>{"−"}</button>
                         )}
                         <span aria-live="polite" style={{ minWidth: 20, textAlign: "center", fontWeight: 700, ...TABULAR }}>{line.quantity}</span>
-                        <button type="button" disabled={busy} aria-label={`Increase quantity of ${name}`} onClick={() => setQuantity(line, Number(line.quantity) + 1)} style={stepBtn(busy)}>+</button>
+                        <button type="button" disabled={busy || atStockCap(line)} aria-label={`Increase quantity of ${name}`} onClick={() => setQuantity(line, Number(line.quantity) + 1)} style={stepBtn(busy || atStockCap(line))}>+</button>
                       </div>
                       <button type="button" disabled={busy} aria-label={`Delete ${name}`} onClick={() => remove(line)} style={linkBtn}>Delete</button>
                       <button type="button" disabled={busy} aria-label={`Save ${name} for later`} onClick={() => saveForLater(line)} style={linkBtn}>Save for later</button>
@@ -192,14 +203,14 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn 
             })}
           </ul>
           <p style={{ margin: "14px 0 0", fontSize: "0.78rem", color: C.inkDim, lineHeight: 1.5 }}>
-            Prices and availability are subject to change; the cart shows each item{"’"}s latest price.
+            Prices and availability can change. Each line keeps the price from when you added it; changing the quantity updates it to today{"’"}s price.
           </p>
         </section>
 
         <aside data-testid="cart-subtotal" style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 16, padding: 18 }}>
           <div style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: 4 }}>{`Subtotal (${count} ${count === 1 ? "item" : "items"})`}</div>
           <PriceTag price={cartQuery.data.total} currency="GHS" />
-          <p style={{ margin: "10px 0 14px", fontSize: "0.78rem", color: C.inkDim, lineHeight: 1.5 }}>Delivery fee is worked out at checkout from your GhanaPost address.</p>
+          <p style={{ margin: "10px 0 14px", fontSize: "0.78rem", color: C.inkDim, lineHeight: 1.5 }}>Delivery fee is worked out at checkout from your delivery pin.</p>
           <button type="button" disabled={!!reason} aria-describedby={reason ? "cart-proceed-reason" : undefined} onClick={proceedToCheckout} style={goldBtn(!!reason)}>Proceed to checkout</button>
           {reason && <div id="cart-proceed-reason" data-testid="cart-proceed-reason" style={{ marginTop: 10, fontSize: "0.8rem", fontWeight: 600, color: C.inkDim, lineHeight: 1.5 }}>{reason}</div>}
           {!reason && doorBlock && <div data-testid="cart-guard-note" style={{ marginTop: 10, fontSize: "0.78rem", color: C.inkDim, lineHeight: 1.5 }}>{`${doorBlock.detail}${doorBlock.code === "not_deliverable" ? "" : " Store pickup is still available."}`}</div>}
@@ -209,7 +220,7 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn 
 
       <div style={{ marginTop: 36 }}>
         {sponsoredRow}
-        <AlsoViewedCarousel listingId={items[0].listing} currency={currency} onOpen={(id) => go(`/business/${id}`)} />
+        <AlsoViewedCarousel listingId={items[0].listing} fallbackTitle="More like the first item in your cart" currency={currency} onOpen={(id) => go(`/business/${id}`)} />
       </div>
     </main>
   );
