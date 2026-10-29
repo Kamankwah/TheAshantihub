@@ -484,7 +484,7 @@ function formatConvTime(iso) {
 // flow instead, sized to fill its container — used only by UserPanel's
 // Messages tab, where a full floating widget/backdrop makes no sense inside
 // an already-dedicated dashboard tab.
-export function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
+export function MessagingCenter({ user, onClose, initialBusiness, embedded = false, startNew = false }) {
   // Support chat is open to everyone except a staff session (whose inbox is
   // the admin MessagingPanel — /api/messaging/conversations/ 403s a
   // StaffUser). A signed-in Customer/BusinessOwner is scoped by their auth
@@ -522,13 +522,15 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
   // immediately overridden by this effect re-picking the same conversation.
   useEffect(() => {
     if (hasAutoSelectedRef.current || conversations.length === 0) return;
+    // startNew (Customer Service): open the new-conversation pane, never an old conversation.
+    if (startNew) { hasAutoSelectedRef.current = true; return; }
     hasAutoSelectedRef.current = true;
     const bySubject = initialBusiness && conversations.find(c => c.subject?.includes(initialBusiness.name));
     // Opened for a business or listing with no conversation about it: leave the new-conversation pane open so the
     // "Re: <name>" subject is used, rather than landing in an unrelated conversation.
     if (initialBusiness && !bySubject) return;
     setActiveConvId((bySubject || conversations[0]).id);
-  }, [conversations, initialBusiness]);
+  }, [conversations, initialBusiness, startNew]);
 
   const activeConv = conversations.find(c => c.id === activeConvId) || null;
 
@@ -1675,8 +1677,12 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
   const { data: zones } = useZones();
 
   // "Contact AshantiHub Support" on a booking opens Messages about that listing or event (never the business).
-  const [supportAbout, setSupportAbout] = useState(null); // null | { name }
-  const contactSupport = (about) => { setSupportAbout(about || null); navigate(`${ACCOUNT_ROOT}/messages`); };
+  // The context rides in navigation state, so it belongs to that one visit: opening the
+  // Your Messages tile later starts clean, never "about" the last booking.
+  const location = useLocation();
+  const supportAbout = location.state?.about ?? null; // null | { name }
+  const startNewSupport = !!location.state?.startNew;
+  const contactSupport = (about, opts) => navigate(`${ACCOUNT_ROOT}/messages`, { state: { about: about || null, startNew: !!opts?.startNew } });
   const signOut = () => { auth.logout(); onExit(); };
 
   // /my-account is a real URL anyone can hit directly, and AshantiHub's own
@@ -1714,7 +1720,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     messages: () => (
       <div>
         <div style={{color:D.textDim,fontSize:"0.82rem",marginBottom:12}}>Messages with AshantiHub Support</div>
-        <MessagingCenter key={supportAbout?.name ?? ""} user={user} onClose={()=>navigate(ACCOUNT_ROOT)} initialBusiness={supportAbout} embedded/>
+        <MessagingCenter key={`${supportAbout?.name ?? ""}|${startNewSupport}`} user={user} onClose={()=>navigate(ACCOUNT_ROOT)} initialBusiness={supportAbout} startNew={startNewSupport} embedded/>
       </div>
     ),
     events: () => <MyEventsTab user={user} categories={categories} zones={zones}/>,
@@ -1764,7 +1770,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     </div>
 
     <div style={{padding:"22px 20px 60px",flex:1,width:"100%",maxWidth:1100,margin:"0 auto",boxSizing:"border-box"}}>
-      <AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport()} onOpenPage={onOpenPage} onRegisterBusiness={onRegisterBusiness}/>
+      <AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport(null,{startNew:true})} onOpenPage={onOpenPage} onRegisterBusiness={onRegisterBusiness}/>
     </div>
   </div>;
 }

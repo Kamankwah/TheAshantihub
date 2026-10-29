@@ -75,7 +75,7 @@ describe('AccountHub tiles', () => {
 
   it.each(TILES)('test_each_tile_navigates_to_its_section_url: %s', (title, path) => {
     renderHub()
-    fireEvent.click(screen.getByRole('link', { name: new RegExp(title.replace('&', '&'), 'i') }))
+    fireEvent.click(screen.getByRole('link', { name: new RegExp(title, 'i') }))
     expect(screen.getByTestId('loc')).toHaveTextContent(path)
   })
 
@@ -154,7 +154,7 @@ describe('AccountHub sections', () => {
     expect(onRegisterBusiness).toHaveBeenCalledTimes(1)
   })
 
-  it('Login & security lists name, email, mobile and password, with no passkey row', () => {
+  it('test_login_security_has_no_passkey_row_and_hides_two_step_until_available', () => {
     renderHub('/my-account/security')
     for (const label of ['Name', 'Email', 'Primary mobile number', 'Password']) {
       expect(screen.getByText(label)).toBeInTheDocument()

@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { UserPanel } from './App.jsx'
+import { setStoredAuth } from './apiClient.js'
 import { server } from './mocks/server.js'
 
 // UserPanel's Orders/My Events/Saved tabs use react-query hooks
@@ -103,6 +104,35 @@ describe('UserPanel', () => {
       renderPanel({ at: SECTION.security, auth: makeAuth({ updateProfile: vi.fn().mockRejectedValue(new Error('nope')) }) })
       fireEvent.click(screen.getByText('Save Changes'))
       await screen.findByText('Could not save your profile. Please try again.')
+    })
+  })
+
+  describe('Login & security', () => {
+    it('shows the 2-step (sign-in & security) card, since the 2-step screens exist', async () => {
+      setStoredAuth({ token: 't', account_type: 'customer', id: 1, full_name: 'Ama Boateng' })
+      try {
+        renderPanel({ at: SECTION.security })
+        expect(await screen.findByText(/Sign-in & security/)).toBeInTheDocument()
+      } finally {
+        setStoredAuth(null)
+      }
+    })
+  })
+
+  describe('Contact Support context', () => {
+    it('Customer Service Contact Support opens a new conversation, not the latest one', async () => {
+      Element.prototype.scrollIntoView = vi.fn()
+      server.use(http.get('http://localhost:8000/api/messaging/conversations/', () => HttpResponse.json([
+        {
+          id: 1, customer: 1, business_owner: null, starter_name: 'Ama Boateng', subject: 'Royal Kente Hall', status: 'open',
+          messages: [{ id: 1, conversation: 1, sender_type: 'staff', body: 'Older reply.', created_at: '2026-07-01T10:00:00Z' }],
+          created_at: '2026-07-01T09:00:00Z', updated_at: '2026-07-01T10:00:00Z',
+        },
+      ])))
+      renderPanel({ at: '/my-account/help' })
+      fireEvent.click(screen.getByRole('button', { name: /Contact Support/ }))
+      await screen.findAllByText('Re: Royal Kente Hall')
+      expect(screen.getByText(/Send a message below to start a new conversation\./)).toBeInTheDocument()
     })
   })
 
@@ -510,5 +540,16 @@ describe('Account bookings and tickets — 7G', () => {
     // Wait for the list to load so the auto-select has run before asserting.
     expect((await screen.findAllByText('Re: Royal Kente Hall')).length).toBeGreaterThan(0)
     expect(screen.getByText(/start a new conversation about Ashanti Lodge/)).toBeInTheDocument()
+  })
+
+  it('does not carry "about <listing>" into a later visit to Your Messages', async () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    await openBookings([stay({ money: money({ policy: null, can_cancel: false, can_report: false }) })])
+    fireEvent.click(await screen.findByRole('button', { name: 'Contact AshantiHub Support' }))
+    expect(await screen.findByText(/start a new conversation about Ashanti Lodge/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Your Account home' }))
+    fireEvent.click(screen.getByRole('link', { name: /Your Messages/ }))
+    await screen.findByText(/Send a message below to start a new conversation\./)
+    expect(screen.queryByText(/about Ashanti Lodge/)).not.toBeInTheDocument()
   })
 })
