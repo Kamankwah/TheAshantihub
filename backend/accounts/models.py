@@ -627,6 +627,22 @@ class LocationCapture(models.Model):
         return f"{self.source} location capture #{self.pk} for owner {self.business_owner_id}"
 
 
+class BusinessOwnerCategory(models.Model):
+    """One category a business chose, in the order it chose them. Position 0 is the main one, mirrored in
+    `BusinessOwnerProfile.business_category`; write the list only through `accounts.categories.set_categories`."""
+
+    profile = models.ForeignKey(BusinessOwnerProfile, on_delete=models.CASCADE, related_name="category_links")
+    category = models.ForeignKey("listings.Category", on_delete=models.CASCADE, related_name="+")
+    position = models.PositiveSmallIntegerField()
+
+    class Meta:
+        ordering = ["position"]
+        constraints = [
+            models.UniqueConstraint(fields=["profile", "category"], name="uniq_owner_category"),
+            models.UniqueConstraint(fields=["profile", "position"], name="uniq_owner_category_position"),
+        ]
+
+
 class ScoutAssignment(models.Model):
     """A scout's field-verification assignment for one business (punch-list
     item 11). An admin (scouts.assign) assigns a scout to a business; the scout
