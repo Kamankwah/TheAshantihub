@@ -24,6 +24,8 @@ class GmSeedTests(TestCase):
         gm = perms("general_manager")
         # users.manage would rewrite an owner's phone and email; delivery_promo.approve (0063) and redelivery_fee.manage (0065) are money kinds' pools.
         makers = {"businesses.register", "users.manage", "listings.stage", "delivery_promo.approve", "redelivery_fee.manage"}
+        # direct.operate (marketplace plan 2) is Operations' alone: the GM is the checker of what Operations makes for Ashanti Direct.
+        makers.add("direct.operate")
         self.assertEqual((perms("operations") - makers) - gm, set())
         self.assertEqual(gm & makers, set())
         self.assertTrue({"kyc.approve", "listings.moderate", "event.approve", "hero_media.approve"} <= gm)
