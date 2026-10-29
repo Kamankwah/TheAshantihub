@@ -14,6 +14,7 @@ from approvals.models import ApprovalRequest
 from approvals.services import ApprovalError, MakerCannotDecide, StaleRequest
 from events.models import Event
 from listings.models import Listing, Zone
+from otp import senders
 from portfolio import confirmations, staff_listing_kind
 from portfolio.models import ListingDraft, OwnerConfirmation, StagedPhoto
 from portfolio.tests.test_staff_drafts import DraftBase
@@ -52,6 +53,38 @@ class Base(DraftBase):
             "description": "Opening party", "address": "Adum high street",
             "event_date": (timezone.now() + timedelta(days=20)).isoformat(), "visibility_days": 30, **extra,
         }
+
+
+class DirectOwnerTests(Base):
+    """R33: Ashanti Direct's staff-made items skip the owner text but still need a second person's approval."""
+
+    def sent(self, owner):
+        self.as_staff(self.scout)
+        draft = self.make_draft(owner)
+        self.send([draft], owner)
+        draft.refresh_from_db()
+        return draft
+
+    def test_direct_skips_the_text_but_keeps_maker_checker(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(is_company=True)
+        self.owner.refresh_from_db()
+        draft = self.sent(self.owner)
+        self.assertEqual(draft.status, "submitted")
+        self.assertEqual(senders.sms_outbox, [])
+        self.assertFalse(OwnerConfirmation.objects.exists())
+        approval = self.approval_of(draft)
+        self.assertEqual((approval.status, approval.maker, approval.payload["text_needed"]), ("pending", self.scout, False))
+        self.assertFalse(Listing.objects.filter(business_owner=self.owner).exists())
+        with self.assertRaises(MakerCannotDecide):
+            approvals.approve(approval.pk, self.scout)
+        approvals.approve(approval.pk, self.lead)
+        self.assertTrue(Listing.objects.filter(business_owner=self.owner, created_by_staff=self.scout).exists())
+
+    def test_a_partner_still_waits_for_the_text(self):
+        draft = self.sent(self.owner)
+        self.assertEqual(draft.status, "awaiting_owner")
+        self.assertEqual(len(senders.sms_outbox), 1)
+        self.assertTrue(OwnerConfirmation.objects.exists())
 
 
 class SubmitAtConfirmTests(Base):

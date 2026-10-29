@@ -77,9 +77,12 @@ NOT_DELIVERED = {
 
 
 def needs_owner_text(owner):
-    """Whether this business's staff-made items wait for the owner's texted confirmation. Always True today; a later
-    plan flips it for a company-owned business."""
-    return True
+    """Whether this business's staff-made items wait for the owner's texted confirmation. False only for Ashanti
+    Direct, the company's own business (there is no outside owner to text); the second person's approval still applies,
+    so the maker-checker rule is untouched."""
+    from accounts import direct
+
+    return not direct.is_direct(owner)
 
 
 def confirm_link(raw):
