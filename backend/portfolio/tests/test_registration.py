@@ -21,6 +21,7 @@ from fraud.models import FraudFlag
 from listings.models import Category, Zone
 from notifications.models import Notification
 from portfolio.models import AccountManagerAssignment
+from portfolio.registration import CARD_LOCKED_MESSAGE
 
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
 REGISTER_URL = "/api/portfolio/register/"
@@ -462,13 +463,52 @@ class KycResubmitTests(RegistrationBase):
         event = ActivityEvent.objects.order_by("-id").first()
         self.assertEqual(event.after["photos"], ["signboard_photo", "ghana_card_front"])
 
+    def test_a_card_photo_in_review_or_verified_cannot_be_replaced_here(self):
+        reject(self.approval_id, self.lead, "Blurry")
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
+        reviewed = profile.ghana_card_front_image.name
+        self.assertTrue(reviewed)
+        self.as_(self.scout)
+        for status in (BusinessOwnerProfile.IDENTITY_PENDING, BusinessOwnerProfile.IDENTITY_VERIFIED):
+            with self.subTest(status=status):
+                BusinessOwnerProfile.objects.filter(pk=profile.pk).update(identity_status=status)
+                with self.captureOnCommitCallbacks(execute=True):
+                    response = self.client.post(
+                        self.url, {"ghana_card_front": png("swap.png"), "signboard_photo": png("sign.png")},
+                        format="multipart",
+                    )
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertEqual(response.json()["detail"], CARD_LOCKED_MESSAGE)
+                profile.refresh_from_db()
+                self.assertEqual(profile.ghana_card_front_image.name, reviewed)
+                self.assertTrue(default_storage.exists(reviewed))
+                self.assertFalse(ApprovalRequest.objects.filter(status="pending").exists())
+        # Other fields still go through while the card is locked.
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.url, {"signboard_photo": png("sign.png")}, format="multipart")
+        self.assertEqual(response.status_code, 201, response.content)
+        profile.refresh_from_db()
+        self.assertEqual(profile.ghana_card_front_image.name, reviewed)
+        self.assertIn("sign", profile.signboard_photo.name)
+
+    def test_a_rejected_card_photo_can_still_be_replaced(self):
+        reject(self.approval_id, self.lead, "Blurry")
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
+        BusinessOwnerProfile.objects.filter(pk=profile.pk).update(identity_status=BusinessOwnerProfile.IDENTITY_REJECTED)
+        self.as_(self.scout)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.url, {"ghana_card_front": png("retake.png")}, format="multipart")
+        self.assertEqual(response.status_code, 201, response.content)
+        profile.refresh_from_db()
+        self.assertIn("retake", profile.ghana_card_front_image.name)
+
     def test_a_replaced_photo_that_cannot_be_deleted_is_logged(self):
         reject(self.approval_id, self.lead, "Blurry")
         self.as_(self.scout)
         storage = mock.Mock()
         storage.delete.side_effect = OSError("disk full")
-        with mock.patch("portfolio.registration.default_storage", storage), \
-                self.assertLogs("portfolio.registration", level="ERROR"), \
+        with mock.patch("accounts.files.default_storage", storage), \
+                self.assertLogs("accounts.files", level="ERROR"), \
                 self.captureOnCommitCallbacks(execute=True):
             response = self.client.post(self.url, {"signboard_photo": png("again.png")}, format="multipart")
         self.assertEqual(response.status_code, 201, response.content)

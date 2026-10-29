@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 from accounts import kyc
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
+from accounts.serializers import DUPLICATE_CARD_MESSAGE
 from accounts.testing import make_staff, staff_token
 
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
@@ -316,7 +317,7 @@ class IdentitySubmissionTests(TestCase):
         self.assertEqual(profile.identity_reviewed_by_id, staff.pk)
         self._assert_documents_unchanged(owner, "verified")
 
-    def test_profile_patch_locks_the_profile_row_and_validates_against_it(self):
+    def test_profile_patch_locks_the_owner_row_then_the_profile_row(self):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
 
@@ -324,16 +325,13 @@ class IdentitySubmissionTests(TestCase):
         with CaptureQueriesContext(connection) as queries:
             response = self._client(owner).patch(PROFILE_URL, {"gps_address": "AK-039-3333"}, format="json")
         self.assertEqual(response.status_code, 200, response.content)
-        # A SELECT ... FOR UPDATE on the profile only works inside a transaction, so this also shows the PATCH is atomic.
-        locking = [q["sql"] for q in queries.captured_queries if "FOR UPDATE" in q["sql"]
-                   and "accounts_businessownerprofile" in q["sql"]]
-        self.assertTrue(locking)
-        # Only the profile row is locked: other code locks the owner first and the profile second, so also locking
-        # the joined owner row here (in the opposite order) could deadlock.
-        for sql in locking:
-            clause = sql[sql.index("FOR UPDATE"):]
-            self.assertIn('OF "accounts_businessownerprofile"', clause)
-            self.assertNotIn("accounts_businessowner\"", clause)
+        # A SELECT ... FOR UPDATE only works inside a transaction, so this also shows the PATCH is atomic.
+        clauses = [q["sql"][q["sql"].index("FOR UPDATE"):] for q in queries.captured_queries if "FOR UPDATE" in q["sql"]]
+        # The same order as the staff identity decisions (owner, then profile), each lock on one table only: the
+        # PATCH writes the owner row when KYC was rejected, so locking the profile first could deadlock.
+        self.assertEqual(len(clauses), 2, clauses)
+        self.assertEqual(clauses[0].strip(), 'FOR UPDATE OF "accounts_businessowner"')
+        self.assertEqual(clauses[1].strip(), 'FOR UPDATE OF "accounts_businessownerprofile"')
 
     def test_profile_patch_validates_the_rule_against_the_row_not_a_stale_copy(self):
         # The row becomes pending after the owner's request began: the refusal reads the locked, current row.
@@ -399,6 +397,159 @@ class IdentitySubmissionTests(TestCase):
         self.assertEqual(client.get(URL).status_code, 403)
         self.assertEqual(client.post(URL, self._payload(), format="multipart").status_code, 403)
 
+    # ── Fix & Resubmit: only a changed card re-queues a rejected identity ─────────────────────────────────────────
+
+    def _rejected_both(self, number="GHA-710000001-1"):
+        return self._owner(
+            kyc_status=BusinessOwner.REJECTED,
+            identity_status=BusinessOwnerProfile.IDENTITY_REJECTED,
+            identity_rejection_reason="Photo is blurry.",
+            ghana_card_number=number,
+            ghana_card_front_image="ghana_cards/f.jpg",
+            ghana_card_back_image="ghana_cards/b.jpg",
+        )
+
+    def test_fix_and_resubmit_of_the_address_with_the_same_number_keeps_identity_rejected(self):
+        for sent in ("GHA-710000001-1", " gha-710000001-1 "):
+            with self.subTest(sent=sent):
+                BusinessOwner.objects.all().delete()
+                owner = self._rejected_both()
+                response = self._client(owner).patch(
+                    PROFILE_URL, {"gps_address": "AK-039-4444", "ghana_card_number": sent}, format="multipart",
+                )
+                self.assertEqual(response.status_code, 200, response.content)
+                profile = self._profile(owner)
+                self.assertEqual(profile.identity_status, "rejected")
+                self.assertEqual(profile.identity_rejection_reason, "Photo is blurry.")
+                owner.refresh_from_db()
+                self.assertEqual(owner.kyc_status, BusinessOwner.PENDING)
+
+    def test_a_changed_number_alone_resubmits_a_rejected_identity(self):
+        owner = self._rejected_both()
+        response = self._client(owner).patch(
+            PROFILE_URL, {"gps_address": "AK-039-4444", "ghana_card_number": "GHA-710000009-9"}, format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        profile = self._profile(owner)
+        self.assertEqual(profile.identity_status, "pending")
+        self.assertEqual(profile.ghana_card_number, "GHA-710000009-9")
+
+    def test_a_new_back_photo_resubmits_a_rejected_identity(self):
+        owner = self._rejected_both()
+        response = self._client(owner).patch(
+            PROFILE_URL, {"ghana_card_number": "GHA-710000001-1", "ghana_card_back_image": _image("b2.jpg")},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self._profile(owner).identity_status, "pending")
+
+    # ── Card numbers compare without case ───────────────────────────────────────────────────────────────────────
+
+    def test_post_stores_the_number_upper_case_and_a_case_variant_is_a_duplicate(self):
+        holder = self._owner()
+        response = self._client(holder).post(URL, self._payload(number=" gha-720000001-1 "), format="multipart")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self._profile(holder).ghana_card_number, "GHA-720000001-1")
+        # A legacy lower-case number on file still counts.
+        self._owner(ghana_card_number="gha-720000002-2")
+        for number in ("gha-720000001-1", "GHA-720000002-2"):
+            with self.subTest(number=number):
+                other = self._owner()
+                response = self._client(other).post(URL, self._payload(number=number), format="multipart")
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertEqual(response.json()["ghana_card_number"], [DUPLICATE_CARD_MESSAGE])
+                self.assertIsNone(self._profile(other).ghana_card_number)
+
+    def test_profile_patch_refuses_a_case_variant_of_another_business_number(self):
+        self._owner(ghana_card_number="GHA-730000001-1")
+        other = self._owner()
+        response = self._client(other).patch(PROFILE_URL, {"ghana_card_number": "gha-730000001-1"}, format="json")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["ghana_card_number"], [DUPLICATE_CARD_MESSAGE])
+        self.assertNotIn("already", response.content.decode().lower())
+        self.assertIsNone(self._profile(other).ghana_card_number)
+
+    def test_profile_patch_upper_cases_a_new_number(self):
+        owner = self._owner()
+        response = self._client(owner).patch(PROFILE_URL, {"ghana_card_number": " gha-740000001-1 "}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self._profile(owner).ghana_card_number, "GHA-740000001-1")
+
+    def test_same_number_in_another_case_while_pending_keeps_the_stored_number(self):
+        owner = self._owner(
+            identity_status=BusinessOwnerProfile.IDENTITY_PENDING, ghana_card_number="gha-750000001-1",
+            ghana_card_front_image="ghana_cards/keep_front.jpg", ghana_card_back_image="ghana_cards/keep_back.jpg",
+        )
+        response = self._client(owner).patch(
+            PROFILE_URL, {"ghana_card_number": "GHA-750000001-1", "gps_address": "AK-039-1212"}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        profile = self._profile(owner)
+        self.assertEqual(profile.ghana_card_number, "gha-750000001-1")
+        self.assertEqual(profile.identity_status, "pending")
+
+    # ── Replaced card files are deleted once the request is saved ─────────────────────────────────────────────
+
+    def _stored(self, owner):
+        profile = self._profile(owner)
+        return [f.name for f in (profile.ghana_card_front_image, profile.ghana_card_back_image,
+                                 profile.business_reg_certificate) if f]
+
+    def test_resubmitting_after_rejection_deletes_the_old_files(self):
+        from django.core.files.storage import default_storage
+
+        owner = self._owner()
+        client = self._client(owner)
+        response = client.post(URL, self._payload(number="GHA-760000001-1", business_reg_certificate=_pdf()),
+                               format="multipart")
+        self.assertEqual(response.status_code, 200, response.content)
+        old = self._stored(owner)
+        self.assertEqual(len(old), 3)
+        self.assertTrue(all(default_storage.exists(name) for name in old))
+        BusinessOwnerProfile.objects.filter(business_owner=owner).update(identity_status="rejected")
+        with self.captureOnCommitCallbacks(execute=True):
+            response = client.post(URL, self._payload(number="GHA-760000001-1", business_reg_certificate=_pdf("c2.pdf")),
+                                   format="multipart")
+        self.assertEqual(response.status_code, 200, response.content)
+        new = self._stored(owner)
+        self.assertEqual(len(new), 3)
+        self.assertFalse(any(default_storage.exists(name) for name in old))
+        self.assertTrue(all(default_storage.exists(name) for name in new))
+
+    def test_profile_patch_deletes_a_replaced_card_photo(self):
+        from django.core.files.storage import default_storage
+
+        owner = self._owner()
+        client = self._client(owner)
+        self.assertEqual(client.patch(PROFILE_URL, {"ghana_card_front_image": _image("f1.jpg")},
+                                      format="multipart").status_code, 200)
+        old = self._profile(owner).ghana_card_front_image.name
+        self.assertTrue(default_storage.exists(old))
+        with self.captureOnCommitCallbacks(execute=True):
+            response = client.patch(PROFILE_URL, {"ghana_card_front_image": _image("f2.jpg")}, format="multipart")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(default_storage.exists(old))
+        self.assertTrue(default_storage.exists(self._profile(owner).ghana_card_front_image.name))
+
+    def test_a_rolled_back_resubmission_deletes_nothing(self):
+        from unittest import mock
+
+        from django.core.files.storage import default_storage
+        from django.db import IntegrityError
+
+        owner = self._owner()
+        client = self._client(owner)
+        self.assertEqual(client.post(URL, self._payload(number="GHA-770000001-1"), format="multipart").status_code, 200)
+        old = self._stored(owner)
+        BusinessOwnerProfile.objects.filter(business_owner=owner).update(identity_status="rejected")
+        with mock.patch("accounts.views.kyc.submit_identity", side_effect=IntegrityError("race")), \
+                self.captureOnCommitCallbacks(execute=True) as callbacks:
+            response = client.post(URL, self._payload(number="GHA-770000001-1"), format="multipart")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(callbacks, [])
+        self.assertEqual(self._stored(owner), old)
+        self.assertTrue(all(default_storage.exists(name) for name in old))
+
 
 class SubmitIdentityServiceTests(TestCase):
     def _profile(self, **fields):
@@ -442,3 +593,22 @@ class SubmitIdentityServiceTests(TestCase):
         self.assertFalse(kyc.submit_identity(rejected))
         rejected.refresh_from_db()
         self.assertEqual(rejected.identity_status, "verified")
+
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+class IdentitySubmissionThrottleTests(TestCase):
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
+    def test_identity_post_is_throttled_so_the_duplicate_answer_is_not_an_open_oracle(self):
+        owner = BusinessOwner.objects.create(full_name="Busy", login_phone="+233210008888", password_hash="x")
+        BusinessOwnerProfile.objects.create(business_owner=owner, gps_address="AK-039-5050")
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(owner, 'business_owner')}")
+        for _ in range(10):
+            self.assertEqual(client.post(URL, {"ghana_card_number": ""}, format="multipart").status_code, 400)
+        self.assertEqual(client.post(URL, {"ghana_card_number": ""}, format="multipart").status_code, 429)
+        # Reading where the check stands is not throttled.
+        self.assertEqual(client.get(URL).status_code, 200)

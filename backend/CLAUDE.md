@@ -157,9 +157,13 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   Support chip (`support/people.py`), the credit `kyc_verified` factor and payout-name matching (`wallets.names`) read,
   all through `BusinessOwner.identity_verified`; never read `kyc_status` for those. Submitting: `kyc.submit_identity`
   (conditional UPDATE, only with the card number and both photos on file), reached from the owner endpoint
-  `business-owners/me/identity/` and from the profile PATCH when it carries card fields; that PATCH locks the profile
-  row alone (`select_for_update(of=("self",))`) and refuses card changes while identity is pending or verified (the
-  same number is allowed). Deciding: `kyc.approve_identity` / `reject_identity` / `reopen_identity`, behind
+  `business-owners/me/identity/` and from the profile PATCH when it changes the card (a new photo, or a number other
+  than the stored one, compared trimmed and upper-case: the registration form resends the number with every save);
+  that PATCH locks the owner row, then the profile row (each `select_for_update(of=("self",))`, the order the staff
+  decisions use), and refuses card changes while identity is pending or verified (the same number is allowed). The
+  scout's KYC resubmit refuses a new card photo while identity is pending or verified. Card numbers are stored
+  upper-case and compared `iexact`; the identity POST is throttled (`owner_identity`). Replaced card photos and
+  certificates are deleted after commit (`accounts.files`). Deciding: `kyc.approve_identity` / `reject_identity` / `reopen_identity`, behind
   `kyc.approve`, at `kyc/identity/pending/` and `kyc/{id}/identity/{approve,reject,re-review}/` (their own serializer,
   identity-named keys). Same submitter refusal (`is_kyc_submitter` never decides identity); lock order owner, then
   profile row, `record()` last (`identity-*` verbs refresh `kyc-queue`); notices reuse the `kyc_approved` /

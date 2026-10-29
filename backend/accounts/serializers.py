@@ -537,7 +537,9 @@ class PayoutDetailSerializer(serializers.ModelSerializer):
         for field, value in validated_data.items():
             setattr(instance, field, value)
         instance.payout_verification_status = "pending"
-        instance.save()
+        # Only the payout fields: the row is not locked here, so a full-row save could write back a stale
+        # identity_status (or address) that staff changed after this request read the profile.
+        instance.save(update_fields=[*validated_data, "payout_verification_status"])
         return instance
 
 
@@ -587,6 +589,25 @@ class BusinessHoursSerializer(serializers.Serializer):
 
 IDENTITY_LOCKED_STATUSES = (BusinessOwnerProfile.IDENTITY_PENDING, BusinessOwnerProfile.IDENTITY_VERIFIED)
 IDENTITY_LOCKED_MESSAGE = "Your documents are in review (or verified) and can't be changed here."
+DUPLICATE_CARD_MESSAGE = "We couldn't accept this Ghana Card number. Check it and try again, or contact support."
+
+
+def normalize_card_number(value):
+    """A Ghana Card number as stored: trimmed and upper-case (as the scout form stores it), or None when blank."""
+    return (value or "").strip().upper() or None
+
+
+def same_card_number(a, b):
+    """Two card numbers compared as stored (older rows may hold lower case)."""
+    return normalize_card_number(a) == normalize_card_number(b)
+
+
+def card_number_taken(value, *, exclude=None):
+    """Whether another business holds this number, in any case."""
+    taken = BusinessOwnerProfile.objects.filter(ghana_card_number__iexact=value)
+    if exclude is not None and exclude.pk is not None:
+        taken = taken.exclude(pk=exclude.pk)
+    return taken.exists()
 
 
 class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
@@ -622,11 +643,17 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
         # this KYC-edit endpoint must never let it be switched.
         extra_kwargs["business_kind"] = {"read_only": True}
 
+    # Declared, so DRF adds no UniqueValidator (whose "already exists" would say someone holds the number): the
+    # duplicate check below answers the generic DUPLICATE_CARD_MESSAGE, without case, as the identity POST does.
+    ghana_card_number = serializers.CharField(max_length=30, required=False, allow_blank=True, allow_null=True)
+
     def validate_ghana_card_number(self, value):
         # The column is unique, so "no card number" must be NULL, never "":
         # a second business without one would collide on the empty string.
-        value = (value or "").strip()
-        return value or None
+        value = normalize_card_number(value)
+        if value and card_number_taken(value, exclude=self.instance):
+            raise serializers.ValidationError(DUPLICATE_CARD_MESSAGE)
+        return value
 
     def validate(self, data):
         owner = self.instance.business_owner
@@ -643,8 +670,11 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
             for field in ("ghana_card_front_image", "ghana_card_back_image"):
                 if field in data:
                     errors[field] = IDENTITY_LOCKED_MESSAGE
-            if "ghana_card_number" in data and data["ghana_card_number"] != self.instance.ghana_card_number:
-                errors["ghana_card_number"] = IDENTITY_LOCKED_MESSAGE
+            if "ghana_card_number" in data:
+                if same_card_number(data["ghana_card_number"], self.instance.ghana_card_number):
+                    data.pop("ghana_card_number")  # keep the reviewed number exactly as stored
+                else:
+                    errors["ghana_card_number"] = IDENTITY_LOCKED_MESSAGE
             if errors:
                 raise serializers.ValidationError(errors)
 
@@ -674,9 +704,6 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
         return instance
 
 
-DUPLICATE_CARD_MESSAGE = "We couldn't accept this Ghana Card number. Check it and try again, or contact support."
-
-
 class IdentitySubmissionSerializer(serializers.ModelSerializer):
     """The owner's identity documents (POST .../business-owners/me/identity/): the
     Ghana Card number and both photos are required; the certificate, TIN and
@@ -700,13 +727,10 @@ class IdentitySubmissionSerializer(serializers.ModelSerializer):
         }
 
     def validate_ghana_card_number(self, value):
-        value = (value or "").strip()
+        value = normalize_card_number(value)
         if not value:
             raise serializers.ValidationError("Enter your Ghana Card number.")
-        taken = BusinessOwnerProfile.objects.filter(ghana_card_number=value)
-        if self.instance is not None:
-            taken = taken.exclude(pk=self.instance.pk)
-        if taken.exists():
+        if card_number_taken(value, exclude=self.instance):
             raise serializers.ValidationError(DUPLICATE_CARD_MESSAGE)
         return value
 

@@ -27,7 +27,7 @@ from otp import step_up
 from staffsecurity import signin as signin_log
 from staffsecurity.models import StaffSignInRecord
 
-from . import claims, hours, kyc, sessions, two_factor
+from . import claims, files, hours, kyc, sessions, two_factor
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
 from .models import (
@@ -65,6 +65,7 @@ from .serializers import (
     BusinessOwnerRegistrationSerializer,
     BusinessOwnerProfileUpdateSerializer,
     DUPLICATE_CARD_MESSAGE,
+    same_card_number,
     IdentitySubmissionSerializer,
     CustomerListSerializer,
     CustomerLoginSerializer,
@@ -1545,10 +1546,12 @@ class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
         if self.request.method != "PATCH":
             return self.request.user.profile
         # Locked for the whole PATCH (update() holds the transaction): validation and save run against the
-        # current row, so a staff verify/reject or an identity POST landing meanwhile is not reverted by this
+        # current rows, so a staff verify/reject or an identity POST landing meanwhile is not reverted by this
         # request's full-row save, and the "documents under review" rule is checked on what is really stored.
-        # Only the profile row is locked (of=self): the owner row is joined for reading, and other code locks the
-        # owner first and the profile second, so locking both here in the opposite order could deadlock.
+        # Lock order: the owner row, then the profile row, each lock on its own table (of=self) - the same order as
+        # the staff identity decisions (kyc._locked_identity) and the scout resubmit. The owner row is locked because
+        # the save writes it when KYC was rejected (back to pending).
+        BusinessOwner.objects.select_for_update(of=("self",)).get(pk=self.request.user.pk)
         profile = BusinessOwnerProfile.objects.select_for_update(of=("self",)).select_related("business_owner").get(
             business_owner=self.request.user,
         )
@@ -1556,19 +1559,32 @@ class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
         return profile
 
     def update(self, request, *args, **kwargs):
-        with transaction.atomic():
-            return super().update(request, *args, **kwargs)
+        try:
+            with transaction.atomic():
+                return super().update(request, *args, **kwargs)
+        except IntegrityError:
+            # Two owners sent the same number at once; the unique column let one win.
+            return Response({"ghana_card_number": [DUPLICATE_CARD_MESSAGE]}, status=400)
 
     def perform_update(self, serializer):
+        profile = serializer.instance
+        data = serializer.validated_data
+        stored_number = profile.ghana_card_number
+        replaced = files.replaced_names(profile, CARD_FILE_FIELDS, data)
         with transaction.atomic():
             serializer.save()
             # A registration that supplies the number and both photos goes straight to the identity check. Only a
-            # request that touched a card field can submit: an owner whose identity was rejected must not be put back
-            # in the queue, with the same photos, by editing their address.
-            if any(field in serializer.validated_data for field in IDENTITY_FIELDS):
-                kyc.submit_identity(serializer.instance)
+            # changed card can submit: a new photo, or a number other than the one stored. The registration form
+            # resends the number with every save, so an owner whose identity was rejected must not be put back in
+            # the queue, with the same photos, by fixing their address.
+            new_photo = any(field in data for field in ("ghana_card_front_image", "ghana_card_back_image"))
+            new_number = "ghana_card_number" in data and not same_card_number(data["ghana_card_number"], stored_number)
+            if new_photo or new_number:
+                kyc.submit_identity(profile)
+            files.delete_after_commit(replaced)
 
 
+CARD_FILE_FIELDS = ("ghana_card_front_image", "ghana_card_back_image", "business_reg_certificate")
 IDENTITY_FIELDS = ("ghana_card_number", "ghana_card_front_image", "ghana_card_back_image")
 IDENTITY_ALREADY_SUBMITTED = {
     BusinessOwnerProfile.IDENTITY_PENDING: "Your identity documents are already being reviewed.",
@@ -1596,6 +1612,11 @@ class IdentitySubmissionView(APIView):
 
     permission_classes = [IsBusinessOwner]
     parser_classes = [MultiPartParser, FormParser]
+    # The duplicate-number 400 must not be an unlimited oracle for whether a number is on file.
+    throttle_scope = "owner_identity"
+
+    def get_throttles(self):
+        return super().get_throttles() if self.request.method == "POST" else []
 
     def get(self, request):
         profile = getattr(request.user, "profile", None) or BusinessOwnerProfile(business_owner=request.user)
@@ -1610,8 +1631,10 @@ class IdentitySubmissionView(APIView):
                     return Response({"detail": IDENTITY_ALREADY_SUBMITTED[profile.identity_status]}, status=409)
                 serializer = IdentitySubmissionSerializer(profile, data=request.data)
                 serializer.is_valid(raise_exception=True)
+                replaced = files.replaced_names(profile, CARD_FILE_FIELDS, serializer.validated_data)
                 serializer.save()
                 kyc.submit_identity(profile)
+                files.delete_after_commit(replaced)
         except IntegrityError:
             # Two owners sent the same number at once; the unique column let one win.
             return Response({"ghana_card_number": [DUPLICATE_CARD_MESSAGE]}, status=400)

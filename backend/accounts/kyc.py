@@ -300,8 +300,9 @@ def submit_identity(profile):
 # BusinessOwnerProfile.identity_status (the verified check mark) and never
 # touches kyc_status, the pending business.kyc request or the commission.
 # Lock order: the owner row (_locked_owner, which refuses a submitter), then
-# the profile row, then record() last. The owner's own profile PATCH locks the
-# profile row alone, so the two cannot deadlock. The owner's notices reuse the
+# the profile row, then record() last. The owner's own profile PATCH and the
+# scout's KYC resubmit take the same order (owner row, then profile row, each
+# FOR UPDATE OF its own table). The owner's notices reuse the
 # kyc_approved / kyc_rejected kinds (the registry is not enforced and the
 # titles say which check).
 

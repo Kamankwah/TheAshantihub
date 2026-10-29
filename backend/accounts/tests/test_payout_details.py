@@ -73,3 +73,28 @@ class PayoutDetailUpdateTests(TestCase):
     @override_settings(LEDGER_ENABLED=False, OTP_STEP_UP_ENFORCED=False)
     def test_payout_patch_needs_no_code_while_the_ledger_is_off(self):
         self.assertEqual(self._patch_bank().status_code, 200)
+
+
+class PayoutDetailSaveTests(TestCase):
+    def test_saving_payout_details_writes_only_its_own_fields(self):
+        from accounts.serializers import PayoutDetailSerializer
+
+        owner = BusinessOwner.objects.create(full_name="Kwesi", login_phone="+233206665500", password_hash="x")
+        profile = BusinessOwnerProfile.objects.create(
+            business_owner=owner, gps_address="AK-039-5031", payout_verification_status="verified",
+        )
+        serializer = PayoutDetailSerializer(
+            profile, data={"default_payout_method": "momo", "payout_momo_network": "MTN",
+                           "payout_momo_number": "+233206665500", "payout_momo_name": "Kwesi"}, partial=True,
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        # Staff approve the identity between this request's read and its save.
+        BusinessOwnerProfile.objects.filter(pk=profile.pk).update(
+            identity_status=BusinessOwnerProfile.IDENTITY_VERIFIED, gps_address="AK-039-9999",
+        )
+        serializer.save()
+        profile.refresh_from_db()
+        self.assertEqual(profile.identity_status, BusinessOwnerProfile.IDENTITY_VERIFIED)
+        self.assertEqual(profile.gps_address, "AK-039-9999")
+        self.assertEqual(profile.payout_momo_number, "+233206665500")
+        self.assertEqual(profile.payout_verification_status, "pending")
