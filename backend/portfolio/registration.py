@@ -15,6 +15,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from accounts import hours
+from accounts.categories import InvalidCategories, set_categories
 from accounts import files as stored_files
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Role
 from accounts.serializers import _strict_bool
@@ -98,12 +99,28 @@ def _week(data):
     return days
 
 
+def _with_category_list(values):
+    """A copy of the form where business_categories, sent as a JSON string in multipart (repeated keys would lose
+    values), is the list it spells. Text that is not a JSON array is left for the serializer to refuse."""
+    values = dict(values)
+    raw = values.get("business_categories")
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw.strip()) if raw.strip() else []
+        except ValueError:
+            parsed = None
+        if not isinstance(parsed, list):
+            raise serializers.ValidationError({"business_categories": ["The categories couldn't be read."]})
+        values["business_categories"] = parsed
+    return values
+
+
 def _six(value):
     return Decimal(f"{float(value):.6f}")
 
 
 def register_business(scout, data, files, *, http_request=None):
-    serializer = ScoutRegistrationSerializer(data=_as_dict(data, files))
+    serializer = ScoutRegistrationSerializer(data=_with_category_list(_as_dict(data, files)))
     serializer.is_valid(raise_exception=True)
     values = serializer.validated_data
     week = _week(_as_dict(data))
@@ -125,6 +142,10 @@ def register_business(scout, data, files, *, http_request=None):
             if prospect is None:
                 raise RegistrationError(PROSPECT_GONE_MESSAGE, code="prospect", status_code=404)
         owner = _create_business(scout, values, identity)
+        try:
+            set_categories(owner.profile, [category.pk for category in values["categories"]])
+        except InvalidCategories as exc:  # a category changed since it was checked: nothing is registered
+            raise RegistrationError(exc.message, code="categories") from None
         hours.set_week(owner, week)
         if prospect is not None:
             prospects.link_registration(prospect, owner, name)

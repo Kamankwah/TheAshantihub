@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import serializers
 
+from accounts.categories import MAX_CATEGORIES
 from accounts.gps import validate_ashanti_gps
 from accounts.kyc import address_correction
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
@@ -57,7 +58,11 @@ class ScoutRegistrationSerializer(serializers.Serializer):
     owner_email = serializers.EmailField(required=False, allow_blank=True, max_length=254)
     business_name = serializers.CharField(max_length=150)
     business_kind = serializers.ChoiceField(choices=BusinessOwnerProfile.BUSINESS_KIND_CHOICES)
-    business_category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all())
+    # Several categories (the main one first), or the older single field (a list of one). Exactly one is sent.
+    business_categories = serializers.ListField(
+        child=serializers.IntegerField(min_value=1, max_value=2**63 - 1), required=False,
+    )
+    business_category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), required=False)
     zone = serializers.PrimaryKeyRelatedField(queryset=Zone.objects.all())
     gps_address = serializers.CharField(max_length=20)
     lat = serializers.FloatField()
@@ -110,11 +115,35 @@ class ScoutRegistrationSerializer(serializers.Serializer):
     def validate_ghana_card_number(self, value):
         return (value or "").strip().upper() or None
 
-    def validate(self, attrs):
-        if attrs["business_category"].kind != attrs["business_kind"]:
+    def _categories(self, attrs):
+        """The chosen categories as model rows, main first, under whichever key the client used."""
+        if "business_categories" in attrs and "business_category" in attrs:
             raise serializers.ValidationError(
-                {"business_category": ["Choose a category for this kind of business."]}
+                {"business_categories": ["Send business_categories, not both it and business_category."]}
             )
+        if "business_category" in attrs:
+            return "business_category", [attrs["business_category"]]
+        ids = attrs.get("business_categories")
+        if not ids:
+            raise serializers.ValidationError({"business_categories": ["Choose at least one category."]})
+        if len(set(ids)) != len(ids):
+            raise serializers.ValidationError({"business_categories": ["Pick each category once."]})
+        if len(ids) > MAX_CATEGORIES:
+            raise serializers.ValidationError(
+                {"business_categories": [f"Choose at most {MAX_CATEGORIES} categories."]}
+            )
+        by_id = Category.objects.in_bulk(ids)
+        if len(by_id) != len(ids):
+            raise serializers.ValidationError({"business_categories": ["That category doesn't exist."]})
+        return "business_categories", [by_id[pk] for pk in ids]
+
+    def validate(self, attrs):
+        key, categories = self._categories(attrs)
+        if any(category.kind != attrs["business_kind"] for category in categories):
+            raise serializers.ValidationError({key: ["Choose a category for this kind of business."]})
+        attrs.pop("business_categories", None)
+        attrs["categories"] = categories
+        attrs["business_category"] = categories[0]
         if not attrs.get("location_is_manual"):
             accuracy = attrs.get("location_accuracy_m")
             if accuracy is None:
