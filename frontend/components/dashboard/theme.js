@@ -127,7 +127,7 @@ export function maxLoanForScore(score) {
 export const CREDIT_FACTOR_META = {
   listings_published: { icon: "🏷️", label: "Published Listings", desc: "Number of your listings that are live on AshantiHub (up to 10 counted)" },
   account_tenure_months: { icon: "📅", label: "Account Tenure", desc: "How long your business has been on AshantiHub (up to 24 months counted)" },
-  kyc_verified: { icon: "🪪", label: "KYC Verified", desc: "Whether your Ghana Card / business KYC has been verified by AshantiHub staff" },
+  kyc_verified: { icon: "🪪", label: "Identity Verified", desc: "Whether AshantiHub staff have verified your Ghana Card (see Get verified on your profile)" },
   payout_verified: { icon: "🏦", label: "Payout Details Verified", desc: "Whether your MoMo/bank payout details have been verified" },
 };
 

@@ -41,7 +41,7 @@ def event_state(event, now):
 def organiser(event):
     if event.submitted_by_business_id:
         owner = event.submitted_by_business
-        return {"kind": "business", "id": owner.pk, "name": owner.display_name, "verified": owner.kyc_status == "verified"}
+        return {"kind": "business", "id": owner.pk, "name": owner.display_name, "verified": owner.identity_verified}
     customer = event.submitted_by_customer
     return {"kind": "customer", "id": customer.pk, "name": customer.full_name, "verified": None}
 

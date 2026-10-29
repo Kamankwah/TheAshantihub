@@ -83,7 +83,7 @@ function checkRows(sheet) {
       exact.length ? "Found" : "None found",
       exact.length
         ? exact.map(alreadyBelongsText).join(" ")
-        : "The owner's sign-in phone was checked against every other business's sign-in, contact and payout MoMo numbers; the Ghana Post address and Ghana Card number were checked too.",
+        : `The owner's sign-in phone was checked against every other business's sign-in, contact and payout MoMo numbers; the Ghana Post address${owner.ghana_card_number ? " and Ghana Card number were" : " was"} checked too.`,
     ],
     [
       "Similar name within 50 m",
@@ -164,6 +164,7 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
   const photos = sheet.photos || {};
   const location = sheet.location || {};
   const consent = sheet.consent;
+  const hasDocuments = Boolean(owner.ghana_card_number || photos.ghana_card_front || photos.ghana_card_back || business.tin_given || business.has_certificate);
   const flags = sheet.flags || [];
   const decided = location.address_verified_at != null;
   const verified = decided && location.address_verified === true;
@@ -188,7 +189,6 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
           ["Full name", owner.full_name || "—"],
           ["Login phone", fullPhone || owner.login_phone || "—"],
           ["Email", owner.email || "Not given"],
-          ["Ghana Card number", owner.ghana_card_number || "Not given"],
           ...(sheet.owner_confirmation?.line ? [["Owner confirmation", sheet.owner_confirmation.line]] : []),
         ]} />
         <AskOwnerAgain businessId={businessId} confirmation={sheet.owner_confirmation} onDone={refetch} />
@@ -214,9 +214,27 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
         <h3 style={h3}>Photos</h3>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Photo label="Signboard" url={photos.signboard} />
-          <Photo label="Ghana Card · front" url={photos.ghana_card_front} />
-          {photos.ghana_card_back && <Photo label="Ghana Card · back" url={photos.ghana_card_back} />}
         </div>
+      </div>
+
+      <div style={section}>
+        <h3 style={h3}>Identity documents</h3>
+        {hasDocuments ? (
+          <>
+            {owner.ghana_card_number && <Facts rows={[["Ghana Card number", owner.ghana_card_number]]} />}
+            {(photos.ghana_card_front || photos.ghana_card_back) && (
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {photos.ghana_card_front && <Photo label="Ghana Card · front" url={photos.ghana_card_front} />}
+                {photos.ghana_card_back && <Photo label="Ghana Card · back" url={photos.ghana_card_back} />}
+              </div>
+            )}
+            {business.tin_given && <div style={text}>TIN given</div>}
+            {business.has_certificate && <div style={text}>Certificate on file (open it in the KYC queue's identity view)</div>}
+            <div style={dim}>Identity documents are decided in the KYC queue, separately from the address.</div>
+          </>
+        ) : (
+          <div style={dim}>No documents provided</div>
+        )}
       </div>
 
       <div style={section}>

@@ -24,7 +24,11 @@ def business(name="Adepa Ventures", *, verified=True, lat=None, lng=None, suspen
         full_name=f"Owner {n}", login_phone=f"+23320{n:07d}", password_hash="x", is_suspended=suspended,
         kyc_status=BusinessOwner.VERIFIED if verified else BusinessOwner.PENDING,
     )
-    BusinessOwnerProfile.objects.create(business_owner=owner, business_name=name, lat=lat, lng=lng)
+    # The public verified mark follows approved identity documents, not the address check.
+    BusinessOwnerProfile.objects.create(
+        business_owner=owner, business_name=name, lat=lat, lng=lng,
+        identity_status=BusinessOwnerProfile.IDENTITY_VERIFIED if verified else BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED,
+    )
     return owner
 
 

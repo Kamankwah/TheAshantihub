@@ -69,6 +69,18 @@ describe('BusinessDashboard approval gating', () => {
     expect(screen.queryByText(/Akwaaba, Abena/)).not.toBeInTheDocument()
   })
 
+  it('points a pending owner at Get verified for the check mark while they wait', async () => {
+    mockDashboardData()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'pending' }} />)
+    expect(screen.getByText('While you wait, you can add your Ghana Card for the verified check mark under Profile & Settings → Get verified.')).toBeInTheDocument()
+  })
+
+  it('does not show the Get verified pointer to a rejected owner', async () => {
+    mockDashboardData()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'rejected', kycRejectionReason: 'Blurry' }} />)
+    expect(screen.queryByText(/While you wait, you can add your Ghana Card/)).not.toBeInTheDocument()
+  })
+
   it('shows the rejection reason and a resubmit button when rejected', async () => {
     mockDashboardData()
     renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'rejected', kycRejectionReason: 'Blurry Ghana Card' }} />)

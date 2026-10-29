@@ -61,6 +61,12 @@ class ExactDuplicateTests(TestCase):
             ["phone", "gps_address", "ghana_card"],
         )
 
+    def test_duplicate_check_ignores_missing_card_number(self):
+        existing_business("Adwoa Fabrics", phone="0201112223", gps="AK-039-5028", card=None)
+        existing_business("Kofi Stores", phone="0201112224", gps="AK-039-5029", card=None)
+        self.assertEqual(checks.exact_duplicates(ghana_card_number=None), [])
+        self.assertEqual(checks.exact_duplicates(phone="0209998887", ghana_card_number=None), [])
+
     def test_the_business_itself_and_blank_values_never_match(self):
         owner = existing_business("Adwoa Fabrics", phone="0201112223", gps="AK-039-5028", card="GHA-123456789-0")
         self.assertEqual(

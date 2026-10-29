@@ -98,6 +98,11 @@ class Command(BaseCommand):
             business_owner=owner, business_name=business, business_kind=kind, gps_address=gps,
             business_contact_phone=phone, lat="6.700000", lng="-1.620000", location_accuracy_m=12,
             location_set_by="scout", location_set_at=now, terms_accepted_at=None if state == "kyc_waiting" else now,
+            # A KYC-verified demo business has the verified check mark too (identity approved), as the 0068 backfill
+            # gives every KYC-verified business; the one waiting for KYC has not sent its Ghana Card.
+            identity_status=(BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED if state == "kyc_waiting"
+                             else BusinessOwnerProfile.IDENTITY_VERIFIED),
+            identity_reviewed_at=None if state == "kyc_waiting" else now - timedelta(days=45),
         )
         profile.signboard_photo.save(f"demo-{phone[-4:]}-signboard.png", ContentFile(_png()), save=False)
         profile.ghana_card_front_image.save(f"demo-{phone[-4:]}-card.png", ContentFile(_png()), save=False)

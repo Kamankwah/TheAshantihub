@@ -9,7 +9,7 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
 
 from accounts import direct
-from accounts.models import BusinessOwner, Role
+from accounts.models import BusinessOwner, BusinessOwnerProfile, Role
 from accounts.testing import make_staff
 
 SETTINGS = {"ASHANTI_DIRECT_PHONE": "0244000111", "ASHANTI_DIRECT_EMAIL": "direct@theashantihub.com"}
@@ -65,6 +65,50 @@ class EnsureAshantiDirectTests(TestCase):
         # Any number of ordinary businesses is fine.
         BusinessOwner.objects.create(full_name="A", login_phone="+233207000998", password_hash="x")
         BusinessOwner.objects.create(full_name="B", login_phone="+233207000997", password_hash="x")
+
+
+@override_settings(**SETTINGS)
+class AshantiDirectIdentityTests(TestCase):
+    """The company's own shop has no Ghana Card to upload: the command marks its identity verified by the system, so it
+    keeps the check mark, featured eligibility and payout-name matching."""
+
+    def assert_system_verified(self):
+        owner = direct.ashanti_direct()
+        self.assertTrue(owner.identity_verified)
+        self.assertIsNotNone(owner.profile.identity_reviewed_at)
+        self.assertIsNone(owner.profile.identity_reviewed_by)
+        return owner
+
+    def test_command_verifies_the_identity_and_a_second_run_keeps_it(self):
+        call_command("ensure_ashanti_direct", stdout=StringIO())
+        first = self.assert_system_verified().profile.identity_reviewed_at
+        call_command("ensure_ashanti_direct", stdout=StringIO())
+        self.assertEqual(self.assert_system_verified().profile.identity_reviewed_at, first)
+
+    def test_command_verifies_an_existing_direct_whose_identity_is_not_verified(self):
+        call_command("ensure_ashanti_direct", stdout=StringIO())
+        BusinessOwnerProfile.objects.filter(business_owner__is_company=True).update(
+            identity_status=BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED, identity_reviewed_at=None,
+        )
+        call_command("ensure_ashanti_direct", stdout=StringIO())
+        self.assert_system_verified()
+
+    def test_direct_products_appear_in_the_verified_filter(self):
+        from rest_framework.test import APIClient
+
+        from listings.models import Category, Listing, Zone
+
+        call_command("ensure_ashanti_direct", stdout=StringIO())
+        item = Listing.objects.create(
+            business_owner=direct.ashanti_direct(), category=Category.objects.get(slug="shops"),
+            zone=Zone.objects.get(name="Manhyia"), name="Direct Kettle", description="D.",
+            contact_phone="+233244000111", price_amount="80.00", status=Listing.PUBLISHED,
+        )
+        response = APIClient().get("/api/listings/?verified=true")
+        self.assertEqual(response.status_code, 200, response.content)
+        rows = response.json()["results"]
+        self.assertEqual([r["id"] for r in rows], [item.pk])
+        self.assertIs(rows[0]["business_owner"]["identity_verified"], True)
 
 
 class DirectPermissionTests(TestCase):

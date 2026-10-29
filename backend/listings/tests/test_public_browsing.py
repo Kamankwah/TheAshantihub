@@ -1,7 +1,7 @@
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from accounts.models import BusinessOwner
+from accounts.models import BusinessOwner, BusinessOwnerProfile
 from listings.models import Category, Listing, Zone
 
 
@@ -152,23 +152,27 @@ class PublicBrowsingTests(TestCase):
         ids = [item["id"] for item in response.json()["results"]]
         self.assertEqual(ids, [grocery_listing.id])
 
+    def verify_identity(self):
+        # The verified mark and filter follow approved identity documents (not kyc_status).
+        BusinessOwnerProfile.objects.update_or_create(
+            business_owner=self.owner, defaults={"identity_status": BusinessOwnerProfile.IDENTITY_VERIFIED},
+        )
+
     def test_filter_by_verified_true_excludes_unverified_owner_listings(self):
-        # self.owner defaults to kyc_status=pending (not verified).
+        # self.owner defaults to no approved identity.
         response = self.client.get("/api/listings/?verified=true")
         ids = [item["id"] for item in response.json()["results"]]
         self.assertEqual(ids, [])
 
     def test_filter_by_verified_true_includes_verified_owner_listings(self):
-        self.owner.kyc_status = BusinessOwner.VERIFIED
-        self.owner.save(update_fields=["kyc_status"])
+        self.verify_identity()
         response = self.client.get("/api/listings/?verified=true")
         ids = [item["id"] for item in response.json()["results"]]
         self.assertIn(self.published_hotel.id, ids)
         self.assertIn(self.published_food.id, ids)
 
     def test_filter_by_verified_1_also_accepted(self):
-        self.owner.kyc_status = BusinessOwner.VERIFIED
-        self.owner.save(update_fields=["kyc_status"])
+        self.verify_identity()
         response = self.client.get("/api/listings/?verified=1")
         ids = [item["id"] for item in response.json()["results"]]
         self.assertIn(self.published_hotel.id, ids)

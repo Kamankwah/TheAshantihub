@@ -197,6 +197,11 @@ class Command(BaseCommand):
                     "payout_momo_number": phone,
                     "payout_momo_name": full_name,
                     "terms_accepted_at": now,
+                    # KYC verified above; the identity (the public check mark) is verified too, as the 0068
+                    # backfill does for every KYC-verified business.
+                    "identity_status": BusinessOwnerProfile.IDENTITY_VERIFIED,
+                    "identity_reviewed_by": super_admin,
+                    "identity_reviewed_at": now,
                 },
             )
             plan = SubscriptionPlan.objects.filter(

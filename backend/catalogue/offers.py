@@ -3,15 +3,15 @@ stock, cart line, fee and pickup); nothing here adds anything to a cart.
 
 * A live offer is published, from a business public browse shows (listings.visibility), priced, and in stock: an
   uncounted stock (null) counts as in stock, zero hides the offer (spec §1 row 15).
-* The featured offer is the lowest price among live offers from KYC-verified businesses. A tie goes to the shop nearest
-  the customer when the app sends the customer's position (?lat=&lng=; a straight-line measure from the business pin,
-  used only to order and never shown), then to the oldest offer.
+* The featured offer is the lowest price among live offers from businesses whose identity documents staff approved
+  (not merely address-checked). A tie goes to the shop nearest the customer when the app sends the customer's position
+  (?lat=&lng=; a straight-line measure from the business pin, used only to order and never shown), then to the oldest
+  offer.
 * An offer row never carries a phone number, email, address, map pin or the listing's contact_phone: businesses are
   never contacted directly (CLAUDE.md). The business shows by its display name only. A stock the business does not
   count is null, never a guess."""
 from django.db.models import Count, Min, Q
 
-from accounts.models import BusinessOwner
 from cart.guard import deliverable_q
 from delivery.services import valid_point
 from field.services import haversine_m
@@ -70,7 +70,7 @@ def _tie(listing, position):
 
 def featured(offers, position=None):
     """The featured offer among live `offers`, or None when no verified business offers it."""
-    verified = [offer for offer in offers if offer.business_owner.kyc_status == BusinessOwner.VERIFIED]
+    verified = [offer for offer in offers if offer.business_owner.identity_verified]
     if not verified:
         return None
     return min(verified, key=lambda offer: (offer.effective_price, *_tie(offer, position)))
@@ -96,7 +96,7 @@ def offer_row(listing):
         "listing_id": listing.pk, "name": listing.name, "price_amount": str(listing.effective_price),
         "price_unit": listing.price_unit, "condition": listing.condition,
         "business_name": _business_name(listing.business_owner),
-        "verified": listing.business_owner.kyc_status == BusinessOwner.VERIFIED,
+        "verified": listing.business_owner.identity_verified,
         "zone": listing.zone.name, "available_quantity": listing.stock_quantity,
     }
 

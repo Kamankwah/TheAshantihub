@@ -348,6 +348,11 @@ export const handlers = [
   http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
     return HttpResponse.json([])
   }),
+  // Identity-document review (the verified check mark) - default empty; tests override.
+  http.get('http://localhost:8000/api/accounts/kyc/identity/pending/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/accounts/kyc/:id/identity/approve/', ({ params }) => HttpResponse.json({ id: Number(params.id), identity_status: 'verified' })),
+  http.post('http://localhost:8000/api/accounts/kyc/:id/identity/reject/', ({ params }) => HttpResponse.json({ id: Number(params.id), identity_status: 'rejected' })),
+  http.post('http://localhost:8000/api/accounts/kyc/:id/identity/re-review/', ({ params }) => HttpResponse.json({ id: Number(params.id), identity_status: 'pending' })),
   http.get('http://localhost:8000/api/listings/moderation/pending/', () => {
     return HttpResponse.json([])
   }),
@@ -603,6 +608,16 @@ export const handlers = [
   }),
   // The business's own change requests (Profile & Settings): none by default.
   http.get('http://localhost:8000/api/accounts/business-owners/me/detail-changes/', () => HttpResponse.json({ results: [] })),
+  // The business's own identity check (Profile & Settings "Get verified"): not submitted by default; the POST body
+  // is never read (a multipart body holding a jsdom File hangs), it just answers pending like the real endpoint.
+  http.get('http://localhost:8000/api/accounts/business-owners/me/identity/', () => HttpResponse.json({
+    identity_status: 'not_submitted', identity_rejection_reason: '', identity_submitted_at: null,
+    is_formal: false, has_certificate: false, has_tin: false,
+  })),
+  http.post('http://localhost:8000/api/accounts/business-owners/me/identity/', () => HttpResponse.json({
+    identity_status: 'pending', identity_rejection_reason: '', identity_submitted_at: '2026-10-29T10:00:00Z',
+    is_formal: false, has_certificate: false, has_tin: false,
+  }, { status: 201 })),
   // Wallets (Plan 3F): ledger ON and empty by default; a test needing the "off" state overrides with a 409 {code:'ledger_off'}.
   http.get('http://localhost:8000/api/wallet/', () => HttpResponse.json({ kind: 'customer', balance: '0.00' })),
   http.get('http://localhost:8000/api/wallet/vendor/', () => HttpResponse.json({
@@ -747,7 +762,7 @@ export const handlers = [
   http.get('http://localhost:8000/api/portfolio/subscriptions-due/', () => HttpResponse.json({ overdue: [], paused: [], cleared: [] })),
   http.get('http://localhost:8000/api/portfolio/businesses/:id/review/', () => HttpResponse.json({
     owner: { full_name: 'Owner', login_phone: '', email: '', ghana_card_number: '', needs_claim: false, claimed_at: null },
-    business: { business_name: 'Business', business_kind: null, category: null, zone: null, opening_hours: '', is_formal: false, tin_given: false },
+    business: { business_name: 'Business', business_kind: null, category: null, zone: null, opening_hours: '', is_formal: false, tin_given: false, has_certificate: false },
     photos: { signboard: null, ghana_card_front: null, ghana_card_back: null },
     location: {
       lat: null, lng: null, accuracy_m: null, is_manual: false, set_by: '', set_at: null, gps_address: '',

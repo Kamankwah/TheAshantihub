@@ -13,7 +13,7 @@ from payments import providers
 from wallets import payouts, vendor_texts, withdrawals
 from wallets.models import PayoutDestination, VendorText, Withdrawal
 
-from .helpers import destination, fund
+from .helpers import destination, fund, verify_identity
 from .vendor_helpers import VendorBase, paid_order, release
 
 
@@ -48,6 +48,7 @@ class MoreTextTests(VendorBase):
         owner = self.kofi.owner
         owner.kyc_status = owner.VERIFIED
         owner.save(update_fields=["kyc_status"])
+        verify_identity(owner)
         fund(Account.VENDOR_AVAILABLE, owner, 50000, f"fund-{request_id}")
         dest = PayoutDestination.objects.filter(holder_id=owner.pk).first() or destination(owner, name="Kofi Mensah")
         return withdrawals.request(owner, destination_id=dest.pk, amount_pesewas=amount, request_id=request_id)

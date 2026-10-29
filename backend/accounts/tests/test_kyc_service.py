@@ -89,6 +89,10 @@ class KycQueueSettlesApprovalTests(QueueBase):
             staff=self.scout, kind="approval_decided", title=f"Approved: {self.approval.title}",
         ).exists())
         self.assertEqual(Notification.objects.filter(business_owner=self.owner, kind="kyc_approved").count(), 1)
+        # KYC approval is about the address: the notice says approved, never "verified" (that is the identity mark).
+        notice = Notification.objects.get(business_owner=self.owner, kind="kyc_approved")
+        self.assertEqual(notice.title, "Your business is approved!")
+        self.assertNotIn("verified", (notice.title + notice.body).lower())
         event = ActivityEvent.objects.get(verb="kyc-approve")  # exactly one: the middleware adds nothing
         self.assertEqual(
             (event.actor_id, event.target_type, event.target_id),
@@ -194,7 +198,9 @@ class KycQueueRulesTests(QueueBase):
         self.assertEqual(self.reject_in_queue("The owner is a member of staff").status_code, 200)
 
     def test_an_owner_who_registered_online_has_no_request_to_settle(self):
-        online = make_business(name="Yaa Provisions", owner_name="Yaa Asantewaa", phone="+233207778899")
+        online = make_business(
+            name="Yaa Provisions", owner_name="Yaa Asantewaa", phone="+233207778899", address_decided_by=self.other_ops,
+        )
         self.as_(self.lead)
         self.assertEqual(self.approve_in_queue(online).status_code, 200)
         event = ActivityEvent.objects.get(verb="kyc-approve", target_id=str(online.id))
@@ -319,7 +325,9 @@ class KycDoubleDecisionTests(TransactionTestCase):
         self.assertEqual(Notification.objects.filter(staff=self.scout, kind="approval_decided").count(), 1)
 
     def test_two_queue_approvals_at_once_decide_it_once(self):
-        online = make_business(name="Yaa Provisions", owner_name="Yaa Asantewaa", phone="+233207778899")
+        online = make_business(
+            name="Yaa Provisions", owner_name="Yaa Asantewaa", phone="+233207778899", address_decided_by=self.lead,
+        )
         self.race(
             lambda: kyc.approve_owner(online.pk, self.lead),
             lambda: kyc.approve_owner(online.pk, self.other_ops),
@@ -500,11 +508,6 @@ class KycMakerAndAddressTests(QueueBase):
             address_verified=True, address_verified_by=self.lead, address_verified_at=timezone.now(),
         )
         self.assertEqual(self.approve_in_queue().status_code, 200)
-
-    def test_a_self_registered_owner_without_the_decision_is_still_approved(self):
-        online = make_business(name="Yaa Provisions", owner_name="Yaa Asantewaa", phone="+233207778899")
-        self.as_(self.lead)
-        self.assertEqual(self.approve_in_queue(online).status_code, 200)
 
 
 def grant_kyc_approve(staff):
@@ -737,3 +740,48 @@ class KycDetailsEditorTests(QueueBase):
         self.assertFalse(kyc.is_kyc_submitter(self.owner, self.lead))
         self.as_(self.lead)
         self.assertEqual(self.approve_in_queue().status_code, 200)
+
+
+class EveryBusinessNeedsAnAddressDecisionTests(QueueBase):
+    """Approval rests on the Ghana Post address alone, so every business, however
+    it registered, needs a recorded address decision first."""
+
+    def setUp(self):
+        super().setUp()
+        self.online = make_business(name="Yaa Provisions", owner_name="Yaa Asantewaa", phone="+233207778899")
+        self.assertEqual(self.online.registration_channel, BusinessOwner.SELF)
+
+    def test_self_registered_owner_needs_address_decision_before_approval(self):
+        self.assertTrue(kyc.address_decision_missing(self.online))
+        with self.assertRaises(kyc.KycError) as raised:
+            kyc.approve_owner(self.online.pk, self.other_ops)
+        self.assertEqual(raised.exception.message, kyc.ADDRESS_FIRST)
+        self.as_(self.other_ops)
+        response = self.approve_in_queue(self.online)
+        self.assertEqual((response.status_code, response.json()), (400, {"detail": kyc.ADDRESS_FIRST}))
+        self.online.refresh_from_db()
+        self.assertEqual(self.online.kyc_status, "pending")
+
+    def test_a_business_with_no_profile_counts_as_decision_missing(self):
+        bare = BusinessOwner.objects.create(full_name="No Profile", login_phone="+233200000001", password_hash="x")
+        self.assertTrue(kyc.address_decision_missing(bare))
+
+    def test_self_registered_owner_approves_after_address_decision(self):
+        self.as_(self.other_ops)
+        response = self.client.post(f"/api/accounts/kyc/{self.online.id}/address-verify/", {"verified": True}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(kyc.address_decision_missing(BusinessOwner.objects.get(pk=self.online.pk)))
+        self.assertEqual(self.approve_in_queue(self.online).status_code, 200)
+        self.online.refresh_from_db()
+        self.assertEqual(self.online.kyc_status, "verified")
+
+    def test_approval_needs_no_ghana_card(self):
+        decided = make_business(
+            name="Kofi Hardware", owner_name="Kofi Annan", phone="+233209998877", address_decided_by=self.lead,
+        )
+        profile = BusinessOwnerProfile.objects.get(business_owner=decided)
+        self.assertFalse(profile.ghana_card_front_image or profile.business_reg_certificate)
+        self.assertFalse(kyc.address_decision_missing(decided))
+        kyc.approve_owner(decided.pk, self.other_ops)
+        decided.refresh_from_db()
+        self.assertEqual(decided.kyc_status, "verified")

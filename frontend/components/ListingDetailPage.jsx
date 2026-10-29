@@ -24,6 +24,7 @@ import { useBookingPayment } from "../hooks/useBookingPayment.js";
 import { useStayQuote } from "../hooks/useStayQuote.js";
 import PaymentMethodPicker from "./wallet/PaymentMethodPicker.jsx";
 import { walletStyles } from "./wallet/walletStyles.js";
+import VerifiedMark from "./VerifiedMark.jsx";
 import { ReviewsList, ReviewWriteForm, starString, textareaStyle, submitBtnStyle } from "./ReviewComponents.jsx";
 
 // ─── ListingDetailPage ──────────────────────────────────────────────────────
@@ -876,6 +877,7 @@ function SellerRatingBadge({ businessOwner, user }) {
         ) : (
           <span>Sold by {businessOwner.name || businessOwner.full_name}</span>
         )}
+        <VerifiedMark verified={businessOwner.identity_verified} />
         <span style={{ color: C.gold }}>{expanded ? "▲" : "▼"}</span>
       </button>
       {expanded && (

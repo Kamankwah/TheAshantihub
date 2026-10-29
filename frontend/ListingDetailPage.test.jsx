@@ -1062,3 +1062,21 @@ describe('ListingDetailPage — booking a stay with the wallet ledger (plan 1F)'
     expect(screen.getByRole('button', { name: 'Book and pay' })).toBeDisabled()
   })
 })
+
+describe('ListingDetailPage — verified check mark', () => {
+  it('listing detail shows the mark only for identity_verified sellers', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, business_owner: { ...LISTING.business_owner, identity_verified: true } })))
+    const { unmount } = renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(await screen.findByLabelText('Verified business')).toBeInTheDocument()
+    unmount()
+
+    // kyc_status "verified" (address checked) without an approved identity shows no mark.
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, business_owner: { ...LISTING.business_owner, identity_verified: false } })))
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(await screen.findByRole('link', { name: 'Sold by Ama Boateng' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Verified business')).not.toBeInTheDocument()
+    expect(screen.queryByText(/unverified|not verified/i)).not.toBeInTheDocument()
+  })
+})
