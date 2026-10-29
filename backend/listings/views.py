@@ -54,6 +54,7 @@ from .serializers import (
     PromotionAdminSerializer,
     PromotionPurchaseSerializer,
     PromotionSerializer,
+    PublicListingDetailSerializer,
     PublicListingSerializer,
     ZoneSerializer,
 )
@@ -456,7 +457,7 @@ class PublicListingListView(generics.ListAPIView):
 
 
 class PublicListingDetailView(generics.RetrieveAPIView):
-    serializer_class = PublicListingSerializer
+    serializer_class = PublicListingDetailSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
