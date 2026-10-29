@@ -40,7 +40,7 @@ function OrderCard({ order, dispatches, onDone, canSend }) {
       <div style={{ marginTop: 8 }}>
         {(order.items || []).map(it => (
           <div key={it.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: D.textDim, padding: "2px 0" }}>
-            <span>{it.listing_name} × {it.quantity}</span>
+            <span>{it.listing_name}{it.variant_label ? ` (${it.variant_label})` : ""} × {it.quantity}</span>
             <span>GHS {it.line_total}</span>
           </div>
         ))}
