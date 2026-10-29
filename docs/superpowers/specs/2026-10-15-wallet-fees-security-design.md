@@ -9,7 +9,10 @@ feature/otp-security, feature/wallets, feature/vendor-side-4 and feature/dispatc
 backend (catalogue entries, offers, other sellers, stock cover and low-stock alerts; branch
 feature/catalogue-offers-6) is implemented behind three switches that default off: `STOCK_ALERTS_ENABLED` (the alerts),
 `SOLD_OUT_HIDDEN_ENABLED` (sold-out hiding) and `CATALOGUE_MATCHER_ENABLED` (the barcode matcher: the nightly job and
-approve's on-commit run); later stages are specs only.
+approve's on-commit run); later stages are specs only. **6F status (2026-10-20):** the Stage 6 screens (Plan 6F) are built on
+branch feature/wallet-frontend-6f-catalogue, except Other sellers, the featured offer and the shortfall prompt (waiting for M4's
+product page, 6F Task 10); no switch is turned on; manual layout and staging checks owed (360, 768 and 1280 px; ask, approve,
+Other sellers, checkout on staging; a second staff tab refreshing live).
 **Basis:** The owner's brief, plus the decisions in §1, reconciled with the existing code in §13.
 
 ## 1. Decisions (settled in brainstorming)
@@ -428,6 +431,7 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   delivery wallet refunds send the customer no notice.
 - (xvii) **Checkout locks listings in cart order, not primary-key order** (`orders/views.py` ~160), so a checkout can
   deadlock against the cancel or pickup-expiry job (Postgres aborts one; no corruption). Sort the listings in checkout.
+  **6F (2026-10-20):** checkout already locked listings in primary-key order on the base; 6F Task 3 pins it with a test.
 - (xviii) **`refunds.check` duplicates `refund_order`'s rules**, and two pending delivery cases on one order both pass
   the decision-time check; the second approval then fails and needs a manual reject.
   Support's cancel and the pickup job do not check `escrow.has_pending_refund` either: a delivery-case approval still
@@ -867,6 +871,11 @@ nothing until `CATALOGUE_MATCHER_ENABLED` is on, and sold-out listings leave sea
   flash-sale price, so "cheapest first" can be wrong during a flash sale: order by the price the customer would pay
   before the panel ships. The shortfall prompt invites carts holding several offers of one product, which raises the
   odds of the pre-existing checkout lock-order deadlock (spec (xvii)): fix that first.
+  **6F status:** built, except "Other sellers, the featured offer and the shortfall prompt: waiting for M4's product page (6F
+  Task 10)" (with the cart guard per add and disabling Add at 0, which are M4's), and the manual checks (owed). Built: barcode
+  field, grouping and lookup, Needs restocking and the per-offer line (the `<= 3` badge is gone), the staff queue, ungroup and
+  `catalogue` tab, the realtime row, ordering by the price the customer pays, the `truncated` message. Product grouping is in
+  the Operations, Super Admin and GM menus (done).
 - (cii) **Texts and emails "by preference" (§10).** Stock alerts are in-app only. Once Stage 4's outbox
   (`wallets.vendor_texts.queue`, `VendorPreference`) is on `righteoushack`, queue a stock text from
   `catalogue.alerts.tell` (a new `VendorText` kind, a key per offer and alert time, a GSM-7 body naming offers only),
@@ -904,6 +913,8 @@ nothing until `CATALOGUE_MATCHER_ENABLED` is on, and sold-out listings leave sea
   made-to-order product kept at 0 disappears from search. Counted goods only; a service or stay at 0 is never hidden. Also, with the switch on, a sold-out listing with a running
   paid Promotion drops out of search while the promotion keeps running (and keeps being charged for); decide whether to
   pause, extend or warn before it goes on.
+  **6F:** the screens now tell a business to leave the count empty; `SOLD_OUT_HIDDEN_ENABLED` still waits for the staff
+  Marketplace sold-out label and the running-promotion decision.
 - (cxi) **DECIDED 2026-10-18:** the stock-alert defaults (7 days, 5 units, 28 days) and the G1-G12 assumptions are accepted as proposed (no build). Original text: **Owner questions (G1–G12 in the plan):** the 7-day, 5-unit and 28-day defaults and their edges (fewer than 7
   days; 5 or fewer units) and the single-sale edge of the units fallback (G1), staff-only ungrouping (owner-confirmed on
   2026-10-16: a business also cannot withdraw a barcode match AshantiHub filed), whether the matcher should also file
@@ -926,12 +937,14 @@ nothing until `CATALOGUE_MATCHER_ENABLED` is on, and sold-out listings leave sea
 - (cxv) **Staff actions do not refresh live (realtime).** The catalogue approve, reject and detach actions are not in
   `QUEUE_INVALIDATIONS`, so a second staff member's queue does not update until it is reloaded. Add them with the staff
   `catalogue` tab in Plan 6F (see (ci)).
+  **6F: built** (the `catalogue` realtime row and badge).
 - (cxvi) **No price floor on `Listing.price_amount`.** A zero or negative price is excluded from the offers (they need a
   price above 0) but the listing still sells. Add a validation floor to the listing forms and model, and check existing
   rows, before offers are ranked by price at volume.
 - (cxvii) **Unverified sellers are shown, marked `verified: false`.** Other-sellers rows include businesses whose KYC is
   not verified, honestly marked; the featured offer prefers verified ones. Owner confirmation is needed on whether
   unverified sellers should be shown at all, shown lower, or hidden.
+  **DECIDED 2026-10-20 (Director): unverified sellers are hidden; built by 6F Task 3.**
 - (cxviii) **Detach writes two audit events.** `attach.detach` records the generic moderation event and the explicit
   catalogue record, so the activity log shows an ungroup twice. Harmless; collapse them when the staff screen reads the
   log.
@@ -946,6 +959,8 @@ nothing until `CATALOGUE_MATCHER_ENABLED` is on, and sold-out listings leave sea
   `SOLD_OUT_HIDDEN_ENABLED` (last, with the Plan 6F screens, see (cx)). `STOCK_ALERTS_ENABLED` needs the Plan 6F "Needs
   restocking" panel first (the low-stock notice only says "Open your listings to restock" because the screen it would
   name does not exist yet) and (cvi) rehearsed on staging.
+  **6F:** the notice now names Needs restocking (under Products); `STOCK_ALERTS_ENABLED` still waits for the (cvi) staging
+  rehearsal and the owner.
 - (cxxii) **State rows are inserted before the run's transaction.** `catalogue.alerts.run` creates a `StockAlertState`
   row for each new offer in autocommit first, so the run's one transaction only updates state rows (a mass insert with a
   foreign key to `listings_listing` would key-share-lock those listings until commit, against checkout's `FOR UPDATE`).

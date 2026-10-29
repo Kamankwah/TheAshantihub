@@ -202,3 +202,17 @@ Owner listing panels (`ListingsPanel`, the variants, revision and discount edito
 `mine/` subtree exactly, so the swap needs no other change. The promotion hub takes `promoteBase` (default
 `"/api/listings"`) and a `direct` prop; for Direct it hides the hero, free-delivery and flash-invitation cards (hero
 ads are Marketing's). Never hardcode `/api/listings/mine` in a panel.
+
+## Catalogue screens (Plan 6F)
+
+- **Catalogue widgets render only on the default `basePath`.** `NeedsRestockingPanel`, the card chips, `GroupingCard` and
+  `StockLineEditor` are for `/api/listings/mine`; Ashanti Direct (`basePath` `/api/direct/listings`) gets none of them yet.
+- **Card chips come only from the server's Needs restocking pages** (`useNeedsRestocking`: `low` / `sold_out`), never from
+  a `stock_quantity` count rule. An uncounted stock shows nothing, not 0.
+- **`catalogue-queue` is the live key** (`useCatalogueQueue`); the `catalogue` row in `realtime` `QUEUE_INVALIDATIONS` and
+  the `catalogue` staff badge refresh it. Nav id `catalogue` ("Product grouping").
+- **Never build a second barcode formatter:** `displayBarcode` (`catalogueFormat.js`) is the one. `formatPrice` there
+  delegates to `walletMoney.formatGhs`.
+- **`components/catalogue/__tests__/CatalogueNoInventionSweep.test.jsx` is the conformance contract** (no contact links, no
+  distance, no null shown, tabular prices, no gold on prices or the verified mark). Add every new catalogue screen to it;
+  `OtherSellersPanel` joins when 6F Task 10 lands (after M4).
