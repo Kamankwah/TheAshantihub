@@ -173,8 +173,18 @@ structure.
 
 Deviations from the design above:
 
-- The owner's profile PATCH locks the profile row (alone, not the owner) and refuses card changes while identity is
-  pending or verified; sending the same number again is allowed.
+- The owner's profile PATCH locks the owner row, then the profile row (each `FOR UPDATE OF` its own table, the order
+  the staff identity decisions use), and refuses card changes while identity is pending or verified; sending the same
+  number again is allowed. It submits the identity only for a new card photo or a number other than the stored one,
+  so an address fix on a rejected business does not re-queue the same rejected photos.
+- Card numbers are stored trimmed and upper-case on the owner paths too, and duplicates are checked case-insensitively
+  with one generic message; the identity POST is throttled (`owner_identity`, 10 an hour).
+- Replaced Ghana Card photos and certificates are deleted after commit (`accounts/files.py`, shared with the scout
+  resubmit). The scout's KYC resubmit refuses a new card photo while identity is pending or verified.
+- A submission records `identity-submitted` (the owner as actor), which refreshes the staff identity queue live.
+- Ashanti Direct, the company's own shop, is identity-verified by the system (`ensure_ashanti_direct`), and the dev and
+  demo seeds give their KYC-verified owners a verified identity. The migration is `accounts/0068_identity_status`.
+- The KYC approval notice says "Your business is approved!"; "verified" is kept for the identity mark.
 - The Support chip (`support/people.py`) and the public featured tiles (`marketing/featured.py`) also follow identity,
   beside the check mark, `?verified=true`, featured offers, the credit factor and payout-name matching.
 - The portfolio review-sheet payload gained a `has_certificate` flag so staff can tell whether a certificate is on file.
