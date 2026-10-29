@@ -45,6 +45,23 @@ describe('VariantPicker', () => {
     expect(screen.queryByTestId('selection-row')).toBeNull()
   })
 
+  test('test_sparse_matrix_never_strands_the_shopper', () => {
+    // Gold only in Large, Red only in Small.
+    const sparse = [v(51, 'Gold', 'Large'), v(52, 'Red', 'Small')]
+    render(<Host items={sparse} />)
+    fireEvent.click(chip('Gold'))
+    fireEvent.click(chip('Large'))
+    expect(screen.getAllByTestId('selection-row')).toHaveLength(1)
+    expect(chip('Red')).toHaveAttribute('aria-disabled', 'false')
+    expect(chip('Small')).toHaveAttribute('aria-disabled', 'false')
+    fireEvent.click(chip('Red'))
+    fireEvent.click(chip('Small'))
+    const rows = screen.getAllByTestId('selection-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveTextContent('Gold / Large')
+    expect(rows[1]).toHaveTextContent('Red / Small')
+  })
+
   test('test_choosing_a_combination_adds_a_selection_row_with_quantity_1', () => {
     render(<Host />)
     fireEvent.click(chip('Gold'))

@@ -28,14 +28,21 @@ export default function VariantPicker({ axes, variants = [], onPreview, selectio
   const matching = (picks) => variants.filter((v) => Object.entries(picks).every(([axis, value]) => valueOf(v, axis) === value));
   const usable = (v) => v.available !== false;
   const resolve = (picks) => (rows.every((a) => picks[a.name] != null) ? matching(picks).find(usable) || null : null);
-  const optionOpen = (axis, value) => matching({ ...chosen, [axis]: value }).some(usable);
+  // A value is dashed only when no available variant has it at all; a value that merely conflicts with the other picks
+  // stays pickable (see `withPick`), so a sparse matrix never strands the shopper.
+  const optionOpen = (axis, value) => matching({ [axis]: value }).some(usable);
+  // Picks after choosing `value`: the other picks stay only while a variant still matches them all; else they are dropped.
+  const withPick = (axis, value) => {
+    const keep = { ...chosen, [axis]: value };
+    return matching(keep).some(usable) ? keep : { [axis]: value };
+  };
 
   const chosenVariant = resolve(chosen);
   const emit = (next) => onChange && onChange(next);
 
   const pick = (axis, value) => {
     if (!optionOpen(axis, value)) return;
-    const picks = { ...chosen, [axis]: value };
+    const picks = withPick(axis, value);
     setChosen(picks);
     const v = resolve(picks);
     if (v) {
@@ -45,7 +52,7 @@ export default function VariantPicker({ axes, variants = [], onPreview, selectio
   };
   const peek = (axis, value) => {
     if (!onPreview || !optionOpen(axis, value)) return;
-    const v = resolve({ ...chosen, [axis]: value });
+    const v = resolve(withPick(axis, value));
     if (v) onPreview(previewOf(v));
   };
   const unpeek = () => { if (onPreview) onPreview(previewOf(chosenVariant)); };
