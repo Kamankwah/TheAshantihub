@@ -43,7 +43,8 @@ const num = (v) => (v == null || v === "" ? null : Number(v));
 //   PaymentComponent  App.jsx's MoMoPayment (collects the paying number), passed in so components/ never import App.
 //   onNavigate(path)  in-app navigation; a placed order goes to /checkout/verify?order=<id>.
 //   onSignIn()        offered to a signed-out visitor.
-export default function CheckoutPage({ user, currency = "GHS", PaymentComponent, onNavigate, onSignIn }) { // eslint-disable-line no-unused-vars
+//   authLoading       true while the session is still being restored, so a signed-in customer never sees "Sign in".
+export default function CheckoutPage({ user, currency = "GHS", PaymentComponent, onNavigate, onSignIn, authLoading = false }) { // eslint-disable-line no-unused-vars
   const queryClient = useQueryClient();
   const phoneLayout = useBreakpoint() === "phone";
   const s = walletStyles("light");
@@ -99,6 +100,18 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
     if (preferred) pick(preferred);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addressesQuery.isSuccess, addressesQuery.data]);
+
+  // Entering typed mode drops the saved address's pin (the typed address has its own); going back re-syncs from it.
+  const startTyping = () => {
+    setManual(true);
+    setLat(null);
+    setLng(null);
+    streetAuto.current = false;
+  };
+  const useSaved = () => {
+    if (addr) pick(addr);
+    else { setManual(false); setChanging(true); setLat(null); setLng(null); }
+  };
 
   const addressesSettled = !addressesQuery.isPending;
   const typing = manual || (addressesSettled && rows.length === 0);
@@ -171,7 +184,9 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
   const quotable = isPlausibleAmount(shownTotal);
   // Promotions off, a pin chosen, mobile money with the picker: the processing quote waits for the server's delivery
   // fee for THIS pin, so a charge is never quoted on less than the server takes.
-  const feeWait = momoWithPicker && !promosOn && pinChosen && preview === undefined;
+  // With promotions off the preview carries the fee: whatever the payment switches, ordering waits for it.
+  const feeLoading = !promosOn && pinChosen && preview === undefined;
+  const feeWait = momoWithPicker && feeLoading;
   const { data: processingData, error: processingError, isError: processingFailed, refetch: refetchProcessing } = useWalletProcessing(momoWithPicker && !feeWait ? shownTotal : "");
   const processingReady = !feeWait && (!momoWithPicker || processingData?.payment_processing !== undefined);
   const processingPending = momoWithPicker && !feeWait && quotable && !processingData && !processingFailed;
@@ -183,12 +198,13 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
   const [checkoutError, setCheckoutError] = useState(null);
   const [placing, setPlacing] = useState(false);
   const placingRef = useRef(false);
+  const [placedNext, setPlacedNext] = useState(null);
   const [cartError, setCartError] = useState(null);
   const [pendingId, setPendingId] = useState(null);
 
   const regionOk = !door || (!outOfArea && !regionUnchecked);
   const ready = canBuy && !staffGate.isStaff && items.length > 0 && !guardAny && !guardUnchecked && addressFilled && regionOk
-    && !walletChecking && !walletFailed && processingReady && !placing;
+    && !feeLoading && !walletChecking && !walletFailed && processingReady && !placing;
   let reason = null;
   if (!canBuy) reason = opensLabel || "Opens soon";
   else if (door && !addressFilled) reason = addressesSettled && !typing && !addr ? "Choose where to deliver." : "Add a valid Ghana Post address, a landmark and a phone number to continue.";
@@ -215,13 +231,16 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
       const response = await apiPost("/api/orders/checkout/", checkoutBody(extra));
       // Hubtel (docs/HUBTEL_INTEGRATION.md): the order is pending until the webhook confirms, so go to the hosted checkout.
       if (response?.mode === "redirect") {
+        await applyDefault(); // the page is about to leave, so a failure here has nowhere to be shown
         window.location.assign(response.checkout_url);
         return;
       }
       queryClient.invalidateQueries({ queryKey: ["cart"] });
       queryClient.invalidateQueries({ queryKey: ["cart-guard"] });
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
-      if (onNavigate) onNavigate(`/checkout/verify?order=${response?.id}`);
+      const next = `/checkout/verify?order=${response?.id}`;
+      if (await applyDefault()) { if (onNavigate) onNavigate(next); }
+      else setPlacedNext(next);
     } catch (err) {
       setCheckoutError({ text: apiErrorMessage(err, "We couldn't place your order. Please try again."), ref: payRef });
       if (payRef) setShowPayment(false);
@@ -230,13 +249,15 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
     }
   };
 
+  // Only after the order is accepted: returns false when the shopper asked for a default and it could not be set.
   const applyDefault = async () => {
-    if (!door || typing || !addr || addr.is_default || !makeDefault) return;
+    if (!door || typing || !addr || addr.is_default || !makeDefault) return true;
     try {
       await apiPost(`/api/accounts/addresses/${addr.id}/set-default/`, {});
       queryClient.invalidateQueries({ queryKey: ADDRESSES_KEY });
+      return true;
     } catch {
-      // The order matters more than the preference: it can be set again from Your Addresses.
+      return false;
     }
   };
 
@@ -245,7 +266,6 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
     if (staffGate.blocked()) return;
     placingRef.current = true;
     setPlacing(true);
-    await applyDefault();
     if (payMethod === "wallet") {
       await submitOrder({ payment_method: "wallet" });
       return;
@@ -326,6 +346,9 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
 
   if (staffGate.isStaff) {
     return page(<StaffGateNotice passive />);
+  }
+  if (!user && authLoading) {
+    return page(<p style={{ color: C.inkDim }}>Loading your checkout{"…"}</p>);
   }
   if (!user) {
     return page(
@@ -429,7 +452,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
                 <AddressCard address={addr} />
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                   <button type="button" style={linkBtn} onClick={() => setChanging(true)}>Change</button>
-                  <button type="button" style={linkBtn} onClick={() => setManual(true)}>Deliver somewhere else this time</button>
+                  <button type="button" style={linkBtn} onClick={startTyping}>Deliver somewhere else this time</button>
                 </div>
                 {!addr.is_default && (
                   <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: "0.9rem" }}>
@@ -442,7 +465,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
             {addressesSettled && !typing && (!addr || changing) && (
               <div style={{ display: "grid", gap: 8 }}>
                 <AddressPicker value={addr} onChange={pick} />
-                <button type="button" style={linkBtn} onClick={() => setManual(true)}>Deliver somewhere else this time</button>
+                <button type="button" style={linkBtn} onClick={startTyping}>Deliver somewhere else this time</button>
               </div>
             )}
             {addressesSettled && typing && (
@@ -462,7 +485,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
                   <label htmlFor="checkout-street" style={s.label}>Street or area (optional)</label>
                   <input id="checkout-street" value={mStreet} onChange={(e) => { streetAuto.current = false; setMStreet(e.target.value); }} autoComplete="street-address" style={s.field} />
                 </div>
-                {rows.length > 0 && <button type="button" style={{ ...linkBtn, justifySelf: "start" }} onClick={() => { setManual(false); setChanging(true); }}>Use a saved address</button>}
+                {rows.length > 0 && <button type="button" style={{ ...linkBtn, justifySelf: "start" }} onClick={useSaved}>Use a saved address</button>}
               </div>
             )}
             {addressesSettled && (
@@ -496,7 +519,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
             </div>
           )}
           {momoWithPicker && !quotable && <div style={{ ...note, marginTop: 8 }}>There is nothing to pay by mobile money. Choose your AshantiHub wallet.</div>}
-          {feeWait && (
+          {feeLoading && (
             <div data-testid="checkout-fee-checking" style={{ ...note, marginTop: 8 }}>
               {previewFailed ? "We couldn't check the delivery fee. " : "Checking the delivery fee…"}
               {previewFailed && <button type="button" onClick={() => refetchPreview()} style={{ background: "none", border: "none", color: C.errInk, textDecoration: "underline", cursor: "pointer", fontSize: "0.8rem", fontFamily: "inherit" }}>Try again</button>}
@@ -563,6 +586,12 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
           Place your order in GHS
         </button>
         {reason && <div data-testid="checkout-reason" style={{ ...note, marginTop: 10, fontWeight: 600 }}>{reason}</div>}
+        {placedNext && (
+          <div data-testid="checkout-default-note" role="status" style={{ ...note, marginTop: 10 }}>
+            <div>Your order is placed, but we could not make this your default address.</div>
+            <button type="button" style={linkBtn} onClick={() => go(placedNext)}>Continue to your order</button>
+          </div>
+        )}
         {checkoutError && (
           <div data-testid="checkout-error" role="alert" style={{ ...alertBox, marginTop: 10 }}>
             <div>{checkoutError.text}</div>

@@ -3191,7 +3191,7 @@ export default function AshantiHub() {
   if(page==="staff-install") return <StaffInstallPage/>;
   if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
   if(page==="payment-return") return <PaymentReturnPage setPage={setPage}/>;
-  if(page==="checkout") return <CheckoutPage user={user} currency={currency} PaymentComponent={MoMoPayment} onNavigate={navigate} onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
+  if(page==="checkout") return <CheckoutPage user={user} currency={currency} PaymentComponent={MoMoPayment} authLoading={auth.isLoading} onNavigate={navigate} onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
   if(page==="business-confirm") return <OwnerConfirmPage/>;
   if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
