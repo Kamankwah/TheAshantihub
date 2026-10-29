@@ -42,7 +42,7 @@ export default function LoginSecurity({ user, auth, render }) {
             <span style={{ color: D.textFaint }}>Add an email address to reset by email</span>
           )}
         </div>
-        {resetState === "failed" && <div role="alert" style={{ color: C.errInk, fontSize: "0.78rem", padding: "0 0 12px" }}>{`We couldn't send the reset link. ${resetError}`}</div>}
+        {resetState === "failed" && <div role="alert" style={{ color: C.errInk, fontSize: "0.78rem", padding: "0 0 12px" }}>{resetError}</div>}
         {resetState === "sent" && <div role="status" style={{ color: D.textDim, fontSize: "0.78rem", padding: "0 0 12px" }}>If that email is registered, we have sent a reset link.</div>}
       </div>
       {render.profile?.()}

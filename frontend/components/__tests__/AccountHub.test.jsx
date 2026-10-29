@@ -182,7 +182,9 @@ describe('AccountHub sections', () => {
     const requestPasswordReset = vi.fn().mockRejectedValue(Object.assign(new Error('Too many requests'), { status: 429 }))
     renderHub('/my-account/security', { auth: { requestPasswordReset } })
     fireEvent.click(screen.getByRole('button', { name: 'Reset by email' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn.t send the reset link/i)
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/couldn.t send the reset link/i)
+    expect(alert.textContent.match(/send the reset link/gi)).toHaveLength(1) // the fallback sentence is not doubled
     expect(screen.queryByText(/we have sent a reset link/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reset by email' })).toBeEnabled()
   })

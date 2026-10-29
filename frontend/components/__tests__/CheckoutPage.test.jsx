@@ -814,6 +814,28 @@ describe('CheckoutPage: money-screen correctness', () => {
     )
   }
 
+  test('test_a_failed_cart_refetch_after_the_order_is_accepted_keeps_the_placed_note', async () => {
+    serve({ addresses: [addr(1, { is_default: true }), addr(2, { label: 'Work', gps_address: 'AK-100-2000' })] })
+    let placed = false
+    server.use(
+      http.get(`${API}/api/cart/`, () => (placed ? new HttpResponse(null, { status: 500 }) : HttpResponse.json(CART))),
+      http.post(`${API}/api/orders/checkout/`, () => { placed = true; return HttpResponse.json({ ...ORDER, payment_method: 'wallet' }, { status: 201 }) }),
+      http.post(`${API}/api/accounts/addresses/:id/set-default/`, () => new HttpResponse(null, { status: 500 })),
+    )
+    const { onNavigate } = renderPage()
+    await screen.findByText('AK-039-5028')
+    fireEvent.click(screen.getByRole('button', { name: 'Change' }))
+    fireEvent.click(await screen.findByRole('button', { name: /AK-100-2000/ }))
+    fireEvent.click(await screen.findByLabelText('Default to this address'))
+    await chooseWallet()
+    await waitFor(() => expect(placeButton()).toBeEnabled())
+    fireEvent.click(placeButton())
+    expect(await screen.findByTestId('checkout-default-note')).toBeInTheDocument()
+    expect(screen.queryByText(/couldn.t load your cart/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to your order' }))
+    expect(onNavigate).toHaveBeenCalledWith('/checkout/verify?order=42')
+  })
+
   test('test_a_failed_default_still_shows_the_placed_note_when_the_cart_comes_back_empty', async () => {
     serve({ addresses: [addr(1, { is_default: true }), addr(2, { label: 'Work', gps_address: 'AK-100-2000' })] })
     emptyAfterOrder()
@@ -879,6 +901,19 @@ describe('CheckoutPage: the delivery pin while delivery fees are on (P45)', () =
     fireEvent.click(await screen.findByText('drop-pin'))
     await waitFor(() => expect(placeButton()).toBeEnabled())
     expect(screen.queryByText(PIN_MESSAGE)).not.toBeInTheDocument()
+  })
+
+  test('test_a_pinned_door_the_server_still_cannot_measure_is_not_held', async () => {
+    // needs_location also answers a pinned door whose first shop has no location; the server accepts that order.
+    const seen = serve({ addresses: [addr(1, { is_default: true })], preview: { delivery_from: null, delivered_from: null, deferred: false, source: null, delivery: NEEDS } })
+    renderPage()
+    await screen.findByText('AK-039-5028')
+    await chooseWallet()
+    await waitFor(() => expect(placeButton()).toBeEnabled())
+    expect(screen.queryByText(PIN_MESSAGE)).not.toBeInTheDocument()
+    fireEvent.click(placeButton())
+    await waitFor(() => expect(seen.checkout).toHaveLength(1))
+    expect(seen.checkout[0]).toMatchObject({ delivery_lat: 6.6882, delivery_lng: -1.6244 })
   })
 
   test('test_a_typed_address_needs_the_pin_with_promotions_on_too', async () => {

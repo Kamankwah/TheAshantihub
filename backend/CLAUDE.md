@@ -496,7 +496,8 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **Bulk cart add is atomic under the cart lock** and merges into existing lines by the two conditional unique
   constraints. Lock order: the cart row, then the listing row, then its variant rows by pk; checkout never takes the
   cart row, so it cannot deadlock with this. Errors are `{"detail": "<string>"}` for body-level problems and
-  `{"lines": [{"index", "detail"}]}` for per-line ones; a line is capped at `listings.variants.MAX_STOCK` of one version.
+  `{"lines": [{"index", "detail"}]}` for per-line ones, and an unknown or hidden listing answers
+  `{"listing": ["..."]}` (OrdersPanel relies on it); a line is capped at `listings.variants.MAX_STOCK` of one version.
 - **The wishlist API is not opening-gated** (browse and wishlist work before opening).
 - **Two sponsored lists:** the public `storefront/sponsored/` feed (live, published, not hidden) versus the
   staff-only `listings/sponsored/` Marketing list; never swap their permissions.

@@ -164,8 +164,9 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
   const deferredFrom = door && preview?.deferred ? formatAccraDayTime(preview.delivery_from) : null;
   const pinChosen = door && lat != null;
   const outOfArea = door && delivery?.fee_status === "out_of_area";
-  // Delivery fees are on and the server has no pin to price: a saved address without lat/lng lands here too.
-  const needsPin = door && delivery?.fee_status === "needs_location";
+  // Delivery fees are on and no pin was chosen (a saved address without lat/lng lands here too). Mirrors the server's
+  // pin_required: a pinned door the server still cannot measure (a shop with no location) is accepted, not held.
+  const needsPin = door && !pinChosen && delivery?.fee_status === "needs_location";
   const regionUnchecked = promosOn && pinChosen && (quoting || quotedFor !== pinKey || quoteFailed);
   const itemsGross = promosOn && quote?.items_subtotal ? quote.items_subtotal : cart?.total;
   const itemsTotal = promosOn && quote?.total ? quote.total : cart?.total;
@@ -371,15 +372,8 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
   if (cartQuery.isPending) {
     return page(<p style={{ color: C.inkDim }}>Loading your checkout{"…"}</p>);
   }
-  if (cartQuery.isError) {
-    return page(
-      <div style={card}>
-        <p role="alert" style={{ margin: "0 0 8px", color: C.errInk }}>We couldn{"’"}t load your cart.</p>
-        <button type="button" onClick={() => cartQuery.refetch()} style={linkBtn}>Try again</button>
-      </div>,
-    );
-  }
-  if (placedNext && items.length === 0) {
+  // The order is accepted: a failed refetch of the (now emptied) cart must not replace the placed note.
+  if (placedNext && (cartQuery.isError || items.length === 0)) {
     return page(
       <div style={card} data-testid="checkout-placed">
         <p role="status" style={{ margin: "0 0 12px", color: C.ink, fontWeight: 700 }}>Your order is placed.</p>
@@ -389,6 +383,14 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
             <button type="button" style={linkBtn} onClick={() => go(placedNext)}>Continue to your order</button>
           </div>
         ) : <p style={{ margin: 0, color: C.inkDim }}>Taking you to your order{"…"}</p>}
+      </div>,
+    );
+  }
+  if (cartQuery.isError) {
+    return page(
+      <div style={card}>
+        <p role="alert" style={{ margin: "0 0 8px", color: C.errInk }}>We couldn{"’"}t load your cart.</p>
+        <button type="button" onClick={() => cartQuery.refetch()} style={linkBtn}>Try again</button>
       </div>,
     );
   }

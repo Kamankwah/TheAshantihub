@@ -90,4 +90,15 @@ describe('ProductCarousel', () => {
     expect(screen.getByText('From')).toBeInTheDocument()
     expect(screen.getByText('GHS 95.00')).toBeInTheDocument()
   })
+
+  test('test_a_sold_out_option_is_not_the_from_price_and_all_sold_out_falls_back_to_the_listing_price', () => {
+    const some = [{ id: 1, effective_price: '40.00', stock_quantity: 0 }, { id: 2, effective_price: '95.00', stock_quantity: 3 }]
+    const { unmount } = render(<ProductCarousel title="More" items={[card(1, 'Stole', { has_variants: true, effective_price: '150.00', variants: some })]} onOpen={vi.fn()} />)
+    expect(screen.getByText('GHS 95.00')).toBeInTheDocument()
+    expect(screen.queryByText('GHS 40.00')).not.toBeInTheDocument()
+    unmount()
+    const none = [{ id: 1, effective_price: '40.00', stock_quantity: 0 }, { id: 2, effective_price: '60.00', available: false }]
+    render(<ProductCarousel title="More" items={[card(1, 'Stole', { has_variants: true, effective_price: '150.00', variants: none })]} onOpen={vi.fn()} />)
+    expect(screen.getByText('GHS 150.00')).toBeInTheDocument()
+  })
 })
