@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 
@@ -145,5 +146,55 @@ describe('MobileGallery', () => {
     render(<MobileGallery media={[{ ...yt, youtube_id: 'x" onload="y' }]} startIndex={0} onClose={() => {}} />)
     expect(document.querySelector('iframe')).toBeNull()
     expect(screen.getByText("This video can't be shown.")).toBeInTheDocument()
+  })
+
+  describe('under React.StrictMode (dev double-mount)', () => {
+    test('test_strict_mode_close_button_still_closes_and_restores_scroll', () => {
+      document.body.style.overflow = 'auto'
+      const onClose = vi.fn()
+      const push = vi.spyOn(history, 'pushState')
+      const back = vi.spyOn(history, 'back').mockImplementation(() => {})
+      render(<StrictMode><MobileGallery media={three} startIndex={0} onClose={onClose} /></StrictMode>)
+      expect(push).toHaveBeenCalledTimes(1) // the remount reuses our entry
+      expect(document.body.style.overflow).toBe('hidden')
+      fireEvent.click(screen.getByLabelText('Close'))
+      expect(onClose).toHaveBeenCalledTimes(1)
+      expect(document.body.style.overflow).toBe('auto')
+      expect(back).toHaveBeenCalledTimes(1)
+    })
+
+    test('test_strict_mode_back_button_still_closes_and_restores_scroll', () => {
+      document.body.style.overflow = 'auto'
+      const onClose = vi.fn()
+      render(<StrictMode><MobileGallery media={three} startIndex={0} onClose={onClose} /></StrictMode>)
+      act(() => { window.dispatchEvent(new PopStateEvent('popstate')) })
+      expect(onClose).toHaveBeenCalledTimes(1)
+      expect(document.body.style.overflow).toBe('auto')
+    })
+
+    test('test_strict_mode_escape_still_closes', () => {
+      const onClose = vi.fn()
+      vi.spyOn(history, 'back').mockImplementation(() => {})
+      render(<StrictMode><MobileGallery media={three} startIndex={0} onClose={onClose} /></StrictMode>)
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  test('test_parent_unmount_while_open_pops_our_history_entry', async () => {
+    const back = vi.spyOn(history, 'back').mockImplementation(() => {})
+    const { unmount } = render(<MobileGallery media={three} startIndex={0} onClose={() => {}} />)
+    unmount()
+    await new Promise((r) => setTimeout(r, 5))
+    expect(back).toHaveBeenCalledTimes(1)
+  })
+
+  test('test_unmount_after_close_does_not_pop_twice', async () => {
+    const back = vi.spyOn(history, 'back').mockImplementation(() => {})
+    const { unmount } = render(<MobileGallery media={three} startIndex={0} onClose={() => {}} />)
+    fireEvent.click(screen.getByLabelText('Close'))
+    unmount()
+    await new Promise((r) => setTimeout(r, 5))
+    expect(back).toHaveBeenCalledTimes(1)
   })
 })

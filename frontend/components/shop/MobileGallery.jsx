@@ -30,6 +30,7 @@ export default function MobileGallery({ media = [], startIndex = 0, title = "", 
   const g = useRef({ start: null, panStart: { x: 0, y: 0 }, pinch: null, moved: 0, multi: false, dbl: false, lastTap: null });
   const closed = useRef(false);
   const token = useRef(null);
+  const mounted = useRef(false);
   const prevOverflow = useRef(null);
   const returnTo = useRef(typeof document !== "undefined" ? document.activeElement : null);
 
@@ -50,17 +51,25 @@ export default function MobileGallery({ media = [], startIndex = 0, title = "", 
     pause();
     restoreScroll();
     if (ours()) window.history.back();
+    token.current = null; // entry handed back; nothing left for unmount to pop
     onClose?.();
   }, [onClose]);
 
   useEffect(() => {
+    // React StrictMode (dev) runs mount, cleanup, mount on the same instance, so
+    // every mount re-arms the instance and reuses a history entry that is still ours.
+    mounted.current = true;
+    closed.current = false;
     prevOverflow.current = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    token.current = `${Date.now()}-${Math.random()}`;
-    window.history.pushState({ ...(window.history.state || {}), ahMobileGallery: token.current }, "");
+    if (!ours()) {
+      token.current = `${Date.now()}-${Math.random()}`;
+      window.history.pushState({ ...(window.history.state || {}), ahMobileGallery: token.current }, "");
+    }
     const onPop = () => {
       if (closed.current) return;
       closed.current = true; // Back already removed our entry
+      token.current = null;
       pause();
       restoreScroll();
       onClose?.();
@@ -71,8 +80,13 @@ export default function MobileGallery({ media = [], startIndex = 0, title = "", 
     return () => {
       window.removeEventListener("popstate", onPop);
       restoreScroll();
-      if (!closed.current && ours()) window.history.back(); // parent unmounted us
-      closed.current = true;
+      mounted.current = false;
+      // A parent unmounting us while open should not leave a stray entry. The
+      // pop is deferred one tick: StrictMode's immediate remount sets mounted
+      // again and keeps the entry, a real unmount does not.
+      setTimeout(() => {
+        if (!mounted.current && !closed.current && ours()) { token.current = null; window.history.back(); }
+      }, 0);
       if (back && back.isConnected && typeof back.focus === "function") back.focus();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
