@@ -103,7 +103,6 @@ import StaffViewOnlyBar, { STAFF_VIEW_ONLY_BAR_HEIGHT } from "./components/Staff
 import { isStaffSession } from "./lib/staffSession.js";
 import { useStaffGate } from "./hooks/useStaffGate.js";
 import { useFavourites } from "./hooks/useFavourites.js";
-import YourLists from "./components/account/YourLists.jsx";
 
 // ─── Payment System ───────────────────────────────────────────────────────────
 const MOMO_NETWORKS = [
@@ -1045,7 +1044,7 @@ export function groupCategoriesByKind(categories) {
 }
 
 // ─── Business Card ─────────────────────────────────────────────────────────────
-export function Card({item,accentColor,user,favourites,onFavourite,currency,onMessage,onOpen}) {
+export function Card({item,accentColor,user,favourites,onFavourite,favFailed,currency,onMessage,onOpen}) {
   const [showReviews,setShowReviews]=useState(false);
   const [photoIdx,setPhotoIdx]=useState(0);
   const isFav = favourites.includes(item.id);
@@ -1093,9 +1092,10 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
           <span style={{position:"absolute",top:8,left:40,background:"linear-gradient(90deg,#f59e0b,#d97706)",color:"white",fontSize:"0.58rem",fontWeight:800,padding:"2px 8px",borderRadius:20,zIndex:2,boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>⭐ Promoted</span>
         )}
         <span style={{position:"absolute",top:8,right:8,background:accentColor,color:"white",fontSize:"0.6rem",fontWeight:700,padding:"2px 7px",borderRadius:20,zIndex:2}}>{item.tag}</span>
-        <button aria-label={isFav?"Remove from Your Lists":"Save to Your Lists"} onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:8,left:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
+        <button aria-label={isFav?"Remove from Your Lists":"Save to Your Lists"} title={favFailed?"We couldn't update Your Lists. Tap to try again.":undefined} onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:8,left:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
           {isFav?"❤️":"🤍"}
         </button>
+        {favFailed&&<span role="status" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>We couldn't update Your Lists. Tap the heart to try again.</span>}
         <button onClick={(e)=>{e.stopPropagation();if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
           style={{position:"absolute",bottom:8,right:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.8rem",zIndex:2}}>
           📤
@@ -1829,7 +1829,7 @@ function OverviewPanel({ user, favourites }) {
   const kpis = [
     { icon:"📦", label:"Total Orders", value: orders.length, accent: D.gold, sub: `${paidOrders.length} paid` },
     { icon:"💰", label:"Total Spent", value: ghs(totalSpent), accent: D.green, sub: "last 6 months" },
-    { icon:"❤️", label:"Saved Businesses", value: favourites.length, accent: D.red, sub: favourites.length===1?"business saved":"businesses saved" },
+    { icon:"❤️", label:"Saved items", value: favourites.length, accent: D.red, sub: favourites.length===1?"item saved":"items saved" },
     { icon:"🎟️", label:"My Tickets", value: activeTickets.length, accent: D.blue, sub: `${tickets.length} total` },
   ];
 
@@ -1982,7 +1982,7 @@ function MyEventsTab({ user, categories, zones }) {
 // mirrors that component's own ticketStatus() exactly (TicketSerializer has
 // no single status field): refunded takes priority, then delivered, then the
 // raw escrow_status. `searchQuery` filters client-side by event name or
-// ticket code (see the Orders section's search box in AccountHub).
+// ticket code (the "Search tickets" box on Your Orders' Tickets tab).
 function accountTicketStatus(t) {
   if (t.refunded_at) return { label: "Refunded", color: D.red };
   if (t.delivered_at) return { label: "Delivered", color: D.green };
@@ -2480,6 +2480,8 @@ export default function AshantiHub() {
   };
   const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !sellerMatch && !unsubscribeMatch && !trackedLinkMatch && !notifyStopMatch && !onStaffDashboardPath && !isAccountPath(location.pathname);
   const [authModal,setAuthModal]=useState(null);
+  // Where to go once the sign-in modal succeeds (checkout sends the shopper home to show the modal, then back).
+  const [authReturn,setAuthReturn]=useState(null);
   const auth=useAuth();
   const queryClient=useQueryClient();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;
@@ -2519,7 +2521,7 @@ export default function AshantiHub() {
   const [isAdmin,setIsAdmin]=useState(false);
   const [adminClicks,setAdminClicks]=useState(0);
   // Hearts: a signed-in customer's are their server wishlist (Your Lists); everyone else keeps the local list.
-  const { favourites, toggleFav } = useFavourites(user, { ready: !auth.isLoading });
+  const { favourites, toggleFav, failedId: favFailedId } = useFavourites(user, { ready: !auth.isLoading });
   // Set when a signed-in customer starts a business registration from Sell on AshantiHub: the details to
   // pre-fill ({} = from scratch). It lives only while the /register page is open.
   const [registerPrefill,setRegisterPrefill]=useState(undefined);
@@ -2825,7 +2827,7 @@ export default function AshantiHub() {
   // (staff onboarding work) both hand their result here rather than each
   // separately deciding whether to flip isAdmin, so a staff activation
   // behaves identically to a staff login.
-  const handleAuthSuccess=(result)=>{setAuthModal(null);if(result.account_type==="staff"){setIsAdmin(true);}};
+  const handleAuthSuccess=(result)=>{setAuthModal(null);if(result.account_type==="staff"){setIsAdmin(true);}else if(authReturn){navigate(authReturn);}setAuthReturn(null);};
 
   // /staff is staff-only in every display mode. On a staff dashboard URL
   // without a staff session — a direct visit, an expired token, a customer
@@ -2932,7 +2934,7 @@ export default function AshantiHub() {
   if(page==="staff-install") return <StaffInstallPage/>;
   if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
   if(page==="payment-return"||page==="checkout-verify") return <PaymentVerifyPage/>;
-  if(page==="checkout") return <CheckoutPage user={user} currency={currency} PaymentComponent={MoMoPayment} authLoading={auth.isLoading} onNavigate={navigate} onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
+  if(page==="checkout") return <CheckoutPage user={user} currency={currency} PaymentComponent={MoMoPayment} authLoading={auth.isLoading} onNavigate={navigate} onSignIn={()=>{setAuthReturn("/checkout");setAuthModal("login");setPage("home");}}/>;
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
   if(page==="business-confirm") return <OwnerConfirmPage/>;
   if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
@@ -2969,8 +2971,8 @@ export default function AshantiHub() {
   const FavsDrawer=()=>{
     return <div style={{position:"fixed",inset:0,zIndex:999}} onClick={()=>setShowFavs(false)}>
       <div style={{position:"absolute",top:65,right:16,background:C.surface,borderRadius:16,width:300,maxHeight:400,overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}} onClick={e=>e.stopPropagation()}>
-        <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.line}`,fontWeight:800,color:C.ink,fontSize:"0.85rem"}}>❤️ Saved Businesses ({favourites.length})</div>
-        {favourites.length===0&&<div style={{padding:"20px",textAlign:"center",color:C.inkFaint,fontSize:"0.78rem"}}>No saved businesses yet.<br/>Tap ❤️ on any listing to save it.</div>}
+        <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.line}`,fontWeight:800,color:C.ink,fontSize:"0.85rem"}}>❤️ Saved items ({favourites.length})</div>
+        {favourites.length===0&&<div style={{padding:"20px",textAlign:"center",color:C.inkFaint,fontSize:"0.78rem"}}>No saved items yet.<br/>Tap ❤️ on any listing to save it.</div>}
         {favourites.map(id=><FavDrawerItem key={id} id={id} onRemove={toggleFav}/>)}
       </div>
     </div>;
@@ -2989,7 +2991,7 @@ export default function AshantiHub() {
       {appStaffGate.shownFor&&<StaffGateNotice floating onDismiss={appStaffGate.dismiss}/>}
       {!cookieDismissed&&<CookieBanner onAccept={()=>{saveCookieConsent("accepted");setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{saveCookieConsent("essential");setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
       <OfflineBanner/>
-      {shownAuthModal&&<AuthModal key={shownAuthModal} authState={shownAuthModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess} onGoToMarketplace={leaveStaffSignInForMarketplace}/>}
+      {shownAuthModal&&<AuthModal key={shownAuthModal} authState={shownAuthModal} auth={auth} onClose={()=>{setAuthModal(null);setAuthReturn(null);}} onSuccess={handleAuthSuccess} onGoToMarketplace={leaveStaffSignInForMarketplace}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
       {showIntake&&<ChatIntake user={user} onClose={()=>setShowIntake(false)} onContinue={()=>{setShowIntake(false);setShowMessaging(true);}}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
@@ -3102,8 +3104,8 @@ export default function AshantiHub() {
               first field (docs/UI_MODERNIZATION_ROADMAP.md Phase G; the old
               standalone top search bar, its POPULAR SEARCHES suggestions
               dropdown, Map View toggle, Saved button, and currency selector
-              are all gone — Saved businesses are reachable via UserPanel's
-              existing "❤️ Saved Businesses" tab instead). On desktop the
+              are all gone — Saved items are reachable via UserPanel's
+              existing "❤️ Saved items" tab instead). On desktop the
               Sidebar is always visible alongside the grid, so this bar is
               mobile-only (ah-filter-trigger-bar media query below); on mobile
               it opens Sidebar as a slide-in panel. */}
@@ -3245,7 +3247,7 @@ export default function AshantiHub() {
                         page). Promoted/boosted sorting-first lands in a later phase — this renders
                         `listings` in whatever order the API returns, unsorted client-side. */}
                     {(()=>{
-                      const renderCard=(item)=><Card key={item.id} item={item} accentColor={activeCatObj?.color||C.gold} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>;
+                      const renderCard=(item)=><Card key={item.id} item={item} accentColor={activeCatObj?.color||C.gold} user={user} favourites={favourites} onFavourite={toggleFav} favFailed={favFailedId===item.id} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>;
                       return listings.some((l)=>"cart_tier" in l)
                         ? <CartTieredResults listings={listings} renderCard={renderCard}/>
                         : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>{listings.map(renderCard)}</div>;

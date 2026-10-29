@@ -328,7 +328,7 @@ describe('dark mode smoke: modals, drawers and panels', () => {
     expect(item.getAttribute('style')).toContain('var(--ah-ink')
     expect(lightOnlyStyles()).toEqual([])
     fireEvent.click(screen.getByRole('button', { name: /^Wishlist/ }))
-    const fav = await screen.findByText(/Saved Businesses/)
+    const fav = await screen.findByText(/Saved items/)
     expect(fav.getAttribute('style')).toContain('var(--ah-ink')
     expect(fav.parentElement.getAttribute('style')).toContain('var(--ah-surface')
     expect(lightOnlyStyles()).toEqual([])

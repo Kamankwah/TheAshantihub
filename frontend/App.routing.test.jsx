@@ -262,6 +262,53 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
   )
 
   it(
+    'a signed-in customer using "Use my details" on Sell on AshantiHub lands on the prefilled personal-info step and stays signed in',
+    async () => {
+      setStoredAuth({ token: 'test-token', account_type: 'customer', id: 2, full_name: 'Yaa Boateng' })
+      server.use(
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
+          account_type: 'customer', id: 2, full_name: 'Yaa Boateng', email: 'yaa@example.com', phone: '0244000111', registration_step: 'complete',
+        })),
+      )
+      try {
+        renderAtPath('/my-account/sell')
+        fireEvent.click(await screen.findByRole('button', { name: 'Use my details' }, { timeout: 4000 }))
+        expect(await screen.findByPlaceholderText('Full name', {}, { timeout: 3000 })).toHaveValue('Yaa Boateng')
+        expect(screen.getByPlaceholderText('Email')).toHaveValue('yaa@example.com')
+        expect(screen.getByPlaceholderText(/Phone/)).toHaveValue('0244000111')
+        // The shopping session is untouched: registering a business is a separate login.
+        expect(getStoredAuth()).toMatchObject({ account_type: 'customer', id: 2 })
+      } finally {
+        setStoredAuth(null)
+      }
+    },
+    10000,
+  )
+
+  it(
+    'signing in from checkout returns the shopper to /checkout, not home',
+    async () => {
+      server.use(
+        http.post('http://localhost:8000/api/accounts/customers/login/', () => HttpResponse.json({ token: 't', account_type: 'customer', id: 2, full_name: 'Yaa' })),
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({ account_type: 'customer', id: 2, full_name: 'Yaa', registration_step: 'complete' })),
+      )
+      try {
+        renderAtPath('/checkout')
+        fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }, { timeout: 4000 }))
+        fireEvent.change(await screen.findByPlaceholderText('Phone or email'), { target: { value: '0244000111' } })
+        fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'secret' } })
+        const buttons = screen.getAllByRole('button', { name: 'Sign In' })
+        fireEvent.click(buttons[buttons.length - 1])
+        expect(await screen.findByRole('heading', { name: 'Secure checkout' }, { timeout: 4000 })).toBeInTheDocument()
+        expect(screen.queryByTestId('storefront-home')).not.toBeInTheDocument()
+      } finally {
+        setStoredAuth(null)
+      }
+    },
+    12000,
+  )
+
+  it(
     'mounting directly at /payments (simulating a hard reload) renders the Business Command Center',
     async () => {
       // Same business-owner-session gate as /business-dashboard above — now

@@ -9,6 +9,9 @@ import ListingDetailPage from '../ListingDetailPage.jsx'
 import CartPage from '../shop/CartPage.jsx'
 import CheckoutPage from '../shop/CheckoutPage.jsx'
 import PaymentVerifyPage from '../shop/PaymentVerifyPage.jsx'
+import OrdersPanel from '../account/OrdersPanel.jsx'
+import YourLists from '../account/YourLists.jsx'
+import YourAddresses from '../account/YourAddresses.jsx'
 
 // Conformance sweep (Marketplace Plan 4, Task 16): every shopper page, rendered with the
 // states that tempt a page to invent something (no reviews, no was-price, no co-view data,
@@ -52,7 +55,7 @@ const findPrices = (container) => Array.from(container.querySelectorAll('*')).fi
 const hub = (path) => wrap(
   <MemoryRouter initialEntries={[path]}>
     <AccountHub
-      user={CUSTOMER} auth={{ requestPasswordReset: vi.fn() }} onContactSupport={vi.fn()} onRegisterBusiness={vi.fn()}
+      user={CUSTOMER} auth={{ requestPasswordReset: vi.fn() }} onContactSupport={vi.fn()}
       render={{ overview: () => <div>overview</div>, orders: () => <div>orders</div>, bookings: () => null, requests: () => null, tickets: () => null, events: () => null, settings: () => null, profile: () => null, messages: () => null }}
     />
   </MemoryRouter>,
@@ -70,6 +73,16 @@ const seedWallet = () => server.use(
   http.get(`${API}/api/wallet/withdrawals/`, () => envelope([wd])),
 )
 const seeded = (path, ready) => [() => { seedWallet(); return hub(path) }, () => screen.findByText(ready)]
+
+const ORDER = {
+  id: 214, status: 'paid', delivery_status: 'processing', total_amount: '265.00', placed_at: '2026-10-26T09:00:00Z',
+  items: [{ id: 301, listing: 12, listing_name: 'Kente Stole', variant: 41, variant_label: 'Gold / Large', quantity: 2, unit_price: '130.00', line_total: '260.00' }],
+  delivery_method: 'door_to_door', delivery_address: '12 Adum Road, Kumasi', delivery_gps_address: 'AK-039-5028', delivery_landmark: 'Opposite Total filling station',
+}
+// An order from before GhanaPost fields existed: blank, must render without inventing anything.
+const OLD_ORDER = { ...ORDER, id: 215, delivery_gps_address: '', delivery_landmark: '', delivery_address: '' }
+const LISTED = { id: 10, added_at: '2026-10-28T09:20:00Z', listing: { id: 12, name: 'Kente Stole', category: null, zone: null, price_amount: '120.00', effective_price: '120.00', was_price: null, main_photo: null, photos: [], avg_rating: null, review_count: 0, has_variants: false } }
+const ADDRESS = { id: 7, label: 'Home', recipient_name: 'Akosua Mensah', phone: '0241234567', gps_address: 'AK-039-5028', landmark: 'Opposite Total filling station', address_text: '12 Adum Road', lat: null, lng: null, is_default: true, created_at: '2026-10-28T09:15:22Z' }
 
 // [name, mount, ready anchor, whether the page must show at least one price]
 const scenarios = [
@@ -109,6 +122,18 @@ const scenarios = [
   ['Your Payments / Overview', ...seeded('/my-account/payments/overview', 'Recent activity'), true],
   ['Your Payments / Wallet', ...seeded('/my-account/payments/wallet', 'Your withdrawals'), true],
   ['Your Payments / Transactions', ...seeded('/my-account/payments/transactions', 'Order payment'), true],
+  ['Your Orders (with an old order that has no GhanaPost fields)', () => {
+    server.use(http.get(`${API}/api/orders/`, () => HttpResponse.json([ORDER, OLD_ORDER])))
+    return wrap(<MemoryRouter><OrdersPanel user={CUSTOMER} /></MemoryRouter>)
+  }, () => screen.findByText('Order #215'), true],
+  ['Your Lists', () => {
+    server.use(http.get(`${API}/api/wishlist/`, () => HttpResponse.json([LISTED])))
+    return wrap(<MemoryRouter><YourLists user={CUSTOMER} /></MemoryRouter>)
+  }, () => screen.findByText('Kente Stole'), true],
+  ['Your Addresses', () => {
+    server.use(http.get(`${API}/api/accounts/addresses/`, () => HttpResponse.json([ADDRESS])))
+    return wrap(<MemoryRouter><YourAddresses /></MemoryRouter>)
+  }, () => screen.findByText('AK-039-5028'), false],
   ['Your Payments / Settings', () => hub('/my-account/payments/settings'), () => screen.findByText('Your default purchase preference'), false],
 ]
 
