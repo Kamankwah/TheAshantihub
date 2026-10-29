@@ -372,6 +372,13 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
         return self.registration_channel == self.SCOUT and self.claimed_at is None
 
     @property
+    def identity_verified(self):
+        """Staff approved this owner's identity documents. This, not
+        kyc_status, drives the verified check mark."""
+        profile = getattr(self, "profile", None)
+        return profile is not None and profile.identity_status == BusinessOwnerProfile.IDENTITY_VERIFIED
+
+    @property
     def display_name(self):
         """The business's name for staff screens and notices — the profile's
         business_name, or the owner's own name when none is set."""
@@ -518,6 +525,39 @@ class BusinessOwnerProfile(models.Model):
     signboard_photo = models.ImageField(
         upload_to="signboards/", validators=[validate_image_content_type], null=True, blank=True,
     )
+
+    # ── Identity check (optional identity documents) ─────────────────────────
+    # A staff-approved check on the owner's Ghana Card, separate from
+    # BusinessOwner.kyc_status (which stays the business approval). Verified
+    # is what earns the check mark.
+    IDENTITY_NOT_SUBMITTED = "not_submitted"
+    IDENTITY_PENDING = "pending"
+    IDENTITY_VERIFIED = "verified"
+    IDENTITY_REJECTED = "rejected"
+    IDENTITY_STATUS_CHOICES = [
+        (IDENTITY_NOT_SUBMITTED, "Not submitted"),
+        (IDENTITY_PENDING, "Pending"),
+        (IDENTITY_VERIFIED, "Verified"),
+        (IDENTITY_REJECTED, "Rejected"),
+    ]
+    identity_status = models.CharField(
+        max_length=14, choices=IDENTITY_STATUS_CHOICES, default=IDENTITY_NOT_SUBMITTED,
+    )
+    identity_rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+    identity_submitted_at = models.DateTimeField(null=True, blank=True)
+    identity_reviewed_at = models.DateTimeField(null=True, blank=True)
+    identity_reviewed_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="identity_reviewed_profiles",
+    )
+
+    def has_identity_documents(self):
+        """The Ghana Card number and both photos are on file."""
+        return bool(
+            self.ghana_card_number
+            and self.ghana_card_front_image
+            and self.ghana_card_back_image
+        )
 
     def has_payout_details(self):
         """The registration's "payment_info" step is done: a payout method is
