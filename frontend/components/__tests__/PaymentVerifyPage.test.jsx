@@ -106,6 +106,8 @@ describe('PaymentVerifyPage', () => {
     expect(screen.queryByRole('button', { name: 'View your order' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Continue shopping' })).not.toBeInTheDocument()
     expect(screen.queryByText('Order #')).not.toBeInTheDocument()
+    expect(screen.getByText('For')).toBeInTheDocument()
+    expect(screen.getByText('Service request #9')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Back to AshantiHub' }))
     expect(screen.getByTestId('loc')).toHaveTextContent(/^\/$/)
   })
@@ -165,6 +167,9 @@ describe('PaymentVerifyPage', () => {
     await flush()
     expect(screen.queryByText('Payment confirmed')).not.toBeInTheDocument()
     expect(screen.getByText(/waiting for the payment/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue shopping' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'View your order' }))
+    expect(screen.getByTestId('loc')).toHaveTextContent('/my-account/orders')
   })
 
   test('missing reference and order shows an error', async () => {

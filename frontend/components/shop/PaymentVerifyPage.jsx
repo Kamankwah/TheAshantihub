@@ -89,6 +89,7 @@ export default function PaymentVerifyPage() {
   const wallet = !!session?.wallet;
 
   const rows = [["Merchant", "AshantiHub"]];
+  if (session?.purpose && session.purpose.trim()) rows.push(["For", session.purpose]);
   if (money(amount)) rows.push(["Amount", money(amount)]);
   if (session && hasFee(session.processing_fee)) rows.push(["Payment processing", money(session.processing_fee)]);
   if (session) rows.push(["Method", wallet ? "AshantiHub wallet" : "Mobile money"]);
@@ -147,9 +148,9 @@ export default function PaymentVerifyPage() {
             </tbody>
           </table>
 
-          {(resolved || timedOut) && (
+          {(resolved || timedOut || (order && status === "pending")) && (
             <div style={{ display: "grid", gap: 8 }}>
-              {status === "success" && isOrder && <>
+              {((status === "success" && isOrder) || (order && status === "pending")) && <>
                 <button type="button" onClick={go("/my-account/orders")} style={btn(true)}>View your order</button>
                 <button type="button" onClick={go("/")} style={btn(false)}>Continue shopping</button>
               </>}
@@ -163,7 +164,7 @@ export default function PaymentVerifyPage() {
                 <button type="button" onClick={go("/checkout")} style={btn(true)}>Try again</button>
                 <button type="button" onClick={go("/cart")} style={btn(false)}>Exit</button>
               </>}
-              {((status !== "success" && status !== "pending" && !isOrder) || status === "pending") && (
+              {((status !== "success" && status !== "pending" && !isOrder) || (status === "pending" && !order)) && (
                 <button type="button" onClick={go("/")} style={btn(true)}>Back to AshantiHub</button>
               )}
             </div>
