@@ -125,6 +125,21 @@ def checkout_fee(items, delivery_lat, delivery_lng, *, express=False, plan=None)
     return card, fee
 
 
+PIN_REQUIRED_MESSAGE = "Pin your door on the map so we can work out the delivery fee."
+
+
+def pin_required(lat, lng):
+    """True when a door-to-door checkout has no map pin although a fee would be worked out from one: the fee switch is on,
+    a rate card is in force and no delivery point was sent. With the switch off, or no card, checkout adds no fee and a
+    free-text address is enough. Not the same as the cart's fee_status "needs_location": that is also answered for a
+    pinned door when no fee can be measured (a first shop with no location), and such an order is accepted."""
+    from django.conf import settings
+
+    if not settings.DELIVERY_FEE_ENABLED or (lat not in (None, "") and lng not in (None, "")):
+        return False
+    return config.live(config.RateCard) is not None
+
+
 def cart_delivery_quote(items, delivery_method, lat, lng, now=None):
     """What the cart shows for delivery, mirroring checkout: None unless fees are on and the customer chose
     door-to-door. `fee` is the amount that will be charged ("0.00" when waived) and is null until a delivery

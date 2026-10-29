@@ -1,5 +1,6 @@
 import CancellationPolicyField from "../../CancellationPolicyField.jsx";
 import { D } from "../theme.js";
+import { STOCK_COUNT_HELP } from "../../catalogue/catalogueFormat.js";
 
 // Form pieces shared by the Listings panel (create and edit of a draft) and the approved-listing
 // card's revision editor, so the decision fields are written once.
@@ -114,6 +115,7 @@ export function DecisionFields({ kind, isAccommodation, form, update, hideStock 
           <div>
             <label style={labelStyle}>Stock quantity</label>
             <input type="number" min={0} value={form.stock_quantity ?? ""} placeholder="Leave blank if not tracked" onChange={e => update("stock_quantity", e.target.value)} style={inputStyle} />
+            <div style={{ ...policyHint, marginTop: 4 }}>{STOCK_COUNT_HELP}</div>
           </div>
           )}
         </div>

@@ -6,7 +6,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -199,7 +199,16 @@ class NeedsRestockingTests(TestCase):
             "days_of_cover": None, "basis": "fallback", "line": 5, "low": True, "sold_out": False,
         })
         self.assertEqual((body["tracked_offers"], body["untracked_offers"]), (3, 1))
-        self.assertEqual(body["settings"], {"cover_days": 7, "fallback_units": 5, "window_days": 28})
+        self.assertEqual(body["settings"], {
+            "cover_days": 7, "fallback_units": 5, "window_days": 28, "alerts_enabled": False, "sold_out_hidden": False,
+        })
+
+    def test_settings_say_whether_alerts_and_sold_out_hiding_are_on(self):
+        body = self.client.get("/api/catalogue/stock/").json()
+        self.assertEqual((body["settings"]["alerts_enabled"], body["settings"]["sold_out_hidden"]), (False, False))
+        with override_settings(STOCK_ALERTS_ENABLED=True, SOLD_OUT_HIDDEN_ENABLED=True):
+            body = self.client.get("/api/catalogue/stock/").json()
+        self.assertEqual((body["settings"]["alerts_enabled"], body["settings"]["sold_out_hidden"]), (True, True))
 
     def test_nothing_low_is_an_empty_list_said_plainly(self):
         calm = business("Calm Shop")
@@ -268,6 +277,32 @@ class OwnLineTests(TestCase):
             response = self.client.put(f"/api/catalogue/stock/{self.listing.pk}/line/", body, format="json")
             self.assertEqual((response.status_code, response.json()), (400, {"units": stock.LINE_MESSAGE}), body)
         self.assertEqual(self.put(self.listing, None).status_code, 200)
+
+    def get(self, listing):
+        return self.client.get(f"/api/catalogue/stock/{listing.pk}/line/")
+
+    def test_get_answers_the_saved_line_and_its_cover(self):
+        self.put(self.listing, 25)
+        response = self.get(self.listing)
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertEqual((body["listing_id"], body["line"], body["cover"]["basis"]), (self.listing.pk, 25, "own_threshold"))
+
+    def test_get_without_an_own_line_answers_null_and_the_default_basis(self):
+        body = self.get(self.listing).json()
+        self.assertEqual((body["line"], body["cover"]["basis"]), (None, "fallback"))
+
+    def test_get_of_an_uncounted_listing_answers_a_null_cover(self):
+        response = self.get(product(self.owner, "Uncounted", stock=None))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual((response.json()["line"], response.json()["cover"]), (None, None))
+
+    def test_get_of_a_service_is_not_a_product(self):
+        response = self.get(service(self.owner))
+        self.assertEqual((response.status_code, response.json()["code"]), (400, "not_a_product"))
+
+    def test_get_of_another_business_listing_is_404(self):
+        self.assertEqual(self.get(product(business("Rival Mart"), stock=20)).status_code, 404)
 
     def test_a_business_sets_and_clears_its_own_line(self):
         response = self.put(self.listing, 25)

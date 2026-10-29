@@ -57,6 +57,34 @@ class CategoryVisit(models.Model):
         constraints = [models.UniqueConstraint(fields=["category", "day"], name="uniq_category_visit_day")]
 
 
+class ListingView(models.Model):
+    """One viewer opening one listing on one day (Accra): feeds the "Customers also viewed" carousel (listings.viewed).
+    `viewer_key` is `c:<customer id>` for a signed-in customer, or `a:` plus a keyed hash of the anonymous id the browser
+    sent - the raw id is never stored. Views older than 30 days are ignored by every read."""
+
+    listing = models.ForeignKey("Listing", on_delete=models.CASCADE, related_name="views")
+    viewer_key = models.CharField(max_length=64)
+    day = models.DateField()
+    viewed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["viewer_key", "listing", "day"], name="uniq_listing_view_per_day")]
+        indexes = [models.Index(fields=["viewer_key", "viewed_at"], name="listingview_viewer_at_idx")]
+
+
+class WishlistItem(models.Model):
+    """A listing a customer saved for later (marketplace Plan 4, contract A3). One row per (customer, listing). A row
+    whose listing later becomes unpublished or hidden is kept, and simply not listed by GET /api/wishlist/."""
+
+    customer = models.ForeignKey("accounts.Customer", on_delete=models.CASCADE, related_name="wishlist_items")
+    listing = models.ForeignKey("Listing", on_delete=models.CASCADE, related_name="wishlist_items")
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-added_at", "-id"]
+        constraints = [models.UniqueConstraint(fields=["customer", "listing"], name="one_wishlist_row_per_listing")]
+
+
 class Zone(models.Model):
     name = models.CharField(max_length=50, unique=True)
 

@@ -10,6 +10,8 @@ import { useZones } from "../../../hooks/useZones.js";
 import VariantEditor from "./VariantEditor.jsx";
 import MediaManager, { postPendingMedia } from "./MediaManager.jsx";
 import { canHaveVariants } from "./listingEditorShared.jsx";
+import BarcodeField from "../../catalogue/BarcodeField.jsx";
+import { displayBarcode, isGoodsCategory } from "../../catalogue/catalogueFormat.js";
 import { DecisionFields, inputStyle, labelStyle, textareaStyle, fieldGrid2, policyHint } from "./listingFormFields.jsx";
 import { D, glassCard, LISTING_STATUS_META, HERO_STATUS_META, tint } from "../theme.js";
 
@@ -29,7 +31,7 @@ const emptyCreateForm = () => ({
   has_warranty: "", warranty_details: "", has_expiry: "", expiry_date: "", return_policy: "",
   brand: "", condition: "", dimensions: "", weight: "", stock_quantity: "",
   service_duration: "", whats_included: "", requirements: "", revisions: "", delivery_time: "",
-  cancellation_policy: "",
+  cancellation_policy: "", barcode: "",
   specs: [],
 });
 
@@ -52,6 +54,8 @@ const decisionFieldsBody = (form) => ({
   condition: form.condition || "",
   dimensions: form.dimensions || "",
   weight: form.weight || "",
+  // Sent as typed: the server cleans it to the 14-digit key. Blank is harmless for a non-goods listing.
+  barcode: form.barcode || "",
   stock_quantity: form.stock_quantity === "" || form.stock_quantity == null ? null : Number(form.stock_quantity),
   // Services and stays only (the form has no policy control for a product): omitted when unchosen.
   cancellation_policy: form.cancellation_policy || undefined,
@@ -72,6 +76,14 @@ const formatApiError = (err, fallback) => {
     if (parts.length > 0) return parts.join(" ");
   }
   return fallback;
+};
+
+// A barcode refusal is shown under its field; the rest of the server's words stay in the general message.
+const splitBarcodeError = (err) => {
+  const body = err?.body;
+  if (!body || typeof body !== "object" || body.barcode == null) return { barcode: null, rest: err };
+  const { barcode, ...others } = body;
+  return { barcode, rest: Object.keys(others).length > 0 ? { ...err, body: others } : null };
 };
 
 // ─── Shared field editors (create + edit forms) ──────────────────────────────
@@ -116,6 +128,8 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   const [createVariants, setCreateVariants] = useState([]);
   const [createMedia, setCreateMedia] = useState([]);
   const [createError, setCreateError] = useState(null);
+  const [createBarcodeError, setCreateBarcodeError] = useState(null);
+  const [editBarcodeError, setEditBarcodeError] = useState(null);
   const [creating, setCreating] = useState(false);
   const [showSlides, setShowSlides] = useState(false);
   const [heroSubmitPhoto, setHeroSubmitPhoto] = useState(null);
@@ -143,9 +157,14 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
 
   const toast = () => { if (showToast) showToast(); };
 
-  const updateCreate = (field, value) => setCreateForm(f => ({ ...f, [field]: value }));
-  const createKind = categoryKindById(createForm.category);
   const categoryById = (id) => (categories || []).find(c => c.id === Number(id));
+  // Only goods carry a barcode: a typed one is dropped when the category stops being goods.
+  const updateCreate = (field, value) => setCreateForm(f => ({
+    ...f, [field]: value, ...(field === "category" && !isGoodsCategory(categoryById(value)) ? { barcode: "" } : {}),
+  }));
+  const createKind = categoryKindById(createForm.category);
+  const createIsGoods = isGoodsCategory(categoryById(createForm.category));
+  const editCategory = categoryById(editForm.category_id);
   const createCanHaveVariants = canHaveVariants(categoryById(createForm.category));
   const createIsAccommodation = categoryIsAccommodationById(createForm.category);
   // Client-side mirror of OwnerListingSerializer.validate()'s product rules,
@@ -164,7 +183,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
 
   const submitCreate = async () => {
     if (!canSubmitCreate || creating) return;
-    setCreateError(null); setCreating(true);
+    setCreateError(null); setCreateBarcodeError(null); setCreating(true);
     try {
       const created = await apiPost(`${basePath}/`, {
         category: Number(createForm.category), zone: Number(createForm.zone),
@@ -208,14 +227,16 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       setShowCreate(false); setCreateForm(emptyCreateForm()); setCreatePhoto(null); setCreateVariants([]); setCreateMedia([]);
       toast(); refetchListings();
     } catch (err) {
-      setCreateError(formatApiError(err, "Could not create this listing. Please check the fields and try again."));
+      const { barcode, rest } = splitBarcodeError(err);
+      setCreateBarcodeError(barcode);
+      setCreateError(barcode != null && rest == null ? null : formatApiError(rest, "Could not create this listing. Please check the fields and try again."));
     } finally {
       setCreating(false);
     }
   };
 
   const saveEdit = async (id) => {
-    setActionError(null);
+    setActionError(null); setEditBarcodeError(null);
     try {
       await apiPatch(`${basePath}/${id}/`, {
         name: editForm.name, price_amount: editForm.price_amount, price_unit: editForm.price_unit,
@@ -225,7 +246,9 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       });
       setEditingId(null); toast(); refetchListings();
     } catch (err) {
-      setActionError(formatApiError(err, "Could not save this listing. It may already be published, or a field may be invalid."));
+      const { barcode, rest } = splitBarcodeError(err);
+      setEditBarcodeError(barcode);
+      if (barcode == null || rest != null) setActionError(formatApiError(rest, "Could not save this listing. It may already be published, or a field may be invalid."));
     }
   };
 
@@ -282,7 +305,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <h2 style={{ margin: 0, color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>🏷️ Listings &amp; Prices</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={() => { setShowCreate(s => !s); setCreateError(null); }} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "7px 16px", fontSize: "0.72rem", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>{createButtonLabel}</button>
+          <button onClick={() => { setShowCreate(s => !s); setCreateError(null); setCreateBarcodeError(null); }} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "7px 16px", fontSize: "0.72rem", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>{createButtonLabel}</button>
           {!direct && <a href="https://wa.me/233244000000?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>}
         </div>
       </div>
@@ -334,6 +357,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
             <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 10 }}>Choose a category above to fill in the product or service details.</div>
           )}
           <DecisionFields kind={createKind} isAccommodation={createIsAccommodation} form={createForm} update={updateCreate} />
+          {createIsGoods && <BarcodeField id="create-barcode" value={createForm.barcode} onChange={v => updateCreate("barcode", v)} error={createBarcodeError} />}
           {createKind && <SpecsEditor specs={createForm.specs} onChange={specs => setCreateForm(f => ({ ...f, specs }))} />}
           <div style={{ marginBottom: 10 }}>
             <label style={labelStyle}>Photo (optional)</label>
@@ -449,6 +473,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                       loading / legacy row), preserving this form's historical
                       always-show-service_duration behavior. */}
                   <DecisionFields kind={categoryKindById(item.category) || "service"} isAccommodation={categoryIsAccommodationById(item.category)} form={editForm} update={(field, value) => setEditForm(f => ({ ...f, [field]: value }))} />
+                  {isGoodsCategory(editCategory) && <BarcodeField id={`edit-barcode-${item.id}`} value={editForm.barcode} onChange={v => setEditForm(f => ({ ...f, barcode: v }))} error={editBarcodeError} savedKey={item.barcode} />}
                   <SpecsEditor specs={editForm.specs} onChange={specs => setEditForm(f => ({ ...f, specs }))} />
                   {canHaveVariants(categoryById(item.category)) && <VariantEditor listing={item} basePath={basePath} onChanged={refetchListings} />}
                   {item.status === "pending_review"
@@ -479,7 +504,8 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                     {item.status === "rejected" && item.rejection_reason && <div style={{ fontSize: "0.65rem", color: D.red, marginTop: 3 }}>Rejected: {item.rejection_reason}</div>}
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
-                    {canEdit && <button onClick={() => { setEditingId(item.id); setEditForm({
+                    {canEdit && <button onClick={() => { setEditingId(item.id); setEditBarcodeError(null); setEditForm({
+                      barcode: displayBarcode(item.barcode),
                       name: item.name, price_amount: item.price_amount, price_unit: item.price_unit,
                       specs: item.specs || [], service_duration: item.service_duration || "",
                       cancellation_policy: categoryIsAccommodationById(item.category) ? item.cancellation_policy || "" : "", category_id: item.category,

@@ -66,7 +66,8 @@ class MultiStopCheckoutTests(EngineCase):
         for listing in listings:
             CartItem.objects.create(cart=cart, listing=listing, quantity=1, unit_price_snapshot="10.00")
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.customer, 'customer')}")
-        body = {"delivery_method": method, "delivery_address": "1 Road", "delivery_phone": "+233200000000"}
+        body = {"delivery_method": method, "delivery_address": "1 Road", "delivery_phone": "+233200000000",
+                "delivery_gps_address": "AK-039-5028", "delivery_landmark": "Blue gate"}
         if drop:
             body.update({"delivery_lat": drop[0], "delivery_lng": drop[1]})
         response = self.client.post("/api/orders/checkout/", body, format="json")
@@ -107,12 +108,20 @@ class MultiStopCheckoutTests(EngineCase):
         self.assertEqual(order.delivery_fee_breakdown["distance_basis"], routing_service.BASIS_ESTIMATE)
         self.assertEqual(order.route_plan["basis"], routing_service.BASIS_ESTIMATE)
 
-    def test_no_drop_pin_stores_a_fallback_plan_and_charges_nothing(self):
+    def test_no_drop_pin_is_refused_while_fees_are_on(self):
+        # Ruling P45 (it used to store a fallback plan and charge nothing): the fee needs a pin, so nothing is created.
         chop, food = self.make_shop("Chop Bar", "+233207000204", C, slug="food")
-        order = self.checkout(food, self.item_a, drop=None)
-        self.assertIsNone(order.delivery_fee)
-        self.assertEqual(order.route_plan["owner_ids"], [self.shop_a.pk, chop.pk])
-        self.assertEqual((order.route_plan["planned"], order.route_plan["total_km"], order.route_plan["direct_km"]), (False, None, None))
+        cart, _ = Cart.objects.get_or_create(customer=self.customer)
+        for listing in (food, self.item_a):
+            CartItem.objects.create(cart=cart, listing=listing, quantity=1, unit_price_snapshot="10.00")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.customer, 'customer')}")
+        response = self.client.post("/api/orders/checkout/", {
+            "delivery_method": "door_to_door", "delivery_address": "1 Road", "delivery_phone": "+233200000000",
+            "delivery_gps_address": "AK-039-5028", "delivery_landmark": "Blue gate",
+        }, format="json")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["delivery_lat"], ["Pin your door on the map so we can work out the delivery fee."])
+        self.assertFalse(Order.objects.exists())
 
     def test_a_shop_without_a_pin_falls_back_and_charges_from_the_first_shop(self):
         _, nowhere = self.make_shop("Shop X", "+233207000205", None)

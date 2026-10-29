@@ -176,6 +176,11 @@ class TargetReviewListView(generics.ListAPIView):
         response = self.paginator.get_paginated_response(data)
         response.data["avg_rating"] = aggregates["avg_rating"]
         response.data["review_count"] = aggregates["review_count"] or 0
+        # Stars 5..1 over every published review of the target, not just this page.
+        counts = dict(
+            self.filter_queryset(self.get_queryset()).order_by().values_list("rating").annotate(n=Count("id"))
+        )
+        response.data["distribution"] = {str(star): counts.get(star, 0) for star in (5, 4, 3, 2, 1)}
         return response
 
 

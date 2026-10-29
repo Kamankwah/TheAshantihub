@@ -1,7 +1,9 @@
 from decimal import Decimal
 
+from django.db.models import Prefetch
 from rest_framework import serializers
 
+from accounts import direct
 from listings import variants
 from listings.models import Listing
 from listings.visibility import hidden_business_q
@@ -13,17 +15,42 @@ class CartItemSerializer(serializers.ModelSerializer):
     listing_name = serializers.CharField(source="listing.name", read_only=True)
     line_total = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     variant_label = serializers.SerializerMethodField()
+    # What the cart and checkout pages show beside each line. seller_name is what "Sold by" shows (the business name);
+    # stock_quantity is the variant's for a variant line, else the listing's, null when stock is not counted.
+    listing_photo = serializers.ImageField(source="listing.main_photo", read_only=True)
+    seller_name = serializers.CharField(source="listing.business_owner.display_name", read_only=True)
+    is_ashanti_direct = serializers.SerializerMethodField()
+    in_stock = serializers.SerializerMethodField()
+    stock_quantity = serializers.SerializerMethodField()
 
     def get_variant_label(self, obj):
         return obj.variant.label if obj.variant_id else ""
+
+    def get_is_ashanti_direct(self, obj):
+        return direct.is_direct(obj.listing.business_owner)
+
+    def get_stock_quantity(self, obj):
+        return obj.variant.stock_quantity if obj.variant_id else obj.listing.stock_quantity
+
+    def get_in_stock(self, obj):
+        stock = self.get_stock_quantity(obj)
+        return stock is None or stock > 0
 
     class Meta:
         model = CartItem
         fields = [
             "id", "listing", "listing_name", "variant", "variant_label", "quantity",
             "unit_price_snapshot", "line_total", "added_at",
+            "listing_photo", "seller_name", "is_ashanti_direct", "in_stock", "stock_quantity",
         ]
         read_only_fields = ["id", "listing", "listing_name", "variant", "unit_price_snapshot", "line_total", "added_at"]
+
+
+def cart_with_lines(cart_id):
+    """The cart with each line's listing, seller and variant loaded up front (no query per line)."""
+    return Cart.objects.prefetch_related(
+        Prefetch("items", queryset=CartItem.objects.select_related("listing", "listing__business_owner__profile", "variant"))
+    ).get(pk=cart_id)
 
 
 class CartItemUpdateSerializer(serializers.ModelSerializer):
@@ -116,3 +143,61 @@ class CartItemCreateSerializer(serializers.Serializer):
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             raise serializers.ValidationError({field: "Must be a whole number of 1 or more."})
         return value
+
+
+MAX_LINE_QUANTITY = variants.MAX_STOCK  # most of one version a cart line may hold (keeps the column far inside its range)
+LINE_SHAPE_MESSAGE = "Each line needs a variant and a whole quantity of 1 or more."
+LINE_TOO_MANY_MESSAGE = f"You can add at most {MAX_LINE_QUANTITY:,} of one version."
+
+
+def bulk_error_body(errors):
+    """Shape serializer errors for POST /api/cart/items/bulk/: a body-level problem is {"detail": "<string>"}; a problem
+    with particular lines is {"lines": [{"index", "detail"}]}. Any other key (such as an unknown listing) is left as is."""
+    out = {}
+    for key, value in errors.items():
+        if key in ("detail", "non_field_errors"):
+            out["detail"] = str(value[0] if isinstance(value, (list, tuple)) else value)
+        elif key == "lines" and isinstance(value, dict):  # a line that is not an object, keyed by its place
+            out["lines"] = [{"index": int(index), "detail": LINE_SHAPE_MESSAGE} for index in sorted(value, key=int)]
+        elif key == "lines" and value and isinstance(value[0], dict) and "index" in value[0]:
+            out["lines"] = value
+        elif key == "lines":  # an empty list, or more lines than one call takes
+            out["detail"] = str(value[0] if isinstance(value, (list, tuple)) else value)
+        else:
+            out[key] = value
+    return out
+
+
+class BulkAddSerializer(serializers.Serializer):
+    """Input for POST /api/cart/items/bulk/. Body-level problems (no such listing, no variants, no lines, a variant
+    named twice) are a plain 400; a line that is not a variant id and a whole quantity is named by its index."""
+
+    listing = serializers.PrimaryKeyRelatedField(queryset=Listing.objects.filter(status=Listing.PUBLISHED))
+    lines = serializers.ListField(child=serializers.DictField(), allow_empty=False, max_length=variants.MAX_VARIANTS)
+
+    def validate_listing(self, listing):
+        if Listing.objects.filter(pk=listing.pk).filter(hidden_business_q()).exists():
+            raise serializers.ValidationError(HIDDEN_LISTING_MESSAGE)
+        return listing
+
+    def validate(self, attrs):
+        if not variants.has_variants(attrs["listing"]):
+            raise serializers.ValidationError({"detail": "This listing has no variants."})
+        asked, errors, seen = [], [], set()
+        for index, line in enumerate(attrs["lines"]):
+            variant, quantity = line.get("variant"), line.get("quantity", 1)
+            if not self._whole(variant) or not self._whole(quantity):
+                errors.append({"index": index, "detail": LINE_SHAPE_MESSAGE})
+                continue
+            if quantity > MAX_LINE_QUANTITY:
+                errors.append({"index": index, "detail": LINE_TOO_MANY_MESSAGE})
+                continue
+            if variant in seen:
+                raise serializers.ValidationError({"detail": "Each version can appear only once."})
+            seen.add(variant)
+            asked.append((index, variant, quantity))
+        return {**attrs, "asked": asked, "line_errors": errors}  # line errors are answered by the view (integer indexes)
+
+    @staticmethod
+    def _whole(value):
+        return isinstance(value, int) and not isinstance(value, bool) and value >= 1

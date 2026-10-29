@@ -77,3 +77,10 @@ class OrderOversightTests(MarketplaceTestCase):
     def test_needs_the_delivery_permission(self):
         self.sign_in(make_staff("scout", "scout@example.com"))
         self.assertEqual(self.client.get("/api/marketplace/orders/").status_code, 403)
+
+    def test_detail_carries_the_ghanapost_code_and_landmark_blank_on_old_orders(self):
+        Order.objects.filter(pk=self.assigned.pk).update(delivery_gps_address="AK-039-5028", delivery_landmark="Blue gate")
+        body = self.client.get(f"/api/marketplace/orders/{self.assigned.pk}/").json()
+        self.assertEqual((body["delivery_gps_address"], body["delivery_landmark"]), ("AK-039-5028", "Blue gate"))
+        body = self.client.get(f"/api/marketplace/orders/{self.waiting.pk}/").json()
+        self.assertEqual((body["delivery_gps_address"], body["delivery_landmark"]), ("", ""))

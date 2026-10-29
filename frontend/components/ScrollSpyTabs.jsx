@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { C } from "../theme.js";
+import { C, tint } from "../theme.js";
 import usePrefersReducedMotion from "../hooks/usePrefersReducedMotion.js";
 
 // ─── ScrollSpyTabs ──────────────────────────────────────────────────────────
@@ -15,6 +15,14 @@ import usePrefersReducedMotion from "../hooks/usePrefersReducedMotion.js";
 // scroll-spy mechanics. Renders null when `tabs` is empty, matching
 // SlideCarousel's own "renders null when empty" convention.
 //
+// Marketplace Plan 4 additions (all optional, the old page passes none):
+// - `tone`: "dark" (default) is the fixed-dark bar; "theme" draws it with the
+//   light/dark theme tokens (the product page).
+// - `trailing`: a node, or `(activeTabId) => node`, shown at the bar's right
+//   beside the tab list (the product page's mini title + price).
+// - a tab with `external: true` names a section the page renders itself
+//   (found by its DOM id); it gets a tab but no section here.
+//
 // `STICKY_TOP` is set just below Navbar.jsx's own sticky header (72px tall
 // content + a 4px flag stripe on top = 76px) so the two sticky bars don't
 // visually overlap. App.jsx's `--ah-top-offset` (the staff view-only bar's
@@ -27,7 +35,31 @@ const STICKY_TOP = 76;
 // user scrolling immediately after a click doesn't feel unresponsive.
 const PROGRAMMATIC_SCROLL_GUARD_MS = 700;
 
-export default function ScrollSpyTabs({ tabs, renderSection }) {
+const TONES = {
+  dark: {
+    bar: { background: C.void, borderBottom: "1px solid rgba(255,255,255,0.12)" },
+    tab: (active) => ({
+      background: active ? C.gold : "rgba(255,255,255,0.08)",
+      color: active ? C.darkBrown : "white",
+      border: `1.5px solid ${active ? C.gold : "rgba(255,255,255,0.2)"}`,
+    }),
+  },
+  theme: {
+    bar: { background: C.canvas, borderBottom: `1px solid ${C.line}` },
+    tab: (active) => ({
+      background: active ? tint(C.gold, "22") : "transparent",
+      color: C.ink,
+      border: `1.5px solid ${active ? C.gold : C.line}`,
+    }),
+  },
+};
+
+// The element a tab scrolls to: the section rendered here, or (external tab) the page's own element with that id.
+function sectionElement(refs, id) {
+  return refs[id] || (typeof document !== "undefined" ? document.getElementById(id) : null);
+}
+
+export default function ScrollSpyTabs({ tabs, renderSection, tone = "dark", trailing = null }) {
   const reducedMotion = usePrefersReducedMotion();
   const [activeTab, setActiveTab] = useState(tabs?.[0]?.id);
   const sectionRefs = useRef({});
@@ -67,7 +99,7 @@ export default function ScrollSpyTabs({ tabs, renderSection }) {
       { root: null, rootMargin: "-140px 0px -55% 0px", threshold: 0 },
     );
     tabs.forEach((tab) => {
-      const el = sectionRefs.current[tab.id];
+      const el = sectionElement(sectionRefs.current, tab.id);
       if (el) observer.observe(el);
     });
     return () => observer.disconnect();
@@ -83,7 +115,7 @@ export default function ScrollSpyTabs({ tabs, renderSection }) {
   const handleTabClick = (tabId) => {
     setActiveTab(tabId);
     isProgrammaticScrollRef.current = true;
-    const el = sectionRefs.current[tabId];
+    const el = sectionElement(sectionRefs.current, tabId);
     if (el) el.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
     if (guardTimeoutRef.current) clearTimeout(guardTimeoutRef.current);
     guardTimeoutRef.current = setTimeout(() => {
@@ -91,54 +123,55 @@ export default function ScrollSpyTabs({ tabs, renderSection }) {
     }, PROGRAMMATIC_SCROLL_GUARD_MS);
   };
 
+  const look = TONES[tone] || TONES.dark;
+  const trailingNode = typeof trailing === "function" ? trailing(activeTab) : trailing;
+
   return (
     <div>
       <div
-        role="tablist"
-        aria-label="Listing detail sections"
         style={{
           position: "sticky",
           top: `calc(var(--ah-top-offset, 0px) + ${STICKY_TOP}px)`,
           zIndex: 40,
           display: "flex",
-          gap: 6,
-          overflowX: "auto",
-          background: C.void,
-          borderBottom: "1px solid rgba(255,255,255,0.12)",
+          alignItems: "center",
+          gap: 12,
+          ...look.bar,
           padding: "10px 2px",
           marginTop: 24,
         }}
       >
-        {tabs.map((tab) => {
-          const active = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              role="tab"
-              aria-selected={active}
-              aria-controls={tab.id}
-              onClick={() => handleTabClick(tab.id)}
-              style={{
-                flexShrink: 0,
-                background: active ? C.gold : "rgba(255,255,255,0.08)",
-                color: active ? C.darkBrown : "white",
-                border: `1.5px solid ${active ? C.gold : "rgba(255,255,255,0.2)"}`,
-                borderRadius: 20,
-                padding: "8px 16px",
-                fontSize: "0.78rem",
-                fontWeight: 800,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                fontFamily: "inherit",
-              }}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
+        <div role="tablist" aria-label="Listing detail sections" style={{ display: "flex", gap: 6, overflowX: "auto", flex: "1 1 auto", minWidth: 0 }}>
+          {tabs.map((tab) => {
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                role="tab"
+                aria-selected={active}
+                aria-controls={tab.id}
+                onClick={() => handleTabClick(tab.id)}
+                style={{
+                  flexShrink: 0,
+                  ...look.tab(active),
+                  borderRadius: 20,
+                  padding: "8px 16px",
+                  fontSize: "0.78rem",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  fontFamily: "inherit",
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+        {trailingNode && <div style={{ flex: "0 1 auto", minWidth: 0 }}>{trailingNode}</div>}
       </div>
       <div>
-        {tabs.map((tab) => (
+        {tabs.filter((tab) => !tab.external).map((tab) => (
           <div
             key={tab.id}
             id={tab.id}

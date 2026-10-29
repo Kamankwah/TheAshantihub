@@ -15,6 +15,10 @@ import StaffGateNotice from "./StaffGateNotice.jsx";
 // seller, event, organizer) made this a real duplication cost, not a
 // premature abstraction. Pure move for ListingDetailPage's existing usage —
 // no behavior change there.
+//
+// `tone`: "dark" (the default) is the fixed-dark styling the service/stay
+// and event pages use; "theme" draws the same parts with the light/dark theme
+// tokens for the product page (Marketplace Plan 4, ruling P14).
 
 // ─── starString ─────────────────────────────────────────────────────────────
 // This module can't import App.jsx's `Stars` component — the established
@@ -30,36 +34,57 @@ export function starString(rating) {
   return "★".repeat(full) + "☆".repeat(Math.max(0, 5 - full));
 }
 
+const TONES = {
+  dark: {
+    ink: "white", body: "rgba(255,255,255,0.78)", dim: "rgba(255,255,255,0.55)", faint: "rgba(255,255,255,0.5)",
+    rule: "rgba(255,255,255,0.1)", starOff: "rgba(255,255,255,0.25)",
+    field: "rgba(255,255,255,0.06)", fieldEdge: "rgba(255,255,255,0.25)",
+    idle: "rgba(255,255,255,0.12)", idleInk: "rgba(255,255,255,0.4)",
+    done: "rgba(34,197,94,0.1)", doneEdge: "rgba(34,197,94,0.35)", doneInk: "#4ade80",
+    verified: "#22c55e22", verifiedInk: "#22c55e", error: "#ffb4b4",
+  },
+  theme: {
+    ink: C.ink, body: C.ink, dim: C.inkDim, faint: C.inkDim,
+    rule: C.line, starOff: C.inkFaint,
+    field: C.surface, fieldEdge: C.line,
+    idle: C.surface3, idleInk: C.inkFaint,
+    done: C.okBg, doneEdge: C.line, doneInk: C.okInk,
+    verified: C.okBg, verifiedInk: C.okInk, error: C.errInk,
+  },
+};
+const toneOf = (tone) => TONES[tone] || TONES.dark;
+
 // ─── ReviewsList ────────────────────────────────────────────────────────────
 // List-rendering shared by every review surface: the listing Reviews tab,
 // the seller-rating badge's expanded list, the event Reviews section, and
 // the organizer-rating section's expanded list.
-export function ReviewsList({ reviews, emptyLabel = "No reviews yet." }) {
+export function ReviewsList({ reviews, emptyLabel = "No reviews yet.", tone = "dark" }) {
+  const t = toneOf(tone);
   if (!reviews || reviews.length === 0) {
-    return <EmptyNote text={emptyLabel} />;
+    return <EmptyNote text={emptyLabel} color={t.faint} />;
   }
   return (
     <div>
       {reviews.map((r) => (
-        <div key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", padding: "12px 0" }}>
+        <div key={r.id} style={{ borderBottom: `1px solid ${t.rule}`, padding: "12px 0" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ width: 28, height: 28, borderRadius: "50%", background: `${C.gold}22`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: C.gold, fontSize: "0.75rem", flexShrink: 0 }}>
                 {r.author_name?.[0]?.toUpperCase()}
               </div>
               <div>
-                <div style={{ fontWeight: 700, fontSize: "0.78rem", color: "white" }}>{r.author_name}</div>
+                <div style={{ fontWeight: 700, fontSize: "0.78rem", color: t.ink }}>{r.author_name}</div>
                 <span style={{ color: C.gold, fontSize: "0.75rem" }}>{starString(r.rating)}</span>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.62rem", color: "rgba(255,255,255,0.5)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.62rem", color: t.faint }}>
               {r.created_at?.slice(0, 10)}
               {r.verified && (
-                <span style={{ background: "#22c55e22", color: "#22c55e", borderRadius: 20, padding: "2px 7px", fontWeight: 700 }}>✓ Verified</span>
+                <span style={{ background: t.verified, color: t.verifiedInk, borderRadius: 20, padding: "2px 7px", fontWeight: 700 }}>✓ Verified</span>
               )}
             </div>
           </div>
-          {r.comment && <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.78)", lineHeight: 1.6 }}>{r.comment}</div>}
+          {r.comment && <div style={{ fontSize: "0.8rem", color: t.body, lineHeight: 1.6 }}>{r.comment}</div>}
         </div>
       ))}
     </div>
@@ -81,7 +106,8 @@ export function ReviewsList({ reviews, emptyLabel = "No reviews yet." }) {
 // organizer_kind — both already support this per the Phase 2 backend
 // contract. It's optional and backwards compatible: the listing/seller call
 // sites never pass it, so they're unaffected.
-export function ReviewWriteForm({ targetType, targetId, organizerKind, user, onReviewSubmitted, label = "Write a Review" }) {
+export function ReviewWriteForm({ targetType, targetId, organizerKind, user, onReviewSubmitted, label = "Write a Review", tone = "dark" }) {
+  const t = toneOf(tone);
   const [newRating, setNewRating] = useState(0);
   const [newText, setNewText] = useState("");
   const [hover, setHover] = useState(0);
@@ -114,22 +140,24 @@ export function ReviewWriteForm({ targetType, targetId, organizerKind, user, onR
 
   if (submitted) {
     return (
-      <div style={{ background: "rgba(34,197,94,0.1)", border: "1.5px solid rgba(34,197,94,0.35)", borderRadius: 14, padding: 16, textAlign: "center" }}>
+      <div style={{ background: t.done, border: `1.5px solid ${t.doneEdge}`, borderRadius: 14, padding: 16, textAlign: "center" }}>
         <div style={{ fontSize: "1.6rem", marginBottom: 6 }}>🎉</div>
-        <div style={{ fontWeight: 800, color: "#4ade80" }}>Review submitted! Thank you.</div>
+        <div style={{ fontWeight: 800, color: t.doneInk }}>Review submitted! Thank you.</div>
       </div>
     );
   }
 
+  const note = { fontSize: "0.75rem", color: t.dim, textAlign: "center" };
+  const canSubmit = !!newRating && newText.trim().length >= 10;
   return (
     <div style={{ background: `${C.gold}12`, border: `1.5px solid ${C.gold}33`, borderRadius: 14, padding: 16 }}>
-      <div style={{ fontWeight: 800, color: C.gold, marginBottom: 10, fontSize: "0.82rem" }}>✍️ {label}</div>
+      <div style={{ fontWeight: 800, color: tone === "theme" ? t.ink : C.gold, marginBottom: 10, fontSize: "0.82rem" }}>✍️ {label}</div>
       {!user ? (
-        <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.55)", textAlign: "center" }}>Sign in to leave a review</div>
+        <div style={note}>Sign in to leave a review</div>
       ) : staff ? (
         <StaffGateNotice passive />
       ) : eligibility.isLoading ? (
-        <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.55)", textAlign: "center" }}>Checking your eligibility…</div>
+        <div style={note}>Checking your eligibility…</div>
       ) : eligibility.data?.eligible ? (
         <>
           <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
@@ -139,22 +167,22 @@ export function ReviewWriteForm({ targetType, targetId, organizerKind, user, onR
                 onClick={() => setNewRating(s)}
                 onMouseEnter={() => setHover(s)}
                 onMouseLeave={() => setHover(0)}
-                style={{ fontSize: "1.6rem", cursor: "pointer", color: (hover || newRating) >= s ? C.gold : "rgba(255,255,255,0.25)" }}
+                style={{ fontSize: "1.6rem", cursor: "pointer", color: (hover || newRating) >= s ? C.gold : t.starOff }}
               >
                 ★
               </span>
             ))}
           </div>
-          <textarea value={newText} onChange={(e) => setNewText(e.target.value)} placeholder="Share your experience..." style={textareaStyle} />
-          {actionError && <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{actionError}</div>}
-          <button onClick={handleSubmit} disabled={!newRating || newText.trim().length < 10} style={submitBtnStyle(!!newRating && newText.trim().length >= 10)}>
+          <textarea value={newText} onChange={(e) => setNewText(e.target.value)} placeholder="Share your experience..." style={fieldStyle(t)} />
+          {actionError && <div style={{ color: t.error, fontSize: "0.72rem", marginBottom: 8 }}>{actionError}</div>}
+          <button onClick={handleSubmit} disabled={!canSubmit} style={submitStyle(canSubmit, t)}>
             Submit Review
           </button>
         </>
       ) : eligibility.data?.already_reviewed ? (
-        <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.55)", textAlign: "center" }}>You've already reviewed this.</div>
+        <div style={note}>You've already reviewed this.</div>
       ) : (
-        <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.55)", textAlign: "center" }}>
+        <div style={note}>
           {targetType === "event" || targetType === "organizer"
             ? "You can review this after RSVPing as ‘going’ to the event."
             : "You can review this after a completed purchase."}
@@ -164,32 +192,29 @@ export function ReviewWriteForm({ targetType, targetId, organizerKind, user, onR
   );
 }
 
-function EmptyNote({ text }) {
-  return <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.8rem" }}>{text}</div>;
+function EmptyNote({ text, color }) {
+  return <div style={{ color, fontSize: "0.8rem" }}>{text}</div>;
 }
 
-// Exported so ListingDetailPage.jsx's Q&A form (a separate, non-review
-// input) can reuse the exact same textarea/button chrome instead of a second
-// copy of these style objects.
-export const textareaStyle = {
+const fieldStyle = (t) => ({
   width: "100%",
   minHeight: 80,
   padding: "10px 12px",
   borderRadius: 10,
-  border: "1.5px solid rgba(255,255,255,0.25)",
-  background: "rgba(255,255,255,0.06)",
-  color: "white",
+  border: `1.5px solid ${t.fieldEdge}`,
+  background: t.field,
+  color: t.ink,
   fontSize: "0.82rem",
   fontFamily: "inherit",
   resize: "vertical",
   outline: "none",
   boxSizing: "border-box",
   marginBottom: 10,
-};
+});
 
-export const submitBtnStyle = (active) => ({
-  background: active ? C.gold : "rgba(255,255,255,0.12)",
-  color: active ? C.darkBrown : "rgba(255,255,255,0.4)",
+const submitStyle = (active, t) => ({
+  background: active ? C.gold : t.idle,
+  color: active ? C.darkBrown : t.idleInk,
   border: "none",
   borderRadius: 20,
   padding: "9px 18px",

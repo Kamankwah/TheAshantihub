@@ -1,6 +1,12 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiPatch, apiPost, apiPut } from "../../../apiClient.js";
 import { useListingRevision } from "../../../hooks/useListingRevision.js";
+import { useNeedsRestocking } from "../../../hooks/useCatalogueStock.js";
+import StockLineEditor from "../../catalogue/StockLineEditor.jsx";
+import GroupingCard from "../../catalogue/GroupingCard.jsx";
+import BarcodeField from "../../catalogue/BarcodeField.jsx";
+import { displayBarcode } from "../../catalogue/catalogueFormat.js";
 import { D, glassCard, sectionTitle, tint } from "../theme.js";
 import ListingChangesBanner from "./ListingChangesBanner.jsx";
 import MediaManager from "./MediaManager.jsx";
@@ -70,7 +76,9 @@ const normalise = (field, value) => {
   if (field === "tag") return value || null;
   return value ?? "";
 };
-const toForm = (field, value) => (BOOLEAN_FIELDS.includes(field) ? (value ? "yes" : "no") : value ?? "");
+const toForm = (field, value) => (BOOLEAN_FIELDS.includes(field) ? (value ? "yes" : "no") : field === "barcode" ? displayBarcode(value) : value ?? "");
+// What the live listing holds, worded like the form so an untouched barcode compares equal.
+const liveValue = (field, listing) => (field === "barcode" ? displayBarcode(listing.barcode) : listing[field]);
 
 function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCancel }) {
   const fields = ["name", "description", "tag", "contact_phone", ...(kind === "product" ? PRODUCT_FIELDS : kind === "stay" ? STAY_FIELDS : SERVICE_FIELDS)];
@@ -78,18 +86,19 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
   const [form, setForm] = useState(() => Object.fromEntries(fields.map(f => [f, toForm(f, staged[f] !== undefined ? staged[f] : listing[f])])));
   const [specs, setSpecs] = useState((staged.specs !== undefined ? staged.specs : listing.specs) || []);
   const [error, setError] = useState(null);
+  const [barcodeError, setBarcodeError] = useState(null);
   const update = (field, value) => setForm(f => ({ ...f, [field]: value }));
   const setSpec = (i, key, val) => setSpecs(prev => prev.map((s, idx) => idx === i ? { ...s, [key]: val } : s));
   const label = { fontSize: "0.72rem", fontWeight: 700, color: D.text, display: "block", marginBottom: 4 };
 
   const save = async () => {
-    setError(null);
+    setError(null); setBarcodeError(null);
     const cleanSpecs = specs.filter(s => s.label || s.value);
     const changes = {};
     if (!waiting) {
       for (const f of fields) {
-        const wanted = normalise(f, form[f]);
-        if (JSON.stringify(wanted) !== JSON.stringify(normalise(f, listing[f]))) changes[f] = wanted;
+        const wanted = normalise(f, f === "barcode" ? form[f].trim() : form[f]);
+        if (JSON.stringify(wanted) !== JSON.stringify(normalise(f, liveValue(f, listing)))) changes[f] = wanted;
       }
       if (JSON.stringify(cleanSpecs) !== JSON.stringify(listing.specs || [])) changes.specs = cleanSpecs;
     }
@@ -101,7 +110,11 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
       if (Object.keys(changes).length > 0) await apiPut(`${basePath}/${listing.id}/revision/`, { changes });
       onSaved();
     } catch (err) {
-      const words = serverMessage(err, "Could not save your changes. Please try again.");
+      // A barcode refusal sits under its field; any other refusal keeps the general message.
+      const { barcode, ...others } = err?.body && typeof err.body === "object" ? err.body : {};
+      if (barcode != null) setBarcodeError(barcode);
+      if (barcode != null && Object.keys(others).length === 0) { if (priceSaved) setError("Price saved; the other changes were not."); return; }
+      const words = serverMessage(barcode != null ? { body: others } : err, "Could not save your changes. Please try again.");
       setError(priceSaved ? `Price saved; the other changes were not. ${words}` : words);
     }
   };
@@ -132,10 +145,7 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
       <input value={form.contact_phone} onChange={e => update("contact_phone", e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
       <DecisionFields kind={kind === "product" ? "product" : "service"} isAccommodation={kind === "stay"} form={form} update={update} hideStock />
       {kind === "product" && (
-        <div style={{ marginBottom: 8 }}>
-          <label style={label}>Barcode</label>
-          <input value={form.barcode} onChange={e => update("barcode", e.target.value)} style={{ ...inputStyle, width: "100%" }} />
-        </div>
+        <BarcodeField id={`barcode-${listing.id}`} value={form.barcode} onChange={v => update("barcode", v)} error={barcodeError} savedKey={listing.barcode} />
       )}
       <div style={{ ...sectionTitle, fontSize: "0.72rem", marginBottom: 6 }}>Specs</div>
       {specs.map((s, i) => (
@@ -168,15 +178,28 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
   const [confirm, setConfirm] = useState(null); // "drop" | "discontinue" | null
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState(null);
+  const [lineOpen, setLineOpen] = useState(false);
+
+  // The low/sold-out call is the server's (Needs restocking list), never a client count rule.
+  // Ashanti Direct mounts this card on its own tree, where the owner-only catalogue API is off limits.
+  const catalogueOn = variant === "product" && (!basePath || basePath === DEFAULT_LISTINGS_PATH);
+  const stock = useNeedsRestocking({ enabled: catalogueOn });
+  const stockRow = catalogueOn ? (stock.data?.pages ?? []).flatMap(p => p.results ?? []).find(r => r.listing_id === listing.id) : null;
+  const soldOut = Boolean(stockRow?.sold_out);
+  const low = Boolean(stockRow?.low) && !soldOut;
 
   const dropped = listing.status === "dropped";
   const discontinued = listing.status === "discontinued";
-  const lowStock = isProduct && listing.stock_quantity != null && listing.stock_quantity <= 3;
   const base = `${basePath}/${listing.id}`;
+
+  const qc = useQueryClient();
+  // The Needs restocking list is its own query: refresh it whenever stock or status moves from this card.
+  const refreshStock = () => { if (catalogueOn) qc.invalidateQueries({ queryKey: ["catalogue-stock"] }); };
+  const changed = () => { refreshStock(); onChanged(); };
 
   const run = async (call, fallback, after) => {
     setActionError(null); setBusy(true);
-    try { await call(); if (after) after(); onChanged(); }
+    try { await call(); if (after) after(); changed(); }
     catch (err) { setActionError(serverMessage(err, fallback)); }
     finally { setBusy(false); }
   };
@@ -199,10 +222,12 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
           {discontinued && <Chip color={D.textFaint}>Discontinued</Chip>}
           <ExpiryBadge listing={listing} />
           {isProduct && (
-            <span style={{ background: lowStock ? tint(D.red, "22") : tint(D.green, "22"), color: lowStock ? D.red : D.green, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>
-              {listing.stock_quantity == null ? "Stock not tracked" : `${listing.stock_quantity} in stock`}
+            <span style={{ background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>
+              {listing.stock_quantity == null ? "Stock not counted" : `${listing.stock_quantity} in stock`}
             </span>
           )}
+          {soldOut && <Chip color={D.red}>Sold out</Chip>}
+          {low && <Chip color={D.amber}>Low stock</Chip>}
         </div>
       </div>
 
@@ -213,7 +238,8 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
       )}
 
       {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
-      {lowStock && !restockOpen && <div style={{ color: D.red, fontSize: "0.7rem", marginTop: 6 }}>Running low — restock soon.</div>}
+      {soldOut && !restockOpen && <div style={{ color: D.red, fontSize: "0.7rem", marginTop: 6 }}>Sold out — restock to keep selling.</div>}
+      {low && !restockOpen && <div style={{ color: D.amber, fontSize: "0.7rem", marginTop: 6 }}>Running low — restock soon.</div>}
 
       {!discontinued && !hasVariants && isProduct && (
         <div style={{ marginTop: 12 }}>
@@ -229,11 +255,14 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
       )}
 
       {!discontinued && variantsAllowed && (hasVariants || variantsOpen) && (
-        <VariantEditor listing={listing} basePath={basePath} onChanged={onChanged} />
+        <VariantEditor listing={listing} basePath={basePath} onChanged={changed} />
       )}
 
       {!discontinued && (
         <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+          {catalogueOn && listing.stock_quantity != null && (
+            <button type="button" aria-expanded={lineOpen} onClick={() => setLineOpen(o => !o)} style={quietBtn}>Low-stock line</button>
+          )}
           {variantsAllowed && !hasVariants && !variantsOpen && (
             <button type="button" onClick={() => setVariantsOpen(true)} style={quietBtn}>＋ Add variants</button>
           )}
@@ -244,6 +273,12 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
           <button type="button" disabled={busy} onClick={() => setConfirm("discontinue")} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>Discontinue</button>
         </div>
       )}
+
+      {lineOpen && catalogueOn && listing.stock_quantity != null && (
+        <div style={{ marginTop: 10 }}><StockLineEditor listingId={listing.id} /></div>
+      )}
+
+      {catalogueOn && listing.status === "published" && <GroupingCard listing={listing} />}
 
       {confirm && (
         <div role="alertdialog" aria-label={`Confirm ${confirm}`} style={{ marginTop: 10, padding: "10px 12px", border: `1px solid ${D.red}`, borderRadius: 10, color: D.text, fontSize: "0.76rem" }}>
