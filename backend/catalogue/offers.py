@@ -3,7 +3,7 @@ stock, cart line, fee and pickup); nothing here adds anything to a cart.
 
 * A live offer is published, from a business public browse shows (listings.visibility), priced, and in stock: an
   uncounted stock (null) counts as in stock, zero hides the offer (spec §1 row 15).
-* Only KYC-verified (address-checked) businesses are listed (Director ruling: unverified sellers hidden, spec (cxvii)).
+* Only address-checked or identity-verified businesses are listed (Director ruling: unverified sellers hidden, spec (cxvii)).
 * The featured offer is the lowest price now (`prices_now`: the regular price, a live listing discount, or a live
   flash-sale price) among live offers from businesses whose identity documents staff approved (not merely
   address-checked). A tie goes to the shop nearest the customer when the app sends the customer's position
@@ -17,7 +17,7 @@ from decimal import Decimal
 from django.db.models import Count, Min, Q
 from django.utils import timezone
 
-from accounts.models import BusinessOwner
+from accounts.models import BusinessOwner, BusinessOwnerProfile
 from cart.guard import deliverable_q
 from delivery.services import valid_point
 from field.services import haversine_m
@@ -51,10 +51,18 @@ def live_q(prefix=""):
     )
 
 
+def listed_owner_q(prefix=""):
+    """Businesses that may be listed: the address check passed OR identity documents were approved. `prefix` is the
+    path to the Listing, ending "__", or "". The profile is one-to-one, so the OR adds no duplicate rows."""
+    return Q(**{f"{prefix}business_owner__kyc_status": BusinessOwner.VERIFIED}) | Q(
+        **{f"{prefix}business_owner__profile__identity_status": BusinessOwnerProfile.IDENTITY_VERIFIED}
+    )
+
+
 def live_offers(product_id, exclude_owner_id=None, limit=MAX_OFFERS):
     """Live offers of one product, cheapest first, capped at MAX_OFFERS. `exclude_owner_id` leaves one business out
     before the cap, so its own listings never crowd other businesses' offers out."""
-    queryset = Listing.objects.filter(live_q(), catalogue_product_id=product_id, business_owner__kyc_status=BusinessOwner.VERIFIED)
+    queryset = Listing.objects.filter(live_q(), listed_owner_q(), catalogue_product_id=product_id)
     if exclude_owner_id is not None:
         queryset = queryset.exclude(business_owner_id=exclude_owner_id)
     return (
@@ -188,7 +196,7 @@ def search(params):
         queryset = CatalogueProduct.objects.all()
         for word in words:
             queryset = queryset.filter(normalised_name__contains=word)
-    live = live_q("offers__") & Q(offers__business_owner__kyc_status=BusinessOwner.VERIFIED)
+    live = live_q("offers__") & listed_owner_q("offers__")
     rows = queryset.annotate(
         offer_count=Count("offers", filter=live, distinct=True),
         lowest_price=Min(effective_price_expr("offers__"), filter=live),

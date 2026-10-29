@@ -353,6 +353,25 @@ class VerifiedOnlyTests(TestCase):
         self.assertEqual((row["offer_count"], row["lowest_price"]), (2, "5.00"))
         self.assertEqual([o["listing_id"] for o in sourced.json()["offers"]], [self.new.pk])
 
+    def test_an_identity_verified_business_without_the_address_check_is_listed(self):
+        from accounts.models import BusinessOwnerProfile
+        from catalogue.tests.helpers import as_account
+
+        as_account(self.client, self.mine.business_owner, "business_owner")
+        BusinessOwnerProfile.objects.filter(business_owner=self.shop).update(
+            identity_status=BusinessOwnerProfile.IDENTITY_VERIFIED
+        )
+        self.assertEqual(BusinessOwner.objects.get(pk=self.shop.pk).kyc_status, BusinessOwner.PENDING)
+        sellers, found, sourced = self.seen()
+        self.assertEqual([(o["listing_id"], o["verified"]) for o in sellers["offers"]], [(self.new.pk, True)])
+        row = found.json()["results"][0] if "results" in found.json() else found.json()[0]
+        self.assertEqual((row["offer_count"], row["lowest_price"]), (2, "5.00"))
+        neither = product(business("Neither", verified=False), price="4.00", catalogue_product=self.entry)
+        sellers, found, sourced = self.seen()
+        self.assertNotIn(neither.pk, [o["listing_id"] for o in sellers["offers"]])
+        row = found.json()["results"][0] if "results" in found.json() else found.json()[0]
+        self.assertEqual(row["offer_count"], 2)
+
     def test_a_product_with_only_unverified_offers_shows_no_other_sellers(self):
         Listing.objects.filter(pk=self.mine.pk).update(business_owner=business("Other New", verified=False))
         body = self.client.get(sellers_url(self.new)).json()
