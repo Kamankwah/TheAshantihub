@@ -72,6 +72,7 @@ import TrackedLinkPage from "./components/TrackedLinkPage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
 import CartPage from "./components/shop/CartPage.jsx";
 import CheckoutPage from "./components/shop/CheckoutPage.jsx";
+import PaymentVerifyPage from "./components/shop/PaymentVerifyPage.jsx";
 import FlashPriceTag from "./components/FlashPriceTag.jsx";
 import PriceLine from "./components/PriceLine.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
@@ -1505,95 +1506,6 @@ function ResetPasswordPage({auth,setPage,setAuthModal}) {
   </div>;
 }
 
-// ─── Payment Return Page (/payment/return) ───────────────────────────────────
-// Hubtel integration (docs/HUBTEL_INTEGRATION.md, plan Workstream E) — where
-// a customer/business owner lands back after Hubtel's hosted checkout
-// (MoMoPayment's redirect, and every onSuccess handler's own added
-// `mode==="redirect"` branch, both point here via `?reference=`). The
-// redirect itself is never trusted as proof of payment — this page polls
-// GET /api/payments/checkout-sessions/{reference}/ (the only source of
-// truth, resolved by payments.views.HubtelWebhookView) rather than reading
-// anything off the URL/query string as a success signal. Functional-but-
-// not-fully-polished per the launch plan: this path is entirely unexercised
-// until real Hubtel credentials exist (payments_provider stays "simulated"
-// until then), so nothing has ever actually redirected here in practice.
-const PAYMENT_RETURN_POLL_INTERVAL_MS = 2000;
-const PAYMENT_RETURN_TIMEOUT_MS = 60000;
-
-function PaymentReturnPage({setPage}) {
-  const location = useLocation();
-  const reference = new URLSearchParams(location.search).get("reference") || "";
-  const [session,setSession] = useState(null);
-  const [error,setError] = useState(null);
-  const [timedOut,setTimedOut] = useState(false);
-
-  useEffect(() => {
-    if (!reference) { setError("No payment reference found in this link."); return; }
-
-    let cancelled = false;
-    const startedAt = Date.now();
-
-    const poll = async () => {
-      if (cancelled) return;
-      try {
-        const data = await apiFetch(`/api/payments/checkout-sessions/${reference}/`);
-        if (cancelled) return;
-        setSession(data);
-        if (data.status !== "pending") return; // stop polling — resolved
-        if (Date.now() - startedAt >= PAYMENT_RETURN_TIMEOUT_MS) { setTimedOut(true); return; }
-        setTimeout(poll, PAYMENT_RETURN_POLL_INTERVAL_MS);
-      } catch (err) {
-        if (!cancelled) setError("Could not check this payment's status. Please check your account for the latest status.");
-      }
-    };
-    poll();
-    return () => { cancelled = true; };
-  }, [reference]);
-
-  const status = session?.status;
-  const isDone = status && status !== "pending";
-
-  return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:16}}>
-    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden",textAlign:"center"}}>
-      <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"20px 24px"}}>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Payment Status</div>
-      </div>
-      <div style={{padding:"28px 24px"}}>
-        {error ? (
-          <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"12px 14px",fontSize:"0.8rem",lineHeight:1.6}}>{error}</div>
-        ) : !session ? (
-          <div style={{color:C.inkDim,fontSize:"0.82rem"}}>Confirming your payment…</div>
-        ) : status === "success" ? (
-          <>
-            <div style={{fontSize:"3rem",marginBottom:10}}>✅</div>
-            <div style={{fontWeight:900,color:"#22c55e",fontSize:"1rem",marginBottom:8}}>Payment Successful!</div>
-            <div style={{color:C.inkDim,fontSize:"0.8rem",lineHeight:1.6}}>Your payment of GHS {session.amount} for "{session.purpose}" has been confirmed.</div>
-          </>
-        ) : status === "failed" ? (
-          <>
-            <div style={{fontSize:"3rem",marginBottom:10}}>❌</div>
-            <div style={{fontWeight:900,color:C.errInk,fontSize:"1rem",marginBottom:8}}>Payment Failed</div>
-            <div style={{color:C.inkDim,fontSize:"0.8rem",lineHeight:1.6}}>Your payment could not be completed. Please try again.</div>
-          </>
-        ) : status === "expired" ? (
-          <>
-            <div style={{fontSize:"3rem",marginBottom:10}}>⏰</div>
-            <div style={{fontWeight:900,color:"#d97706",fontSize:"1rem",marginBottom:8}}>Payment Expired</div>
-            <div style={{color:C.inkDim,fontSize:"0.8rem",lineHeight:1.6}}>This checkout session expired before payment was completed. Please try again.</div>
-          </>
-        ) : timedOut ? (
-          <div style={{color:C.inkDim,fontSize:"0.82rem",lineHeight:1.6}}>Still confirming your payment — this is taking longer than expected. Check "My Account" shortly for the latest status.</div>
-        ) : (
-          <div style={{color:C.inkDim,fontSize:"0.82rem"}}>Confirming your payment…</div>
-        )}
-        {(isDone || error || timedOut) && (
-          <button onClick={()=>setPage("home")} style={{...authSubmitStyle,marginTop:16}}>Back to AshantiHub</button>
-        )}
-      </div>
-    </div>
-  </div>;
-}
-
 // ─── Notifications Panel ──────────────────────────────────────────────────────
 // Relative "time ago" for a notification's created_at ISO string. Local,
 // dependency-free (no date lib is used anywhere in this app).
@@ -2651,6 +2563,8 @@ const PATH_TO_PAGE = {
   "/cart": "cart",
   // The secure checkout (Marketplace Plan 4): a standalone page with its own slim header, no Navbar/Footer.
   "/checkout": "checkout",
+  // Verify a payment (Marketplace Plan 4): the checkout lands here; shares PaymentVerifyPage with /payment/return.
+  "/checkout/verify": "checkout-verify",
 };
 const PAGE_TO_PATH = {
   home: "/",
@@ -2667,6 +2581,7 @@ const PAGE_TO_PATH = {
   "business-confirm": "/business/confirm",
   cart: "/cart",
   checkout: "/checkout",
+  "checkout-verify": "/checkout/verify",
 };
 // Full-page dashboard "routes" (isAdmin/showBizDash-style early returns) that
 // now have real URLs too. Same two-map convention as PATH_TO_PAGE/
@@ -3190,7 +3105,7 @@ export default function AshantiHub() {
   if(page==="staff-activate") return <StaffActivatePage auth={auth} onSuccess={handleAuthSuccess}/>;
   if(page==="staff-install") return <StaffInstallPage/>;
   if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
-  if(page==="payment-return") return <PaymentReturnPage setPage={setPage}/>;
+  if(page==="payment-return"||page==="checkout-verify") return <PaymentVerifyPage/>;
   if(page==="checkout") return <CheckoutPage user={user} currency={currency} PaymentComponent={MoMoPayment} authLoading={auth.isLoading} onNavigate={navigate} onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
   if(page==="business-confirm") return <OwnerConfirmPage/>;

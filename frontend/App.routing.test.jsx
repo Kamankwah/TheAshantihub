@@ -546,7 +546,26 @@ describe('AshantiHub routing — /payment/return', () => {
         ),
       )
       renderAtPath('/payment/return?reference=AH-TEST-REF')
-      expect(await screen.findByText(/Payment Successful/i, {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(await screen.findByText(/Payment confirmed/i, {}, { timeout: 3000 })).toBeInTheDocument()
+    },
+    8000,
+  )
+
+  it(
+    'mounting directly at /checkout/verify renders the same verification page',
+    async () => {
+      server.use(
+        http.get('http://localhost:8000/api/payments/checkout-sessions/AH-TEST-REF/', () =>
+          HttpResponse.json({
+            reference: 'AH-TEST-REF', kind: 'order_checkout', amount: '150.00', purpose: 'AshantiHub Order #1',
+            status: 'success', checkout_url: null, created_at: '2026-07-15T10:00:00Z',
+            processing_fee: '0.00', wallet: true, order_id: 1,
+          }),
+        ),
+      )
+      renderAtPath('/checkout/verify?reference=AH-TEST-REF')
+      expect(await screen.findByText(/Payment confirmed/i, {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(screen.getByText('AshantiHub wallet')).toBeInTheDocument()
     },
     8000,
   )
