@@ -83,7 +83,7 @@ describe('ProductLookupPanel', () => {
         http.get(`${API}/api/hero/mine/`, () => HttpResponse.json({})),
       )
       const { unmount } = render(
-        <QueryClientProvider client={new QueryClient()}>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
           <BusinessCommandCenter onExit={vi.fn()} user={owner} auth={auth} PaymentComponent={() => null} />
         </QueryClientProvider>,
       )

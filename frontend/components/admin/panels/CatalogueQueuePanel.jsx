@@ -31,10 +31,21 @@ function choicesOf(request) {
   return list;
 }
 
+// The server joins the request's own product, else the one holding the listing's barcode, before it ever creates one
+// (attach._product_for), so "create new" is only honest when neither exists.
+function holderOf(request) {
+  const barcode = request.listing?.barcode;
+  if (!barcode) return null;
+  return (request.matches || []).find((p) => p.barcode && p.barcode === barcode) || null;
+}
+
 function CatalogueRow({ request, state, onDone, onRefusal }) {
   const listing = request.listing;
   const choices = choicesOf(request);
-  const [choice, setChoice] = useState(request.catalogue_product ? String(request.catalogue_product.id) : NEW);
+  const holder = holderOf(request);
+  const canCreate = !request.catalogue_product && !holder;
+  const first = request.catalogue_product || holder;
+  const [choice, setChoice] = useState(first ? String(first.id) : NEW);
   const [brand, setBrand] = useState(request.brand || "");
   const [name, setName] = useState(request.name || "");
   const [conflict, setConflict] = useState(null); // 409 match_exists: the products that already carry this name
@@ -100,19 +111,23 @@ function CatalogueRow({ request, state, onDone, onRefusal }) {
           <div role="radiogroup" aria-label="Group this listing with" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {choices.map((p) => (
               <label key={p.id} style={{ color: D.text, fontSize: "0.76rem", display: "flex", gap: 6, alignItems: "center" }}>
-                <input type="radio" name={`choice-${request.id}`} checked={choice === String(p.id)} onChange={() => setChoice(String(p.id))} />
+                <input type="radio" name={`choice-${request.id}`} checked={choice === String(p.id)} onChange={() => { setConflict(null); setChoice(String(p.id)); }} />
                 {productText(p)}{p.barcode ? ` · ${displayBarcode(p.barcode)}` : ""}
               </label>
             ))}
-            <label style={{ color: D.text, fontSize: "0.76rem", display: "flex", gap: 6, alignItems: "center" }}>
-              <input type="radio" name={`choice-${request.id}`} checked={choice === NEW} onChange={() => setChoice(NEW)} />
-              Create a new catalogue product
-            </label>
+            {canCreate ? (
+              <label style={{ color: D.text, fontSize: "0.76rem", display: "flex", gap: 6, alignItems: "center" }}>
+                <input type="radio" name={`choice-${request.id}`} checked={choice === NEW} onChange={() => { setConflict(null); setChoice(NEW); }} />
+                Create a new catalogue product
+              </label>
+            ) : (
+              <div style={dim}>To make a new product, reject this request.</div>
+            )}
           </div>
-          {choice === NEW && (
+          {canCreate && choice === NEW && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-              <input aria-label="Brand" value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Brand" style={{ ...field, flex: "1 1 120px", minWidth: 0 }} />
-              <input aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" style={{ ...field, flex: "2 1 180px", minWidth: 0 }} />
+              <input aria-label="Brand" value={brand} onChange={(e) => { setConflict(null); setBrand(e.target.value); }} placeholder="Brand" style={{ ...field, flex: "1 1 120px", minWidth: 0 }} />
+              <input aria-label="Name" value={name} onChange={(e) => { setConflict(null); setName(e.target.value); }} placeholder="Name" style={{ ...field, flex: "2 1 180px", minWidth: 0 }} />
             </div>
           )}
           <div style={{ display: "flex", gap: 6, marginTop: 8 }}>

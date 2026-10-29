@@ -14,7 +14,7 @@ function setup(responder, props = {}) {
     seen.push(new URL(request.url).search)
     return responder ? responder() : HttpResponse.json({ results: [], truncated: false })
   }))
-  render(<QueryClientProvider client={new QueryClient()}><CatalogueSearch {...props} /></QueryClientProvider>)
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CatalogueSearch {...props} /></QueryClientProvider>)
   return seen
 }
 const type = (v) => fireEvent.change(screen.getByLabelText('Product name or barcode'), { target: { value: v } })

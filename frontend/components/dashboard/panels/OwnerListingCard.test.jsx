@@ -184,6 +184,20 @@ describe('OwnerListingCard server stock chips', () => {
     expect(screen.getByText('2 in stock')).toBeInTheDocument()
   })
 
+  it('test_restocking_from_the_card_refreshes_the_low_stock_chip', async () => {
+    let restocked = false
+    server.use(
+      http.get(`${API}/api/catalogue/stock/`, () => HttpResponse.json(stockPage(restocked ? [] : [stockRow({})]))),
+      http.post(`${API}/api/listings/mine/1/restock/`, () => { restocked = true; return HttpResponse.json({}) }),
+    )
+    renderCard({ ...LISTING, stock_quantity: 2 })
+    expect(await screen.findByText('Low stock')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Restock/ }))
+    fireEvent.change(screen.getByPlaceholderText('Add quantity'), { target: { value: '50' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add to stock' }))
+    await waitFor(() => expect(screen.queryByText('Low stock')).not.toBeInTheDocument())
+  })
+
   it('test_server_sold_out_row_shows_sold_out', async () => {
     serveStock([stockRow({ stock: 0, low: false, sold_out: true })])
     renderCard({ ...LISTING, stock_quantity: 0 })

@@ -123,6 +123,24 @@ describe('CatalogueQueuePanel', () => {
     await waitFor(() => expect(bodies[1]).toEqual({ brand: 'Nestle', name: 'Milo 400g', new: true }))
   })
 
+  it('test_editing_after_a_conflict_drops_create_new_anyway', async () => {
+    mockQueue({ pending: page([row()]) })
+    server.use(http.post(`${API}/requests/1/approve/`, () => HttpResponse.json({ detail: 'A product with this name already exists.', code: 'match_exists', matches: [milo] }, { status: 409 })))
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+    expect(await screen.findByRole('button', { name: 'Create new anyway' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Milo 500g' } })
+    expect(screen.queryByRole('button', { name: 'Create new anyway' })).not.toBeInTheDocument()
+  })
+
+  it('test_request_naming_a_product_has_no_create_new_option', async () => {
+    mockQueue({ pending: page([row({ catalogue_product: milo, matches: [milo] })]) })
+    renderPanel()
+    expect(await screen.findByRole('radio', { name: /Nestle Milo 400g/ })).toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: /Create a new catalogue product/ })).not.toBeInTheDocument()
+    expect(screen.getByText('To make a new product, reject this request.')).toBeInTheDocument()
+  })
+
   it('a join choice from the conflict posts that product without new', async () => {
     mockQueue({ pending: page([row()]) })
     const bodies = []

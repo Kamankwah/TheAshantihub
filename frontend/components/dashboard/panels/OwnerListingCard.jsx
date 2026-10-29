@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiPatch, apiPost, apiPut } from "../../../apiClient.js";
 import { useListingRevision } from "../../../hooks/useListingRevision.js";
 import { useNeedsRestocking } from "../../../hooks/useCatalogueStock.js";
@@ -191,9 +192,14 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
   const discontinued = listing.status === "discontinued";
   const base = `${basePath}/${listing.id}`;
 
+  const qc = useQueryClient();
+  // The Needs restocking list is its own query: refresh it whenever stock or status moves from this card.
+  const refreshStock = () => { if (catalogueOn) qc.invalidateQueries({ queryKey: ["catalogue-stock"] }); };
+  const changed = () => { refreshStock(); onChanged(); };
+
   const run = async (call, fallback, after) => {
     setActionError(null); setBusy(true);
-    try { await call(); if (after) after(); onChanged(); }
+    try { await call(); if (after) after(); changed(); }
     catch (err) { setActionError(serverMessage(err, fallback)); }
     finally { setBusy(false); }
   };
@@ -249,7 +255,7 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
       )}
 
       {!discontinued && variantsAllowed && (hasVariants || variantsOpen) && (
-        <VariantEditor listing={listing} basePath={basePath} onChanged={onChanged} />
+        <VariantEditor listing={listing} basePath={basePath} onChanged={changed} />
       )}
 
       {!discontinued && (

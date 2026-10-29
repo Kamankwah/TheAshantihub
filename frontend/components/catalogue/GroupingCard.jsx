@@ -62,8 +62,8 @@ export default function GroupingCard({ listing }) {
           {data.catalogue_product && (
             <p style={text}>Shown with other sellers of {name(data.catalogue_product)}. Only AshantiHub can ungroup it; ask Support if this is wrong.</p>
           )}
-          {pending && request.source === 'backfill' && <p style={text}>AshantiHub found this match by barcode and will decide it.</p>}
-          {pending && request.source !== 'backfill' && (
+          {pending && request.source !== 'vendor' && <p style={text}>AshantiHub found this match by barcode and will decide it.</p>}
+          {pending && request.source === 'vendor' && (
             <div>
               <p style={text}>Waiting for AshantiHub: {request.catalogue_product ? name(request.catalogue_product) : `new: ${name(request)}`}</p>
               <button type="button" disabled={busy} onClick={() => withdraw(request)} style={btn}>Withdraw</button>

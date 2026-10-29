@@ -208,9 +208,9 @@ ads are Marketing's). Never hardcode `/api/listings/mine` in a panel.
 - **Catalogue widgets render only on the default `basePath`.** `NeedsRestockingPanel`, the card chips, `GroupingCard` and
   `StockLineEditor` are for `/api/listings/mine`; Ashanti Direct (`basePath` `/api/direct/listings`) gets none of them yet.
 - **Card chips come only from the server's Needs restocking pages** (`useNeedsRestocking`: `low` / `sold_out`), never from
-  a `stock_quantity` count rule. An uncounted stock shows nothing, not 0.
-- **`catalogue-queue` is the live key** (`useCatalogueQueue`); the `catalogue` row in `realtime` `QUEUE_INVALIDATIONS` and
-  the `catalogue` staff badge refresh it. Nav id `catalogue` ("Product grouping").
+  a `stock_quantity` count rule. An uncounted stock gets no low/sold-out chip and reads "Stock not counted".
+- **`catalogue-queue` is the live key** (`useCatalogueQueue`); the `catalogue` row in `realtime` `QUEUE_INVALIDATIONS` refreshes
+  it and `staff-badges`; the badge itself only polls its own count. Nav id `catalogue` ("Product grouping").
 - **Never build a second barcode formatter:** `displayBarcode` (`catalogueFormat.js`) is the one. `formatPrice` there
   delegates to `walletMoney.formatGhs`.
 - **`components/catalogue/__tests__/CatalogueNoInventionSweep.test.jsx` is the conformance contract** (no contact links, no

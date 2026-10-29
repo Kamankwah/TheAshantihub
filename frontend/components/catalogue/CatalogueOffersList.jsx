@@ -23,7 +23,9 @@ export default function CatalogueOffersList({ productId }) {
           <li key={o.listing_id} style={{ ...glassCard, padding: 14, marginBottom: 10, listStyle: 'none' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ color: D.text, fontWeight: 800, fontSize: '0.88rem' }}>{o.business_name || 'Business name not given'}</span>
-              <span style={{ color: D.green, fontSize: '0.7rem', fontWeight: 800 }}>✓ Verified business</span>
+              {o.verified === true && (
+                <span style={{ color: D.green, background: D.panelBg2, border: `1px solid ${D.divider}`, borderRadius: 20, padding: '1px 8px', fontSize: '0.7rem', fontWeight: 800 }}>✓ Verified business</span>
+              )}
             </div>
             <div style={{ marginTop: 4 }}>
               <span style={{ color: D.price, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{formatPrice(o.price_now)}</span>
