@@ -3374,6 +3374,8 @@ export default function AshantiHub() {
               onOpenListing={(otherId)=>setSelectedListingId(otherId)}
               onOpenSeller={(sellerId)=>navigate(`/seller/${sellerId}`)}
               onAddToCart={handleAddToCart}
+              // The product page's "More from Ashanti Direct": the sidebar's own "Sold by Ashanti Direct" filter, on the browse grid.
+              onShowDirect={()=>{setFilters(f=>({...f,directOnly:true}));setSelectedListingId(null);}}
               CardComponent={Card}
               PaymentComponent={MoMoPayment}
             />

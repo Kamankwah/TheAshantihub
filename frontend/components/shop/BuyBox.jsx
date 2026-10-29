@@ -23,7 +23,7 @@ const money = (c) => (c / 100).toFixed(2);
 // in VariantPicker), `currency` (display only), `onMessage(item)`, `onSaveToList(item)`, `onOpenSeller(ownerId)`,
 // `onShowDirect()` (the "More from Ashanti Direct" link: the page applies the browse filter sold_by=direct, i.e. the
 // `directOnly` filter), `onSignIn()` (a signed-out visitor pressing Add to cart), `onAdded(response)` after a successful add.
-// Add to cart is the one gold action; it is disabled with the exact reason (opening gate label from useCanBuy, out of stock,
+// Add to cart is the one gold action; it is disabled with the exact reason (a business account, opening gate label from useCanBuy, out of stock,
 // no price, no options chosen, or the server's cart-guard message). Staff sessions get the staff notice instead of an add.
 export default function BuyBox({ item, user, selection = {}, currency = "GHS", onMessage, onSaveToList, onOpenSeller, onShowDirect, onSignIn, onAdded }) {
   const variants = Array.isArray(item?.variants) ? item.variants : [];
@@ -31,6 +31,8 @@ export default function BuyBox({ item, user, selection = {}, currency = "GHS", o
   const { canBuy, label: opensLabel } = useCanBuy();
   const staffGate = useStaffGate(user);
   const isCustomer = user?.accountType === "customer";
+  // Businesses sell, customers buy: a signed-in business account cannot add (the server refuses it too).
+  const isBusinessAccount = !!user && !staffGate.isStaff && !isCustomer;
   const guard = useCartGuard(item?.id ?? null, { enabled: isCustomer && item?.id != null });
   const blocked = guard.data?.listing?.blocked || null;
   const cart = useAddToCartBulk();
@@ -57,7 +59,8 @@ export default function BuyBox({ item, user, selection = {}, currency = "GHS", o
 
   // The one reason Add to cart cannot be pressed, shown as its label.
   let reason = null;
-  if (!canBuy) reason = opensLabel || "Opens soon";
+  if (isBusinessAccount) reason = "Customer accounts only";
+  else if (!canBuy) reason = opensLabel || "Opens soon";
   else if (stock === "out") reason = "Out of stock";
   else if (!priced) reason = "No price set";
   else if (hasVariants && lines.length === 0) reason = "Choose options";
@@ -135,13 +138,14 @@ export default function BuyBox({ item, user, selection = {}, currency = "GHS", o
         onClick={handleAdd}
         style={{
           marginTop: 14, width: "100%", minHeight: 46, borderRadius: 24, fontFamily: "inherit", fontSize: "0.9rem", fontWeight: 900,
-          background: disabled ? C.surface3 : added ? C.trust : C.gold,
-          color: disabled ? C.inkFaint : added ? C.white : C.darkBrown,
+          background: added ? C.trust : disabled ? C.surface3 : C.gold,
+          color: added ? C.white : disabled ? C.inkFaint : C.darkBrown,
           border: disabled ? `1px solid ${C.line}` : "none",
           cursor: disabled ? "not-allowed" : "pointer",
         }}
       >
-        {reason || (cart.busy ? "Adding…" : added ? "Added to cart ✓" : "Add to cart")}
+        {/* The confirmation outlasts a selection the page clears after the add (the reason is then "Choose options"). */}
+        {added ? "Added to cart ✓" : reason || (cart.busy ? "Adding…" : "Add to cart")}
       </button>
       {cart.actionError && <div role="alert" style={{ marginTop: 8, color: C.errInk, background: C.errBg, borderRadius: 10, padding: "8px 10px", fontSize: "0.78rem", lineHeight: 1.5 }}>{cart.actionError}</div>}
       {staffGate.shownFor && <StaffGateNotice style={{ marginTop: 10 }} />}

@@ -86,6 +86,22 @@ export const handlers = [
   http.get('http://localhost:8000/api/listings/:id/related/', () => {
     return HttpResponse.json([])
   }),
+  // Product page (Marketplace Plan 4): no co-views yet, so the category fallback with nothing in it; the view beacon
+  // answers 204; the public sponsored feed is empty (a plain array of card rows).
+  http.get('http://localhost:8000/api/listings/:id/also-viewed/', () => HttpResponse.json({ basis: 'same_category', results: [] })),
+  http.post('http://localhost:8000/api/listings/:id/view/', () => new HttpResponse(null, { status: 204 })),
+  http.get('http://localhost:8000/api/storefront/sponsored/', () => HttpResponse.json([])),
+  // The customer wishlist ("Your Lists"): empty; saving answers 201 with the entry; removing answers 204.
+  http.get('http://localhost:8000/api/wishlist/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/wishlist/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json({
+      id: 1,
+      listing: { id: body.listing, name: 'Item', category: null, zone: null, price_amount: null, effective_price: null, was_price: null, main_photo: null, photos: [], avg_rating: null, review_count: 0, has_variants: false },
+      added_at: '2026-10-28T09:20:00Z',
+    }, { status: 201 })
+  }),
+  http.delete('http://localhost:8000/api/wishlist/:id/', () => new HttpResponse(null, { status: 204 })),
   // Site settings / footer content (docs/UI_MODERNIZATION_ROADMAP.md Phase B)
   // — default handlers, overridden per-test via server.use() where a
   // specific settings state/response is needed.
@@ -282,7 +298,10 @@ export const handlers = [
   // paginated with top-level avg_rating/review_count alongside the usual
   // DRF envelope.
   http.get('http://localhost:8000/api/reviews/listing/:id/', () => {
-    return HttpResponse.json({ count: 0, next: null, previous: null, results: [], avg_rating: null, review_count: 0 })
+    return HttpResponse.json({
+      count: 0, next: null, previous: null, results: [], avg_rating: null, review_count: 0,
+      distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+    })
   }),
   http.get('http://localhost:8000/api/reviews/event/:id/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [], avg_rating: null, review_count: 0 })

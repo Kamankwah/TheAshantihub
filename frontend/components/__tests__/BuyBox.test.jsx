@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -135,12 +136,35 @@ describe('BuyBox', () => {
     expect(count).toBe(1)
   })
 
+  test('test_the_added_confirmation_outlasts_a_selection_the_page_clears', async () => {
+    function Page() {
+      const [selection, setSelection] = useState({ 41: 1 })
+      return <BuyBox item={withVariants()} user={customer} selection={selection} onAdded={() => setSelection({})} />
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><Page /></QueryClientProvider>)
+    fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }))
+    expect(await screen.findByRole('button', { name: 'Added to cart ✓' })).toBeInTheDocument()
+    expect(screen.queryByTestId('buybox-subtotal')).toBeNull()
+  })
+
   test('test_staff_session_sees_the_staff_notice_instead_of_adding', async () => {
     let posted = false
     server.use(http.post('http://localhost:8000/api/cart/items/', () => { posted = true; return HttpResponse.json({}, { status: 201 }) }))
     renderBox({ user: { accountType: 'staff' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }))
     expect(await screen.findByText("Staff accounts can't shop or sell. Sign out first.")).toBeInTheDocument()
+    expect(posted).toBe(false)
+  })
+
+  test('test_a_business_account_cannot_add_and_is_told_why', async () => {
+    let posted = false
+    server.use(http.post('http://localhost:8000/api/cart/items/', () => { posted = true; return HttpResponse.json({}, { status: 201 }) }))
+    renderBox({ user: { id: 5, accountType: 'business_owner' } })
+    const btn = screen.getByRole('button', { name: 'Customer accounts only' })
+    expect(btn).toBeDisabled()
+    fireEvent.click(btn)
+    await new Promise((r) => setTimeout(r, 30))
     expect(posted).toBe(false)
   })
 
