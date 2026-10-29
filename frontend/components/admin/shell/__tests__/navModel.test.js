@@ -121,6 +121,15 @@ describe('per-role menus', () => {
     expect(groupOf(groups, 'site-settings')).toBe('Settings')
   })
 
+  it('gives Super Admin and the General Manager the KYC Queue so a new business can be approved', () => {
+    for (const role of ['super_admin', 'general_manager']) {
+      const groups = buildNavGroups(authAs(role, ['kyc.approve', 'listings.moderate']))
+      expect(groupOf(groups, 'kyc')).toBe('Marketplace')
+    }
+    const without = buildNavGroups(authAs('super_admin', ['listings.moderate']))
+    expect(groupOf(without, 'kyc')).toBeUndefined()
+  })
+
   it("adds Verification calls to Support's Calls group only with orders.verify", () => {
     const base = ['messaging.manage', 'calls.log']
     const calls = (perms) => buildNavGroups(authAs('support', perms)).find((g) => g.label === 'Calls').items.map((i) => i.label)
@@ -528,7 +537,7 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
       ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
       // Verification calls and Pickup desk (Plan 1F), then Re-deliveries and Free delivery (wallet 5F), joined
       // Marketplace after Scheduled orders (Director ruling 8, 2026-10-20).
-      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Product grouping', 'Orders & deliveries', 'Scheduled orders', 'Verification calls', 'Pickup desk', 'Re-deliveries', 'Free delivery', 'Events & tickets', 'Homepage slider', 'Disputes & returns', 'Ashanti Direct']],
+      ['Marketplace', ['Businesses', 'Customers', 'KYC Queue', 'Listings & services', 'Product grouping', 'Orders & deliveries', 'Scheduled orders', 'Verification calls', 'Pickup desk', 'Re-deliveries', 'Free delivery', 'Events & tickets', 'Homepage slider', 'Disputes & returns', 'Ashanti Direct']],
       ['Listing for clients', ['Prospects', 'Register a business', 'Client listings']],
       ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets', 'Withdrawals']],
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
@@ -549,8 +558,9 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
   it('is exhaustive: no More tools, and dropped screens keep their permission', () => {
     expect(groups.some((g) => g.id === 'more')).toBe(false)
     const ids = groups.flatMap((g) => g.items.map((i) => i.id))
-    for (const gone of ['kyc', 'reviews', 'escrow', 'credit', 'messaging', 'tasks', 'calls', 'reports', 'at-risk', 'scout-assignments', 'site-settings']) expect(ids).not.toContain(gone)
-    expect(NAV_ITEMS.find((i) => i.id === 'kyc').show(auth)).toBe(true) // the permission and panel are untouched
+    for (const gone of ['reviews', 'escrow', 'credit', 'messaging', 'tasks', 'calls', 'reports', 'at-risk', 'scout-assignments', 'site-settings']) expect(ids).not.toContain(gone)
+    expect(ids).toContain('kyc') // added back 2026-10-29: Super Admin must be able to approve a newly signed-up business
+    expect(NAV_ITEMS.find((i) => i.id === 'kyc').show(auth)).toBe(true)
   })
 
   it('lists the unbuilt screens as placeholders for Super Admin only', () => {
@@ -686,7 +696,7 @@ describe('General Manager menu (marketplace M3, Task 0)', () => {
     expect(buildNavGroups(gmAuth()).map((g) => [g.label, g.items.map((i) => [i.id, i.label])])).toEqual([
       ['Home', [['approvals', 'Approvals inbox']]],
       ['People', [['my-team', 'Invite'], ['leave', 'Leave & calendar']]],
-      ['Marketplace', [['all-portfolios', 'All portfolios'], ['users', 'Users'], ['moderation', 'Listings & services'], ['catalogue', 'Product grouping'], ['delivery', 'Delivery Management'], ['events-moderation', 'Events & tickets'], ['hero', 'Hero Approval']]],
+      ['Marketplace', [['all-portfolios', 'All portfolios'], ['users', 'Users'], ['kyc', 'KYC Queue'], ['moderation', 'Listings & services'], ['catalogue', 'Product grouping'], ['delivery', 'Delivery Management'], ['events-moderation', 'Events & tickets'], ['hero', 'Hero Approval']]],
       ['Money (read only)', [['transactions', 'Transactions Report'], ['commissions', 'Commissions']]],
       ['Insights', [['analytics', 'Analytics'], ['team-reports', 'Team reports']]],
       ['Security & audit', [['activity', 'Staff activity'], ['fraud-cases', 'Fraud cases'], ['security', 'Sign-in & Security']]],
