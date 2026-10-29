@@ -143,6 +143,14 @@ urlpatterns = [
     path("staff/<int:pk>/reactivate/", views.StaffReactivateView.as_view(), name="staff-reactivate"),
     path("staff/<int:pk>/permissions/", views.StaffPermissionsView.as_view(), name="staff-permissions"),
     path("permissions/", views.PermissionCatalogView.as_view(), name="permission-catalog"),
+    # Customer address book (default delivery address)
+    path("addresses/", views.CustomerAddressListCreateView.as_view(), name="customer-address-list"),
+    path("addresses/<int:pk>/", views.CustomerAddressDetailView.as_view(), name="customer-address-detail"),
+    path(
+        "addresses/<int:pk>/set-default/",
+        views.CustomerAddressSetDefaultView.as_view(),
+        name="customer-address-set-default",
+    ),
     # Scout field verification (item 11)
     path("scouts/", views.ScoutListView.as_view(), name="scout-list"),
     path("scout-assignments/", views.ScoutAssignmentListCreateView.as_view(), name="scout-assignment-list-create"),

@@ -32,6 +32,7 @@ from .emails import send_staff_invite_email, send_two_factor_changed_email, send
 from .models import (
     BusinessOwner,
     Customer,
+    CustomerAddress,
     Permission,
     Role,
     RoleInviteRule,
@@ -61,6 +62,7 @@ from .serializers import (
     BusinessOwnerLoginSerializer,
     BusinessOwnerRegistrationSerializer,
     BusinessOwnerProfileUpdateSerializer,
+    CustomerAddressSerializer,
     CustomerListSerializer,
     CustomerLoginSerializer,
     CustomerProfileSerializer,
@@ -1391,6 +1393,89 @@ class IsBusinessOwner(BasePermission):
 class IsCustomer(BasePermission):
     def has_permission(self, request, view):
         return isinstance(request.user, Customer)
+
+
+ADDRESS_LIMIT_MESSAGE = "You can save up to 10 addresses. Remove one to add another."
+
+
+def _lock_customer(customer):
+    """Serialise every address-book write for one customer on their row, so the 10-cap, the first-is-default rule and
+    the single-default constraint hold under concurrent requests (an empty book has no address rows to lock)."""
+    Customer.objects.select_for_update().get(pk=customer.pk)
+
+
+class CustomerAddressListCreateView(APIView):
+    """The signed-in customer's address book. GET is a plain list (not paginated; at most 10 rows), default first
+    then newest first. POST saves one: the first becomes the default; the 11th is refused 400 {detail}."""
+
+    permission_classes = [IsCustomer]
+
+    def get(self, request):
+        rows = CustomerAddress.objects.filter(customer=request.user)
+        return Response(CustomerAddressSerializer(rows, many=True).data)
+
+    def post(self, request):
+        serializer = CustomerAddressSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            _lock_customer(request.user)
+            existing = CustomerAddress.objects.filter(customer=request.user)
+            if existing.count() >= CustomerAddress.MAX_PER_CUSTOMER:
+                return Response({"detail": ADDRESS_LIMIT_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
+            address = serializer.save(customer=request.user, is_default=not existing.exists())
+        return Response(CustomerAddressSerializer(address).data, status=status.HTTP_201_CREATED)
+
+
+class CustomerAddressDetailView(APIView):
+    """GET / PATCH / DELETE one of the signed-in customer's addresses (another customer's is a 404). PATCH changes
+    any field but is_default (use set-default); a changed gps_address is re-validated. Deleting the default promotes
+    the most recent remaining address."""
+
+    permission_classes = [IsCustomer]
+
+    def _get(self, request, pk):
+        return generics.get_object_or_404(CustomerAddress, pk=pk, customer=request.user)
+
+    def get(self, request, pk):
+        return Response(CustomerAddressSerializer(self._get(request, pk)).data)
+
+    def patch(self, request, pk):
+        with transaction.atomic():
+            _lock_customer(request.user)
+            address = self._get(request, pk)
+            serializer = CustomerAddressSerializer(address, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            address = serializer.save()
+        return Response(CustomerAddressSerializer(address).data)
+
+    def delete(self, request, pk):
+        with transaction.atomic():
+            _lock_customer(request.user)
+            address = self._get(request, pk)
+            was_default = address.is_default
+            address.delete()
+            if was_default:
+                heir = CustomerAddress.objects.filter(customer=request.user).order_by("-created_at", "-id").first()
+                if heir:
+                    heir.is_default = True
+                    heir.save(update_fields=["is_default"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CustomerAddressSetDefaultView(APIView):
+    """POST: make this address the customer's one default (already the default: a 200 no-op)."""
+
+    permission_classes = [IsCustomer]
+
+    def post(self, request, pk):
+        with transaction.atomic():
+            _lock_customer(request.user)
+            address = generics.get_object_or_404(CustomerAddress, pk=pk, customer=request.user)
+            if not address.is_default:
+                CustomerAddress.objects.filter(customer=request.user, is_default=True).update(is_default=False)
+                address.is_default = True
+                address.save(update_fields=["is_default"])
+        return Response(CustomerAddressSerializer(address).data)
 
 
 class PayoutDetailUpdateView(generics.UpdateAPIView):

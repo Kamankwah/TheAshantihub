@@ -696,3 +696,34 @@ class BusinessHours(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["business_owner", "weekday"], name="unique_business_hours_weekday"),
         ]
+
+
+class CustomerAddress(models.Model):
+    """A delivery address a customer saved (default delivery address, marketplace plan 4). `gps_address` is a
+    normalised Ashanti GhanaPost code; the old free-text `Customer.address` is separate and untouched. At most one
+    default per customer (partial unique constraint); the view caps the book at MAX_PER_CUSTOMER."""
+
+    MAX_PER_CUSTOMER = 10
+
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="addresses")
+    label = models.CharField(max_length=60)
+    recipient_name = models.CharField(max_length=150)
+    phone = models.CharField(max_length=20)
+    gps_address = models.CharField(max_length=20)
+    landmark = models.CharField(max_length=200)
+    address_text = models.CharField(max_length=255, blank=True)
+    lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-is_default", "-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["customer"], condition=models.Q(is_default=True), name="one_default_per_customer",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.label} ({self.gps_address}) for customer {self.customer_id}"

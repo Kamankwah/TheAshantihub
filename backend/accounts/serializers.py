@@ -16,6 +16,7 @@ from .models import (
     BusinessOwner,
     BusinessOwnerProfile,
     Customer,
+    CustomerAddress,
     PasswordResetToken,
     Role,
     RoleInviteRule,
@@ -1151,3 +1152,54 @@ class StaffSessionSerializer(serializers.ModelSerializer):
 
     def get_staff(self, obj):
         return staff_brief(obj.staff)
+
+
+class CustomerAddressSerializer(serializers.ModelSerializer):
+    """The address book row. `is_default` is read-only here: the default moves only through set-default (and the
+    first address / a delete). Landmark wording matches the checkout's, so the screens read the same."""
+
+    # No max_length here: validate_landmark owns the blank / too-long wording.
+    landmark = serializers.CharField(allow_blank=True, trim_whitespace=False)
+
+    class Meta:
+        model = CustomerAddress
+        fields = [
+            "id", "label", "recipient_name", "phone", "gps_address", "landmark", "address_text",
+            "lat", "lng", "is_default", "created_at",
+        ]
+        read_only_fields = ["id", "is_default", "created_at"]
+
+    def validate_label(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Give this address a name, for example Home.")
+        return value
+
+    def validate_recipient_name(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Who should the rider ask for?")
+        return value
+
+    def validate_phone(self, value):
+        from .phones import normalize_gh_phone
+
+        value = (value or "").strip()
+        try:
+            normalize_gh_phone(value)  # shape check only; stored as typed
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+        return value
+
+    def validate_gps_address(self, value):
+        from .gps import validate_ashanti_gps
+
+        return validate_ashanti_gps(value)
+
+    def validate_landmark(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Add a landmark near your door so the rider can find you.")
+        if len(value) > 200:
+            raise serializers.ValidationError("Keep the landmark under 200 characters.")
+        return value
