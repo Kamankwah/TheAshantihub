@@ -18,7 +18,7 @@ function toTerm(text) {
 
 export default function CatalogueSearch({ onPick, pickLabel = 'See offers', initialTerm = '' }) {
   const [text, setText] = useState(initialTerm)
-  const [term, setTerm] = useState(() => toTerm(initialTerm))
+  const [term, setTerm] = useState(null)
   const { data, error, isFetching } = useCatalogueSearch(term)
   const submit = (e) => { e.preventDefault(); setTerm(toTerm(text)) }
   const results = data?.results ?? []

@@ -3,6 +3,7 @@ import { apiPatch, apiPost, apiPut } from "../../../apiClient.js";
 import { useListingRevision } from "../../../hooks/useListingRevision.js";
 import { useNeedsRestocking } from "../../../hooks/useCatalogueStock.js";
 import StockLineEditor from "../../catalogue/StockLineEditor.jsx";
+import GroupingCard from "../../catalogue/GroupingCard.jsx";
 import BarcodeField from "../../catalogue/BarcodeField.jsx";
 import { displayBarcode } from "../../catalogue/catalogueFormat.js";
 import { D, glassCard, sectionTitle, tint } from "../theme.js";
@@ -270,6 +271,8 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
       {lineOpen && catalogueOn && listing.stock_quantity != null && (
         <div style={{ marginTop: 10 }}><StockLineEditor listingId={listing.id} /></div>
       )}
+
+      {catalogueOn && listing.status === "published" && <GroupingCard listing={listing} />}
 
       {confirm && (
         <div role="alertdialog" aria-label={`Confirm ${confirm}`} style={{ marginTop: 10, padding: "10px 12px", border: `1px solid ${D.red}`, borderRadius: 10, color: D.text, fontSize: "0.76rem" }}>

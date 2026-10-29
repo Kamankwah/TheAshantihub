@@ -79,4 +79,21 @@ describe('CatalogueSearch', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'See offers' }))
     expect(onPick).toHaveBeenCalledWith(prow())
   })
+
+  it('test_initial_term_prefills_without_a_request_until_submit', async () => {
+    const seen = setup(null, { initialTerm: 'milo' })
+    expect(screen.getByLabelText('Product name or barcode')).toHaveValue('milo')
+    await new Promise((r) => setTimeout(r, 30))
+    expect(seen).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    await screen.findByText('No catalogue product matches.')
+    expect(seen).toEqual(['?q=milo'])
+  })
+
+  it('test_pick_label_labels_the_pick_button', async () => {
+    setup(() => HttpResponse.json({ results: [prow()], truncated: false }), { pickLabel: 'Ask to join' })
+    type('milo')
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    expect(await screen.findByRole('button', { name: 'Ask to join' })).toBeInTheDocument()
+  })
 })
