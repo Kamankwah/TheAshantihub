@@ -355,5 +355,5 @@ class DispatchDeliverySerializer(serializers.ModelSerializer):
                     "lng": float(item.listing.lng) if item.listing.lng is not None else None,
                     "items": [],
                 }
-            seen[owner.id]["items"].append(f"{item.listing.name} × {item.quantity}")
+            seen[owner.id]["items"].append(f"{item.line_name} × {item.quantity}")
         return list(seen.values())

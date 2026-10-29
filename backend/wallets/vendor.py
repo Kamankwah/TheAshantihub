@@ -126,7 +126,7 @@ def rows(owner, groups):
     items = {}
     for item in OrderItem.objects.filter(order_id__in=ids, listing__business_owner=owner).select_related("listing").order_by("pk"):
         items.setdefault(item.order_id, []).append(
-            {"name": item.listing.name, "quantity": item.quantity, "line_total": money(to_pesewas(item.line_total))}
+            {"name": item.line_name, "quantity": item.quantity, "line_total": money(to_pesewas(item.line_total))}
         )
     # The business's free-delivery promo on the order: owed until release, charged from Available then, reversed (and
     # given back) on a whole refund (ledger.escrow.charge_waiver / return_waiver), so OWED is what it pays. An

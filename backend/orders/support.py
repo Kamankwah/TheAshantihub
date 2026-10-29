@@ -201,7 +201,7 @@ class SupportOrderDetailView(APIView):
             "delivery_phone": mask_phone(order.delivery_phone) if order.delivery_phone else "",
             "lines": [
                 {
-                    "name": line.listing.name, "quantity": line.quantity, "line_total": str(line.line_total),
+                    "name": line.line_name, "quantity": line.quantity, "line_total": str(line.line_total),
                     "business": line.listing.business_owner.display_name,
                 }
                 for line in order.items.all()

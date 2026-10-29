@@ -526,7 +526,7 @@ class _OwnerSalesReportBase(APIView):
             row = {
                 "order_id": item.order_id,
                 "date": item.order.placed_at.isoformat(),
-                "item": item.listing.name,
+                "item": item.line_name,
                 "kind": item.listing.category.kind if item.listing.category else "",
                 "quantity": item.quantity,
                 "line_total": str(item.line_total),

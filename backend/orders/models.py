@@ -96,6 +96,13 @@ class OrderItem(models.Model):
     variant = models.ForeignKey("listings.ListingVariant", on_delete=models.PROTECT, null=True, blank=True, related_name="order_items")
     variant_label = models.CharField(max_length=100, blank=True)
 
+    @property
+    def line_name(self):
+        """What to pack or check: the listing name, plus the variant bought."""
+        if self.variant_label:
+            return f"{self.listing.name} ({self.variant_label})"
+        return self.listing.name
+
     def __str__(self):
         return f"{self.quantity} x {self.listing.name} (Order {self.order_id})"
 
