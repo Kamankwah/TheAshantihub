@@ -43,6 +43,10 @@ QUEUE_INVALIDATIONS = [
     # staff-badges: Super Admin's Invites badge counts open invites (invite, resend, cancel, deactivate change it).
     (STAFF_MANAGEMENT_VERBS, ("staff.manage", "staff.invite_team"), ("staff-roster", "my-team", "ops-invites", "staff-badges")),
     (("promotion-",), ("promotions.manage",), ("promotions-queue",)),
+    # Product grouping: a staff decision (approve, reject, re-review, detach) refreshes the other reviewers' queue and the
+    # menu badge. A business's own request is not a staff write and makes no activity event: it reaches staff through the
+    # catalogue_needs_review notice and the badge's 60 s poll.
+    (("catalogue-staff-",), ("listings.moderate",), ("catalogue-queue", "staff-badges")),
     (("zone.",), ("zones.manage",), ("zones-summary", "zones")),
     (("site_settings.",), ("site_settings.manage",), ("site-settings", "site-settings-history")),
     (("subscription-plan-",), ("subscription_plans.approve",), ("subscription-plan-pending-queue", "staff-badges")),
