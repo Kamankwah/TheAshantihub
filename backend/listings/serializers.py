@@ -4,6 +4,7 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
 
+from accounts import direct
 from accounts.models import BusinessOwner
 from billing.models import Subscription
 
@@ -145,9 +146,17 @@ class BusinessOwnerMiniSerializer(serializers.ModelSerializer):
     docs/PROJECT_SCOPE.md). Deliberately no phone/email/payout info exposed.
     """
 
+    # `name` is the business name the seller page shows (the owner's own name only when none is set), so "Sold by"
+    # names the business; `is_ashanti_direct` marks the company's own shop.
+    name = serializers.CharField(source="display_name", read_only=True)
+    is_ashanti_direct = serializers.SerializerMethodField()
+
     class Meta:
         model = BusinessOwner
-        fields = ["id", "full_name", "kyc_status"]
+        fields = ["id", "full_name", "name", "kyc_status", "is_ashanti_direct"]
+
+    def get_is_ashanti_direct(self, obj):
+        return direct.is_direct(obj)
 
 
 def live_sale_ends_at(obj):
@@ -506,13 +515,15 @@ def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None,
         )
 
     profile = getattr(owner, "profile", None)
+    company = direct.is_direct(owner)  # Ashanti Direct sells across kinds and holds no plan; fees and payouts are unchanged
 
     # Category-kind restriction — applies to both create and edit, since
     # an edit can change a listing's category just as easily as a create
     # can pick the wrong one in the first place.
     category = data.get("category", getattr(instance, "category", None))
     if (
-        profile is not None
+        not company
+        and profile is not None
         and profile.business_kind
         and category is not None
         and category.kind
@@ -530,7 +541,7 @@ def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None,
     ):
         raise serializers.ValidationError({"category": "Only products and food can have variants. Remove the variants first."})
 
-    if instance is None and subscriptions_on():
+    if instance is None and not company and subscriptions_on():
         subscription = getattr(owner, "subscription", None)
         if (
             subscription is None
@@ -664,8 +675,8 @@ class OwnerListingSerializer(serializers.ModelSerializer):
         return save_sent_fields(instance, validated_data)
 
     def create(self, validated_data):
-        owner = self.context["request"].user
-        return services.create_listing(owner, validated_data)
+        owner = self.context.get("owner") or self.context["request"].user
+        return services.create_listing(owner, validated_data, staff=self.context.get("staff"))
 
 
 class ModerationListingSerializer(serializers.ModelSerializer):

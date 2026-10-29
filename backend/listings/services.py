@@ -26,8 +26,9 @@ def save_sent_fields(instance, validated_data):
     return instance
 
 
-def create_listing(owner, validated_data):
-    """A new listing for `owner`; the contact phone defaults to the business's own number."""
+def create_listing(owner, validated_data, staff=None):
+    """A new listing for `owner`; the contact phone defaults to the business's own number. `staff` is the staff member
+    making it for the business (Ashanti Direct), kept as created_by_staff."""
     if not validated_data.get("contact_phone"):
         validated_data["contact_phone"] = owner.profile.business_contact_phone
-    return Listing.objects.create(business_owner=owner, **validated_data)
+    return Listing.objects.create(business_owner=owner, created_by_staff=staff, **validated_data)

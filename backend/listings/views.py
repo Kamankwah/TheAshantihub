@@ -15,6 +15,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.direct import direct_q
 from accounts.models import BusinessOwner, StaffUser
 from activity.services import record as activity_record
 from accounts.permissions import HasRolePermission
@@ -33,7 +34,8 @@ from .moderation_checks import (
 )
 from .category_tree import build_tree
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, ListingVariant, Promotion, Zone
-from .permissions import IsHeroMediaOwner, IsListingOwner, IsListingPhotoOwner
+from .permissions import IsHeroMediaOwner, IsListingOwnerOrDirectOperator, IsListingPhotoOwner
+from .views_revisions import ScopedOwner
 from .serializers import (
     CartTieredListingSerializer,
     CategorySerializer,
@@ -362,6 +364,9 @@ class PublicListingListView(generics.ListAPIView):
         if verified and verified.lower() in ("true", "1"):
             queryset = queryset.filter(business_owner__kyc_status=BusinessOwner.VERIFIED)
 
+        if self.request.query_params.get("sold_by") == "direct":
+            queryset = queryset.filter(direct_q("business_owner__"))
+
         seller = self.request.query_params.get("seller")
         if seller and seller.isdigit():  # the seller page's grid (GET /api/listings/sellers/<id>/)
             queryset = queryset.filter(business_owner_id=int(seller))
@@ -488,25 +493,32 @@ class RelatedListingsView(generics.ListAPIView):
         return _with_rating_annotations(queryset)[: self.RELATED_LIMIT]
 
 
-class OwnerListingCreateListView(generics.ListCreateAPIView):
+class OwnerListingCreateListView(ScopedOwner, generics.ListCreateAPIView):
     serializer_class = OwnerListingSerializer
-    permission_classes = [IsAuthenticated, IsBusinessOwner]
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
 
     def get_queryset(self):
-        return Listing.objects.filter(business_owner=self.request.user).prefetch_related("variants", "listing_revisions", "photos", "videos")
+        return Listing.objects.filter(business_owner=self.acting_owner()).prefetch_related("variants", "listing_revisions", "photos", "videos")
+
+    def get_serializer_context(self):
+        # The business a new listing belongs to, and (on Ashanti Direct's mount) the staff member making it.
+        return {**super().get_serializer_context(), "owner": self.acting_owner(), "staff": self.acting_staff()}
 
 
-class OwnerListingUpdateView(generics.UpdateAPIView):
+class OwnerListingUpdateView(ScopedOwner, generics.UpdateAPIView):
     queryset = Listing.objects.all()
     serializer_class = OwnerListingSerializer
-    permission_classes = [IsAuthenticated, IsListingOwner]
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
     http_method_names = ["patch"]
 
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "owner": self.get_object().business_owner}
 
-class _ListingLifecycleView(APIView):
+
+class _ListingLifecycleView(ScopedOwner, APIView):
     """POST /api/listings/mine/{id}/<verb>/ — empty body, owner only; answers {"id", "status"} or 400 {"status": why}."""
 
-    permission_classes = [IsAuthenticated, IsListingOwner]
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
     action = None
 
     def post(self, request, pk):
@@ -531,7 +543,7 @@ class ListingDiscontinueView(_ListingLifecycleView):
     action = "discontinue"
 
 
-class ListingManageView(generics.UpdateAPIView):
+class ListingManageView(ScopedOwner, generics.UpdateAPIView):
     """PATCH /api/listings/mine/{id}/manage/ — light edit of a listing's
     operational fields (business item 2), allowed on a published listing
     without re-moderation. See OwnerListingManageSerializer for what's in vs
@@ -540,7 +552,7 @@ class ListingManageView(generics.UpdateAPIView):
 
     queryset = Listing.objects.all()
     serializer_class = OwnerListingManageSerializer
-    permission_classes = [IsAuthenticated, IsListingOwner]
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
     http_method_names = ["patch"]
 
     def update(self, request, *args, **kwargs):
@@ -549,14 +561,14 @@ class ListingManageView(generics.UpdateAPIView):
         return super().update(request, *args, **kwargs)
 
 
-class _OwnerVariantView(APIView):
+class _OwnerVariantView(ScopedOwner, APIView):
     """Shared by the variant endpoints: only the signed-in business's own listing (and its own variant) resolves; any
     other id is a 404, so one business cannot learn that another's listing exists."""
 
-    permission_classes = [IsAuthenticated, IsBusinessOwner]
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
 
     def owner_listing(self, request, pk):
-        return generics.get_object_or_404(Listing, pk=pk, business_owner=request.user)
+        return generics.get_object_or_404(Listing, pk=pk, business_owner=self.acting_owner(request))
 
     def owner_variant(self, request, pk, vid):
         listing = self.owner_listing(request, pk)
@@ -657,7 +669,7 @@ class SponsoredListView(APIView):
         ])
 
 
-class ListingRestockView(APIView):
+class ListingRestockView(ScopedOwner, APIView):
     """POST /api/listings/mine/{id}/restock/ — a business owner sets a
     listing's stock count (Wave F). Unlike the general edit endpoint (which
     blocks editing a *published* listing), restock deliberately works on a
@@ -669,7 +681,7 @@ class ListingRestockView(APIView):
     (stock_quantity=None) starts tracking it from that quantity.
     """
 
-    permission_classes = [IsAuthenticated, IsListingOwner]
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
 
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
@@ -705,8 +717,8 @@ class ListingRestockView(APIView):
         return Response({"id": listing.id, "stock_quantity": listing.stock_quantity})
 
 
-class ListingSubmitView(APIView):
-    permission_classes = [IsAuthenticated, IsListingOwner]
+class ListingSubmitView(ScopedOwner, APIView):
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
 
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
@@ -743,7 +755,7 @@ PROMOTION_DAILY_RATES = {
 }
 
 
-class ListingPromoteView(APIView):
+class ListingPromoteView(ScopedOwner, APIView):
     """POST /api/listings/{id}/promote/ — a business owner pays to promote
     one of their own listings (roadmap Phase 5), distinct from subscription
     tier. Mirrors OrderCheckoutView/HeroExtendView's simulated-payment
@@ -763,7 +775,7 @@ class ListingPromoteView(APIView):
     re-based to "now" at approval, so approval lag doesn't eat the paid window.
     """
 
-    permission_classes = [IsAuthenticated, IsListingOwner]
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
 
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
@@ -814,7 +826,7 @@ class ListingPromoteView(APIView):
             )
             if not free:
                 Transaction.objects.create(
-                    business_owner=request.user,
+                    business_owner=listing.business_owner,
                     amount=amount,
                     purpose=f"{kind.capitalize()} promotion for listing #{listing.id} ({days} days)",
                     status=Transaction.SUCCESS,

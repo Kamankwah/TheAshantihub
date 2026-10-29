@@ -11,7 +11,7 @@ from events.models import Event
 from listings.models import Category, Listing, Zone
 
 _phones = count(500)
-ALLOWED_KEYS = {"id", "name", "since", "counts"}
+ALLOWED_KEYS = {"id", "name", "since", "is_ashanti_direct", "counts"}
 COUNT_KEYS = {"products", "services", "stays", "events"}
 
 

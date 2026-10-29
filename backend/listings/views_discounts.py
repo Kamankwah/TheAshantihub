@@ -10,11 +10,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.views import IsBusinessOwner
-
 from . import pricing
 from .models import Listing
-from .views_revisions import _owner
+from .permissions import IsListingOwnerOrDirectOperator
+from .views_revisions import ScopedOwner, _owner
 
 _DATE = serializers.DateTimeField()
 
@@ -23,9 +22,8 @@ def _present(rows):
     return [{**row, "ends_at": None if row["ends_at"] is None else _DATE.to_representation(row["ends_at"])} for row in rows]
 
 
-class _OwnerDiscountView(APIView):
-    permission_classes = [IsAuthenticated, IsBusinessOwner]
-    scope = None
+class _OwnerDiscountView(ScopedOwner, APIView):
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
 
     def listing(self, request, pk):
         # Another business's listing is a 404, so nobody learns it exists.

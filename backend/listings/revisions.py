@@ -255,6 +255,8 @@ def save_draft(listing, owner, data, *, new_main_photo=None, clear_main_photo=Fa
             raise RevisionError(OPEN_MESSAGE, "status")
         if revision is None:
             revision = ListingRevision(listing=row, created_by=owner if staff is None else None, created_by_staff=staff)
+        elif staff is not None:
+            revision.created_by_staff = staff  # the last staff member to edit it is its maker of record (maker-checker)
         changes = data.get("changes", revision.changes)
         ops = data.get("variants", revision.variants)
         changes, ops = _validate(row, owner, changes, ops)

@@ -7,18 +7,20 @@ Staff:  GET /api/listings/revisions/pending/?status=pending|approved|rejected   
 import json
 
 from django.db import transaction
+from django.http import Http404
 from rest_framework import generics
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts import direct
 from accounts.permissions import HasRolePermission
-from accounts.views import IsBusinessOwner
 from activity.services import record as activity_record
 
 from . import revisions
 from .models import Listing, ListingRevision
+from .permissions import IsListingOwnerOrDirectOperator
 from .serializers_revisions import OwnerRevisionSerializer, RevisionDetailSerializer, RevisionQueueSerializer
 
 REVISION_STATUS_MAP = {
@@ -30,14 +32,36 @@ JSON_KEYS = ("changes", "variants", "remove_photo_ids", "remove_video_ids")
 
 
 def _owner(request, scope=None):
-    """The business whose listings these views act on. Ashanti Direct's mount (a `scope`) swaps this for the company."""
+    """The business whose listings these views act on: the signed-in business, or, on Ashanti Direct's mount
+    (`scope == "direct"`), always the company itself, never anything the client sends."""
+    if scope == "direct":
+        try:
+            return direct.ashanti_direct()
+        except LookupError:
+            raise Http404 from None
     return request.user
 
 
-class _OwnerRevisionView(APIView):
-    permission_classes = [IsAuthenticated, IsBusinessOwner]
+def _staff(request, scope=None):
+    """The staff member acting for Ashanti Direct (stamped on what they create), None for a business's own request."""
+    return request.user if scope == "direct" else None
+
+
+class ScopedOwner:
+    """Mixin for an owner view that Ashanti Direct's mount reuses: `scope` is "mine" or "direct" (`as_view(scope=...)`)."""
+
+    scope = "mine"
+
+    def acting_owner(self, request=None):
+        return _owner(request or self.request, self.scope)
+
+    def acting_staff(self, request=None):
+        return _staff(request or self.request, self.scope)
+
+
+class _OwnerRevisionView(ScopedOwner, APIView):
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
-    scope = None
 
     def owner(self, request):
         return _owner(request, self.scope)
@@ -79,7 +103,10 @@ class ListingRevisionView(_OwnerRevisionView):
             data = _fields_sent(request)
             photo = request.FILES.get("new_main_photo")
             clear = "new_main_photo" in request.data and photo is None and not request.data.get("new_main_photo")
-            revision = revisions.save_draft(listing, self.owner(request), data, new_main_photo=photo, clear_main_photo=clear)
+            revision = revisions.save_draft(
+                listing, self.owner(request), data, new_main_photo=photo, clear_main_photo=clear,
+                staff=self.acting_staff(request),
+            )
         except revisions.RevisionError as exc:
             return Response(exc.payload, status=400)
         return self.answer(request, revision)
@@ -100,6 +127,11 @@ class ListingRevisionSubmitView(_OwnerRevisionView):
         revision = revisions.open_revision(self.listing(request, pk))
         if revision is None:
             return Response({"detail": "This listing has no edit in progress."}, status=404)
+        staff = self.acting_staff(request)
+        if staff is not None and revision.created_by_staff_id != staff.pk:
+            # Maker-checker: whoever sends a Direct edit for approval counts as its maker and cannot approve it.
+            revision.created_by_staff = staff
+            revision.save(update_fields=["created_by_staff", "updated_at"])
         try:
             revision = revisions.submit(revision)
         except revisions.RevisionError as exc:

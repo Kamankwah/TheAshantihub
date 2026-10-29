@@ -5,6 +5,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts import direct
 from accounts.models import BusinessOwner
 
 from .models import Category, Listing
@@ -12,7 +13,7 @@ from .visibility import hidden_business_q, sold_out_q
 
 
 class SellerDetailView(APIView):
-    """GET /api/listings/sellers/<id>/ — {"id", "name", "since", "counts": {products, services, stays, events}}.
+    """GET /api/listings/sellers/<id>/ — {"id", "name", "since", "is_ashanti_direct", "counts": {products, services, stays, events}}.
 
     `name` is the business name the site shows elsewhere (the owner's own name only when none is set); `since` is
     when the business joined (BusinessOwner.created_at). Counts are the listings and events the public can see right
@@ -34,7 +35,10 @@ class SellerDetailView(APIView):
             "stays": live.filter(stays).count(),
             "events": _live_event_count(owner),
         }
-        return Response({"id": owner.pk, "name": owner.display_name, "since": owner.created_at, "counts": counts})
+        return Response({
+            "id": owner.pk, "name": owner.display_name, "since": owner.created_at,
+            "is_ashanti_direct": direct.is_direct(owner), "counts": counts,
+        })
 
 
 def _live_event_count(owner):

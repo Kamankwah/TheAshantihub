@@ -694,6 +694,11 @@ SOLD_OUT_HIDDEN_ENABLED = env.bool("SOLD_OUT_HIDDEN_ENABLED", default=False)
 # for staff approval either way. Turn on only once prices are announced to businesses.
 PROMOTION_PRICING_ENABLED = env.bool("PROMOTION_PRICING_ENABLED", default=False)
 
+# Ashanti Direct, the company's own shop (accounts.direct): the company phone and email, set in the environment. There is
+# no default; `manage.py ensure_ashanti_direct` stops without both and never invents a number.
+ASHANTI_DIRECT_PHONE = env("ASHANTI_DIRECT_PHONE", default="")
+ASHANTI_DIRECT_EMAIL = env("ASHANTI_DIRECT_EMAIL", default="")
+
 # The marketplace opening gate (storefront.opening). Off by default: while off the marketplace is open to everyone
 # and nothing is blocked. Turn on once the opening time is confirmed.
 MARKETPLACE_GATE_ENABLED = env.bool("MARKETPLACE_GATE_ENABLED", default=False)

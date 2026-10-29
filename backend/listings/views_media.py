@@ -13,20 +13,18 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.views import IsBusinessOwner
-
 from . import media
 from .models import Listing, ListingPhoto, ListingVideo
 from .serializers import ListingPhotoSerializer, OwnerPhotoSerializer, OwnerVideoSerializer
-from .views_revisions import _owner
+from .permissions import IsListingOwnerOrDirectOperator
+from .views_revisions import ScopedOwner, _owner
 
 QUEUED = "Removal is waiting for approval: it takes effect when staff approve your edit."
 
 
-class _OwnerMediaView(APIView):
-    permission_classes = [IsAuthenticated, IsBusinessOwner]
+class _OwnerMediaView(ScopedOwner, APIView):
+    permission_classes = [IsAuthenticated, IsListingOwnerOrDirectOperator]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    scope = None
 
     def owner(self, request):
         return _owner(request, self.scope)
@@ -52,6 +50,7 @@ class ListingPhotoCreateView(_OwnerMediaView):
         try:
             photo = media.add_image(
                 listing, self.owner(request), serializer.validated_data["image"], serializer.validated_data.get("order", 0),
+                staff=self.acting_staff(request),
             )
         except media.MediaError as exc:
             return self.refused(exc)
@@ -63,7 +62,7 @@ class ListingPhotoDeleteView(_OwnerMediaView):
         listing = self.listing(request, pk)
         photo = generics.get_object_or_404(ListingPhoto, pk=photo_id, listing=listing)
         try:
-            return self.removed(media.remove_photo(listing, photo, self.owner(request)))
+            return self.removed(media.remove_photo(listing, photo, self.owner(request), staff=self.acting_staff(request)))
         except media.MediaError as exc:
             return self.refused(exc)
 
@@ -74,9 +73,9 @@ class ListingVideoCreateView(_OwnerMediaView):
         owner = self.owner(request)
         try:
             if request.FILES.get("file") is not None:
-                video = media.add_video_upload(listing, owner, request.FILES["file"])
+                video = media.add_video_upload(listing, owner, request.FILES["file"], staff=self.acting_staff(request))
             else:
-                video = media.add_youtube(listing, owner, request.data.get("youtube_url"))
+                video = media.add_youtube(listing, owner, request.data.get("youtube_url"), staff=self.acting_staff(request))
         except media.MediaError as exc:
             return self.refused(exc)
         return Response(OwnerVideoSerializer(video, context={"request": request}).data, status=201)
@@ -87,6 +86,6 @@ class ListingVideoDeleteView(_OwnerMediaView):
         listing = self.listing(request, pk)
         video = generics.get_object_or_404(ListingVideo, pk=video_id, listing=listing)
         try:
-            return self.removed(media.remove_video(listing, video, self.owner(request)))
+            return self.removed(media.remove_video(listing, video, self.owner(request), staff=self.acting_staff(request)))
         except media.MediaError as exc:
             return self.refused(exc)
