@@ -13,9 +13,10 @@ from ledger.models import MoneySetting
 from payments import providers
 from notifications.models import Notification
 from otp import step_up
+from wallets import destinations
 from wallets.models import PayoutDestination
 
-from .helpers import MOMO_NUMBER, Holder, destination
+from .helpers import MOMO_NUMBER, Holder, destination, verify_identity
 
 URL = "/api/wallet/destinations/"
 MOMO = {"rail": "momo", "institution": "MTN", "account_number": "024 123 4567"}
@@ -37,7 +38,10 @@ class DestinationBase(TestCase):
         owner = BusinessOwner.objects.create(
             full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
         )
-        BusinessOwnerProfile.objects.create(business_owner=owner, business_name="Adepa Ventures", **profile)
+        BusinessOwnerProfile.objects.create(
+            business_owner=owner, business_name="Adepa Ventures",
+            identity_status=BusinessOwnerProfile.IDENTITY_VERIFIED, **profile,
+        )
         return owner
 
 
@@ -77,7 +81,7 @@ class DestinationTests(DestinationBase):
         again = self.ama.post(URL, {**MOMO, "account_number": "0241234568"}, token=token)
         self.assertEqual(again.status_code, 201, again.content)
 
-    def test_a_vendor_needs_kyc_and_may_match_its_business_name(self):
+    def test_a_vendor_needs_identity_and_may_match_its_business_name(self):
         owner = BusinessOwner.objects.create(full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x")
         kwame = Holder(owner, "business_owner")
         refused = self.add(kwame)
@@ -85,10 +89,50 @@ class DestinationTests(DestinationBase):
         owner.kyc_status = BusinessOwner.VERIFIED
         owner.save(update_fields=["kyc_status"])
         BusinessOwnerProfile.objects.create(business_owner=owner, business_name="Adepa Ventures")
+        still = self.add(kwame)                                      # address checked is not identity proven
+        self.assertEqual((still.status_code, still.json()["code"]), (409, "kyc_required"))
+        self.assertFalse(PayoutDestination.objects.exists())
+        verify_identity(owner)
         with override_settings(SIMULATED_ACCOUNT_NAMES={MOMO_NUMBER: "ADEPA VENTURES LTD"}):
             response = self.add(kwame)
         self.assertEqual(response.status_code, 201, response.content)
         self.assertEqual(PayoutDestination.objects.get(holder_type="business_owner").matched_name, "Adepa Ventures")
+
+    def test_destination_refusal_for_unverified_identity_tells_the_owner_to_get_verified(self):
+        owner = BusinessOwner.objects.create(
+            full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
+        )
+        BusinessOwnerProfile.objects.create(business_owner=owner, business_name="Adepa Ventures")
+        refused = self.add(Holder(owner, "business_owner"))
+        self.assertEqual(refused.status_code, 409)
+        message = refused.json()["detail"]
+        self.assertIn("Get verified", message)
+        self.assertIn("Ghana Card", message)
+        self.assertIn("approve", message)
+        self.assertNotIn("KYC", message)
+        # A customer with no name is told what they always were.
+        C = Customer
+        C.objects.filter(pk=self.customer.pk).update(full_name="")
+        customer = self.add(self.ama)
+        self.assertEqual(customer.json()["code"], "name_required")
+
+    def test_existing_destinations_are_untouched(self):
+        # Only new additions are blocked: a destination saved while identity was verified stays listed and live
+        # after identity is later set back to not submitted.
+        owner = self.kyc_vendor()
+        kwame = Holder(owner, "business_owner")
+        with override_settings(SIMULATED_ACCOUNT_NAMES={MOMO_NUMBER: "KWAME MENSAH"}):
+            self.assertEqual(self.add(kwame).status_code, 201)
+        saved = PayoutDestination.objects.get()
+        BusinessOwnerProfile.objects.filter(business_owner=owner).update(
+            identity_status=BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED,
+        )
+        saved.refresh_from_db()
+        self.assertIsNone(saved.removed_at)
+        listed = kwame.get(URL)
+        self.assertEqual(listed.status_code, 200, listed.content)
+        self.assertEqual(len(listed.json()["results"]), 1)
+        self.assertEqual(destinations.live_for(owner).count(), 1)
 
     def test_a_vendor_may_copy_its_registered_payout_details(self):
         owner = self.kyc_vendor(default_payout_method="momo", payout_momo_network="mtn", payout_momo_number="0201112233")
@@ -231,12 +275,12 @@ class DestinationFixRoundTests(DestinationBase):
         self.assertEqual(ctx.exception.code, "suspended")
         self.assertFalse(PayoutDestination.objects.exists())
 
-    def test_save_rechecks_kyc(self):
+    def test_save_rechecks_identity(self):
         from wallets import destinations
         owner = self.kyc_vendor()
         with override_settings(SIMULATED_ACCOUNT_NAMES={MOMO_NUMBER: "KWAME MENSAH"}):
             checked = destinations.check(owner, MOMO)
-        BusinessOwner.objects.filter(pk=owner.pk).update(kyc_status=BusinessOwner.PENDING)
+        BusinessOwnerProfile.objects.filter(business_owner=owner).update(identity_status=BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED)
         with self.assertRaises(destinations.DestinationError) as ctx:
             destinations.save(owner, checked)
         self.assertEqual(ctx.exception.code, "kyc_required")

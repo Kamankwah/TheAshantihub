@@ -35,6 +35,7 @@ class CreditScoringLogicTests(TestCase):
             default_payout_method="momo", payout_momo_network="MTN",
             payout_momo_number="+233207443002", payout_momo_name="Verified Owner",
             payout_verification_status="verified",
+            identity_status=BusinessOwnerProfile.IDENTITY_VERIFIED,
         )
         for i in range(3):
             Listing.objects.create(
@@ -51,6 +52,29 @@ class CreditScoringLogicTests(TestCase):
         unverified_score, _ = compute_naive_credit_score(unverified_owner)
         self.assertGreater(verified_score, unverified_score)
         self.assertLessEqual(verified_score, 1000)
+
+    def test_kyc_verified_without_identity_gets_no_kyc_factor(self):
+        # Address checked and allowed to publish, but no approved identity: the 30% factor stays off.
+        owner = BusinessOwner.objects.create(
+            full_name="Address Only", login_phone="+233207443011", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
+        )
+        BusinessOwnerProfile.objects.create(business_owner=owner)
+        score, factors = compute_naive_credit_score(owner)
+        self.assertFalse(factors["kyc_verified"]["value"])
+        self.assertEqual(factors["kyc_verified"]["score_pct"], 0.0)
+        self.assertEqual(score, 300)
+
+    def test_identity_verified_gets_kyc_factor(self):
+        owner = BusinessOwner.objects.create(
+            full_name="Identity Proven", login_phone="+233207443012", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
+        )
+        BusinessOwnerProfile.objects.create(
+            business_owner=owner, identity_status=BusinessOwnerProfile.IDENTITY_VERIFIED,
+        )
+        score, factors = compute_naive_credit_score(owner)
+        self.assertTrue(factors["kyc_verified"]["value"])
+        self.assertEqual(factors["kyc_verified"]["score_pct"], 100.0)
+        self.assertGreater(score, 300)
 
     def test_grade_bands_match_score_thresholds(self):
         self.assertEqual(grade_for_score(900)[0], "A+")

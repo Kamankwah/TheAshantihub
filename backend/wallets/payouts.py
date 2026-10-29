@@ -2,7 +2,7 @@
 
 A withdrawal is claimed (PENDING → PROCESSING under its row lock) before the provider is asked, so it is sent once even
 when the request and the poll race. Before sending, a held one is re-checked (holder suspended or gone, destination
-removed, still inside its cooling period, name or KYC no longer matching) and returned instead if any fails. No provider
+removed, still inside its cooling period, name or identity approval no longer matching) and returned instead if any fails. No provider
 call runs inside a transaction (claim is durable and raises RuntimeError when nested). A provider that raises
 NotConnected sent nothing, so the hold goes back at once; any other failure leaves the outcome unknown and the
 withdrawal PROCESSING. `apply_result` is the one way a withdrawal ends,
@@ -94,7 +94,7 @@ def claim(withdrawal_pk, now=None):
     else None. Re-checks what request() checked: the holder is not suspended or deactivated (and exists; a staff holder must still be a
     third-party rider with an approved, in-date Ghana Card, which names.matching_name checks), the destination is not
     removed and is past its cooling period, and its name still matches the holder's verified name (which includes
-    business KYC). If any fails the money goes back (CANCELLED) and None is returned. Raises RuntimeError inside an
+    the owner's approved identity). If any fails the money goes back (CANCELLED) and None is returned. Raises RuntimeError inside an
     open transaction (durable)."""
     now = timezone.now()  # real time: a poll that started minutes ago must not backdate the send
     # durable: a caller's open transaction would hold these locks across the provider call and could roll back after it

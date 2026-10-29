@@ -9,7 +9,7 @@ from django.db import connection, transaction
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
-from accounts.models import BusinessOwner, Customer
+from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
 from fraud.models import FraudFlag
 from ledger import posting
 from ledger.models import Account, Journal, MoneySetting
@@ -19,7 +19,7 @@ from payments import providers
 from wallets import payouts, tasks, withdrawals
 from wallets.models import PayoutDestination, Withdrawal
 
-from .helpers import destination, fund
+from .helpers import destination, fund, verify_identity
 
 
 @override_settings(LEDGER_ENABLED=True)
@@ -209,6 +209,7 @@ class EngineTests(TestCase):
         owner = BusinessOwner.objects.create(
             full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
         )
+        verify_identity(owner)
         dest = destination(owner, number="+233201112233", name="Kwame Mensah")
         fund(Account.VENDOR_AVAILABLE, owner, 20000, "fund-vendor")
         with override_settings(SIMULATED_PAYOUT_OUTCOME="pending"):
@@ -267,6 +268,7 @@ class EngineTests(TestCase):
         owner = BusinessOwner.objects.create(
             full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
         )
+        verify_identity(owner)
         to_kwame = destination(owner, number="+233201112233", name="Kwame Mensah")
         fund(Account.VENDOR_AVAILABLE, owner, 5000, "fund-vendor")
         held = self.withdraw(3000, holder=owner, dest=to_kwame)
@@ -384,14 +386,15 @@ class EngineFixRoundTests(TestCase):
         self.assertEqual(Journal.objects.filter(kind="withdrawal_reversed").count(), 2)
         self.assertFalse(Journal.objects.filter(kind="withdrawal_paid").exists())
 
-    def test_a_vendor_who_lost_kyc_is_not_paid_by_a_late_send(self):
+    def test_a_vendor_who_lost_identity_approval_is_not_paid_by_a_late_send(self):
         owner = BusinessOwner.objects.create(
             full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
         )
+        verify_identity(owner)
         to_kwame = destination(owner, number="+233201112233", name="Kwame Mensah")
         fund(Account.VENDOR_AVAILABLE, owner, 5000, "fund-vendor")
         held = withdrawals.request(owner, destination_id=to_kwame.pk, amount_pesewas=3000, request_id="req-kyc-0001")
-        BusinessOwner.objects.filter(pk=owner.pk).update(kyc_status=BusinessOwner.PENDING)
+        BusinessOwnerProfile.objects.filter(business_owner=owner).update(identity_status=BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED)
         self.assertEqual(payouts.submit(held.pk).status, Withdrawal.CANCELLED)
         self.assertEqual(posting.balance_of(Account.VENDOR_AVAILABLE, owner), 5000)
 
@@ -619,6 +622,7 @@ class RiderDailyCountTests(TestCase):
         owner = BusinessOwner.objects.create(
             full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
         )
+        verify_identity(owner)
         fund(Account.VENDOR_AVAILABLE, owner, 20000, "fund-v")
         to_kwame = destination(owner, number="+233201112233", name="Kwame Mensah")
         PayoutDestination.objects.filter(pk__in=[to.pk, to_kwame.pk]).update(usable_from=timezone.now() - timedelta(days=3))

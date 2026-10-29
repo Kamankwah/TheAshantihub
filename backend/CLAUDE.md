@@ -305,7 +305,7 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `NotConnected` until Plan 7.
 - **Payout destinations, withdrawals, reconciliation (`wallets/`, Stage 3b).** A destination is accepted only when the
   provider's account name matches the holder's verified name (`wallets.names`: customer profile name, which is
-  self-declared, spec §13 (xxix); KYC-verified vendor's owner or business name) and a step-up code is spent; the name
+  self-declared, spec §13 (xxix); identity-verified vendor's owner or business name) and a step-up code is spent; the name
   lookup runs before that transaction (`destinations.check`, then `save`). It can receive money after
   `payout_cooling_hours`, is never edited (remove + add), and every add and remove sends the holder a notice.
   Destination add/remove and withdrawals call `step_up.require(..., force=True)`, and adding a customer recovery email

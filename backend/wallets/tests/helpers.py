@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from accounts.authentication import issue_token
+from accounts.models import BusinessOwnerProfile
 from ledger import posting
 from ledger.models import Account
 from otp import step_up
@@ -41,6 +42,15 @@ class Holder:
 
     def get(self, url, params=None):
         return self.client.get(url, params or {})
+
+
+def verify_identity(owner, **profile_fields):
+    """Staff have approved this business owner's identity documents (BusinessOwnerProfile.identity_status), which is
+    what lets a payout destination match the owner's name or business name. Creates the profile if there is none."""
+    profile, _ = BusinessOwnerProfile.objects.get_or_create(business_owner=owner, defaults=profile_fields)
+    profile.identity_status = BusinessOwnerProfile.IDENTITY_VERIFIED
+    profile.save(update_fields=["identity_status"])
+    return owner
 
 
 def fund(kind, owner, pesewas, key):

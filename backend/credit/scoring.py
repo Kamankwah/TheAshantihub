@@ -56,7 +56,9 @@ def compute_naive_credit_score(business_owner: BusinessOwner):
     published_listings = business_owner.listings.filter(status=Listing.PUBLISHED).count()
     account_age_days = max((timezone.now() - business_owner.created_at).days, 0)
     account_age_months = account_age_days / 30
-    kyc_verified = business_owner.kyc_status == BusinessOwner.VERIFIED
+    # Identity proven, not just address checked: the factor key keeps its name for API stability, but it is true
+    # only once staff have approved the owner's identity documents.
+    kyc_verified = business_owner.identity_verified
     profile = getattr(business_owner, "profile", None)
     payout_verified = bool(profile and profile.payout_verification_status == "verified")
 
