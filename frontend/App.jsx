@@ -70,6 +70,7 @@ import AccountSecurityCard from "./components/security/AccountSecurityCard.jsx";
 import UnsubscribePage from "./components/UnsubscribePage.jsx";
 import TrackedLinkPage from "./components/TrackedLinkPage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
+import CartPage from "./components/shop/CartPage.jsx";
 import FlashPriceTag from "./components/FlashPriceTag.jsx";
 import PriceLine from "./components/PriceLine.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
@@ -2645,6 +2646,8 @@ const PATH_TO_PAGE = {
   "/business/claim": "business-claim",
   // The owner's texted confirmation link (staff listing pipeline): public, token in the #fragment. Never a listing.
   "/business/confirm": "business-confirm",
+  // The full shopping cart (Marketplace Plan 4); the Navbar/StorefrontHeader cart icons go here.
+  "/cart": "cart",
 };
 const PAGE_TO_PATH = {
   home: "/",
@@ -2659,6 +2662,7 @@ const PAGE_TO_PATH = {
   "payment-return": "/payment/return",
   "business-claim": "/business/claim",
   "business-confirm": "/business/confirm",
+  cart: "/cart",
 };
 // Full-page dashboard "routes" (isAdmin/showBizDash-style early returns) that
 // now have real URLs too. Same two-map convention as PATH_TO_PAGE/
@@ -2782,6 +2786,8 @@ export default function AshantiHub() {
   const [favourites,setFavourites]=useState([]);
   const [showFavs,setShowFavs]=useState(false);
   const [showCart,setShowCart]=useState(false);
+  // The cart icons (Navbar, StorefrontHeader) go to the full cart page; the drawer stays mounted but is no longer opened from them.
+  const openCartPage=()=>navigate("/cart");
   const [showReferral,setShowReferral]=useState(false);
   const [showNotifs,setShowNotifs]=useState(false);
   const [currency,setCurrency]=useState("GHS");
@@ -3242,7 +3248,7 @@ export default function AshantiHub() {
       {showIntake&&<ChatIntake user={user} onClose={()=>setShowIntake(false)} onContinue={()=>{setShowIntake(false);setShowMessaging(true);}}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
-      {showCart&&isCustomer&&<CartDrawer user={user} currency={currency} onClose={()=>setShowCart(false)} PaymentComponent={MoMoPayment}/>}
+      {showCart&&isCustomer&&<CartDrawer user={user} currency={currency} onClose={()=>setShowCart(false)} onGoToCart={()=>{setShowCart(false);navigate("/cart");}} PaymentComponent={MoMoPayment}/>}
       {/* Referral feature hidden until it's built properly (see note below). */}
       {/* On "/" the marketplace home's own StorefrontHeader replaces this bar
           (it is passed to StorefrontHome below); every other page keeps it. */}
@@ -3256,7 +3262,7 @@ export default function AshantiHub() {
         setShowBizDash={setShowBizDash}
         setShowPayments={setShowPayments}
         setShowAccount={setShowAccount}
-        setShowCart={setShowCart}
+        setShowCart={openCartPage}
         cartCount={cartItemCount}
         notifCount={unreadNotifs}
         theme={theme} toggleTheme={toggleTheme}
@@ -3266,6 +3272,10 @@ export default function AshantiHub() {
 
       {/* A staff session can't register a business — same notice the
           "Register Your Business" CTAs show, for a direct /register visit. */}
+      {page==="cart"&&(
+        <CartPage user={user} currency={currency} onNavigate={navigate} onSignIn={()=>setAuthModal("login")}/>
+      )}
+
       {page==="register"&&staffSession&&(
         <div style={{maxWidth:560,margin:"0 auto",padding:"48px 16px"}}>
           <StaffGateNotice passive/>
@@ -3287,7 +3297,7 @@ export default function AshantiHub() {
               setShowAccount={setShowAccount}
               setShowBizDash={setShowBizDash}
               setShowPayments={setShowPayments}
-              setShowCart={setShowCart}
+              setShowCart={openCartPage}
               setShowFavs={setShowFavs}
               setShowNotifs={setShowNotifs}
               cartCount={cartItemCount}

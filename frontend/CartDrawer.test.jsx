@@ -76,6 +76,13 @@ describe('CartDrawer — staff session is view-only', () => {
 })
 
 describe('CartDrawer', () => {
+  it('offers a Go to cart link to the full cart page', async () => {
+    const onGoToCart = vi.fn()
+    renderDrawer({ onGoToCart })
+    fireEvent.click(await screen.findByRole('button', { name: 'Go to cart' }))
+    expect(onGoToCart).toHaveBeenCalledTimes(1)
+  })
+
   it('shows an empty-cart state', async () => {
     server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json({ id: 1, items: [], total: '0.00' })))
     renderDrawer()

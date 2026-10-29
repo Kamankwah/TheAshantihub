@@ -5,7 +5,9 @@ import { apiFetch } from '../apiClient.js'
 // public sponsored feed (plain array of card rows, live sponsored listings in
 // that category and its sub-categories, the anchor listing left out). Not the
 // staff Marketing list at /api/listings/sponsored/.
-export function useSponsored({ category, exclude } = {}) {
+// `all: true` asks for the feed without a category (every live sponsored item, as the cart page does); without it
+// the hook waits for a category, exactly as before.
+export function useSponsored({ category, exclude, all = false } = {}) {
   const params = new URLSearchParams()
   if (category != null) params.set('category', String(category))
   if (exclude != null) params.set('exclude', String(exclude))
@@ -13,6 +15,6 @@ export function useSponsored({ category, exclude } = {}) {
   return useQuery({
     queryKey: ['storefront-sponsored', category ?? null, exclude ?? null],
     queryFn: () => apiFetch(`/api/storefront/sponsored/?${params}`),
-    enabled: category != null,
+    enabled: category != null || all,
   })
 }

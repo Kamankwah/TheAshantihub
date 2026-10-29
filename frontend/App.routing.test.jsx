@@ -36,6 +36,17 @@ function renderAtPath(path) {
 
 describe('AshantiHub routing', () => {
   it(
+    'cart_path_renders_the_cart_page: "/cart" is a real page (signed out it asks for sign-in)',
+    async () => {
+      renderAtPath('/cart')
+      expect(await screen.findByText('Sign in to see your cart.', {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Shopping Cart' })).toBeInTheDocument()
+      expect(screen.queryByText(/page not found/i)).not.toBeInTheDocument()
+    },
+    8000,
+  )
+
+  it(
     'root_renders_storefront_home: "/" is the marketplace home, not the old Hero landing',
     async () => {
       renderAtPath('/')

@@ -47,7 +47,7 @@ import { walletMessage } from "./wallet/walletErrors.js";
 // Card.jsx's displayPrice() already uses elsewhere, so the drawer respects
 // whichever currency the navbar selector is set to rather than reinventing
 // its own rate table.
-export default function CartDrawer({ onClose, user, currency = "GHS", PaymentComponent }) {
+export default function CartDrawer({ onClose, onGoToCart, user, currency = "GHS", PaymentComponent }) {
   const { data: cart, isLoading, isError, refetch } = useCart();
   const queryClient = useQueryClient();
   // The delivery limits (backend cart/guard.py): `any` blocks every checkout, `door_to_door` only a rider delivery.
@@ -320,6 +320,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
       >
         <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontWeight: 800, color: C.ink, fontSize: "0.85rem" }}>🛒 Your Cart {items.length > 0 ? `(${items.length})` : ""}</div>
+          {onGoToCart && <button type="button" onClick={onGoToCart} style={{ marginLeft: "auto", marginRight: 10, background: "none", border: "none", cursor: "pointer", color: C.trust, fontSize: "0.78rem", fontWeight: 800, fontFamily: "inherit" }}>Go to cart</button>}
           <button onClick={onClose} aria-label="Close cart" style={{ background: "none", border: "none", cursor: "pointer", color: C.inkFaint, fontSize: "1.1rem" }}>✕</button>
         </div>
 
