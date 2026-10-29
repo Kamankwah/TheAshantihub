@@ -4,6 +4,8 @@ import { HEADING_FONT } from "../storefront/storefrontType.js";
 import { ACCOUNT_ROOT, ACCOUNT_TILES, PAYMENT_TABS, parseAccountPath } from "./accountNav.js";
 import CustomerService from "./CustomerService.jsx";
 import LoginSecurity from "./LoginSecurity.jsx";
+import SellOnAshantiHub from "./SellOnAshantiHub.jsx";
+import YourLists from "./YourLists.jsx";
 import YourOrders from "./YourOrders.jsx";
 import WalletTabs from "./wallet/WalletTabs.jsx";
 import YourAddresses from "./YourAddresses.jsx";
@@ -49,7 +51,7 @@ const TITLES = Object.fromEntries(ACCOUNT_TILES.map((t) => [t.id, t.title]));
 // /my-account/payments/<tab>). It owns routing and layout only: every App-owned piece
 // (the order, booking, request, ticket, event, saved, settings and messaging tabs) arrives
 // in `render` as a function returning a node, because components/** never import App.jsx.
-export default function AccountHub({ user, auth, render = {}, onContactSupport, onOpenPage, onRegisterBusiness }) {
+export default function AccountHub({ user, auth, render = {}, onContactSupport, onOpenPage, onStartRegistration }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { section, tab } = parseAccountPath(pathname);
@@ -72,17 +74,10 @@ export default function AccountHub({ user, auth, render = {}, onContactSupport, 
     case "security": body = <LoginSecurity user={user} auth={auth} render={render} />; break;
     case "addresses": body = <YourAddresses />; break;
     case "payments": body = <WalletTabs tab={tab} bodies={render.payments} />; break;
-    case "lists": body = render.saved?.(); break;
+    case "lists": body = <YourLists user={user} />; break;
     case "messages": body = render.messages?.(); break;
     case "help": body = <CustomerService onContactSupport={onContactSupport} onOpenPage={onOpenPage} />; break;
-    case "sell":
-      body = (
-        <div style={{ ...glassCard, padding: 18, maxWidth: 520 }}>
-          <div style={{ color: D.textDim, fontSize: "0.82rem", marginBottom: 12 }}>Sell your products and services to customers across Ashanti.</div>
-          <button type="button" onClick={() => onRegisterBusiness?.()} style={{ background: D.gold, color: D.darkBrown, border: "none", borderRadius: 10, padding: "10px 18px", fontWeight: 800, fontSize: "0.82rem", cursor: "pointer", fontFamily: "inherit" }}>Register your business</button>
-        </div>
-      );
-      break;
+    case "sell": body = <SellOnAshantiHub user={user} auth={auth} onStart={onStartRegistration} />; break;
     default: body = <Hub overview={render.overview?.()} />;
   }
 

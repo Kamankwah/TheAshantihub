@@ -8,7 +8,7 @@ export const ACCOUNT_TILES = [
   { id: "security", icon: "🔒", title: "Login & security", text: "Your name, contact details, password and 2-step verification.", path: `${ACCOUNT_ROOT}/security` },
   { id: "addresses", icon: "📍", title: "Your Addresses", text: "Your GhanaPost delivery addresses.", path: `${ACCOUNT_ROOT}/addresses` },
   { id: "payments", icon: "💳", title: "Your Payments", text: "Wallet balance, top-ups, transactions and payout numbers.", path: `${ACCOUNT_ROOT}/payments/overview` },
-  { id: "lists", icon: "❤️", title: "Your Lists", text: "Businesses you have saved.", path: `${ACCOUNT_ROOT}/lists` },
+  { id: "lists", icon: "❤️", title: "Your Lists", text: "The items you have saved.", path: `${ACCOUNT_ROOT}/lists` },
   { id: "help", icon: "🎧", title: "Customer Service", text: "Get help or report a problem.", path: `${ACCOUNT_ROOT}/help` },
   { id: "messages", icon: "💬", title: "Your Messages", text: "Your conversations with AshantiHub Support.", path: `${ACCOUNT_ROOT}/messages` },
   { id: "sell", icon: "🏪", title: "Sell on AshantiHub", text: "Register your business to sell here.", path: `${ACCOUNT_ROOT}/sell` },

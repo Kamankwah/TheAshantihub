@@ -423,4 +423,34 @@ describe('BusinessRegistrationFlow', () => {
       expect(screen.queryByText('What kind of business is this?')).not.toBeInTheDocument()
     })
   })
+
+  describe('personal info from Your Account (Sell on AshantiHub)', () => {
+    const prefill = { full_name: 'Ama Boateng', phone: '0244000111', email: 'ama@example.com' }
+
+    it('seeds the personal info fields from prefill.full_name, phone and email', () => {
+      renderFlow(<BusinessRegistrationFlow user={null} auth={makeAuth()} prefill={prefill} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+      expect(screen.getByPlaceholderText('Full name')).toHaveValue('Ama Boateng')
+      expect(screen.getByPlaceholderText(/Phone/)).toHaveValue('0244000111')
+      expect(screen.getByPlaceholderText('Email')).toHaveValue('ama@example.com')
+    })
+
+    it('shows the server refusal for a contact already used by a business account', async () => {
+      const err = Object.assign(new Error('400'), { status: 400, body: { login_phone: ['A business account with this phone number already exists.'] } })
+      const auth = makeAuth({ registerBusinessOwner: vi.fn().mockRejectedValue(err) })
+      renderFlow(<BusinessRegistrationFlow user={null} auth={auth} prefill={prefill} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+      fireEvent.change(screen.getByPlaceholderText(/Password/), { target: { value: 'longenough1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      expect(await screen.findByText('A business account with this phone number already exists.')).toBeInTheDocument()
+    })
+
+    it('still shows the generic text when the server sends no message', async () => {
+      const auth = makeAuth({ registerBusinessOwner: vi.fn().mockRejectedValue(new Error('network')) })
+      renderFlow(<BusinessRegistrationFlow user={null} auth={auth} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+      fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Kofi' } })
+      fireEvent.change(screen.getByPlaceholderText(/Phone/), { target: { value: '0200000000' } })
+      fireEvent.change(screen.getByPlaceholderText(/Password/), { target: { value: 'longenough1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      expect(await screen.findByText('Could not create your account. Please check your details.')).toBeInTheDocument()
+    })
+  })
 })

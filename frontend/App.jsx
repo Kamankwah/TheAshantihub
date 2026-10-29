@@ -101,6 +101,8 @@ import StaffGateNotice from "./components/StaffGateNotice.jsx";
 import StaffViewOnlyBar, { STAFF_VIEW_ONLY_BAR_HEIGHT } from "./components/StaffViewOnlyBar.jsx";
 import { isStaffSession } from "./lib/staffSession.js";
 import { useStaffGate } from "./hooks/useStaffGate.js";
+import { useFavourites } from "./hooks/useFavourites.js";
+import YourLists from "./components/account/YourLists.jsx";
 
 // ─── Payment System ───────────────────────────────────────────────────────────
 const MOMO_NETWORKS = [
@@ -1090,7 +1092,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
           <span style={{position:"absolute",top:8,left:40,background:"linear-gradient(90deg,#f59e0b,#d97706)",color:"white",fontSize:"0.58rem",fontWeight:800,padding:"2px 8px",borderRadius:20,zIndex:2,boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>⭐ Promoted</span>
         )}
         <span style={{position:"absolute",top:8,right:8,background:accentColor,color:"white",fontSize:"0.6rem",fontWeight:700,padding:"2px 7px",borderRadius:20,zIndex:2}}>{item.tag}</span>
-        <button onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:8,left:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
+        <button aria-label={isFav?"Remove from Your Lists":"Save to Your Lists"} onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:8,left:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
           {isFav?"❤️":"🤍"}
         </button>
         <button onClick={(e)=>{e.stopPropagation();if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
@@ -1665,7 +1667,7 @@ export function BusinessDashboard({ onExit, user, auth }) {
 // shells. EventSubmissionPanel (My Events) keeps its own fixed-dark palette.
 const accountMenuItemStyle = { display: "block", width: "100%", textAlign: "left", background: "none", border: "none", color: D.textDim, padding: "8px 10px", borderRadius: 8, fontSize: "0.76rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
 
-export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, setLang, PaymentComponent, theme, toggleTheme, onOpenPage, onRegisterBusiness }) {
+export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, setLang, PaymentComponent, theme, toggleTheme, onOpenPage, onStartRegistration }) {
   const navigate = useNavigate();
   const [showNotifs, setShowNotifs] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -1712,7 +1714,6 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     orders: () => <OrdersPanel user={user}/>,
     requests: () => <ServiceRequestsTab PaymentComponent={PaymentComponent} onContactSupport={contactSupport}/>,
     bookings: () => <MyBookingsTab onContactSupport={contactSupport}/>,
-    saved: () => <SavedBusinessesTab favourites={favourites} toggleFav={toggleFav}/>,
     messages: () => (
       <div>
         <div style={{color:D.textDim,fontSize:"0.82rem",marginBottom:12}}>Messages with AshantiHub Support</div>
@@ -1766,7 +1767,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     </div>
 
     <div style={{padding:"22px 20px 60px",flex:1,width:"100%",maxWidth:1100,margin:"0 auto",boxSizing:"border-box"}}>
-      <AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport(null,{startNew:true})} onOpenPage={onOpenPage} onRegisterBusiness={onRegisterBusiness}/>
+      <AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport(null,{startNew:true})} onOpenPage={onOpenPage} onStartRegistration={onStartRegistration}/>
     </div>
   </div>;
 }
@@ -1959,21 +1960,6 @@ function MyBookingsTab({ onContactSupport }) {
         </div>
       );
     })}
-  </div>;
-}
-
-// Reuses FavDrawerItem (also module-top-level in this file) exactly as
-// FavsDrawer does, just without the drawer's fixed-position overlay chrome —
-// a plain list in this tab's content column instead. Same empty-state copy
-// as FavsDrawer's. The inner list keeps its own light card background (same
-// look FavsDrawer itself already relies on) — a light content card sitting on
-// this panel's dark shell is a normal, established look elsewhere in the app.
-function SavedBusinessesTab({ favourites, toggleFav }) {
-  return <div>
-    {favourites.length===0 && <div style={{padding:"20px",textAlign:"center",color:D.textFaint,fontSize:"0.78rem"}}>No saved businesses yet.<br/>Tap ❤️ on any listing to save it.</div>}
-    {favourites.length>0 && <div style={{background:C.surface,borderRadius:16,overflow:"hidden",maxWidth:420,boxShadow:"0 4px 24px rgba(0,0,0,0.35)"}}>
-      {favourites.map(id=><FavDrawerItem key={id} id={id} onRemove={toggleFav}/>)}
-    </div>}
   </div>;
 }
 
@@ -2529,7 +2515,12 @@ export default function AshantiHub() {
   };
   const [isAdmin,setIsAdmin]=useState(false);
   const [adminClicks,setAdminClicks]=useState(0);
-  const [favourites,setFavourites]=useState([]);
+  // Hearts: a signed-in customer's are their server wishlist (Your Lists); everyone else keeps the local list.
+  const { favourites, toggleFav } = useFavourites(user, { ready: !auth.isLoading });
+  // Set when a signed-in customer starts a business registration from Sell on AshantiHub: the details to
+  // pre-fill ({} = from scratch). It lives only while the /register page is open.
+  const [registerPrefill,setRegisterPrefill]=useState(undefined);
+  useEffect(()=>{ if(page!=="register") setRegisterPrefill(undefined); },[page]);
   const [showFavs,setShowFavs]=useState(false);
   const [showCart,setShowCart]=useState(false);
   // The cart icons (Navbar, StorefrontHeader) go to the full cart page; the drawer stays mounted but is no longer opened from them.
@@ -2818,7 +2809,6 @@ export default function AshantiHub() {
       else{setAuthModal("staff-login");}
     }
   };
-  const toggleFav=(id)=>setFavourites(f=>f.includes(id)?f.filter(x=>x!==id):[...f,id]);
   // Businesses can no longer be contacted directly (fraud-prevention —
   // docs/UI_MODERNIZATION_ROADMAP.md Phase F): the old handleWA/WABtn combo
   // that opened a wa.me chat with *a business* is gone. AshantiHub's own
@@ -2872,12 +2862,18 @@ export default function AshantiHub() {
 
   // Sell/create entry points: a staff session gets the shared notice instead.
   const openRegister=staffGated(()=>setPage("register"));
+  const startRegistration=staffGated((prefill)=>{ setRegisterPrefill(prefill||{}); setPage("register"); });
   const openEventSubmit=staffGated(()=>setShowEventSubmit(true));
 
   // A signed-in CUSTOMER can't register a business on their existing account —
   // Customer and BusinessOwner are separate account types. Explain it and offer
   // to sign out and start a business registration (after logout, user becomes
   // null and the /register flow below renders the business signup).
+  // Started from Your Account > Sell on AshantiHub: the customer stays signed in (the flow runs as a new
+  // account and only replaces the session when the business login is actually created).
+  if(page==="register" && user?.accountType==="customer" && registerPrefill!==undefined){
+    return <BusinessRegistrationFlow user={null} auth={auth} prefill={registerPrefill} setPage={setPage} setShowBizDash={setShowBizDash}/>;
+  }
   if(page==="register" && user?.accountType==="customer"){
     return (
       <div style={{minHeight:"100vh",background:C.void,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:24,textAlign:"center"}}>
@@ -2922,7 +2918,7 @@ export default function AshantiHub() {
       theme={theme} toggleTheme={toggleTheme}
       onViewSite={isStandaloneDisplay() ? undefined : ()=>navigate("/")}/>;
   }
-  if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment} theme={theme} toggleTheme={toggleTheme} onOpenPage={setPage} onRegisterBusiness={openRegister}/>;
+  if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment} theme={theme} toggleTheme={toggleTheme} onOpenPage={setPage} onStartRegistration={startRegistration}/>;
   if(showBizDash||showPayments||showCredit) return <BusinessCommandCenter
     initialTab={showPayments?"payments":showCredit?"credit":"analytics"}
     onExit={()=>{setShowBizDash(false);setShowPayments(false);setShowCredit(false);}}

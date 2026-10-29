@@ -56,9 +56,9 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
   const [submitting, setSubmitting] = useState(false);
 
   // Step 1 — Personal Information
-  const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState(prefill?.full_name || "");
+  const [phone, setPhone] = useState(prefill?.phone || "");
+  const [email, setEmail] = useState(prefill?.email || "");
   const [password, setPassword] = useState("");
 
   // Step 2 — Business Information
@@ -124,7 +124,8 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
       }
       setStep("business_info");
     } catch (err) {
-      setError("Could not create your account. Please check your details.");
+      // The server's own refusal (e.g. a phone or email another business account already uses) is shown as sent.
+      setError(apiErrorMessage(err, "Could not create your account. Please check your details."));
     } finally {
       setSubmitting(false);
     }

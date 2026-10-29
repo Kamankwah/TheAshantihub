@@ -37,7 +37,6 @@ const slots = {
   requests: () => <div>requests-stub</div>,
   tickets: () => <div>tickets-stub</div>,
   events: () => <div>events-stub</div>,
-  saved: () => <div>saved-stub</div>,
   settings: () => <div>settings-stub</div>,
   profile: () => <div>profile-stub</div>,
   messages: () => <div>messages-stub</div>,
@@ -121,10 +120,10 @@ describe('AccountHub sections', () => {
     expect(screen.getByTestId('loc')).toHaveTextContent('/my-account/payments/transactions')
   })
 
-  it('test_back_button_returns_to_the_previous_section', () => {
+  it('test_back_button_returns_to_the_previous_section', async () => {
     renderHub('/my-account')
     fireEvent.click(screen.getByRole('link', { name: /Your Lists/i }))
-    expect(screen.getByText('saved-stub')).toBeInTheDocument()
+    expect(await screen.findByText('Nothing saved yet — tap the heart on any item.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'history back' }))
     expect(screen.getByTestId('loc')).toHaveTextContent(/^\/my-account$/)
     expect(screen.getAllByTestId('account-tile')).toHaveLength(8)
@@ -150,11 +149,13 @@ describe('AccountHub sections', () => {
     expect(onOpenPage).toHaveBeenCalledWith('contact')
   })
 
-  it('Sell on AshantiHub offers the existing business registration', () => {
-    const onRegisterBusiness = vi.fn()
-    renderHub('/my-account/sell', { onRegisterBusiness })
-    fireEvent.click(screen.getByRole('button', { name: /Register your business/ }))
-    expect(onRegisterBusiness).toHaveBeenCalledTimes(1)
+  it('Sell on AshantiHub starts registration with the customer\'s details or none', () => {
+    const onStartRegistration = vi.fn()
+    renderHub('/my-account/sell', { onStartRegistration })
+    fireEvent.click(screen.getByRole('button', { name: 'Use my details' }))
+    expect(onStartRegistration).toHaveBeenLastCalledWith({ full_name: 'Ama Boateng', phone: '0244000111', email: 'ama@example.com' })
+    fireEvent.click(screen.getByRole('button', { name: 'Start with different details' }))
+    expect(onStartRegistration).toHaveBeenLastCalledWith(null)
   })
 
   it('test_login_security_has_no_passkey_row_and_hides_two_step_until_available', () => {

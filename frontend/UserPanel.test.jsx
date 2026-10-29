@@ -188,19 +188,19 @@ describe('UserPanel', () => {
     })
   })
 
-  describe('Saved Businesses tab', () => {
-    it('shows the empty state when there are no favourites', () => {
-      renderPanel({ at: SECTION.lists, favourites: [] })
-      expect(screen.getByText(/No saved businesses yet/)).toBeInTheDocument()
+  describe('Your Lists section', () => {
+    it('shows the empty state when nothing is saved', async () => {
+      renderPanel({ at: SECTION.lists })
+      expect(await screen.findByText(/Nothing saved yet/)).toBeInTheDocument()
     })
 
-    it('renders favourited listings via FavDrawerItem', async () => {
+    it('renders the customer\'s server wishlist', async () => {
       server.use(
-        http.get('http://localhost:8000/api/listings/5/', () =>
-          HttpResponse.json({ id: 5, name: 'Royal Ashanti Lodge', price_amount: '450.00', price_unit: '/night', category: { icon: '🏨' } }),
+        http.get('http://localhost:8000/api/wishlist/', () =>
+          HttpResponse.json([{ id: 1, added_at: '2026-10-28T09:20:00Z', listing: { id: 5, name: 'Royal Ashanti Lodge', price_amount: '450.00', effective_price: '450.00', was_price: null, main_photo: null, photos: [], has_variants: false, category: { icon: '🏨' } } }]),
         ),
       )
-      renderPanel({ at: SECTION.lists, favourites: [5] })
+      renderPanel({ at: SECTION.lists })
       await screen.findByText('Royal Ashanti Lodge')
     })
   })
