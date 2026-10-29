@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { C } from "../../theme.js";
 import { isStaffSession } from "../../lib/staffSession.js";
 import logoIcon from "../../assets/logo/logo-icon.png";
@@ -28,8 +29,28 @@ import { BODY_FONT, HEADING_FONT, TABULAR } from "./storefrontType.js";
 //   second line rather than spill past the screen; the "Hello, <name>" line is
 //   cut with an ellipsis, and the cart's "Cart" word is dropped (the closed
 //   "Opens <D Mon>" label always stays visible).
+// - Its measured height is published as `--ah-header-h` on <html> (kept up to
+//   date by a ResizeObserver, removed on unmount), so the sticky browse rail
+//   can sit just below it.
 // Everything App owns is threaded in as props; this file never imports App.
 const MOBILE = 760;
+const HEIGHT_VAR = "--ah-header-h";
+
+function usePublishedHeight(ref) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const root = document.documentElement;
+    const publish = () => root.style.setProperty(HEIGHT_VAR, `${Math.round(el.getBoundingClientRect().height)}px`);
+    publish();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(publish);
+    observer?.observe(el);
+    return () => {
+      observer?.disconnect();
+      root.style.removeProperty(HEIGHT_VAR);
+    };
+  }, [ref]);
+}
 
 export default function StorefrontHeader({
   user, onSignOut,
@@ -50,6 +71,8 @@ export default function StorefrontHeader({
   const departments = Array.isArray(tree) ? tree : [];
   const dark = theme === "dark";
   const showCart = !user || isCustomer;
+  const headerRef = useRef(null);
+  usePublishedHeight(headerRef);
 
   const openDepartment = (node) => {
     sendCategoryVisit(node.id);
@@ -70,6 +93,7 @@ export default function StorefrontHeader({
 
   return (
     <header
+      ref={headerRef}
       data-theme={dark ? "dark" : "light"}
       style={{ position: "sticky", top: "var(--ah-top-offset, 0px)", zIndex: 100, background: dark ? C.void : C.darkBrown, color: C.white, fontFamily: BODY_FONT, borderBottom: `1px solid ${dark ? `${C.gold}40` : "transparent"}`, boxShadow: "0 2px 12px rgba(22,14,8,0.35)" }}
     >
