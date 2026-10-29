@@ -254,6 +254,118 @@ class IdentitySubmissionTests(TestCase):
         self.assertEqual(response.json()["identity_status"], "rejected")
         self.assertEqual(response.json()["identity_rejection_reason"], "Photo is blurry.")
 
+    def _locked_owner(self, status, kyc_status=BusinessOwner.PENDING):
+        return self._owner(
+            kyc_status=kyc_status,
+            identity_status=status,
+            ghana_card_number="GHA-700000001-1",
+            ghana_card_front_image="ghana_cards/keep_front.jpg",
+            ghana_card_back_image="ghana_cards/keep_back.jpg",
+        )
+
+    def _assert_documents_unchanged(self, owner, status):
+        profile = self._profile(owner)
+        self.assertEqual(profile.identity_status, status)
+        self.assertEqual(profile.ghana_card_number, "GHA-700000001-1")
+        self.assertEqual(profile.ghana_card_front_image.name, "ghana_cards/keep_front.jpg")
+        self.assertEqual(profile.ghana_card_back_image.name, "ghana_cards/keep_back.jpg")
+
+    def test_profile_patch_cannot_change_documents_while_pending_or_verified(self):
+        for status in (BusinessOwnerProfile.IDENTITY_PENDING, BusinessOwnerProfile.IDENTITY_VERIFIED):
+            cases = {
+                "number": ({"ghana_card_number": "GHA-700000009-9"}, "ghana_card_number"),
+                "blank number": ({"ghana_card_number": ""}, "ghana_card_number"),
+                "front photo": ({"ghana_card_front_image": _image("f.jpg")}, "ghana_card_front_image"),
+                "back photo": ({"ghana_card_back_image": _image("b.jpg")}, "ghana_card_back_image"),
+            }
+            for label, (payload, field) in cases.items():
+                with self.subTest(status=status, case=label):
+                    BusinessOwner.objects.all().delete()
+                    owner = self._locked_owner(status)
+                    response = self._client(owner).patch(PROFILE_URL, payload, format="multipart")
+                    self.assertEqual(response.status_code, 400, response.content)
+                    self.assertIn(field, response.json())
+                    self.assertIn("in review", response.json()[field][0] if isinstance(response.json()[field], list) else response.json()[field])
+                    self._assert_documents_unchanged(owner, status)
+
+    def test_profile_patch_with_the_same_number_while_pending_is_a_no_op(self):
+        owner = self._locked_owner(BusinessOwnerProfile.IDENTITY_PENDING)
+        response = self._client(owner).patch(
+            PROFILE_URL, {"ghana_card_number": "GHA-700000001-1", "gps_address": "AK-039-1111"}, format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self._assert_documents_unchanged(owner, "pending")
+        self.assertEqual(self._profile(owner).gps_address, "AK-039-1111")
+
+    def test_unrelated_patch_while_identity_verified_leaves_identity_untouched(self):
+        staff = make_staff("operations", "reviewer@example.com")
+        owner = self._locked_owner(BusinessOwnerProfile.IDENTITY_VERIFIED)
+        stamp = timezone.now()
+        BusinessOwnerProfile.objects.filter(business_owner=owner).update(
+            identity_submitted_at=stamp, identity_reviewed_at=stamp, identity_reviewed_by=staff,
+        )
+        response = self._client(owner).patch(
+            PROFILE_URL, {"gps_address": "AK-039-2222", "business_contact_phone": "+233208889900"}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        profile = self._profile(owner)
+        self.assertEqual(profile.gps_address, "AK-039-2222")
+        self.assertEqual(profile.identity_status, "verified")
+        self.assertEqual(profile.identity_submitted_at, stamp)
+        self.assertEqual(profile.identity_reviewed_at, stamp)
+        self.assertEqual(profile.identity_reviewed_by_id, staff.pk)
+        self._assert_documents_unchanged(owner, "verified")
+
+    def test_profile_patch_locks_the_profile_row_and_validates_against_it(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        owner = self._owner()
+        with CaptureQueriesContext(connection) as queries:
+            response = self._client(owner).patch(PROFILE_URL, {"gps_address": "AK-039-3333"}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        # A SELECT ... FOR UPDATE on the profile only works inside a transaction, so this also shows the PATCH is atomic.
+        self.assertTrue(
+            any("FOR UPDATE" in q["sql"] and "accounts_businessownerprofile" in q["sql"] for q in queries.captured_queries),
+        )
+
+    def test_profile_patch_validates_the_rule_against_the_row_not_a_stale_copy(self):
+        # The row becomes pending after the owner's request began: the refusal reads the locked, current row.
+        from unittest import mock
+
+        owner = self._owner(ghana_card_number="GHA-700000001-1")
+        original = BusinessOwnerProfile.objects.select_for_update
+
+        def pending_before_lock():
+            BusinessOwnerProfile.objects.filter(business_owner=owner).update(identity_status="pending")
+            return original()
+
+        with mock.patch.object(BusinessOwnerProfile.objects, "select_for_update", side_effect=pending_before_lock):
+            response = self._client(owner).patch(PROFILE_URL, {"ghana_card_number": "GHA-700000009-9"}, format="json")
+        # Refused (the test's own pending update rolls back with the refused request's transaction).
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("ghana_card_number", response.json())
+        self.assertEqual(self._profile(owner).ghana_card_number, "GHA-700000001-1")
+
+    def test_profile_patch_with_card_fields_on_a_rejected_identity_resubmits(self):
+        owner = self._owner(
+            identity_status=BusinessOwnerProfile.IDENTITY_REJECTED,
+            identity_rejection_reason="Photo is blurry.",
+            ghana_card_number="GHA-700000002-2",
+            ghana_card_front_image="ghana_cards/f.jpg",
+            ghana_card_back_image="ghana_cards/b.jpg",
+        )
+        response = self._client(owner).patch(
+            PROFILE_URL, {"ghana_card_front_image": _image("new_front.jpg")}, format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["identity_status"], "pending")
+        self.assertIsNone(response.json()["identity_rejection_reason"])
+        profile = self._profile(owner)
+        self.assertEqual(profile.identity_status, "pending")
+        self.assertIsNotNone(profile.identity_submitted_at)
+        self.assertNotEqual(profile.ghana_card_front_image.name, "ghana_cards/f.jpg")
+
     def test_me_exposes_identity_status(self):
         owner = self._owner()
         client = self._client(owner)

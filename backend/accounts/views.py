@@ -1478,7 +1478,20 @@ class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
     http_method_names = ["get", "patch"]
 
     def get_object(self):
-        return self.request.user.profile
+        if self.request.method != "PATCH":
+            return self.request.user.profile
+        # Locked for the whole PATCH (update() holds the transaction): validation and save run against the
+        # current row, so a staff verify/reject or an identity POST landing meanwhile is not reverted by this
+        # request's full-row save, and the "documents under review" rule is checked on what is really stored.
+        profile = BusinessOwnerProfile.objects.select_for_update().select_related("business_owner").get(
+            business_owner=self.request.user,
+        )
+        self.check_object_permissions(self.request, profile)
+        return profile
+
+    def update(self, request, *args, **kwargs):
+        with transaction.atomic():
+            return super().update(request, *args, **kwargs)
 
     def perform_update(self, serializer):
         with transaction.atomic():

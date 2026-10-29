@@ -547,6 +547,10 @@ class BusinessHoursSerializer(serializers.Serializer):
         return cleaned
 
 
+IDENTITY_LOCKED_STATUSES = (BusinessOwnerProfile.IDENTITY_PENDING, BusinessOwnerProfile.IDENTITY_VERIFIED)
+IDENTITY_LOCKED_MESSAGE = "Your documents are in review (or verified) and can't be changed here."
+
+
 class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
     hours = serializers.SerializerMethodField()
     has_hours = serializers.SerializerMethodField()
@@ -592,6 +596,19 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"kyc_status": "Cannot edit a verified KYC profile."}
             )
+
+        # Once the identity is pending or verified the documents are fixed: the check mark and the reviewer's
+        # decision rest on exactly what is stored. The same number may be sent again (the registration form
+        # resends it); anything else on the card is refused.
+        if self.instance.identity_status in IDENTITY_LOCKED_STATUSES:
+            errors = {}
+            for field in ("ghana_card_front_image", "ghana_card_back_image"):
+                if field in data:
+                    errors[field] = IDENTITY_LOCKED_MESSAGE
+            if "ghana_card_number" in data and data["ghana_card_number"] != self.instance.ghana_card_number:
+                errors["ghana_card_number"] = IDENTITY_LOCKED_MESSAGE
+            if errors:
+                raise serializers.ValidationError(errors)
 
         # Only the Ghana Post GPS address is mandatory, and it must be in the
         # Ashanti Region. The Ghana Card, certificate and TIN are optional:
