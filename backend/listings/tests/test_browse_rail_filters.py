@@ -87,3 +87,39 @@ class BrowseRailListingFilterTests(TestCase):
         self.four.sale_price = "70.00"
         self.four.save()
         self.assertEqual(self.names("on_sale=1&min_rating=4"), {"Four Stars"})
+
+
+class BrowseRailPriceOrderingTests(TestCase):
+    """GET /api/listings/?ordering=price_effective (the Business "Sort by" select): the price the customer pays, the
+    sale price while a live discount applies, so the sort agrees with the price filter and the cards."""
+
+    def setUp(self):
+        self.client = APIClient()
+        owner = BusinessOwner.objects.create(
+            full_name="Sort Owner", login_phone="+233207992001", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
+        )
+        cat = Category.objects.create(slug="zz-rail-sort", label="ZZ Sort", icon="x", color="#000", kind=Category.PRODUCT)
+        zone = Zone.objects.get(name="Manhyia")
+        make = lambda name, **extra: Listing.objects.create(
+            business_owner=owner, category=cat, zone=zone, name=name, description="D.", contact_phone="+233207992999",
+            status=Listing.PUBLISHED, **extra,
+        )
+        # Regular prices sort Forty, Fifty, Discounted; prices paid sort Discounted (30), Forty, Fifty.
+        self.discounted = make("Discounted", price_amount="100.00", sale_price="30.00")
+        self.fifty = make("Fifty", price_amount="50.00")
+        self.forty = make("Forty", price_amount="40.00")
+
+    def ids(self, ordering):
+        response = self.client.get(f"/api/listings/?category=zz-rail-sort&ordering={ordering}")
+        self.assertEqual(response.status_code, 200)
+        return [row["id"] for row in response.json()["results"]]
+
+    def test_price_effective_orders_a_discounted_listing_by_its_sale_price(self):
+        self.assertEqual(self.ids("price_effective"), [self.discounted.pk, self.forty.pk, self.fifty.pk])
+
+    def test_minus_price_effective_reverses_it(self):
+        self.assertEqual(self.ids("-price_effective"), [self.fifty.pk, self.forty.pk, self.discounted.pk])
+
+    def test_price_amount_is_still_accepted_for_old_clients(self):
+        self.assertEqual(self.ids("price_amount"), [self.discounted.pk, self.forty.pk, self.fifty.pk])
+        self.assertEqual(self.ids("-price_amount"), [self.fifty.pk, self.forty.pk, self.discounted.pk])

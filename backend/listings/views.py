@@ -317,14 +317,16 @@ class PublicListingListView(generics.ListAPIView):
     """GET /api/listings/ — public. Filters: `category` (slug, with sub-categories), `zone` (name), `kind`,
     `min_price`/`max_price` (the price paid), `min_rating` (1-5, published-review average; unrated listings drop
     out; anything else is ignored), `on_sale` (1/true: a live discount), `verified`, `sold_by=direct`, `seller`,
-    plus `search` and `ordering`."""
+    plus `search` and `ordering` (`price_effective`, the price paid, as the Business "Sort by" sends it; `price_amount`
+    is still accepted and sorts the same way, see filter_queryset; `created_at`)."""
 
     serializer_class = PublicListingSerializer
     permission_classes = [AllowAny]
     pagination_class = ListingPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["name", "description"]
-    ordering_fields = ["price_amount", "created_at"]
+    # `price_effective` is the annotation get_queryset adds (before OrderingFilter runs in filter_queryset).
+    ordering_fields = ["price_effective", "price_amount", "created_at"]
 
     def get_queryset(self):
         # Suspended and paused businesses' listings drop out of public browse

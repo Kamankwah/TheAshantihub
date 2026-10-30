@@ -94,12 +94,18 @@ describe('Business page browse rail', () => {
     expect(last(calls).has('category')).toBe(false)
   }, 15000)
 
-  it('the Sort by select sends ordering, and Clear all filters drops it', async () => {
+  it('the Sort by select sends ordering by the price paid, and Clear all filters drops it', async () => {
     const calls = recordListings()
     renderAt('/business')
     const sort = await screen.findByLabelText('Sort by', {}, { timeout: 4000 })
-    fireEvent.change(sort, { target: { value: 'price_amount' } })
-    await waitFor(() => expect(last(calls).get('ordering')).toBe('price_amount'))
+    // The price paid (the sale price while a discount is live), like the price filter and the cards.
+    expect(within(sort).getAllByRole('option').map((o) => [o.value, o.textContent])).toEqual([
+      ['', 'Newest'], ['price_effective', 'Lowest price'], ['-price_effective', 'Highest price'],
+    ])
+    fireEvent.change(sort, { target: { value: 'price_effective' } })
+    await waitFor(() => expect(last(calls).get('ordering')).toBe('price_effective'))
+    fireEvent.change(sort, { target: { value: '-price_effective' } })
+    await waitFor(() => expect(last(calls).get('ordering')).toBe('-price_effective'))
     fireEvent.click(screen.getAllByRole('button', { name: /Clear all filters/ })[0])
     await waitFor(() => expect(last(calls).has('ordering')).toBe(false))
   }, 15000)

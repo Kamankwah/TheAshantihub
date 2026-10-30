@@ -3188,8 +3188,9 @@ export default function AshantiHub() {
                       Sort by
                       <select value={filters.ordering||""} onChange={(e)=>{const v=e.target.value;setFilters(f=>({...f,ordering:v||undefined}));}} style={{background:C.surface,color:C.ink,border:`1px solid ${C.line}`,borderRadius:8,padding:"4px 8px",fontSize:"0.72rem",fontFamily:"inherit"}}>
                         <option value="" style={optionStyle}>Newest</option>
-                        <option value="price_amount" style={optionStyle}>Lowest price</option>
-                        <option value="-price_amount" style={optionStyle}>Highest price</option>
+                        {/* price_effective: the price paid (the sale price while a discount is live), as the cards and the price filter use. */}
+                        <option value="price_effective" style={optionStyle}>Lowest price</option>
+                        <option value="-price_effective" style={optionStyle}>Highest price</option>
                       </select>
                     </label>
                     <span style={{background:tint((activeCatObj?.color)||C.gold, "15"),border:`1px solid ${tint((activeCatObj?.color)||C.gold, "44")}`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:(activeCatObj?.color)||C.lightGold,fontWeight:700}}>📍 Kumasi</span>
