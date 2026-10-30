@@ -32,6 +32,12 @@ vi.mock('../components/admin/panels/VisitMap.jsx', () => ({
   default: ({ label }) => createElement('div', { 'data-testid': 'visit-map', role: 'group', 'aria-label': label }, 'visit map'),
 }))
 
+// The staff address-verification map (Leaflet) is stubbed the same way; the data-* attributes let tests
+// assert the pin and the accuracy radius it was given.
+vi.mock('../components/admin/panels/AddressPinMap.jsx', () => ({
+  default: ({ pin, label }) => (!pin ? null : createElement('div', { 'data-testid': 'address-pin-map', role: 'group', 'aria-label': label, 'data-lat': pin?.lat, 'data-lng': pin?.lng, 'data-radius': pin.accuracy_m ?? '' }, 'address pin map')),
+}))
+
 // The Operations team Visit map (several Leaflet markers) is stubbed too.
 vi.mock('../components/admin/panels/TeamVisitMap.jsx', () => ({
   default: ({ label, points, onSelect }) =>
