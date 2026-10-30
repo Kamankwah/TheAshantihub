@@ -45,11 +45,14 @@ class RegisterByStaffTests(RegistrationBase):
         self.assertEqual(response.status_code, 201, response.content)
         self.assertEqual(response.json()["confirmation"]["state"], "awaiting_owner")
 
-    def test_support_and_general_manager_cannot(self):
-        for role in ("support", "general_manager"):
-            staff = make_staff(role, f"{role}@example.com")
-            self.assertEqual(self.register(staff).status_code, 403, role)
+    def test_support_cannot(self):
+        staff = make_staff("support", "support@example.com")
+        self.assertEqual(self.register(staff).status_code, 403)
         self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
+
+    def test_general_manager_can_since_2026_10_30(self):
+        staff = make_staff("general_manager", "general_manager@example.com")
+        self.assertEqual(self.register(staff).status_code, 201)
 
     def test_every_staff_registration_has_exactly_one_registration_confirmation(self):
         admin = make_staff("super_admin", "root@example.com")

@@ -94,10 +94,10 @@ class RegistrationReaskTests(ReaskBase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(OwnerConfirmation.objects.count(), 1)
 
-    def test_the_general_manager_is_refused(self):
+    def test_the_general_manager_may_ask_since_2026_10_30(self):
         self.lapse()
-        self.assertEqual(self.ask(self.gm).status_code, 403)
-        self.assertEqual(OwnerConfirmation.objects.count(), 1)
+        self.assertEqual(self.ask(self.gm).status_code, 200)
+        self.assertEqual(OwnerConfirmation.objects.count(), 2)
 
     def test_operations_and_super_admin_may_ask_for_any_business(self):
         self.lapse()
@@ -149,8 +149,8 @@ class RegistrationReaskTests(ReaskBase):
                 continue
             body = response.json()["owner_confirmation"]
             self.assertEqual((body["state"], body["can_ask_again"]), ("lapsed", expected))
-        self.as_staff(self.gm)  # the General Manager reads the review but can never ask
-        self.assertFalse(self.client.get(f"/api/portfolio/businesses/{self.owner.pk}/review/").json()["owner_confirmation"]["can_ask_again"])
+        self.as_staff(self.gm)  # the General Manager can ask as Operations can (since 2026-10-30)
+        self.assertTrue(self.client.get(f"/api/portfolio/businesses/{self.owner.pk}/review/").json()["owner_confirmation"]["can_ask_again"])
 
 
 class ResendHonestyTests(ReaskBase):

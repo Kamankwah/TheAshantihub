@@ -293,11 +293,11 @@ class StaffAddsProspectForScoutTests(ProspectBase):
         self.assertEqual(Prospect.objects.get().scout, self.kwame)
         self.assertEqual(self.add_for(self.efua, self.kwame, phone="0249990000").status_code, 400)
 
-    def test_general_manager_and_support_are_refused(self):
+    def test_support_is_refused_and_the_general_manager_may_add_since_2026_10_30(self):
         support = make_staff("support", "help@example.com")
-        self.assertEqual(self.add_for(self.gm, self.kwame).status_code, 403)
         self.assertEqual(self.add_for(support, self.kwame).status_code, 403)
         self.assertFalse(Prospect.objects.exists())
+        self.assertEqual(self.add_for(self.gm, self.kwame).status_code, 201)
 
 
 class StaffSeesEveryScoutsProspectsTests(ProspectBase):
@@ -371,9 +371,9 @@ class StaffSeesEveryScoutsProspectsTests(ProspectBase):
         self.assertEqual(response.json()["scout_name"], self.efua.full_name)
         self.assertIn("Added by Ama", [row["name"] for row in self.listing(self.lead)["results"]])
 
-    def test_the_general_manager_is_refused(self):
+    def test_the_general_manager_may_list_since_2026_10_30(self):
         self.as_staff(self.gm)
-        self.assertEqual(self.client.get(PROSPECTS).status_code, 403)
+        self.assertEqual(self.client.get(PROSPECTS).status_code, 200)
 
 
 class ManagerEditsAreAttributedTests(ProspectBase):
@@ -465,8 +465,8 @@ class ManagerRegistersFromProspectTests(RegisterFromProspectTests):
         self.prospect.refresh_from_db()
         self.assertEqual(self.prospect.status, "registered")
 
-    def test_the_gm_is_refused_and_the_prospect_stays_open(self):
+    def test_the_gm_can_register_from_a_prospect_since_2026_10_30(self):
         gm = make_staff("general_manager", "gm@example.com")
-        self.assertEqual(self.register(staff=gm, prospect_id=str(self.prospect.pk)).status_code, 403)
+        self.assertEqual(self.register(staff=gm, prospect_id=str(self.prospect.pk)).status_code, 201)
         self.prospect.refresh_from_db()
-        self.assertEqual(self.prospect.status, "interested")
+        self.assertEqual(self.prospect.status, "registered")
