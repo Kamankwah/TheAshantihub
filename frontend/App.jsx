@@ -2310,6 +2310,14 @@ function FavDrawerItem({id,onRemove}) {
   </div>;
 }
 
+// ─── Results count (Business and Events headings) ────────────────────────────
+// The server's total (DRF `count`), never the rows loaded so far; null while it is not known, so nothing is shown.
+function resultsCountLabel(count) {
+  return typeof count === "number" ? `${count} result${count === 1 ? "" : "s"}` : null;
+}
+// Secondary text on the C.void band, which is dark in both themes.
+const resultsCountStyle = { color: tint(C.lightGold, "b3"), fontWeight: 400, fontSize: "0.72rem", marginLeft: 6 };
+
 // ─── Listings loading skeleton ────────────────────────────────────────────────
 function ListingsSkeleton() {
   return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
@@ -2606,6 +2614,8 @@ export default function AshantiHub() {
     refetch: refetchListings,
   } = useListings(cartTiers ? { ...filters, cartTiers: true } : filters);
   const listings = listingsData ? listingsData.pages.flatMap((page) => page.results) : [];
+  // The results heading's total is the server's `count` (first page), not the rows loaded so far; nothing while loading.
+  const listingsCountLabel = resultsCountLabel(listingsData?.pages?.[0]?.count);
 
   // ── Events tab (docs/BUSINESS_EVENTS_ROADMAP.md Phase 6) ──────────────────
   // Same filters-state/debounced-search/PDP-swap conventions as the Business
@@ -2663,6 +2673,7 @@ export default function AshantiHub() {
     refetch: refetchEvents,
   } = useEvents(eventFilters);
   const events = eventsData ? eventsData.pages.flatMap((page) => page.results) : [];
+  const eventsCountLabel = resultsCountLabel(eventsData?.pages?.[0]?.count);
   const eventCategories = (categories||[]).filter(c=>c.kind==="event");
   const activeEventCatObj = eventCategories.find(c=>c.slug===eventFilters.category);
 
@@ -3178,10 +3189,10 @@ export default function AshantiHub() {
               </div>
             ):(
               <>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px 12px",marginBottom:12}}>
                   <h2 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
                     {activeCatObj ? <>{activeCatObj.icon} {activeCatObj.label}</> : (filters.kind==="product" ? "🛍️ All Products" : filters.kind==="service" ? "🛠️ All Services" : "🛍️ All Products & Services")}
-                    <span style={{color:"#999",fontWeight:400,fontSize:"0.72rem",marginLeft:6}}>{listings.length} results</span>
+                    {listingsCountLabel&&<span style={resultsCountStyle}>{listingsCountLabel}</span>}
                   </h2>
                   <div style={{display:"flex",gap:10,alignItems:"center"}}>
                     <label style={{display:"flex",alignItems:"center",gap:6,fontSize:"0.7rem",fontWeight:700,color:C.lightGold}}>
@@ -3346,7 +3357,7 @@ export default function AshantiHub() {
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                   <h2 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
                     {activeEventCatObj?activeEventCatObj.icon:"🥁"} {activeEventCatObj?activeEventCatObj.label:"All Events"}
-                    <span style={{color:"#999",fontWeight:400,fontSize:"0.72rem",marginLeft:6}}>{events.length} results</span>
+                    {eventsCountLabel&&<span style={resultsCountStyle}>{eventsCountLabel}</span>}
                   </h2>
                   <span style={{background:`${C.gold}15`,border:`1px solid ${C.gold}44`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:C.gold,fontWeight:700}}>📍 Kumasi</span>
                 </div>

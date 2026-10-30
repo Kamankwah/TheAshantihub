@@ -179,6 +179,60 @@ describe('Business page arrivals drop hidden filters', () => {
   }, 20000)
 })
 
+// The results heading shows the server's total (`count` on the first page),
+// not the rows loaded so far, and nothing while the first page is loading.
+describe('results count', () => {
+  const LISTING = {
+    id: 31, name: 'Kente cloth', price_amount: '90.00', photos: [], main_photo: null,
+    category: { kind: 'product', color: '#000080', label: 'Shops' }, zone: { name: 'Manhyia' },
+    business_owner: { id: 9, full_name: 'Adwoa', kyc_status: 'verified' },
+  }
+  const EVENT = {
+    id: 1, name: 'Akwasidae Festival', category: { icon: '🥁', label: 'Festivals', color: '#CC0000' }, zone: { name: 'Manhyia' },
+    event_date: '2026-08-03T10:00:00Z', hero_media: null, is_private: false,
+  }
+
+  it('Business: the server count (57), not the one loaded row, and no number while loading', async () => {
+    // The listings answer waits for this gate, so the heading is checked while the first page is still loading.
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    server.use(
+      http.get(`${API}/api/listings/categories/tree/`, () => HttpResponse.json(TREE)),
+      http.get(`${API}/api/listings/`, async () => {
+        await gate
+        return HttpResponse.json({ count: 57, next: `${API}/api/listings/?page=2`, previous: null, results: [LISTING] })
+      }),
+    )
+    renderAt('/business')
+    const heading = await screen.findByRole('heading', { level: 2, name: /All Products & Services/ }, { timeout: 4000 })
+    expect(heading).not.toHaveTextContent(/result/)
+    release()
+    await waitFor(() => expect(heading).toHaveTextContent('57 results'), { timeout: 4000 })
+    expect(heading).not.toHaveTextContent('1 results')
+    expect(screen.getByText('Kente cloth')).toBeInTheDocument()
+    // The count reads on the dark C.void band (no grey literal), and the header row wraps on a 360px phone.
+    expect(within(heading).getByText('57 results').style.color).not.toBe('rgb(153, 153, 153)')
+    expect(heading.parentElement.style.flexWrap).toBe('wrap')
+  }, 15000)
+
+  it('Events: the server count (12), not the one loaded row', async () => {
+    server.use(
+      http.get(`${API}/api/events/`, () => HttpResponse.json({ count: 12, next: `${API}/api/events/?page=2`, previous: null, results: [EVENT] })),
+    )
+    renderAt('/events')
+    const heading = await screen.findByRole('heading', { level: 2, name: /All Events/ }, { timeout: 4000 })
+    await waitFor(() => expect(heading).toHaveTextContent('12 results'), { timeout: 4000 })
+    expect(screen.getByText('Akwasidae Festival')).toBeInTheDocument()
+  }, 15000)
+
+  it('one result reads "1 result"', async () => {
+    server.use(http.get(`${API}/api/listings/`, () => HttpResponse.json({ count: 1, next: null, previous: null, results: [LISTING] })))
+    renderAt('/business')
+    const heading = await screen.findByRole('heading', { level: 2, name: /All Products & Services/ }, { timeout: 4000 })
+    await waitFor(() => expect(heading).toHaveTextContent(/1 result$/), { timeout: 4000 })
+  }, 15000)
+})
+
 describe('Events page browse rail', () => {
   it('sends when=week for "This week" and drops it on Clear all filters', async () => {
     const calls = []
