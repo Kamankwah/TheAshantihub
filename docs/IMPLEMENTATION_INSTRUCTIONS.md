@@ -108,3 +108,18 @@ Plan 1 (opening and storefront: `docs/superpowers/plans/2026-10-19-marketplace-1
 ### Browse rail (2026-10-29/30)
 
 Built on `feature/browse-rail`, **not deployed**: a sticky, collapsible browse rail (`components/storefront/BrowseRail.jsx`, `browseRailSections.js`, `rail/*.jsx`) replaces `components/Sidebar.jsx` on /business and /events, with a phone drawer; the header publishes `--ah-header-h`; Sort by moved to the Business results header. Backend: `min_rating` and `on_sale` listing filters, and an events `when` filter (Africa/Accra calendar windows). Migration `listings/0038_remove_amazon_devices_department` removes the "Amazon Devices & Accessories" department and its 5 sub-categories only when nothing references them (visit counts do not count as references; reverse is a noop). Not done: variant-attribute facets (size, colour) are out of scope; facet counts do not exist in the API, so the rail shows none; owed manual checks at 360/768/1280 px, light and dark, and a keyboard pass on the collapsed rail.
+
+### Shop location capture and address verification (2026-10-30)
+
+Built on a feature branch, **not deployed**. The shop's own GPS fix is the source of truth for its address: the owner shares it from the shop by a texted link (`/share-location#token=`, single use, 48 hours) or a button on the business dashboard, and Operations, the General Manager and Super Admin verify it at a desk in the staff "Address verification" panel (permission `address.verify`) with evidence: the owner's own device pin (50 m or better), the signboard photo and, the first time, a recorded video-call outcome. A scout's field report is the alternative; a desk check can only mark an address wrong, with a reason the owner sees. Whoever registered or last set a business's pin cannot verify it (Super Admin included; another Super Admin can). KYC approval now needs a pin (`pin_required`). Maps keep Leaflet but take their tiles from one place: Mapbox streets and satellite behind a token, OpenStreetMap streets without one. The conventions are in `backend/CLAUDE.md` and `frontend/CLAUDE.md`.
+
+Phase 2 (separate plan): reverse-geocode adapter for the Ghana Post code behind a setting with a "suggested, confirm" step, and Navigate deep links. Phase 3: confirmation by the first rider pickup within 150 m, and re-verification when a verified address changes (today a scout's approved pin move does not reopen a verified address).
+
+Owner actions before relying on it:
+
+1. Create a public Mapbox token restricted to the site's URL for each environment. Staging: Vercel project env `VITE_MAPBOX_TOKEN` and `VITE_MAP_TILES_PROVIDER=mapbox`. Production: the same two keys in the server's `.deploy.conf` (`infra/README.md`); the next `deploy.sh` builds them in. Without them every map stays on OpenStreetMap streets.
+2. Open the texted link on a real phone standing at a shop in Kumasi and check the fix, the accuracy line and the refusal when indoors (over 100 m).
+3. Hold one verification on staging end to end. Seeded staging businesses have no pins, so KYC approval there answers `pin_required` until a pin is captured.
+4. Decide what to do with the old KYC-queue address toggle (`kyc/<id>/address-verify/`): it still marks an address verified without the evidence ladder.
+5. Live Hubtel SMS is still needed for the link to reach owners as a real text; on simulated texts staff copy the link from the send response.
+6. Render checks owed: the Address verification panel and the owner card at 360/768/1280 px, light and dark; the satellite switch with a live token.

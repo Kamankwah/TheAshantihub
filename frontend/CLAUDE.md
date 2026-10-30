@@ -80,7 +80,8 @@ monolith holding most components, with extractions living in `components/`,
   committed value or `frontend/.env`. Unset or no token falls back to today's OSM street tiles with no satellite
   layer and no Streets/Satellite switch. `noMapboxTokenInSource.test.js` fails on a literal token. Reverse
   geocoding is `lib/reverseGeocode.js` (Nominatim, a suggestion for an editable field; never store its text, never
-  point it at Mapbox).
+  point it at Mapbox). A map wrapper that holds the Streets/Satellite switch is `role="group"` with an `aria-label`,
+  never `role="img"` (an image role hides the radios from assistive tech; `MapWrappersA11y.test.jsx` guards it).
 - **Run Vitest from this directory** (`cd frontend && npx vitest run`). From the repo root it
   globs stale `.worktrees/**` copies that lack `node_modules` and reports a spurious mass
   failure. A second mass-failure shape — hundreds of `[MSW] intercepted a request without a

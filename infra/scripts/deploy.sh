@@ -193,8 +193,13 @@ if [[ "${SERVE_FRONTEND:-no}" == "yes" ]]; then
 
 	log "Building the frontend"
 	# Built in a container so the host needs no Node toolchain. Vite reads
-	# frontend/.env.production for VITE_API_BASE_URL.
+	# frontend/.env.production for VITE_API_BASE_URL. The map tile settings come
+	# from the optional VITE_MAPBOX_TOKEN and VITE_MAP_TILES_PROVIDER keys in
+	# .deploy.conf (a public, URL-restricted token; never committed). Unset keeps
+	# the OpenStreetMap street tiles.
 	docker run --rm \
+		-e "VITE_MAPBOX_TOKEN=${VITE_MAPBOX_TOKEN:-}" \
+		-e "VITE_MAP_TILES_PROVIDER=${VITE_MAP_TILES_PROVIDER:-osm}" \
 		-v "$APP_DIR/frontend":/app \
 		-w /app \
 		node:20-alpine \

@@ -165,6 +165,20 @@ Staging is identical with `ENV_NAME=staging`, `BRANCH=main`,
 `PROJECT=ashantihub-staging`, `APP_PORT=8001`, `GUNICORN_WORKERS=2`,
 `SERVE_FRONTEND=no`.
 
+Two optional keys in the production `.deploy.conf` set the map tiles of the SPA that
+`deploy.sh` builds (they are passed to the frontend build container; nothing is committed):
+
+```bash
+VITE_MAPBOX_TOKEN=pk.<your public token>   # a public Mapbox token restricted to the site's URL
+VITE_MAP_TILES_PROVIDER=mapbox             # defaults to osm when absent
+```
+
+Both are public values baked into the page (the token is a public `pk.` token, never a
+secret one, so restrict it to `https://theashantihub.com/*` in the Mapbox dashboard).
+Leave them unset and every map shows OpenStreetMap streets, with no satellite switch. Staging
+has `SERVE_FRONTEND=no`; its SPA is on Vercel, so set the same two names in the Vercel project
+environment instead.
+
 The first deploy creates an empty database. Create the first staff login with:
 
 ```bash
