@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import { MapContainer, Marker, useMapEvents } from "react-leaflet";
+import BaseTileLayers from "./maps/BaseTileLayers.jsx";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { C } from "../theme.js";
+import { reverseGeocodeText } from "../lib/reverseGeocode.js";
 
 const iconBase = "https://unpkg.com/leaflet@1.9.4/dist/images/";
 L.Icon.Default.mergeOptions({
@@ -18,24 +20,6 @@ const KUMASI = [6.6885, -1.6244];
 function ClickToSetPin({ onSet }) {
   useMapEvents({ click: (e) => onSet(e.latlng.lat, e.latlng.lng) });
   return null;
-}
-
-// Reverse-geocode coordinates to a human-readable address via OpenStreetMap's
-// Nominatim service (same OSM ecosystem as the map tiles, no API key). Best
-// effort: returns null on any failure so the pin/coords still work and the
-// customer can type the address manually.
-async function reverseGeocode(lat, lng) {
-  try {
-    const resp = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=0&lat=${lat}&lon=${lng}`,
-      { headers: { Accept: "application/json" } },
-    );
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    return data?.display_name || null;
-  } catch {
-    return null;
-  }
 }
 
 // Lets a customer set their delivery coordinates for door-to-door (punch-list
@@ -56,7 +40,7 @@ export default function LocationPicker({ lat, lng, onChange, onAddress, height =
     onChange(la, ln);
     if (!onAddress) return;
     setResolving(true);
-    const addr = await reverseGeocode(la, ln);
+    const addr = await reverseGeocodeText(la, ln);
     setResolving(false);
     if (addr) onAddress(addr);
   };
@@ -88,10 +72,7 @@ export default function LocationPicker({ lat, lng, onChange, onAddress, height =
         )}
       </div>
       <MapContainer center={hasPin ? [lat, lng] : KUMASI} zoom={13} style={{ height, borderRadius: 10 }} scrollWheelZoom={false}>
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <BaseTileLayers />
         <ClickToSetPin onSet={setLocation} />
         {hasPin && <Marker position={[lat, lng]} />}
       </MapContainer>

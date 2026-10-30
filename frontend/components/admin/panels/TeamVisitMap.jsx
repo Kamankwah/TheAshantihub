@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Tooltip, useMap } from "react-leaflet";
+import BaseTileLayers from "../../maps/BaseTileLayers.jsx";
 import "leaflet/dist/leaflet.css";
 import { D } from "../theme.js";
 
@@ -30,7 +31,7 @@ export default function TeamVisitMap({ points, selectedId, onSelect, height = 42
   return (
     <div role="img" aria-label={label} style={{ position: "relative", height, borderRadius: 12, overflow: "hidden" }}>
       <MapContainer center={[points[0].lat, points[0].lng]} zoom={14} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
-        <TileLayer attribution='Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <BaseTileLayers />
         <Fit points={points} />
         {points.map((p) => (
           <CircleMarker key={p.id} center={[p.lat, p.lng]} radius={p.id === selectedId ? 11 : 8} pathOptions={STYLE[p.state] || STYLE.out} eventHandlers={{ click: () => onSelect?.(p.id) }}>

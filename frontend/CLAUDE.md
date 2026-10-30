@@ -73,6 +73,14 @@ monolith holding most components, with extractions living in `components/`,
   `vi.mock`-stubbed globally in `test/setup.js`; their real behaviour is only ever verified
   manually in a browser, never in Vitest. Points without coordinates are skipped, never faked at
   `0,0`.
+- **Map tiles come from one place.** Every Leaflet map renders `components/maps/BaseTileLayers.jsx` (never a raw
+  `TileLayer`); `lib/mapTiles.js` `tileLayers(provider)` picks the source. Build env `VITE_MAP_TILES_PROVIDER`
+  (`mapbox` | `osm`, default `osm`) and `VITE_MAPBOX_TOKEN` (a public, URL-restricted Mapbox token, never a secret
+  one) come from the build environment (Vercel project env for staging, the production server's build env), never a
+  committed value or `frontend/.env`. Unset or no token falls back to today's OSM street tiles with no satellite
+  layer and no Streets/Satellite switch. `noMapboxTokenInSource.test.js` fails on a literal token. Reverse
+  geocoding is `lib/reverseGeocode.js` (Nominatim, a suggestion for an editable field; never store its text, never
+  point it at Mapbox).
 - **Run Vitest from this directory** (`cd frontend && npx vitest run`). From the repo root it
   globs stale `.worktrees/**` copies that lack `node_modules` and reports a spurious mass
   failure. A second mass-failure shape — hundreds of `[MSW] intercepted a request without a

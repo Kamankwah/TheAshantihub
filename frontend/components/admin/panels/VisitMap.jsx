@@ -1,4 +1,5 @@
-import { Circle, CircleMarker, MapContainer, Marker, TileLayer } from "react-leaflet";
+import { Circle, CircleMarker, MapContainer, Marker } from "react-leaflet";
+import BaseTileLayers from "../../maps/BaseTileLayers.jsx";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { D } from "../theme.js";
@@ -24,7 +25,7 @@ export default function VisitMap({ pin, fix, radiusM = 100, height = 200, label 
   return (
     <div role="img" aria-label={label} style={{ position: "relative", height, borderRadius: 12, overflow: "hidden" }}>
       <MapContainer center={center} zoom={17} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
-        <TileLayer attribution='Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <BaseTileLayers />
         {hasPin && <Marker position={[pin.lat, pin.lng]} icon={goldPin} />}
         {hasPin && <Circle center={[pin.lat, pin.lng]} radius={radiusM} pathOptions={{ color: "#006400", weight: 1.5, dashArray: "6 5", fillOpacity: 0.07 }} />}
         {hasFix && <CircleMarker center={[fix.lat, fix.lng]} radius={7} pathOptions={{ color: "#FFFFFF", weight: 2.5, fillColor: "#000080", fillOpacity: 1 }} />}

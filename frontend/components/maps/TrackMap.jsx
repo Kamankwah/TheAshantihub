@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Polyline, Tooltip, useMap } from "react-leaflet";
+import BaseTileLayers from "./BaseTileLayers.jsx";
 import "leaflet/dist/leaflet.css";
 import { D } from "../dashboard/theme.js";
 
@@ -59,7 +60,7 @@ export default function TrackMap({ markers = [], route = null, height = 320, lab
   return (
     <div {...(label ? { role: "img", "aria-label": label } : {})} style={{ position: "relative", height, borderRadius: 12, overflow: "hidden" }}>
       <MapContainer center={points[0]} zoom={13} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
-        <TileLayer attribution='Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <BaseTileLayers />
         <Fit points={points} signature={signature} />
         {line && <Polyline positions={line} pathOptions={{ color: "#2C1810", weight: 4, opacity: 0.75 }} />}
         {pins.map((m) => (
