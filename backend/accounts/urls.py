@@ -1,9 +1,18 @@
 from django.urls import path
 
-from . import view_as_views, views
+from . import view_as_views, views, views_location
 
 urlpatterns = [
     path("me/", views.me, name="accounts-me"),
+    # Shop location capture. The public pair are POST-only: the link's token travels in the body, never in a URL.
+    path("me/location/", views_location.MyLocationView.as_view(), name="my-location"),
+    path("location-links/", views_location.SendLocationLinkView.as_view(), name="location-link-send"),
+    path(
+        "location-links/preview/", views_location.LocationLinkPreviewView.as_view(), name="location-link-preview",
+    ),
+    path(
+        "location-links/capture/", views_location.LocationLinkCaptureView.as_view(), name="location-link-capture",
+    ),
     path("customers/register/", views.CustomerRegisterView.as_view(), name="customer-register"),
     path("staff/invite/", views.StaffInviteView.as_view(), name="staff-invite"),
     path("staff/activate/", views.StaffActivateView.as_view(), name="staff-activate"),
