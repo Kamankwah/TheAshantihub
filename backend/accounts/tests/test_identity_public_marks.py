@@ -142,19 +142,23 @@ class IdentityOfferMarkTests(TestCase):
     def test_featured_offer_skips_business_without_identity(self):
         cheap = self.live(owner("No identity", kyc=BusinessOwner.VERIFIED), "10.00")
         marked = self.live(owner("Marked", kyc=BusinessOwner.PENDING, identity=VERIFIED), "20.00")
-        found = offers.featured(offers.live_offers(self.entry.pk))
+        live = offers.live_offers(self.entry.pk)
+        found = offers.featured(live, prices=offers.prices_now(live))
         self.assertEqual(found.pk, marked.pk)
         self.assertNotEqual(found.pk, cheap.pk)
         marked.business_owner.profile.identity_status = BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED
         marked.business_owner.profile.save()
-        self.assertIsNone(offers.featured(offers.live_offers(self.entry.pk)))
+        live = offers.live_offers(self.entry.pk)
+        self.assertIsNone(offers.featured(live, prices=offers.prices_now(live)))
 
     def test_offer_row_verified_follows_identity(self):
         plain = self.live(owner(kyc=BusinessOwner.VERIFIED), "10.00")
         marked = self.live(owner(identity=VERIFIED), "11.00")
-        by_pk = {o.pk: o for o in offers.live_offers(self.entry.pk)}
-        self.assertIs(offers.offer_row(by_pk[plain.pk])["verified"], False)
-        self.assertIs(offers.offer_row(by_pk[marked.pk])["verified"], True)
+        live = offers.live_offers(self.entry.pk)
+        prices = offers.prices_now(live)
+        by_pk = {o.pk: o for o in live}
+        self.assertIs(offers.offer_row(by_pk[plain.pk], prices)["verified"], False)
+        self.assertIs(offers.offer_row(by_pk[marked.pk], prices)["verified"], True)
 
 
 class IdentityOrganiserAndDeskMarkTests(TestCase):

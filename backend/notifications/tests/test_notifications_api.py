@@ -196,6 +196,30 @@ class StaffBadgesTests(TestCase):
         self.assertEqual(data["listings"], 0)
         self.assertEqual(data["contact_messages"], 0)
 
+    def test_catalogue_counts_waiting_grouping_requests_for_moderators(self):
+        from catalogue.models import CatalogueAttachRequest
+        from catalogue.tests.helpers import business, product
+
+        owner = business("Grouping Shop")
+        CatalogueAttachRequest.objects.create(
+            listing=product(owner, "Milo 400g"), brand="Nestle", name="Milo", status=CatalogueAttachRequest.PENDING,
+        )
+        CatalogueAttachRequest.objects.create(
+            listing=product(owner, "Ovaltine 400g"), brand="Ovaltine", name="Ovaltine", status=CatalogueAttachRequest.REJECTED,
+        )
+        self._auth(self.super_admin)
+        self.assertEqual(self.client.get(BADGES_URL).json()["catalogue"], 1)
+
+    def test_catalogue_is_zero_without_listings_moderate(self):
+        from catalogue.models import CatalogueAttachRequest
+        from catalogue.tests.helpers import business, product
+
+        CatalogueAttachRequest.objects.create(
+            listing=product(business("Grouping Shop"), "Milo 400g"), brand="Nestle", name="Milo",
+        )
+        self._auth(self.marketing)
+        self.assertEqual(self.client.get(BADGES_URL).json()["catalogue"], 0)
+
     def test_report_due_at_is_todays_day_report_until_it_is_submitted(self):
         from datetime import datetime, time
         from django.utils import timezone

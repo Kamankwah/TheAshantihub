@@ -216,7 +216,7 @@ class AddToCartTests(GuardCase):
 
 class CheckoutGuardTests(GuardCase):
     def checkout(self, method):
-        body = {"delivery_method": method, "delivery_address": "1 Road", "delivery_phone": "+233200000000"}
+        body = {"delivery_method": method, "delivery_address": "1 Road", "delivery_phone": "+233200000000", "delivery_gps_address": "AK-039-5028", "delivery_landmark": "Blue gate"}
         return self.client.post("/api/orders/checkout/", body, format="json")
 
     def test_checkout_refuses_a_cart_that_predates_the_rules_and_keeps_it(self):
@@ -273,7 +273,7 @@ class CheckoutGuardTests(GuardCase):
     def test_an_estimated_route_names_its_distance_as_an_estimate(self):
         self.put(self.listing(slug="food", name="Mama Put"), self.listing(point=(6.7101, -1.6244)))
         r = self.client.post("/api/orders/checkout/", {"delivery_method": "door_to_door", "delivery_address": "1 Road",
-                                                       "delivery_phone": "+233200000000", "delivery_lat": KUMASI[0], "delivery_lng": KUMASI[1]}, format="json")
+                                                       "delivery_phone": "+233200000000", "delivery_gps_address": "AK-039-5028", "delivery_landmark": "Blue gate", "delivery_lat": KUMASI[0], "delivery_lng": KUMASI[1]}, format="json")
         self.assertEqual(r.json(), {
             "detail": "Food from Mama Put is about 3.1 km (estimate) from the other shops in your cart, beyond the 3 km one rider can collect from on the same trip. Remove it to check out.",
             "code": "food_far",
@@ -283,7 +283,7 @@ class CheckoutGuardTests(GuardCase):
     def test_checkout_measures_the_radius_from_the_route_plan_without_another_routing_call(self):
         self.put(self.listing(slug="food"), self.listing(point=(6.6905, -1.6244)))
         body = {"delivery_method": "door_to_door", "delivery_address": "1 Road", "delivery_phone": "+233200000000",
-                "delivery_lat": 6.6950, "delivery_lng": -1.6300}
+                "delivery_gps_address": "AK-039-5028", "delivery_landmark": "Blue gate", "delivery_lat": 6.6950, "delivery_lng": -1.6300}
         with mock.patch("routing.client._http_get_json", side_effect=osrm_table(3.5)) as get:
             r = self.client.post("/api/orders/checkout/", body, format="json")
         self.assertEqual((r.json().get("code"), get.call_count), ("food_far", 1))

@@ -5,11 +5,13 @@ from django.db import transaction as db_transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import generics, status
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.gps import validate_ashanti_gps
 from accounts.models import BusinessOwner, StaffUser
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner, IsCustomer
@@ -145,6 +147,25 @@ class OrderCheckoutView(APIView):
                 {"detail": "Door-to-door delivery needs a delivery address and phone number."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # A GhanaPost digital address (Ashanti only) and a landmark are required for door-to-door; checked before any
+        # routing call so a refusal costs no network round trip. Store pickup stores both blank.
+        delivery_gps_address = delivery_landmark = ""
+        if delivery_method == Order.DOOR_TO_DOOR:
+            try:
+                delivery_gps_address = validate_ashanti_gps(request.data.get("delivery_gps_address"))
+            except DRFValidationError as exc:
+                return Response({"delivery_gps_address": [str(m) for m in exc.detail]}, status=status.HTTP_400_BAD_REQUEST)
+            raw_landmark = request.data.get("delivery_landmark") or ""
+            delivery_landmark = raw_landmark.strip() if isinstance(raw_landmark, str) else ""  # a non-string reads as missing
+            if not delivery_landmark:
+                return Response(
+                    {"delivery_landmark": ["Add a landmark near your door so the rider can find you."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if len(delivery_landmark) > 200:
+                return Response(
+                    {"delivery_landmark": ["Keep the landmark under 200 characters."]}, status=status.HTTP_400_BAD_REQUEST,
+                )
 
         if delivery_method == Order.DOOR_TO_DOOR:
             from routing import region
@@ -152,6 +173,10 @@ class OrderCheckoutView(APIView):
             lat, lng = request.data.get("delivery_lat"), request.data.get("delivery_lng")
             if lat not in (None, "") and lng not in (None, "") and not region.in_service_area(lat, lng):
                 return Response({"detail": region.OUT_OF_AREA_MESSAGE, "code": "out_of_area"}, status=status.HTTP_400_BAD_REQUEST)
+            from delivery.rates import PIN_REQUIRED_MESSAGE, pin_required
+
+            if pin_required(lat, lng):
+                return Response({"delivery_lat": [PIN_REQUIRED_MESSAGE]}, status=status.HTTP_400_BAD_REQUEST)
 
         # The pickup route and the fee may call the road-routing service (a network round trip), so both are worked out
         # before the transaction opens: they need no row lock and must not hold a database transaction open while they wait.
@@ -286,6 +311,7 @@ class OrderCheckoutView(APIView):
                 delivery_method=delivery_method,
                 delivery_address=delivery_address if delivery_method == Order.DOOR_TO_DOOR else "",
                 delivery_phone=delivery_phone if delivery_method == Order.DOOR_TO_DOOR else "",
+                delivery_gps_address=delivery_gps_address, delivery_landmark=delivery_landmark,
                 delivery_lat=request.data.get("delivery_lat") if delivery_method == Order.DOOR_TO_DOOR else None,
                 delivery_lng=request.data.get("delivery_lng") if delivery_method == Order.DOOR_TO_DOOR else None,
             )

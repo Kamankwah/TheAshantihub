@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { UserPanel } from './App.jsx'
+import { setStoredAuth } from './apiClient.js'
 import { server } from './mocks/server.js'
 
 // UserPanel's Orders/My Events/Saved tabs use react-query hooks
@@ -25,26 +27,34 @@ function makeAuth(overrides = {}) {
   }
 }
 
-function renderPanel(props = {}) {
-  return renderWithQueryClient(
-    <UserPanel
-      user={makeUser()}
-      auth={makeAuth()}
-      favourites={[]}
-      toggleFav={vi.fn()}
-      onExit={vi.fn()}
-      {...props}
-    />,
+// The account is now a hub with URL sections (/my-account/<section>), so the panel needs a
+// router. `at` is the section to open; `tab` is a tab inside it (the Orders section holds
+// Orders, Bookings, Service requests, Tickets and My events).
+function renderPanel({ at = '/my-account', tab, ...props } = {}) {
+  const result = renderWithQueryClient(
+    <MemoryRouter initialEntries={[at]}>
+      <UserPanel
+        user={makeUser()}
+        auth={makeAuth()}
+        favourites={[]}
+        toggleFav={vi.fn()}
+        onExit={vi.fn()}
+        {...props}
+      />
+    </MemoryRouter>,
   )
+  if (tab) fireEvent.click(screen.getByRole('tab', { name: tab }))
+  return result
 }
+const SECTION = { orders: '/my-account/orders', security: '/my-account/security', lists: '/my-account/lists', messages: '/my-account/messages' }
 
 describe('UserPanel', () => {
-  it('renders all 8 nav tabs and defaults to the Overview tab', () => {
+  it('opens on the Your Account hub with its eight tiles and the overview beneath', () => {
     renderPanel()
-    ;['Overview', 'Orders & Delivery', 'Saved Businesses', 'Messages', 'My Events', 'My Tickets', 'Profile', 'Settings'].forEach((label) => {
-      expect(screen.getAllByText(label).length).toBeGreaterThan(0)
+    ;['Your Orders', 'Login & security', 'Your Addresses', 'Your Payments', 'Your Lists', 'Customer Service', 'Your Messages', 'Sell on AshantiHub'].forEach((label) => {
+      expect(screen.getByRole('heading', { name: label })).toBeInTheDocument()
     })
-    // Overview tab content (a KPI card) is visible by default.
+    // The old Overview tab's content (a KPI card) is kept, below the tiles.
     expect(screen.getByText('Total Orders')).toBeInTheDocument()
   })
 
@@ -59,8 +69,7 @@ describe('UserPanel', () => {
     it('saving calls auth.updateProfile then auth.refreshUser and shows a confirmation', async () => {
       const updateProfile = vi.fn().mockResolvedValue({})
       const refreshUser = vi.fn().mockResolvedValue({})
-      renderPanel({ auth: { updateProfile, refreshUser } })
-      fireEvent.click(screen.getAllByText('Profile')[0])
+      renderPanel({ at: SECTION.security, auth: { updateProfile, refreshUser } })
       fireEvent.change(screen.getByDisplayValue('Ama Boateng'), { target: { value: 'Ama Owusu' } })
       fireEvent.click(screen.getByText('Save Changes'))
       await waitFor(() => expect(updateProfile).toHaveBeenCalledWith(
@@ -82,8 +91,7 @@ describe('UserPanel', () => {
           }),
         ),
       )
-      renderPanel()
-      fireEvent.click(screen.getAllByText('Profile')[0])
+      renderPanel({ at: SECTION.security })
       // Primary email/phone are disabled, read-only display fields.
       expect(await screen.findByDisplayValue('ama@example.com')).toBeDisabled()
       expect(screen.getByDisplayValue('0244000111')).toBeDisabled()
@@ -93,18 +101,45 @@ describe('UserPanel', () => {
     })
 
     it('shows an inline error when saving fails', async () => {
-      renderPanel({ auth: makeAuth({ updateProfile: vi.fn().mockRejectedValue(new Error('nope')) }) })
-      fireEvent.click(screen.getAllByText('Profile')[0])
+      renderPanel({ at: SECTION.security, auth: makeAuth({ updateProfile: vi.fn().mockRejectedValue(new Error('nope')) }) })
       fireEvent.click(screen.getByText('Save Changes'))
       await screen.findByText('Could not save your profile. Please try again.')
+    })
+  })
+
+  describe('Login & security', () => {
+    it('shows the 2-step (sign-in & security) card, since the 2-step screens exist', async () => {
+      setStoredAuth({ token: 't', account_type: 'customer', id: 1, full_name: 'Ama Boateng' })
+      try {
+        renderPanel({ at: SECTION.security })
+        expect(await screen.findByText(/Sign-in & security/)).toBeInTheDocument()
+      } finally {
+        setStoredAuth(null)
+      }
+    })
+  })
+
+  describe('Contact Support context', () => {
+    it('Customer Service Contact Support opens a new conversation, not the latest one', async () => {
+      Element.prototype.scrollIntoView = vi.fn()
+      server.use(http.get('http://localhost:8000/api/messaging/conversations/', () => HttpResponse.json([
+        {
+          id: 1, customer: 1, business_owner: null, starter_name: 'Ama Boateng', subject: 'Royal Kente Hall', status: 'open',
+          messages: [{ id: 1, conversation: 1, sender_type: 'staff', body: 'Older reply.', created_at: '2026-07-01T10:00:00Z' }],
+          created_at: '2026-07-01T09:00:00Z', updated_at: '2026-07-01T10:00:00Z',
+        },
+      ])))
+      renderPanel({ at: '/my-account/help' })
+      fireEvent.click(screen.getByRole('button', { name: /Contact Support/ }))
+      await screen.findAllByText('Re: Royal Kente Hall')
+      expect(screen.getByText(/Send a message below to start a new conversation\./)).toBeInTheDocument()
     })
   })
 
   describe('Orders & Delivery tab', () => {
     it('shows an empty state when there are no orders', async () => {
       server.use(http.get('http://localhost:8000/api/orders/', () => HttpResponse.json([])))
-      renderPanel()
-      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      renderPanel({ at: SECTION.orders })
       await screen.findByText('No orders yet.')
     })
 
@@ -120,8 +155,7 @@ describe('UserPanel', () => {
           }]),
         ),
       )
-      renderPanel()
-      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      renderPanel({ at: SECTION.orders })
       await screen.findByText('Cake (Vanilla) × 1')
       expect(screen.getByText('Cake (Chocolate) × 1')).toBeInTheDocument()
     })
@@ -141,8 +175,7 @@ describe('UserPanel', () => {
           ]),
         ),
       )
-      renderPanel()
-      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      renderPanel({ at: SECTION.orders })
       await screen.findByText('Kente Cloth × 1')
       expect(screen.getByText('Beaded Necklace × 2')).toBeInTheDocument()
       // The stepper's "Processing" step label exists once — on order #1 (paid,
@@ -155,36 +188,33 @@ describe('UserPanel', () => {
     })
   })
 
-  describe('Saved Businesses tab', () => {
-    it('shows the empty state when there are no favourites', () => {
-      renderPanel({ favourites: [] })
-      fireEvent.click(screen.getAllByText('Saved Businesses')[0])
-      expect(screen.getByText(/No saved businesses yet/)).toBeInTheDocument()
+  describe('Your Lists section', () => {
+    it('shows the empty state when nothing is saved', async () => {
+      renderPanel({ at: SECTION.lists })
+      expect(await screen.findByText(/Nothing saved yet/)).toBeInTheDocument()
     })
 
-    it('renders favourited listings via FavDrawerItem', async () => {
+    it('renders the customer\'s server wishlist', async () => {
       server.use(
-        http.get('http://localhost:8000/api/listings/5/', () =>
-          HttpResponse.json({ id: 5, name: 'Royal Ashanti Lodge', price_amount: '450.00', price_unit: '/night', category: { icon: '🏨' } }),
+        http.get('http://localhost:8000/api/wishlist/', () =>
+          HttpResponse.json([{ id: 1, added_at: '2026-10-28T09:20:00Z', listing: { id: 5, name: 'Royal Ashanti Lodge', price_amount: '450.00', effective_price: '450.00', was_price: null, main_photo: null, photos: [], has_variants: false, category: { icon: '🏨' } } }]),
         ),
       )
-      renderPanel({ favourites: [5] })
-      fireEvent.click(screen.getAllByText('Saved Businesses')[0])
+      renderPanel({ at: SECTION.lists })
       await screen.findByText('Royal Ashanti Lodge')
     })
   })
 
   describe('Messages tab', () => {
-    it('mounts MessagingCenter, whose close control returns to the Profile tab', () => {
+    it('mounts MessagingCenter, whose close control returns to the Your Account hub', () => {
       // jsdom doesn't implement scrollIntoView — MessagingCenter calls it on
       // mount/conversation-change, same stub convention as ScrollSpyTabs.test.jsx.
       Element.prototype.scrollIntoView = vi.fn()
-      renderPanel()
-      fireEvent.click(screen.getAllByText('Messages')[0])
+      renderPanel({ at: SECTION.messages })
       expect(screen.getByText('💬 Messages')).toBeInTheDocument()
       fireEvent.click(screen.getAllByText('✕')[0])
-      // Back on Profile — the name field is visible again.
-      expect(screen.getByDisplayValue('Ama Boateng')).toBeInTheDocument()
+      // Back on the hub — the tiles are visible again.
+      expect(screen.getAllByTestId('account-tile')).toHaveLength(8)
     })
 
     // MessagingCenter is now backed by the real messaging app
@@ -201,8 +231,7 @@ describe('UserPanel', () => {
           },
         ])),
       )
-      renderPanel()
-      fireEvent.click(screen.getAllByText('Messages')[0])
+      renderPanel({ at: SECTION.messages })
       await screen.findByText('We checked availability for you!')
       // "Re: Royal Ashanti Lodge" appears twice — once in the left
       // conversation-list row, once in the right chat header.
@@ -222,8 +251,7 @@ describe('UserPanel', () => {
           },
         ])),
       )
-      renderPanel()
-      fireEvent.click(screen.getAllByText('Messages')[0])
+      renderPanel({ at: SECTION.messages })
       await screen.findByText('We checked availability for you!')
       expect(screen.getAllByText('Re: Royal Ashanti Lodge').length).toBeGreaterThan(0)
       expect(screen.queryByText(/Re:\s*Re:/i)).not.toBeInTheDocument()
@@ -245,8 +273,7 @@ describe('UserPanel', () => {
           return HttpResponse.json({ id: 2, conversation: 1, sender_type: 'customer', body: replyBody.body, created_at: '2026-07-01T11:00:00Z' }, { status: 201 })
         }),
       )
-      renderPanel()
-      fireEvent.click(screen.getAllByText('Messages')[0])
+      renderPanel({ at: SECTION.messages })
       await screen.findByText('We checked availability for you!')
       const input = screen.getByPlaceholderText('Type a message...')
       fireEvent.change(input, { target: { value: 'Is breakfast included?' } })
@@ -267,8 +294,7 @@ describe('UserPanel', () => {
           )
         }),
       )
-      renderPanel()
-      fireEvent.click(screen.getAllByText('Messages')[0])
+      renderPanel({ at: SECTION.messages })
       await screen.findByText(/Send a message below to start a new conversation/)
       const input = screen.getByPlaceholderText('Type a message...')
       fireEvent.change(input, { target: { value: 'Hello, I have a question.' } })
@@ -282,8 +308,7 @@ describe('UserPanel', () => {
     // on the public Events page — a real submission form, not a read-only list.
     it('shows the submission toggle and an empty state with no events', async () => {
       server.use(http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([])))
-      renderPanel()
-      fireEvent.click(screen.getAllByText('My Events')[0])
+      renderPanel({ at: SECTION.orders, tab: 'My events' })
       expect(await screen.findByText('📅 Submit an Event')).toBeInTheDocument()
       expect(await screen.findByText("You haven't submitted any events yet.")).toBeInTheDocument()
     })
@@ -294,8 +319,7 @@ describe('UserPanel', () => {
           HttpResponse.json([{ id: 1, name: 'Akwasidae Festival', status: 'approved', event_date: '2026-08-01T10:00:00Z', category: { label: 'Culture' } }]),
         ),
       )
-      renderPanel()
-      fireEvent.click(screen.getAllByText('My Events')[0])
+      renderPanel({ at: SECTION.orders, tab: 'My events' })
       await screen.findByText('Akwasidae Festival')
       expect(screen.getByText('approved')).toBeInTheDocument()
     })
@@ -307,8 +331,7 @@ describe('UserPanel', () => {
         id: 3, code: 'ad3126f8cbc4', price: '50.00', escrow_status: 'held', delivered_at: null, refunded_at: null,
         event: { name: 'Highlife Night', event_date: '2026-12-20' }, ticket_type: { name: 'Regular' },
       }])))
-      renderPanel()
-      fireEvent.click(screen.getAllByText('My Tickets')[0])
+      renderPanel({ at: SECTION.orders, tab: 'Tickets' })
       expect(await screen.findByAltText('QR code for ticket ad3126f8cbc4')).toBeInTheDocument()
     })
 
@@ -317,8 +340,7 @@ describe('UserPanel', () => {
         id: 42, status: 'paid', placed_at: '2026-10-05T10:00:00Z', total_amount: '250.00',
         delivery_method: 'pickup', items: [{ id: 1, listing_name: 'Kente stole', quantity: 1, line_total: '250.00' }],
       }])))
-      renderPanel()
-      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      renderPanel({ at: SECTION.orders })
       expect(await screen.findByRole('button', { name: 'Raise a dispute' })).toBeInTheDocument()
     })
   })
@@ -333,8 +355,7 @@ describe('UserPanel', () => {
           items: [{ id: 1, listing_name: 'Shea butter', quantity: 1, line_total: '90.00' }],
         }])),
       )
-      renderPanel()
-      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      renderPanel({ at: SECTION.orders })
       expect(await screen.findByLabelText('Collection code')).toHaveTextContent('482913')
       expect(await screen.findByText('Collect it at the AshantiHub pickup office: 12 Adum Road, Kumasi.')).toBeInTheDocument()
       expect(screen.getByText('Collect by Sun 25 Oct, 17:30.')).toBeInTheDocument()
@@ -346,8 +367,7 @@ describe('UserPanel', () => {
         collection_code: null, collect_by: null,
         items: [{ id: 1, listing_name: 'Shea butter', quantity: 1, line_total: '90.00' }],
       }])))
-      renderPanel()
-      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      renderPanel({ at: SECTION.orders })
       await screen.findByText('Shea butter × 1')
       expect(screen.queryByTestId('pickup-collection-note')).not.toBeInTheDocument()
       expect(screen.queryByText(/once you have paid/)).not.toBeInTheDocument()
@@ -361,8 +381,7 @@ describe('UserPanel', () => {
     })
     const show = async (o) => {
       server.use(http.get('http://localhost:8000/api/orders/', () => HttpResponse.json([o])))
-      renderPanel()
-      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      renderPanel({ at: SECTION.orders })
       await screen.findByText('Shea butter × 1')
     }
 
@@ -397,8 +416,7 @@ describe('UserPanel', () => {
       server.use(http.get('http://localhost:8000/api/services/requests/mine/', () => HttpResponse.json([
         { id: 4, listing_name: 'Kumasi City Tour', message: 'Two adults', status: 'accepted', agreed_price: '300.00' },
       ])))
-      renderPanel()
-      fireEvent.click(screen.getAllByText('My Requests')[0])
+      renderPanel({ at: SECTION.orders, tab: 'Service requests' })
       expect(await screen.findByRole('button', { name: /Pay GHS 300.00 to start/ })).toBeInTheDocument()
       expect(await screen.findByText(/any time before the business marks the job done/)).toBeInTheDocument()
       expect(screen.getByText(/accepted automatically 48 hours after the business marks it done/)).toBeInTheDocument()
@@ -424,13 +442,11 @@ describe('Account bookings and tickets — 7G', () => {
   })
   const openBookings = async (rows) => {
     server.use(http.get(`${API}/api/bookings/mine/`, () => HttpResponse.json(rows)))
-    renderPanel()
-    fireEvent.click(screen.getAllByText('My Bookings')[0])
+    renderPanel({ at: SECTION.orders, tab: 'Bookings' })
   }
   const openTickets = (rows) => {
     server.use(http.get(`${API}/api/events/tickets/mine/`, () => HttpResponse.json(rows)))
-    renderPanel()
-    fireEvent.click(screen.getAllByText('My Tickets')[0])
+    renderPanel({ at: SECTION.orders, tab: 'Tickets' })
   }
 
   it('shows the stay policy, release time, Cancel and Report from the money block', async () => {
@@ -524,5 +540,16 @@ describe('Account bookings and tickets — 7G', () => {
     // Wait for the list to load so the auto-select has run before asserting.
     expect((await screen.findAllByText('Re: Royal Kente Hall')).length).toBeGreaterThan(0)
     expect(screen.getByText(/start a new conversation about Ashanti Lodge/)).toBeInTheDocument()
+  })
+
+  it('does not carry "about <listing>" into a later visit to Your Messages', async () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    await openBookings([stay({ money: money({ policy: null, can_cancel: false, can_report: false }) })])
+    fireEvent.click(await screen.findByRole('button', { name: 'Contact AshantiHub Support' }))
+    expect(await screen.findByText(/start a new conversation about Ashanti Lodge/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Your Account home' }))
+    fireEvent.click(screen.getByRole('link', { name: /Your Messages/ }))
+    await screen.findByText(/Send a message below to start a new conversation\./)
+    expect(screen.queryByText(/about Ashanti Lodge/)).not.toBeInTheDocument()
   })
 })

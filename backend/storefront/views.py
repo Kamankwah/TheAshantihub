@@ -144,6 +144,31 @@ class DealsView(APIView):
         return Response(feeds.deals(limit=limit, request=request))
 
 
+class SponsoredFeedView(APIView):
+    """Public sponsored carousel: live sponsored listings as the same card rows as GET /api/listings/.
+    ?category=<id> (that category and its descendants), ?exclude=<listing id>, ?limit= (1-24, default 12; a bad value
+    falls back to the default). Newest first (`-updated_at, -pk`, the order of the staff Marketing list)."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "storefront_deals"
+
+    def get(self, request):
+        params = request.query_params
+        try:
+            limit = int(params.get("limit", feeds.SPONSORED_DEFAULT_LIMIT))
+        except (TypeError, ValueError):
+            limit = feeds.SPONSORED_DEFAULT_LIMIT
+        category = params.get("category")
+        exclude = params.get("exclude")
+        return Response(feeds.sponsored(
+            limit=limit,
+            category_id=int(category) if category and category.isdecimal() else (0 if category else None),
+            exclude_id=int(exclude) if exclude and exclude.isdecimal() else None,
+            request=request,
+        ))
+
+
 class HomeFeedView(APIView):
     """Public feed for the marketplace home. `most_visited`: up to 8 product departments, most visited over the last
     30 days first (listings.visits; seed order until there is enough data), keeping only departments a shopper can

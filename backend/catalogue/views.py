@@ -143,10 +143,17 @@ class StockView(APIView):
 
 
 class StockLineView(APIView):
-    """PUT stock/<listing_id>/line/ {"units": n or null} — the business's own low-stock line for one offer (null: the
-    default). Changing it re-arms the low alert."""
+    """GET stock/<listing_id>/line/ — the saved own line (null: the default) and the cover behind it (null when the
+    stock is not counted). PUT the same URL {"units": n or null} — the business's own low-stock line for one offer.
+    Changing it re-arms the low alert."""
 
     permission_classes = [IsAuthenticated, IsBusinessOwner]
+
+    def get(self, request, listing_id):
+        listing = _own_listing(request, listing_id)
+        if not attach.groupable(listing):
+            return Response({"detail": stock.NOT_A_PRODUCT, "code": "not_a_product"}, status=400)
+        return Response(stock.line_state(listing))
 
     def put(self, request, listing_id):
         listing = _own_listing(request, listing_id)
@@ -162,4 +169,4 @@ class StockLineView(APIView):
         if listing.stock_quantity is None:
             return Response({"detail": stock.NOT_COUNTED, "code": "not_counted"}, status=409)
         stock.set_own_line(listing, units)
-        return Response({"listing_id": listing.pk, "line": units, "cover": stock.row(listing, stock.cover_of(listing))})
+        return Response(stock.line_state(listing))

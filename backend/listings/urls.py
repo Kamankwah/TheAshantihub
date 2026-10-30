@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_discounts, views_media, views_revisions, views_sellers
+from . import views, views_discounts, views_media, views_revisions, views_sellers, views_viewed
 
 urlpatterns = [
     path("mine/", views.OwnerListingCreateListView.as_view(), name="listing-mine-list-create"),
@@ -84,6 +84,8 @@ urlpatterns = [
     path("", views.PublicListingListView.as_view(), name="listing-list"),
     path("<int:pk>/", views.PublicListingDetailView.as_view(), name="listing-detail"),
     path("<int:pk>/related/", views.RelatedListingsView.as_view(), name="listing-related"),
+    path("<int:pk>/view/", views_viewed.ListingViewRecordView.as_view(), name="listing-view-record"),
+    path("<int:pk>/also-viewed/", views_viewed.AlsoViewedView.as_view(), name="listing-also-viewed"),
     path("<int:pk>/sponsored/", views.ListingSponsoredView.as_view(), name="listing-sponsored"),
     path("<int:pk>/promote/", views.ListingPromoteView.as_view(), name="listing-promote"),
 ]

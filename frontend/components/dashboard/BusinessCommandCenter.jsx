@@ -10,6 +10,7 @@ import { D, glassCard, tint } from "./theme.js";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 import ListingsPanel from "./panels/ListingsPanel.jsx";
 import ProductsPanel from "./panels/ProductsPanel.jsx";
+import ProductLookupPanel from "../catalogue/ProductLookupPanel.jsx";
 import ServicesPanel from "./panels/ServicesPanel.jsx";
 import BookingsPanel from "./panels/BookingsPanel.jsx";
 import DeliveriesPanel from "./panels/DeliveriesPanel.jsx";
@@ -60,7 +61,10 @@ function buildTabs(businessKind) {
   // no accommodation listings. Legacy null-kind accounts get none.
   let managementTabs = [];
   if (businessKind === "product") {
-    managementTabs = [{ id: "products", icon: "📦", label: "Products" }];
+    managementTabs = [
+      { id: "products", icon: "📦", label: "Products" },
+      { id: "product-lookup", icon: "🔎", label: "Product lookup" },
+    ];
   } else if (businessKind === "service") {
     managementTabs = [
       { id: "services", icon: "🛠️", label: "Services" },
@@ -73,6 +77,7 @@ function buildTabs(businessKind) {
 
 export default function BusinessCommandCenter({ initialTab = "analytics", onExit, user, auth, PaymentComponent, theme, toggleTheme }) {
   const [tab, setTab] = useState(TABS.some(t => t.id === initialTab) ? initialTab : "analytics");
+  const [tabView, setTabView] = useState(null);
   const [saved, setSaved] = useState(false);
   const [resubmitting, setResubmitting] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -113,7 +118,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
   const tabs = buildTabs(profile?.business_kind).filter(t => !(t.id === "subscription" && plansGone && subscriptionLoaded && !subscription?.id));
   const activeLabel = tabs.find(t => t.id === tab)?.label || "Overview";
 
-  const selectTab = (id) => { if (!isVerified) return; setTab(id); setMobileNavOpen(false); setShowProfile(false); };
+  const selectTab = (id, { view } = {}) => { if (!isVerified) return; setTabView(view || null); setTab(id); setMobileNavOpen(false); setShowProfile(false); };
 
   if (auth.isLoading) {
     return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: D.pageBg, color: D.textDim }}>Loading…</div>;
@@ -262,9 +267,10 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                 )}
                 {!plansGone && <RenewBanner subscription={subscription} onRenew={() => selectTab("subscription")} />}
                 <ManagerChangesCard />
-                {tab === "analytics" && <AnalyticsPanel user={user} onNavigate={selectTab} />}
+                {tab === "analytics" && <AnalyticsPanel user={user} onNavigate={selectTab} businessKind={profile?.business_kind} />}
                 {tab === "listings" && <ListingsPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
-                {tab === "products" && <ProductsPanel />}
+                {tab === "products" && <ProductsPanel initialView={tabView || "list"} key={tabView || "list"} />}
+                {tab === "product-lookup" && profile?.business_kind === "product" && <ProductLookupPanel />}
                 {tab === "services" && <ServicesPanel />}
                 {tab === "bookings" && <BookingsPanel />}
                 {tab === "events" && <EventsPanel user={user} PaymentComponent={PaymentComponent} />}

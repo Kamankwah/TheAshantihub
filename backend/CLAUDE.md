@@ -42,7 +42,8 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **Stock is reserved at checkout, not at payment.** `OrderCheckoutView` decrements
   `Listing.stock_quantity` with a 400 oversell guard before creating anything; a
   `stock_quantity=None` listing is untracked and never decremented. `_fail_order_checkout` in
-  `payments/services.py`'s `FAILURE_HANDLERS` rolls the reservation back on a failed payment.
+  `payments/services.py`'s `FAILURE_HANDLERS` rolls the reservation back on a failed payment. Listings are locked in
+  primary-key order (`order_by("pk")`), pinned by a test, so two carts of the same offers cannot deadlock.
 - **`GET /api/orders/owner/` must never leak another business's lines.** `OwnerOrderSerializer`
   exposes only the caller's own line items and an `owner_subtotal` over just those — a shared
   order can span multiple businesses. Same rule for the sales report and its CSV export.
@@ -415,7 +416,7 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   barcode matcher, `propose_catalogue_matches`, only files requests). Services, stays and events never group
   (`cart.guard.DELIVERABLE`). Barcodes are stored as 14-digit GTINs through `catalogue.identity.clean_barcode`, and a
   store's own code never groups. Offer rows (`catalogue.offers.offer_row`) never carry a phone, email, address, pin or
-  `contact_phone`; an uncounted stock is null. Days of cover and the low line live in `catalogue.stock` (three governed
+  `contact_phone`; an uncounted stock is null. Offers are ordered by `price_now` (the price the customer pays: the listing's own `sale_price` or a live flash sale, `price_basis` says which; `offers.prices_now`) and list verified sellers only. Days of cover and the low line live in `catalogue.stock` (three governed
   settings in `ledger.settings_store`); alerts move `StockAlertState` with conditional UPDATEs (once per crossing,
   re-armed only by a restock or a new own line), in-app only, behind `STOCK_ALERTS_ENABLED` (default off; state rows are inserted before the run's transaction). The barcode matcher (nightly job and approve's on-commit run) is behind `CATALOGUE_MATCHER_ENABLED` (default off). Only published listings group (409 `not_published`). Search and
   related lists hide counted goods at `stock_quantity=0` only while `SOLD_OUT_HIDDEN_ENABLED` is on (default off); the detail
@@ -475,6 +476,32 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `sale_started_at` means no "was". Expiry is read-time through `pricing`. Flash sales exclude variant listings.
 - **Ashanti Direct has no money special-case.** Its wallet, fees and payouts are an ordinary business's. `is_company`
   is read only through `accounts/direct.py`.
+
+## Shopper pages (marketplace Plan 4)
+
+- **GhanaPost + landmark are enforced in `OrderCheckoutView` before routing**, for door-to-door only (store pickup
+  needs neither), via `accounts.gps` (`normalize_gps`, `validate_ashanti_gps`); field-keyed 400s. Older `Order` rows
+  have blank GhanaPost fields, so serializers must tolerate them. A non-string value is a field-keyed 400, never a
+  500. `GPS_REMOTE_VALIDATION`, when on, now also gates shopper checkout and address-book saves: a synchronous call of
+  up to 4 s, and a "not found" answer blocks the shopper. The code and landmark are carried read-only (blank on old
+  orders) in the rider job, `DispatchDeliverySerializer`, dispatch board, queue, live tracking, and the support and GM
+  order details; the customer's phone is never added to any of them.
+- **Map pin rule (ruling P45):** while `DELIVERY_FEE_ENABLED` is on and a rate card is in force
+  (`delivery.rates.pin_required`), a door-to-door checkout without `delivery_lat`/`delivery_lng` is refused with
+  400 `{"delivery_lat": [...]}` before routing and creates nothing. Fees off, or no card: a free-text address is enough.
+- **`CustomerAddress`:** one default per customer, at most 10; writes take the Customer-row lock.
+- **`ListingView`:** anonymous viewers are keyed by an HMAC of the client UUID; one row per viewer, listing and day;
+  the read looks back 30 days and the daily beat task `listings.tasks.prune_listing_views` deletes rows older than
+  31 days (signed-in `c:<id>` history included). "Also viewed" (own throttle scope `listing_also_viewed`) needs 3 co-viewers per row and at least 4 rows,
+  else the basis is `same_category`.
+- **Bulk cart add is atomic under the cart lock** and merges into existing lines by the two conditional unique
+  constraints. Lock order: the cart row, then the listing row, then its variant rows by pk; checkout never takes the
+  cart row, so it cannot deadlock with this. Errors are `{"detail": "<string>"}` for body-level problems and
+  `{"lines": [{"index", "detail"}]}` for per-line ones, and an unknown or hidden listing answers
+  `{"listing": ["..."]}` (OrdersPanel relies on it); a line is capped at `listings.variants.MAX_STOCK` of one version.
+- **The wishlist API is not opening-gated** (browse and wishlist work before opening).
+- **Two sponsored lists:** the public `storefront/sponsored/` feed (live, published, not hidden) versus the
+  staff-only `listings/sponsored/` Marketing list; never swap their permissions.
 
 ## Test-fixture gotcha
 

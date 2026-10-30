@@ -54,6 +54,7 @@ from .serializers import (
     PromotionAdminSerializer,
     PromotionPurchaseSerializer,
     PromotionSerializer,
+    PublicListingDetailSerializer,
     PublicListingSerializer,
     ZoneSerializer,
 )
@@ -313,12 +314,19 @@ class ListingPagination(PageNumberPagination):
 
 
 class PublicListingListView(generics.ListAPIView):
+    """GET /api/listings/ — public. Filters: `category` (slug, with sub-categories), `zone` (name), `kind`,
+    `min_price`/`max_price` (the price paid), `min_rating` (1-5, published-review average; unrated listings drop
+    out; anything else is ignored), `on_sale` (1/true: a live discount), `verified`, `sold_by=direct`, `seller`,
+    plus `search` and `ordering` (`price_effective`, the price paid, as the Business "Sort by" sends it; `price_amount`
+    is still accepted and sorts the same way, see filter_queryset; `created_at`)."""
+
     serializer_class = PublicListingSerializer
     permission_classes = [AllowAny]
     pagination_class = ListingPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["name", "description"]
-    ordering_fields = ["price_amount", "created_at"]
+    # `price_effective` is the annotation get_queryset adds (before OrderingFilter runs in filter_queryset).
+    ordering_fields = ["price_effective", "price_amount", "created_at"]
 
     def get_queryset(self):
         # Suspended and paused businesses' listings drop out of public browse
@@ -367,6 +375,11 @@ class PublicListingListView(generics.ListAPIView):
                 business_owner__profile__identity_status=BusinessOwnerProfile.IDENTITY_VERIFIED
             )
 
+        on_sale = self.request.query_params.get("on_sale")
+        if on_sale and on_sale.lower() in ("true", "1"):
+            # The same rule as the storefront Deals feed: a live sale price below the regular price.
+            queryset = queryset.filter(pricing.live_discount_q())
+
         if self.request.query_params.get("sold_by") == "direct":
             queryset = queryset.filter(direct_q("business_owner__"))
 
@@ -378,7 +391,19 @@ class PublicListingListView(generics.ListAPIView):
         ctx = self._cart_guard()
         if ctx is not None:
             queryset = self._with_tiers(queryset, ctx)
-        return _with_rating_annotations(queryset)
+        queryset = _with_rating_annotations(queryset)
+        min_rating = self._min_rating()
+        if min_rating is not None:
+            queryset = queryset.filter(avg_rating__gte=min_rating)  # unrated listings (NULL average) drop out
+        return queryset
+
+    def _min_rating(self):
+        """?min_rating= as a number from 1 to 5, else None (a non-number or out-of-range value is ignored)."""
+        try:
+            value = float(self.request.query_params.get("min_rating", ""))
+        except ValueError:
+            return None
+        return value if 1 <= value <= 5 else None  # also rejects nan; inf is out of range
 
     def _cart_guard(self):
         """The cart guard context (cart.guard) for ?cart_tiers=1 from a customer whose cart has something in it, its
@@ -458,7 +483,7 @@ class PublicListingListView(generics.ListAPIView):
 
 
 class PublicListingDetailView(generics.RetrieveAPIView):
-    serializer_class = PublicListingSerializer
+    serializer_class = PublicListingDetailSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):

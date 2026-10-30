@@ -5,12 +5,16 @@ from rest_framework.test import APIClient
 
 from catalogue.models import CatalogueProduct
 from datetime import timedelta
+from decimal import Decimal
 
 from django.utils import timezone
 
 from billing.models import Subscription, SubscriptionPlan
-from catalogue.tests.helpers import BARCODE, business, product, service, stay
+from accounts.models import BusinessOwner
+from catalogue.tests.helpers import BARCODE, buyer, business, product, service, stay
 from listings.models import Category, Listing
+from marketing.models_promos import FlashSale, FlashSaleListing
+from orders.models import Order, OrderItem
 
 
 def sellers_url(listing, query=""):
@@ -65,7 +69,7 @@ class OtherSellersTests(TestCase):
         body = self.body()
         self.assertEqual(set(body["offers"][0]), {
             "listing_id", "name", "price_amount", "price_unit", "condition", "business_name", "verified", "zone",
-            "available_quantity",
+            "available_quantity", "price_now", "price_basis",
         })
         self.assertNotIn("+233", self.client.get(sellers_url(self.mine)).content.decode())
 
@@ -138,14 +142,11 @@ class FeaturedOfferTests(TestCase):
         for query in ("?lat=6.6885&lng=-1.6244", "?lat=6.7&lng=-1.6", "?lat=6.0&lng=-1.0"):
             self.assertEqual(self.featured(query), far.pk, query)           # always the oldest: no listing point
 
-    def test_unverified_businesses_stay_listed_but_only_verified_can_be_featured(self):
+    def test_unverified_businesses_are_left_out(self):
         new = product(business("New Shop", verified=False), price="10.00", catalogue_product=self.entry)
         body = self.client.get(sellers_url(self.anchor)).json()
-        row = [o for o in body["offers"] if o["listing_id"] == new.pk][0]
-        self.assertIs(row["verified"], False)
-        Listing.objects.filter(pk=self.anchor.pk).update(business_owner=new.business_owner)
-        only = self.client.get(sellers_url(new)).json()
-        self.assertIsNone(only["featured_offer_id"])                         # only unverified offers exist
+        self.assertNotIn(new.pk, [o["listing_id"] for o in body["offers"]])
+        self.assertNotEqual(body["featured_offer_id"], new.pk)
 
 
 class OfferVisibilityTests(TestCase):
@@ -255,3 +256,123 @@ class SoldOutBrowseTests(TestCase):
         salon = service(business("Salon"))
         Listing.objects.filter(pk=salon.pk).update(stock_quantity=0)
         self.assertIn(salon.pk, {row["id"] for row in self.client.get("/api/listings/").json()["results"]})
+
+
+def flash_sale(listing, sale_price, *, stock_cap=10, live=True):
+    now = timezone.now()
+    sale = FlashSale.objects.create(
+        name="Sale", starts_at=now - timedelta(hours=1), ends_at=now + timedelta(hours=1), discount_pct=30,
+        stock_cap=stock_cap, per_customer_limit=1, status=FlashSale.LIVE if live else FlashSale.SCHEDULED,
+    )
+    FlashSaleListing.objects.create(
+        sale=sale, listing=listing, normal_price=listing.price_amount, sale_price=Decimal(sale_price), agreed_at=now,
+    )
+    return sale
+
+
+@override_settings(MARKETING_PROMOS_ENABLED=True)
+class PriceNowTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.entry = CatalogueProduct.objects.create(brand="Nestle", name="Milo 400g", barcode=BARCODE)
+        self.mine = product(business("Adepa Ventures"), price="30.00", catalogue_product=self.entry)
+        self.regular = product(business("Regular Shop"), price="8.00", catalogue_product=self.entry)
+        self.sale = product(business("Sale Shop"), price="10.00", catalogue_product=self.entry)
+
+    def body(self):
+        response = self.client.get(sellers_url(self.mine))
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
+    def test_review_focus_a_live_flash_sale_price_orders_and_features_the_offer(self):
+        flash_sale(self.sale, "7.00")
+        body = self.body()
+        self.assertEqual([o["listing_id"] for o in body["offers"]], [self.sale.pk, self.regular.pk])
+        self.assertEqual((body["offers"][0]["price_now"], body["offers"][0]["price_basis"]), ("7.00", "flash_sale"))
+        self.assertEqual((body["offers"][1]["price_now"], body["offers"][1]["price_basis"]), ("8.00", "regular"))
+        self.assertEqual(body["featured_offer_id"], self.sale.pk)
+
+    def test_a_flash_sale_sold_out_at_its_cap_does_not_lower_the_price(self):
+        sale = flash_sale(self.sale, "7.00", stock_cap=2)
+        order = Order.objects.create(customer=buyer(), status=Order.PAID, total_amount=Decimal("14.00"))
+        OrderItem.objects.create(
+            order=order, listing=self.sale, quantity=2, unit_price=Decimal("7.00"), line_total=Decimal("14.00"), flash_sale=sale,
+        )
+        body = self.body()
+        self.assertEqual([o["listing_id"] for o in body["offers"]], [self.regular.pk, self.sale.pk])
+        self.assertEqual(body["offers"][1]["price_now"], "10.00")
+        self.assertEqual(body["featured_offer_id"], self.regular.pk)
+
+    @override_settings(MARKETING_PROMOS_ENABLED=False)
+    def test_with_promos_off_the_regular_price_orders(self):
+        flash_sale(self.sale, "7.00")
+        body = self.body()
+        self.assertEqual([o["listing_id"] for o in body["offers"]], [self.regular.pk, self.sale.pk])
+        self.assertEqual((body["offers"][1]["price_now"], body["offers"][1]["price_basis"]), ("10.00", "regular"))
+
+    def test_a_live_discount_orders_the_offer(self):
+        Listing.objects.filter(pk=self.sale.pk).update(sale_price=Decimal("6.00"))
+        body = self.body()
+        self.assertEqual([o["listing_id"] for o in body["offers"]], [self.sale.pk, self.regular.pk])
+        self.assertEqual((body["offers"][0]["price_now"], body["offers"][0]["price_basis"]), ("6.00", "discount"))
+        self.assertEqual(body["featured_offer_id"], self.sale.pk)
+
+    def test_rows_keep_price_amount_and_add_price_now(self):
+        row = self.body()["offers"][0]
+        self.assertEqual((row["price_amount"], row["price_now"], row["price_basis"]), ("8.00", "8.00", "regular"))
+
+
+class VerifiedOnlyTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.entry = CatalogueProduct.objects.create(brand="Nestle", name="Milo 400g", barcode=BARCODE)
+        self.mine = product(business("Adepa Ventures"), price="30.00", catalogue_product=self.entry)
+        self.shop = business("New Shop", verified=False)
+        self.new = product(self.shop, price="5.00", catalogue_product=self.entry)
+
+    def seen(self):
+        sellers = self.client.get(sellers_url(self.mine)).json()
+        found = self.client.get("/api/catalogue/products/?q=milo")
+        sourced = self.client.get(f"/api/catalogue/products/{self.entry.pk}/offers/")
+        return sellers, found, sourced
+
+    def test_review_focus_unverified_sellers_are_left_out_everywhere(self):
+        from catalogue.tests.helpers import as_account
+
+        as_account(self.client, self.mine.business_owner, "business_owner")
+        sellers, found, sourced = self.seen()
+        self.assertEqual((sellers["offers"], sellers["featured_offer_id"]), ([], self.mine.pk))
+        row = found.json()["results"][0] if "results" in found.json() else found.json()[0]
+        self.assertEqual((row["offer_count"], row["lowest_price"]), (1, "30.00"))
+        self.assertEqual(sourced.json()["offers"], [])
+        self.shop.kyc_status = BusinessOwner.VERIFIED
+        self.shop.save()
+        sellers, found, sourced = self.seen()
+        self.assertEqual([o["listing_id"] for o in sellers["offers"]], [self.new.pk])
+        row = found.json()["results"][0] if "results" in found.json() else found.json()[0]
+        self.assertEqual((row["offer_count"], row["lowest_price"]), (2, "5.00"))
+        self.assertEqual([o["listing_id"] for o in sourced.json()["offers"]], [self.new.pk])
+
+    def test_an_identity_verified_business_without_the_address_check_is_listed(self):
+        from accounts.models import BusinessOwnerProfile
+        from catalogue.tests.helpers import as_account
+
+        as_account(self.client, self.mine.business_owner, "business_owner")
+        BusinessOwnerProfile.objects.filter(business_owner=self.shop).update(
+            identity_status=BusinessOwnerProfile.IDENTITY_VERIFIED
+        )
+        self.assertEqual(BusinessOwner.objects.get(pk=self.shop.pk).kyc_status, BusinessOwner.PENDING)
+        sellers, found, sourced = self.seen()
+        self.assertEqual([(o["listing_id"], o["verified"]) for o in sellers["offers"]], [(self.new.pk, True)])
+        row = found.json()["results"][0] if "results" in found.json() else found.json()[0]
+        self.assertEqual((row["offer_count"], row["lowest_price"]), (2, "5.00"))
+        neither = product(business("Neither", verified=False), price="4.00", catalogue_product=self.entry)
+        sellers, found, sourced = self.seen()
+        self.assertNotIn(neither.pk, [o["listing_id"] for o in sellers["offers"]])
+        row = found.json()["results"][0] if "results" in found.json() else found.json()[0]
+        self.assertEqual(row["offer_count"], 2)
+
+    def test_a_product_with_only_unverified_offers_shows_no_other_sellers(self):
+        Listing.objects.filter(pk=self.mine.pk).update(business_owner=business("Other New", verified=False))
+        body = self.client.get(sellers_url(self.new)).json()
+        self.assertEqual((body["offers"], body["featured_offer_id"]), ([], None))

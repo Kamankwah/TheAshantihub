@@ -9,6 +9,30 @@ function proposalReply(body) {
 }
 
 export const handlers = [
+  // Address book (customer): a plain array, default first. Defaults are an empty book; tests override.
+  http.get('http://localhost:8000/api/accounts/addresses/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/accounts/addresses/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json({
+      id: 1, label: body.label, recipient_name: body.recipient_name, phone: body.phone,
+      gps_address: body.gps_address, landmark: body.landmark, address_text: body.address_text ?? '',
+      lat: body.lat ?? null, lng: body.lng ?? null, is_default: true, created_at: '2026-10-28T09:15:22.123456Z',
+    }, { status: 201 })
+  }),
+  http.patch('http://localhost:8000/api/accounts/addresses/:id/', async ({ params, request }) => {
+    const body = await request.json()
+    return HttpResponse.json({
+      id: Number(params.id), label: 'Home', recipient_name: 'Akosua Mensah', phone: '0241234567',
+      gps_address: 'AK-039-5028', landmark: 'Opposite Total filling station', address_text: '',
+      lat: null, lng: null, is_default: true, created_at: '2026-10-28T09:15:22.123456Z', ...body,
+    })
+  }),
+  http.delete('http://localhost:8000/api/accounts/addresses/:id/', () => new HttpResponse(null, { status: 204 })),
+  http.post('http://localhost:8000/api/accounts/addresses/:id/set-default/', ({ params }) => HttpResponse.json({
+    id: Number(params.id), label: 'Home', recipient_name: 'Akosua Mensah', phone: '0241234567',
+    gps_address: 'AK-039-5028', landmark: 'Opposite Total filling station', address_text: '',
+    lat: null, lng: null, is_default: true, created_at: '2026-10-28T09:15:22.123456Z',
+  })),
   // OTP security overview and authenticator status (Plan 2F): every switch off, nothing on file.
   http.get('http://localhost:8000/api/otp/me/', () => HttpResponse.json({
     channels: [], authenticator: null, trusted_devices: [], switches: { sign_in: false, step_up: false, sign_up: false }, customer_gap_days: 30,
@@ -86,6 +110,22 @@ export const handlers = [
   http.get('http://localhost:8000/api/listings/:id/related/', () => {
     return HttpResponse.json([])
   }),
+  // Product page (Marketplace Plan 4): no co-views yet, so the category fallback with nothing in it; the view beacon
+  // answers 204; the public sponsored feed is empty (a plain array of card rows).
+  http.get('http://localhost:8000/api/listings/:id/also-viewed/', () => HttpResponse.json({ basis: 'same_category', results: [] })),
+  http.post('http://localhost:8000/api/listings/:id/view/', () => new HttpResponse(null, { status: 204 })),
+  http.get('http://localhost:8000/api/storefront/sponsored/', () => HttpResponse.json([])),
+  // The customer wishlist ("Your Lists"): empty; saving answers 201 with the entry; removing answers 204.
+  http.get('http://localhost:8000/api/wishlist/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/wishlist/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json({
+      id: 1,
+      listing: { id: body.listing, name: 'Item', category: null, zone: null, price_amount: null, effective_price: null, was_price: null, main_photo: null, photos: [], avg_rating: null, review_count: 0, has_variants: false },
+      added_at: '2026-10-28T09:20:00Z',
+    }, { status: 201 })
+  }),
+  http.delete('http://localhost:8000/api/wishlist/:id/', () => new HttpResponse(null, { status: 204 })),
   // Site settings / footer content (docs/UI_MODERNIZATION_ROADMAP.md Phase B)
   // — default handlers, overridden per-test via server.use() where a
   // specific settings state/response is needed.
@@ -127,6 +167,19 @@ export const handlers = [
     const body = await request.json()
     return HttpResponse.json(
       { id: 1, listing: body.listing, listing_name: 'Item', quantity: body.quantity ?? 1, unit_price_snapshot: '0.00', line_total: '0.00', added_at: '2026-07-01T00:00:00Z' },
+      { status: 201 },
+    )
+  }),
+  // POST /api/cart/items/bulk/ (Plan 4): all-or-nothing add of several variants; 201 with the whole cart (GET /api/cart/ shape).
+  http.post('http://localhost:8000/api/cart/items/bulk/', async ({ request }) => {
+    const body = await request.json()
+    const items = (body.lines || []).map((line, i) => ({
+      id: i + 1, listing: body.listing, listing_name: 'Item', variant: line.variant, variant_label: 'Variant',
+      quantity: line.quantity ?? 1, unit_price_snapshot: '0.00', line_total: '0.00', added_at: '2026-07-01T00:00:00Z',
+      listing_photo: null, seller_name: 'Seller', is_ashanti_direct: false, in_stock: true, stock_quantity: null,
+    }))
+    return HttpResponse.json(
+      { id: 1, total: '0.00', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z', items },
       { status: 201 },
     )
   }),
@@ -269,7 +322,10 @@ export const handlers = [
   // paginated with top-level avg_rating/review_count alongside the usual
   // DRF envelope.
   http.get('http://localhost:8000/api/reviews/listing/:id/', () => {
-    return HttpResponse.json({ count: 0, next: null, previous: null, results: [], avg_rating: null, review_count: 0 })
+    return HttpResponse.json({
+      count: 0, next: null, previous: null, results: [], avg_rating: null, review_count: 0,
+      distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+    })
   }),
   http.get('http://localhost:8000/api/reviews/event/:id/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [], avg_rating: null, review_count: 0 })
@@ -301,9 +357,6 @@ export const handlers = [
   }),
   http.post('http://localhost:8000/api/reviews/moderation/:id/re-review/', () => {
     return HttpResponse.json({ id: 1, status: 'pending' })
-  }),
-  http.get('http://localhost:8000/api/qa/questions/listing/:id/', () => {
-    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),
   http.get('http://localhost:8000/api/qa/questions/event/:id/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
@@ -772,6 +825,22 @@ export const handlers = [
     consent: null, flags: [], registered_by_name: null, created_at: '2026-10-07T00:00:00Z', address_correction: null,
   })),
   http.get('http://localhost:8000/api/fraud/flags/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/catalogue/stock/', () => HttpResponse.json({
+    count: 0, next: null, previous: null, results: [], tracked_offers: 0, untracked_offers: 0,
+    settings: { cover_days: 7, fallback_units: 5, window_days: 28, alerts_enabled: false, sold_out_hidden: false },
+  })),
+  http.get('http://localhost:8000/api/catalogue/stock/:id/line/', ({ params }) => HttpResponse.json({ listing_id: Number(params.id), line: null, cover: null })),
+  http.get('http://localhost:8000/api/catalogue/mine/:id/', ({ params }) => HttpResponse.json({
+    listing: Number(params.id), groupable: true, barcode: '', store_code: false, catalogue_product: null, request: null,
+  })),
+  http.get('http://localhost:8000/api/catalogue/products/', () => HttpResponse.json({ results: [], truncated: false })),
+  http.get('http://localhost:8000/api/catalogue/products/:id/offers/', ({ params }) => HttpResponse.json({
+    catalogue_product: { id: Number(params.id), brand: '', name: '', barcode: '' }, your_listings: [], offers: [], truncated: false,
+  })),
+  http.get('http://localhost:8000/api/catalogue/listings/:id/other-sellers/', () => HttpResponse.json({
+    catalogue_product: null, featured_offer_id: null, ordering: 'price', offers: [],
+  })),
+  http.get('http://localhost:8000/api/catalogue/staff/requests/pending/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/fraud/flags/counts/', () => HttpResponse.json({ open: 0, confirmed: 0, dismissed: 0 })),
   http.get('http://localhost:8000/api/notifications/staff-badges/', () => {
     return HttpResponse.json({

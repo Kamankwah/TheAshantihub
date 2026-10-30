@@ -159,3 +159,87 @@ describe('OwnerListingCard decision fields', () => {
     expect(await screen.findByText(/Price saved; the other changes were not\. That barcode is not valid\./)).toBeInTheDocument()
   })
 })
+
+describe('OwnerListingCard server stock chips', () => {
+  const stockPage = (results) => ({
+    count: results.length, next: null, previous: null, results, tracked_offers: 1, untracked_offers: 0,
+    settings: { cover_days: 7, fallback_units: 5, window_days: 28, alerts_enabled: false, sold_out_hidden: false },
+  })
+  const stockRow = (o) => ({ listing_id: 1, name: 'Handwoven kente stole', stock: 2, basis: 'fallback', line: 5, low: true, sold_out: false, ...o })
+  const serveStock = (results) => server.use(http.get(`${API}/api/catalogue/stock/`, () => HttpResponse.json(stockPage(results))))
+
+  it('test_no_low_chip_from_a_count_of_three_alone', async () => {
+    renderCard({ ...LISTING, stock_quantity: 3 })
+    expect(await screen.findByText('3 in stock')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: /Low-stock line/ })).toBeInTheDocument())
+    expect(screen.queryByText('Low stock')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Running low/)).not.toBeInTheDocument()
+  })
+
+  it('test_server_low_row_shows_low_stock_and_the_running_low_line', async () => {
+    serveStock([stockRow({})])
+    renderCard({ ...LISTING, stock_quantity: 2 })
+    expect(await screen.findByText('Low stock')).toBeInTheDocument()
+    expect(screen.getByText('Running low — restock soon.')).toBeInTheDocument()
+    expect(screen.getByText('2 in stock')).toBeInTheDocument()
+  })
+
+  it('test_restocking_from_the_card_refreshes_the_low_stock_chip', async () => {
+    let restocked = false
+    server.use(
+      http.get(`${API}/api/catalogue/stock/`, () => HttpResponse.json(stockPage(restocked ? [] : [stockRow({})]))),
+      http.post(`${API}/api/listings/mine/1/restock/`, () => { restocked = true; return HttpResponse.json({}) }),
+    )
+    renderCard({ ...LISTING, stock_quantity: 2 })
+    expect(await screen.findByText('Low stock')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Restock/ }))
+    fireEvent.change(screen.getByPlaceholderText('Add quantity'), { target: { value: '50' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add to stock' }))
+    await waitFor(() => expect(screen.queryByText('Low stock')).not.toBeInTheDocument())
+  })
+
+  it('test_server_sold_out_row_shows_sold_out', async () => {
+    serveStock([stockRow({ stock: 0, low: false, sold_out: true })])
+    renderCard({ ...LISTING, stock_quantity: 0 })
+    expect(await screen.findByText('Sold out')).toBeInTheDocument()
+    expect(screen.getByText('Sold out — restock to keep selling.')).toBeInTheDocument()
+    expect(screen.queryByText('Low stock')).not.toBeInTheDocument()
+  })
+
+  it('test_uncounted_listing_says_stock_not_counted_and_has_no_line_button', async () => {
+    renderCard({ ...LISTING, stock_quantity: null })
+    expect(await screen.findByText('Stock not counted')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Low-stock line/ })).not.toBeInTheDocument()
+  })
+
+  it('test_line_editor_request_fires_only_when_opened', async () => {
+    const lineRequests = []
+    const spy = ({ request }) => { if (/\/api\/catalogue\/stock\/1\/line\//.test(request.url)) lineRequests.push(request.url) }
+    server.events.on('request:start', spy)
+    try {
+      renderCard(LISTING)
+      const toggle = await screen.findByRole('button', { name: /Low-stock line/ })
+      await waitFor(() => expect(screen.getByText('11 in stock')).toBeInTheDocument())
+      expect(lineRequests).toHaveLength(0)
+      fireEvent.click(toggle)
+      await waitFor(() => expect(lineRequests.length).toBeGreaterThan(0))
+    } finally {
+      server.events.removeListener('request:start', spy)
+    }
+  })
+
+  it('test_direct_base_path_renders_no_catalogue_widgets', async () => {
+    const catalogue = []
+    const spy = ({ request }) => { if (request.url.includes('/api/catalogue/')) catalogue.push(request.url) }
+    server.events.on('request:start', spy)
+    try {
+      renderCard(LISTING, { basePath: '/api/direct/listings' })
+      expect(await screen.findByText('11 in stock')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Low-stock line/ })).not.toBeInTheDocument()
+      await new Promise((r) => setTimeout(r, 50))
+      expect(catalogue).toEqual([])
+    } finally {
+      server.events.removeListener('request:start', spy)
+    }
+  })
+})

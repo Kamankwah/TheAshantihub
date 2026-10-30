@@ -12,8 +12,9 @@ const NETWORKS = ['MTN', 'Telecel', 'AirtelTigo']
 // step_up_required opens the code prompt and the request is retried with the
 // token, so this form posts the same body once from its point of view and
 // never reads or stores a token. The server's refusal text is the only
-// validation. `canCopyFromProfile` (vendors) offers the registered details.
-export default function AddDestinationForm({ tone = 'light', basePath = '/api/wallet', canCopyFromProfile = false, onDone, refusalAction }) {
+// validation. `canCopyFromProfile` (vendors) offers the registered details;
+// `momoOnly` (customers) hides the bank rail.
+export default function AddDestinationForm({ tone = 'light', basePath = '/api/wallet', canCopyFromProfile = false, momoOnly = false, onDone, refusalAction }) {
   const s = walletStyles(tone)
   const queryClient = useQueryClient()
   const [rail, setRail] = useState('momo')
@@ -57,13 +58,17 @@ export default function AddDestinationForm({ tone = 'light', basePath = '/api/wa
 
   return (
     <form onSubmit={submit} style={s.card} noValidate>
-      <label style={s.label} htmlFor="wallet-dest-rail">Pay out to</label>
-      <select id="wallet-dest-rail" style={s.field} value={rail} onChange={(e) => chooseRail(e.target.value)}>
-        <option value="momo">Mobile money</option>
-        <option value="bank">Bank account</option>
-      </select>
+      {!momoOnly && (
+        <>
+          <label style={s.label} htmlFor="wallet-dest-rail">Pay out to</label>
+          <select id="wallet-dest-rail" style={s.field} value={rail} onChange={(e) => chooseRail(e.target.value)}>
+            <option value="momo">Mobile money</option>
+            <option value="bank">Bank account</option>
+          </select>
+        </>
+      )}
 
-      <label style={{ ...s.label, marginTop: 12 }} htmlFor="wallet-dest-institution">{rail === 'momo' ? 'Network' : 'Bank name'}</label>
+      <label style={{ ...s.label, marginTop: momoOnly ? 0 : 12 }} htmlFor="wallet-dest-institution">{rail === 'momo' ? 'Network' : 'Bank name'}</label>
       {rail === 'momo' ? (
         <select id="wallet-dest-institution" style={s.field} value={institution} onChange={(e) => setInstitution(e.target.value)}>
           {NETWORKS.map((n) => <option key={n} value={n}>{n}</option>)}

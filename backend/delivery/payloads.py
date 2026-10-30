@@ -125,6 +125,7 @@ def rider_job(assignment, now=None):
         "arrived_drop_at": assignment.arrived_drop_at, "delivered_at": assignment.delivered_at, "failed_at": assignment.failed_at,
         "failed_reason": assignment.failed_reason, "deadline_at": assignment.deadline_at,
         "customer_name": first_name_and_initial(order.customer.full_name), "delivery_address": order.delivery_address,
+        "delivery_gps_address": order.delivery_gps_address, "delivery_landmark": order.delivery_landmark,
         "delivery_lat": drop[0], "delivery_lng": drop[1],
         "pickup": block["primary"], "pickups": block["all"], "multi_pickup": block["multi_pickup"],
         "current_stop": block["current"], "current_stop_id": block["current"]["id"] if block["current"] else None,

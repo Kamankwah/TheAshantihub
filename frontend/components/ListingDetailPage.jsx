@@ -8,8 +8,6 @@ import { useCartGuard } from "../hooks/useCartGuard.js";
 import { apiErrorMessage } from "../lib/apiErrorMessage.js";
 import { useRelatedListings } from "../hooks/useRelatedListings.js";
 import { useListingReviews } from "../hooks/useListingReviews.js";
-import { useListingQuestions } from "../hooks/useListingQuestions.js";
-import { useOwnerReviews } from "../hooks/useOwnerReviews.js";
 import { useSiteSettings } from "../hooks/useSiteSettings.js";
 import { useStaffGate } from "../hooks/useStaffGate.js";
 import PriceLine, { listingPriceAmounts } from "./PriceLine.jsx";
@@ -24,14 +22,49 @@ import { useBookingPayment } from "../hooks/useBookingPayment.js";
 import { useStayQuote } from "../hooks/useStayQuote.js";
 import PaymentMethodPicker from "./wallet/PaymentMethodPicker.jsx";
 import { walletStyles } from "./wallet/walletStyles.js";
-import VerifiedMark from "./VerifiedMark.jsx";
-import { ReviewsList, ReviewWriteForm, starString, textareaStyle, submitBtnStyle } from "./ReviewComponents.jsx";
+import { ReviewsList, ReviewWriteForm, starString } from "./ReviewComponents.jsx";
+import SellerRatingBadge from "./SellerRatingBadge.jsx";
+import ProductPage from "./shop/ProductPage.jsx";
+import { attributeRows } from "../lib/listingFacts.js";
 
 // ─── ListingDetailPage ──────────────────────────────────────────────────────
+// The listing detail route's chooser (Marketplace Plan 4). Goods — what the
+// cart can deliver, the backend's own test (cart/guard.py): not a stay, and
+// food or a product — get the themed ProductPage (components/shop/). Every
+// other listing (services, stays, anything else) keeps the page below,
+// ServiceListingDetail, unchanged apart from the questions-and-answers tabs,
+// which are gone everywhere. Props are the same for both; `onShowDirect` (the
+// product page's "More from Ashanti Direct") is the one the chooser adds.
+export function isGoods(category) {
+  if (!category || category.is_accommodation) return false;
+  return Boolean(category.is_food) || category.kind === "product";
+}
+
+export default function ListingDetailPage(props) {
+  const { data: item, isLoading, isError, refetch } = useListing(props.id);
+  if (!item) {
+    return (
+      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 16px", textAlign: "center", background: C.canvas, color: C.ink, borderRadius: 20 }}>
+        {isError && !isLoading ? (
+          <>
+            <div style={{ marginBottom: 12 }}>Could not load this listing.</div>
+            <button onClick={() => refetch()} style={stateBtnStyle}>Retry</button>{" "}
+            <button onClick={props.onBack} style={stateBtnStyle}>‹ Back to results</button>
+          </>
+        ) : "Loading…"}
+      </div>
+    );
+  }
+  // A new id is a new product: its page starts with no options picked.
+  if (isGoods(item.category)) return <ProductPage key={props.id} {...props} />;
+  return <ServiceListingDetail {...props} />;
+}
+
+// ─── ServiceListingDetail ───────────────────────────────────────────────────
 // Product/service detail page (PDP) for the Business tab redesign
 // (docs/BUSINESS_EVENTS_ROADMAP.md Phase 3). Follows this app's no-router
 // convention: AshantiHub holds a `selectedListingId` state and swaps this in
-// for the Sidebar+grid area (rather than a top-level early return like
+// for the rail+grid area (rather than a top-level early return like
 // StaffDashboard/BusinessDashboard) so the surrounding hero/banner/search/
 // category tabs/CTA stay mounted around it.
 //
@@ -39,12 +72,13 @@ import { ReviewsList, ReviewWriteForm, starString, textareaStyle, submitBtnStyle
 // FavDrawerItem — is promoted to this page's primary data source, per the
 // roadmap brief.
 //
-// Reviews/ratings/Q&A/tabbed-PDP Phase 5: below the persistent gallery +
+// Reviews/ratings/tabbed-PDP Phase 5: below the persistent gallery +
 // buy-box header, this page renders a seller-rating badge (about the
 // business owner, not the listing) and a `ScrollSpyTabs` shell whose tab
-// set branches on `item.category?.kind` — Overview/Specs/Reviews/Q&As/
+// set branches on `item.category?.kind` — Overview/Specs/Reviews/
 // Compare Products/Warranty & Returns/More buying options for a product,
-// the service-flavored equivalents for a service. `item.specs`/
+// the service-flavored equivalents for a service. (Questions-and-answers were
+// removed in Marketplace Plan 4.) `item.specs`/
 // `service_duration`/`avg_rating`/`review_count`/`business_owner` are real
 // fields on `GET /api/listings/{id}/` as of Phase 2 of that work — there is
 // no more "no specs field on the real Listing model" gap.
@@ -67,7 +101,7 @@ import { ReviewsList, ReviewWriteForm, starString, textareaStyle, submitBtnStyle
 // App.jsx) so this component under frontend/components/ doesn't create an
 // App.jsx <-> components/ circular import — App.jsx already owns Card and
 // simply hands it down, same as it hands down every other callback/prop.
-export default function ListingDetailPage({
+function ServiceListingDetail({
   id,
   onBack,
   user,
@@ -220,8 +254,6 @@ export default function ListingDetailPage({
         return <DurationSection item={item} />;
       case "reviews":
         return <ReviewsSection listingId={id} item={item} user={user} />;
-      case "qanda":
-        return <QASection id={id} item={item} user={user} />;
       case "compare":
         return <CompareSection related={related} label={isService ? "Compare Services" : "Compare Products"} />;
       case "more-buying":
@@ -660,7 +692,6 @@ const PRODUCT_TABS = [
   { id: "overview", label: "Overview" },
   { id: "specs", label: "Specs" },
   { id: "reviews", label: "Reviews" },
-  { id: "qanda", label: "Q&As" },
   { id: "compare", label: "Compare Products" },
   { id: "warranty", label: "Warranty & Returns" },
   { id: "more-buying", label: "More buying options" },
@@ -670,7 +701,6 @@ const SERVICE_TABS = [
   { id: "overview", label: "Overview" },
   { id: "duration", label: "Service Duration" },
   { id: "reviews", label: "Reviews" },
-  { id: "qanda", label: "Q&As" },
   { id: "compare", label: "Compare Services" },
   { id: "dispute", label: "Service satisfaction & dispute" },
   { id: "more-service", label: "More Service options" },
@@ -691,14 +721,10 @@ function OverviewSection({ description }) {
 // brand/condition/dimensions/weight/stock, real Listing fields) render as
 // leading rows of the same table as the owner's freeform `specs` pairs, only
 // when set — so pre-existing listings with none of them are unchanged.
-const CONDITION_LABELS = { new: "New", used: "Used", refurbished: "Refurbished" };
-
+// (The attribute rows are lib/listingFacts.js's, shared with the product page.)
 function SpecsSection({ item }) {
   const attrRows = [
-    item.brand && { label: "Brand", value: item.brand },
-    item.condition && { label: "Condition", value: CONDITION_LABELS[item.condition] || item.condition },
-    item.dimensions && { label: "Dimensions", value: item.dimensions },
-    item.weight && { label: "Weight", value: item.weight },
+    ...attributeRows(item),
     item.stock_quantity != null && { label: "In stock", value: String(item.stock_quantity) },
   ].filter(Boolean);
   const list = [...attrRows, ...(Array.isArray(item.specs) ? item.specs : [])];
@@ -847,175 +873,6 @@ function ReviewsSection({ listingId, item, user }) {
   );
 }
 
-// ─── SellerRatingBadge ──────────────────────────────────────────────────────
-// About the seller, not the listing — reads useOwnerReviews(business_owner
-// id) for the seller's own rating (an Airbnb-host-style rating, not an
-// aggregate of their listings' reviews). Hides the rating portion entirely
-// when review_count is 0, same "no fabricated 0.0" rule Card/EventCard use.
-// Expandable to the seller's review list + a "write a seller review"
-// affordance, reusing the same ReviewsList/ReviewWriteForm this file's
-// Reviews tab uses (targeting "seller" instead of "listing").
-function SellerRatingBadge({ businessOwner, user }) {
-  const [expanded, setExpanded] = useState(false);
-  const ownerReviewsQuery = useOwnerReviews(businessOwner?.id);
-
-  if (!businessOwner) return null;
-
-  const avgRating = ownerReviewsQuery.data?.avg_rating ?? 0;
-  const reviewCount = ownerReviewsQuery.data?.review_count ?? 0;
-  const reviews = ownerReviewsQuery.data?.results || [];
-
-  return (
-    <div style={{ marginTop: 24, borderTop: "1px solid rgba(255,255,255,0.1)", borderBottom: "1px solid rgba(255,255,255,0.1)", padding: "14px 2px" }}>
-      <button
-        onClick={() => setExpanded((e) => !e)}
-        aria-expanded={expanded}
-        style={{ background: "none", border: "none", color: "white", fontSize: "0.82rem", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 8, fontFamily: "inherit" }}
-      >
-        {reviewCount > 0 ? (
-          <span>⭐ {avgRating} · Sold by {businessOwner.name || businessOwner.full_name} · {reviewCount} seller review{reviewCount === 1 ? "" : "s"}</span>
-        ) : (
-          <span>Sold by {businessOwner.name || businessOwner.full_name}</span>
-        )}
-        <VerifiedMark verified={businessOwner.identity_verified} />
-        <span style={{ color: C.gold }}>{expanded ? "▲" : "▼"}</span>
-      </button>
-      {expanded && (
-        <div style={{ marginTop: 14 }}>
-          <div style={{ marginBottom: 16 }}>
-            <ReviewWriteForm
-              targetType="seller"
-              targetId={businessOwner.id}
-              user={user}
-              onReviewSubmitted={() => ownerReviewsQuery.refetch()}
-              label="Write a Seller Review"
-            />
-          </div>
-          {ownerReviewsQuery.isLoading ? (
-            <EmptyNote text="Loading seller reviews…" />
-          ) : (
-            <ReviewsList reviews={reviews} emptyLabel="No seller reviews yet." />
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── QASection ──────────────────────────────────────────────────────────────
-// List (question + its answer, or "Not yet answered") + an ask-a-question
-// form for any signed-in customer + — only when the signed-in user is this
-// listing's own business owner (a business owner can genuinely be browsing
-// the Business tab like anyone else) — an inline "Answer" action per
-// unanswered question, via QuestionRow below.
-function QASection({ id, item, user }) {
-  const questionsQuery = useListingQuestions(id);
-  const questions = questionsQuery.data?.results || [];
-  const [questionText, setQuestionText] = useState("");
-  const [asking, setAsking] = useState(false);
-  const [askError, setAskError] = useState(null);
-  const isCustomer = user?.accountType === "customer";
-  const isOwner = user != null && user.id === item.business_owner?.id;
-
-  const handleAsk = async () => {
-    if (!questionText.trim()) return;
-    setAskError(null);
-    setAsking(true);
-    try {
-      await apiPost("/api/qa/questions/", { target_type: "listing", target_id: id, question_text: questionText.trim() });
-      setQuestionText("");
-      questionsQuery.refetch();
-    } catch (err) {
-      setAskError("Could not submit your question. Please try again.");
-    } finally {
-      setAsking(false);
-    }
-  };
-
-  return (
-    <div>
-      <h2 style={sectionHeadingStyle}>Q&As</h2>
-      {isCustomer ? (
-        <div style={{ marginBottom: 20 }}>
-          <textarea
-            value={questionText}
-            onChange={(e) => setQuestionText(e.target.value)}
-            placeholder="Ask a question about this listing…"
-            style={textareaStyle}
-          />
-          {askError && <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{askError}</div>}
-          <button onClick={handleAsk} disabled={asking || !questionText.trim()} style={submitBtnStyle(!asking && !!questionText.trim())}>
-            {asking ? "Submitting…" : "Ask a Question"}
-          </button>
-        </div>
-      ) : !user ? (
-        <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.78rem", marginBottom: 20 }}>Sign in as a customer to ask a question.</div>
-      ) : null}
-      {questionsQuery.isLoading ? (
-        <EmptyNote text="Loading questions…" />
-      ) : questions.length === 0 ? (
-        <EmptyNote text="No questions yet. Be the first to ask!" />
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {questions.map((q) => (
-            <QuestionRow key={q.id} question={q} isOwner={isOwner} onAnswered={() => questionsQuery.refetch()} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function QuestionRow({ question, isOwner, onAnswered }) {
-  const [answering, setAnswering] = useState(false);
-  const [answerText, setAnswerText] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [answerError, setAnswerError] = useState(null);
-
-  const handleAnswer = async () => {
-    if (!answerText.trim()) return;
-    setAnswerError(null);
-    setSubmitting(true);
-    try {
-      await apiPost(`/api/qa/questions/${question.id}/answer/`, { answer_text: answerText.trim() });
-      setAnswering(false);
-      setAnswerText("");
-      onAnswered && onAnswered();
-    } catch (err) {
-      setAnswerError("Could not submit your answer. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: 14 }}>
-      <div style={{ color: "white", fontWeight: 700, fontSize: "0.82rem", marginBottom: 6 }}>Q: {question.question_text}</div>
-      {question.answer_text ? (
-        <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.8rem", lineHeight: 1.6 }}>A: {question.answer_text}</div>
-      ) : (
-        <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.76rem", fontStyle: "italic" }}>Not yet answered</div>
-      )}
-      {isOwner && !question.answer_text && (
-        answering ? (
-          <div style={{ marginTop: 10 }}>
-            <textarea value={answerText} onChange={(e) => setAnswerText(e.target.value)} placeholder="Write your answer…" style={{ ...textareaStyle, minHeight: 60 }} />
-            {answerError && <div style={{ color: "#ffb4b4", fontSize: "0.7rem", marginBottom: 8 }}>{answerError}</div>}
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={handleAnswer} disabled={submitting || !answerText.trim()} style={submitBtnStyle(!submitting && !!answerText.trim())}>
-                {submitting ? "Submitting…" : "Submit Answer"}
-              </button>
-              <button onClick={() => { setAnswering(false); setAnswerText(""); }} style={cancelBtnStyle}>Cancel</button>
-            </div>
-          </div>
-        ) : (
-          <button onClick={() => setAnswering(true)} style={{ ...cancelBtnStyle, marginTop: 10 }}>Answer</button>
-        )
-      )}
-    </div>
-  );
-}
-
 // ─── CompareSection ─────────────────────────────────────────────────────────
 // Reuses the already-fetched useRelatedListings(id) data — no new endpoint —
 // a checkbox-driven "pick 2" UI (further checkboxes disable once 2 are
@@ -1135,19 +992,22 @@ const backBtnStyle = {
   fontFamily: "inherit",
 };
 
-const sectionHeadingStyle = { color: C.gold, fontSize: "1rem", fontWeight: 900, margin: "0 0 16px" };
-
-const cancelBtnStyle = {
-  background: "rgba(255,255,255,0.08)",
-  color: "white",
-  border: "1px solid rgba(255,255,255,0.2)",
+// The chooser's loading/error state sits on the themed canvas (the kind of listing is not known yet).
+const stateBtnStyle = {
+  background: C.surface,
+  color: C.ink,
+  border: `1px solid ${C.line}`,
   borderRadius: 20,
-  padding: "9px 18px",
-  fontWeight: 700,
+  padding: "9px 16px",
   fontSize: "0.78rem",
+  fontWeight: 700,
   cursor: "pointer",
+  minHeight: 44,
   fontFamily: "inherit",
 };
+
+const sectionHeadingStyle = { color: C.gold, fontSize: "1rem", fontWeight: 900, margin: "0 0 16px" };
+
 
 const viewBtnStyle = {
   background: "rgba(255,255,255,0.1)",

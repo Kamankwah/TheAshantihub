@@ -91,6 +91,7 @@ def scheduled_row(order, now):
     return {
         "order_id": order.pk, "placed_at": order.placed_at, "ready_not_before": order.ready_not_before,
         "customer_name": order.customer.full_name if order.customer_id else None, "delivery_address": order.delivery_address or None,
+        "delivery_gps_address": order.delivery_gps_address, "delivery_landmark": order.delivery_landmark,
         "vendors": vendors,
     }
 
@@ -106,7 +107,7 @@ def _route(order, assignment=None, point=None):
         rows = stops.stops_of(assignment)
         stop = stops.current_stop(assignment) or (rows[0] if rows else None)
         name, located = (stops.stop_name(stop), stop.lat is not None) if stop is not None else ("", False)
-    return {"from": name, "to": order.delivery_address or None, "pickup_located": located, "drop_located": order.delivery_lat is not None and order.delivery_lng is not None}
+    return {"from": name, "to": order.delivery_address or None, "delivery_gps_address": order.delivery_gps_address, "delivery_landmark": order.delivery_landmark, "pickup_located": located, "drop_located": order.delivery_lat is not None and order.delivery_lng is not None}
 
 
 def detour_warning(plan):
