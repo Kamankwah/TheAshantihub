@@ -100,4 +100,11 @@ describe('DepartmentSection', () => {
     setup({})
     expect(within(screen.getByRole('navigation', { name: 'Department' })).getAllByRole('button')).toHaveLength(3)
   })
+
+  it('the navigation takes the section label it is given (Category for services)', () => {
+    const services = [leaf(7, 'hotels', 'Hotels', 'service')]
+    render(<DepartmentSection tree={TREE} nodes={services} label="Category" filters={{}} setFilters={vi.fn()} />)
+    expect(screen.getByRole('navigation', { name: 'Category' })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Department' })).not.toBeInTheDocument()
+  })
 })

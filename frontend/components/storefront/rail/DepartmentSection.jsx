@@ -11,9 +11,10 @@ import { C } from "../../../theme.js";
 //     label, then the siblings with the leaf current
 //   - a top-level leaf: "All departments" and the top-level list, it current
 // Back links only set `category` (to the parent's slug, or undefined).
+// `label` names the navigation after its section ("Category" for services).
 const ALL = "‹ All departments";
 
-export default function DepartmentSection({ tree, nodes, filters, setFilters }) {
+export default function DepartmentSection({ tree, nodes, label = "Department", filters, setFilters }) {
   if (!Array.isArray(nodes) || nodes.length === 0) return null;
 
   const path = findNodePath(tree, filters?.category);
@@ -40,7 +41,7 @@ export default function DepartmentSection({ tree, nodes, filters, setFilters }) 
   }
 
   return (
-    <nav aria-label="Department">
+    <nav aria-label={label}>
       {back && (
         <button type="button" className="ah-rail-hit" onClick={() => goTo(back.node)} style={{ ...linkButton, marginTop: 4 }}>
           {back.label}

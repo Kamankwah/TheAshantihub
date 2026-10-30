@@ -199,7 +199,7 @@ export default function BrowseRail({
   const sectionBody = (id) => {
     switch (id) {
       case "department":
-        return <DepartmentSection tree={tree} nodes={departmentNodes(tree, kind)} filters={filters} setFilters={setFilters} />;
+        return <DepartmentSection tree={tree} nodes={departmentNodes(tree, kind)} label={sectionLabel(id, kind)} filters={filters} setFilters={setFilters} />;
       case "rating":
         return <RatingSection filters={filters} setFilters={setFilters} />;
       case "price":
@@ -274,10 +274,14 @@ export default function BrowseRail({
             <ul aria-label="Filter sections" style={{ listStyle: "none", margin: 0, padding: "8px 0 0", width: "100%", borderTop: `1px solid ${C.line}`, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
               {sections.map((id) => {
                 const label = sectionLabel(id, kind);
+                // Collapsed, a section with a value carries a dot (and says so), so a tablet that starts collapsed
+                // still shows which filters are narrowing the results.
+                const active = isSectionActive(id, filters);
                 return (
                   <li key={id}>
-                    <button type="button" className="ah-rail-hit ah-rail-icon" onClick={() => expandTo(id)} aria-label={label} title={label} style={iconButton}>
+                    <button type="button" className="ah-rail-hit ah-rail-icon" onClick={() => expandTo(id)} aria-label={active ? `${label}, filter on` : label} title={label} style={{ ...iconButton, position: "relative" }}>
                       <RailIcon name={SECTION_META[id].icon} />
+                      {active && <span className="ah-rail-dot" aria-hidden="true" style={activeDot} />}
                     </button>
                   </li>
                 );
@@ -399,6 +403,12 @@ const iconButton = {
 };
 
 const smallLabel = { display: "block", margin: "0 0 6px", fontSize: 13, fontWeight: 600, color: C.inkDim };
+
+// The collapsed icon's "filter on" mark, ringed in the panel colour so it reads over the icon's strokes.
+const activeDot = {
+  position: "absolute", top: 7, right: 7, width: 8, height: 8, borderRadius: "50%", background: C.gold,
+  boxShadow: `0 0 0 2px ${C.surface}`, pointerEvents: "none",
+};
 
 const visuallyHidden = {
   position: "absolute", width: 1, height: 1, margin: -1, padding: 0, border: 0, overflow: "hidden",

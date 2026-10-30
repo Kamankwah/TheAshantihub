@@ -187,6 +187,23 @@ describe('BrowseRail collapse', () => {
     expect(screen.getByRole('heading', { name: 'Customer reviews' })).toHaveFocus()
   })
 
+  it('a collapsed icon whose section has a value shows a dot and says "filter on"; the others do not', async () => {
+    window.localStorage.setItem(KEY, '1')
+    server.use(json(TREE_URL, TREE))
+    renderRail({ filters: { minRating: 4, category: 'books' } })
+    await waitFor(() => expect(collapsedIcons()).toHaveLength(6))
+    const reviews = screen.getByRole('button', { name: 'Customer reviews, filter on' })
+    expect(reviews).toHaveAttribute('title', 'Customer reviews')
+    const dot = reviews.querySelector('.ah-rail-dot')
+    expect(dot).not.toBeNull()
+    expect(dot).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByRole('button', { name: 'Department, filter on' })).toHaveAttribute('title', 'Department')
+    const price = screen.getByRole('button', { name: 'Price' })
+    expect(price).toHaveAttribute('title', 'Price')
+    expect(price.querySelector('.ah-rail-dot')).toBeNull()
+    expect(collapsedIcons().filter((b) => b.querySelector('.ah-rail-dot'))).toHaveLength(2)
+  })
+
   it('a collapsed icon expands the rail and focuses that section heading', async () => {
     window.localStorage.setItem(KEY, '1')
     server.use(json(TREE_URL, TREE))
@@ -417,6 +434,15 @@ describe('BrowseRail controls', () => {
     expect(screen.getByRole('radio', { name: 'Services' })).toBeChecked()
     rerender({ filters: {} })
     expect(screen.getByRole('radio', { name: 'All' })).toBeChecked()
+  })
+
+  it('the department list is named after its section: Department for goods, Category for services', async () => {
+    server.use(json(TREE_URL, TREE))
+    const { rerender } = renderRail()
+    expect(await screen.findByRole('navigation', { name: 'Department' })).toBeInTheDocument()
+    rerender({ filters: { kind: 'service' } })
+    expect(await screen.findByRole('navigation', { name: 'Category' })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Department' })).not.toBeInTheDocument()
   })
 
   it('Clear all filters calls onClear', () => {
