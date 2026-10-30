@@ -3,9 +3,12 @@
 Safe on live data: a category is deleted only when NOTHING references it. "Referenced" means any reverse relation of
 the historical Category model (walked generically through `_meta.get_fields(include_hidden=True)`, because
 `_meta.related_objects` leaves out `related_name="+"` relations) has a row pointing at it, except `children` (handled by the order of deletion: the department goes only
-once it has no children left) and CategoryVisit (analytics clicks that cascade by design). Whatever is kept is printed
-so an operator can see what survived. If a related model cannot be queried the category is kept. Reverse: noop."""
-from django.db import migrations
+once it has no children left) and CategoryVisit (analytics clicks that cascade by design). A draft or pending
+ListingRevision whose `changes["category"]` holds the category's pk also counts: that is a plain pk in JSON, not a
+foreign key, and approving the edit would fail once the category is gone. Whatever is kept is printed so an operator can
+see what survived. If a related model cannot be queried the category is kept. Reverse: noop."""
+from django.db import migrations, transaction
+from django.db.models import Q
 
 DEPARTMENT_SLUG = "amazon-devices"
 # The five sub-category slugs, written out once: sub_slug("amazon-devices", label) for the labels "Amazon Echo & Alexa",
@@ -41,6 +44,23 @@ def referenced_by(category):
     return found
 
 
+# ListingRevision.DRAFT and ListingRevision.PENDING, written out: a historical model carries no class constants.
+OPEN_REVISION_STATUSES = ["draft", "pending"]
+
+
+def proposed_by_open_revision(apps, category):
+    """True when a draft or pending ListingRevision proposes moving its listing into `category`. revisions._clean_changes
+    stores the pk as a number; a pk written as text is matched too. Cannot look -> True (keep)."""
+    try:
+        ListingRevision = apps.get_model("listings", "ListingRevision")
+        with transaction.atomic():  # a savepoint, so a failed query cannot poison the migration's transaction
+            return ListingRevision.objects.filter(status__in=OPEN_REVISION_STATUSES).filter(
+                Q(changes__category=category.pk) | Q(changes__category=str(category.pk))
+            ).exists()
+    except Exception:
+        return True
+
+
 def remove_amazon_devices(apps, schema_editor):
     Category = apps.get_model("listings", "Category")
     for slug in CHILD_SLUGS + [DEPARTMENT_SLUG]:
@@ -51,6 +71,8 @@ def remove_amazon_devices(apps, schema_editor):
             print(f"Kept category {slug}: it still has sub-categories")
             continue
         used_by = referenced_by(category)
+        if proposed_by_open_revision(apps, category):
+            used_by.append("listings.listingrevision (an open edit proposes it)")
         if used_by:
             print(f"Kept category {slug}: referenced by {', '.join(sorted(set(used_by)))}")
             continue
