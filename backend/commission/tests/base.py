@@ -41,7 +41,7 @@ class CommissionBase(TestCase):
         )
         BusinessOwnerProfile.objects.create(
             business_owner=owner, business_name=f"{name} {self.n}", gps_address=f"AK-039-50{self.n:02d}",
-            business_contact_phone=owner.login_phone, address_verified=True, address_verified_by=self.lead,
+            business_contact_phone=owner.login_phone, lat="6.688500", lng="-1.624400", address_verified=True, address_verified_by=self.lead,
             address_verified_at=timezone.now(),
         )
         return owner

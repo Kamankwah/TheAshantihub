@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from "react-leaflet";
+import { MapContainer, Marker, Popup, Polyline } from "react-leaflet";
+import BaseTileLayers from "./maps/BaseTileLayers.jsx";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { C } from "../theme.js";
@@ -77,10 +78,7 @@ export default function DeliveryRouteMap({ pickups = [], dropoff = null, height 
   return (
     <div>
     <MapContainer center={center} zoom={13} style={{ height, borderRadius: 12 }} scrollWheelZoom={false}>
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+      <BaseTileLayers />
       {pickupPoints.map((p, i) => (
         <Marker key={`pickup-${i}`} position={[p.lat, p.lng]} icon={PICKUP_PIN}>
           <Popup>📦 Pickup: {p.business_name}</Popup>

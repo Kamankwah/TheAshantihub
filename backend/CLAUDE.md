@@ -95,6 +95,42 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   two notices. Partials are named `<export id>-<uuid>.partial`; the reaper deletes only its rows'. A PDF above `PDF_SYNC_ROWS` (200)
   is built by the job, not in the request. WeasyPrint runs with a URL fetcher that refuses every
   URL (report text is user-written). Sudo is required by scope: `exports.reaches_others()`.
+- **Address verification is its own queue (`accounts/address_verification.py`).** `GET address-verification/?status=`
+  (pending default, unknown = pending; KYC-rejected businesses never listed) and `POST address-verification/{id}/decide/`
+  behind `address.verify` (Operations, General Manager, Super Admin; never Support or Scout). It reuses the `address_verified*`
+  fields the KYC gate reads and adds `address_verification_method/_note` and `address_first_verified_at` (never cleared; a new
+  owner pin blanks the decision and method/note via `location_capture.clear_address_decision`). "Verified" needs the owner's
+  own device pin (<= 50 m), the signboard photo and, the first time, a video-call note; a desk check can only mark "wrong".
+  The decision refuses `kyc.is_kyc_submitter` (Super Admin not exempt) with 403 `own_registration`; each queue row's
+  `can_decide`/`blocked_reason` calls the same function. `record()` last: `address-verified` / `address-marked-wrong`
+  (and the `address-*` capture events) refresh `address-verification` and `staff-badges` through `QUEUE_INVALIDATIONS`.
+  A decided address is final: deciding it again is 409 `already_decided`, and it returns to the queue only through a new
+  owner pin. Per method: `video_call` = owner device pin (not manual, <= 50 m) + signboard photo + the call outcome as the
+  note; `gps_capture` = the same without the call, only when `address_first_verified_at` is set (else 400
+  `video_call_required`); `scout` = a visited `ScoutAssignment` with `address_confirmed=True`; `desk` can only mark "wrong"
+  (400 `desk_cannot_verify` for verified). "Verified" always needs a stored pin (400 `pin_required`). **The old
+  `kyc/<id>/address-verify/` door still bypasses the rest of this evidence ladder** (known; the owner decides whether to
+  retire its toggle) but refuses `verified: true` without a pin (400 `pin_required`), and `ScoutVerifyView` stamps method
+  `scout` and blanks the note, so a decision never shows the previous one's reason. `decide` takes the row's `pin_set_at`;
+  a different stored `location_set_at` is 409 `pin_changed` (absent = old client, unchecked). A "wrong" decision still sets `address_verified_at`, so the KYC gate counts the address as decided.
+- **The shop location link is a bearer token (`accounts/location_capture.py`).** Same house rules as the confirmation link:
+  `secrets.token_urlsafe(32)` stored only as a SHA-256 hash, URL `<FRONTEND_BASE_URL>/share-location#token=<raw>` (a
+  fragment, out of request logs), single use, expires in 48 hours, a newer link revokes the older live ones, at most five
+  per business per Accra day (429 `too_many_links`), texted through `otp.senders.send_sms` outside any transaction and
+  never to a staff member's number. The public endpoints (`location-links/preview/`, `location-links/capture/`) are
+  POST-only with the token in the body, unauthenticated, throttled, `activity_exempt`, `Referrer-Policy: no-referrer`,
+  `Cache-Control: no-store`; refusals are 400 `invalid` and 410 `used`/`expired`/`revoked`/`closed` (KYC rejected). A fix
+  that fails the rules does not use the link up. **Unlike the confirmation link, the staff creation response
+  (`POST location-links/`) carries the URL** (Director ruling 5: staff may copy it); no other response, event or notice
+  carries the token, hash or a `token=` URL, and `accounts/tests/test_location_capture.py` walks the GET endpoints to
+  guard that: extend its list when you add one near a capture.
+- **Every pin capture goes through one set of rules (`location_capture`, link and `POST me/location/` alike).** Accuracy
+  <= 100 m (stored ceil'd; a laptop's IP-based fix is refused, never accepted), the Ashanti box
+  (`gps.ASHANTI_LAT/ASHANTI_LNG`, generous), KYC not rejected. A capture sets `location_set_by="owner"`, clears
+  `location_set_by_staff` and any address decision (a new pin is new evidence), and records `address-location-captured`
+  (`after` = accuracy and source only). The owner's own `me/location/` capture is refused once the address is verified
+  **and has a pin** (409 `address_verified`; a pinless "verified" does not lock, and a capture clears it); a staff-sent link
+  still works, which is how a verified address is reopened. `MyLocationView` POST is throttled (`owner_location`, 10/min).
 - **Background jobs and live updates run in-process under `manage.py test`** (eager Celery,
   in-memory channel layer, local-memory `realtime` cache). On-commit work needs
   `captureOnCommitCallbacks(execute=True)` in a `TestCase`; consumer tests that read the database
@@ -147,6 +183,9 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   who only confirmed it is not). A correction rewrites `gps_address` and clears the address
   decision, so someone else re-checks it - a lead through address-verify or another scout's later
   visit; `GET kyc/{id}/` and the review sheet show it as `address_correction`.
+  `kyc.pin_missing()` (no stored lat/lng) comes first: either door refuses with 400 `pin_required` before it looks at the
+  address decision. Whoever last set the map pin (`BusinessOwnerProfile.location_set_by_staff`: the registrar, or the scout
+  whose `business.update` moved it; an owner capture clears it) is a submitter too.
   `kyc.address_decision_missing()` makes every business (a missing profile counts) wait for the
   Ghana Post address decision before KYC approval through either door; the Ghana Card, certificate
   and TIN are optional and never gate it. A
@@ -504,6 +543,10 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   staff-only `listings/sponsored/` Marketing list; never swap their permissions.
 
 ## Test-fixture gotcha
+
+**KYC approval needs a map pin.** `kyc.approve_owner` (both doors) answers 400 `pin_required` before it looks at the
+address decision, so any fixture that approves KYC must give the profile `lat`/`lng` (a pin is not weakened away in tests;
+the gate stays). Seeded staging businesses have no pins, so an approval there answers `pin_required` until a pin is captured.
 
 **Reviews are pre-moderated.** A new `Review` lands in `pending` and is invisible to the public
 list view and to the `avg_rating`/`review_count` annotations, which filter on

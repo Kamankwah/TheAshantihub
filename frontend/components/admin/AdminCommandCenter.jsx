@@ -30,6 +30,7 @@ import GrowthFunnelPanel from "./panels/GrowthFunnelPanel.jsx";
 import ReportsHubPanel from "./panels/ReportsHubPanel.jsx";
 import ScheduledExportsPanel from "./panels/ScheduledExportsPanel.jsx";
 import KYCQueuePanel from "./panels/KYCQueuePanel.jsx";
+import AddressVerificationPanel from "./panels/AddressVerificationPanel.jsx";
 import CatalogueQueuePanel from "./panels/CatalogueQueuePanel.jsx";
 import ListingsModerationPanel from "./panels/ListingsModerationPanel.jsx";
 import HeroApprovalPanel from "./panels/HeroApprovalPanel.jsx";
@@ -496,6 +497,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
               ? <OperationsOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} onOpenBusiness={openBusiness} />
               : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
           {activeTab === "kyc" && <KYCQueuePanel auth={auth} />}
+          {activeTab === "address-verification" && <AddressVerificationPanel />}
           {activeTab === "catalogue" && <CatalogueQueuePanel />}
           {activeTab === "moderation" && (role === "super_admin" || role === "general_manager" ? <SaListingsPanel auth={auth} onOpenBusiness={openBusiness} /> : <ListingsModerationPanel auth={auth} />)}
           {activeTab === "hero" && <HeroApprovalPanel auth={auth} />}

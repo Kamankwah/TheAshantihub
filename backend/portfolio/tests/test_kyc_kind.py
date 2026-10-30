@@ -42,6 +42,7 @@ class KycKindTests(TestCase):
         )
         self.profile = BusinessOwnerProfile.objects.create(
             business_owner=self.owner, business_name="Adwoa Fabrics", gps_address="AK-039-5028",
+            lat="6.688500", lng="-1.624400",
             business_contact_phone="+233244123118", address_verified=True, address_verified_by=self.lead,
             address_verified_at=timezone.now(),
         )

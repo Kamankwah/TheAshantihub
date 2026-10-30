@@ -34,6 +34,8 @@ ALREADY_DECIDED = "This business has already been decided."
 SELF_DEALING_HOLD = "Decide the self-dealing case in Fraud cases first."
 REASON_REQUIRED = "Write the reason the owner will see."
 ADDRESS_FIRST = "Record the Ghana Post address decision first."
+PIN_REQUIRED = "Add the shop's map pin first: send the owner a location link from Address verification."
+PIN_REQUIRED_CODE = "pin_required"
 CONFIRMATION_MISSING = "The owner has not confirmed this registration yet."
 CONFIRMATION_MISSING_CODE = "confirmation_missing"
 # Every KYC door's refusal of a submitter (is_kyc_submitter). The approvals
@@ -65,6 +67,8 @@ def is_kyc_submitter(owner, staff):
     edited the owner's details directly (a business_owner.details_changed
     event). They never decide it, nor record its address decision."""
     if owner.registered_by_id == staff.pk or owner.account_manager_id == staff.pk:
+        return True
+    if BusinessOwnerProfile.objects.filter(business_owner=owner, location_set_by_staff=staff).exists():
         return True
     if ApprovalRequest.objects.filter(
         kind__in=SUBMITTER_KINDS, target_type=TARGET_TYPE, target_id=str(owner.pk), maker=staff,
@@ -116,6 +120,13 @@ def address_decision_missing(owner):
     return profile is None or profile.address_verified_at is None
 
 
+def pin_missing(owner):
+    """The shop's map pin (stored lat and lng) is needed before KYC approval, on either door, ahead of the address
+    decision: a decision about an address nobody can find on a map is not one. The pin is a number, so 0 is a pin."""
+    profile = getattr(owner, "profile", None)
+    return profile is None or profile.lat is None or profile.lng is None
+
+
 def confirmation_missing(owner):
     """A business a staff member registered cannot be verified until its owner confirms the registration from the
     texted link (portfolio.confirmations). Either door refuses it with 409 `confirmation_missing`. An online owner, or
@@ -163,6 +174,8 @@ def approve_owner(owner_id, staff, *, http_request=None, from_approval=None):
         owner = _locked_owner(owner_id, staff)
         if owner.kyc_status != BusinessOwner.PENDING:
             raise KycError(ALREADY_DECIDED)
+        if pin_missing(owner):
+            raise KycError(PIN_REQUIRED, code=PIN_REQUIRED_CODE)
         if address_decision_missing(owner):
             raise KycError(ADDRESS_FIRST)
         if self_dealing_open(owner):

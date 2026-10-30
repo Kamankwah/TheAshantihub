@@ -38,7 +38,7 @@ class Base(TestCase):
             registration_channel=BusinessOwner.SCOUT, registered_by=self.scout, account_manager=self.scout, **extra,
         )
         BusinessOwnerProfile.objects.create(
-            business_owner=owner, business_name=business, gps_address="AK-039-5028",
+            business_owner=owner, business_name=business, gps_address="AK-039-5028", lat="6.688500", lng="-1.624400",
             address_verified=True, address_verified_by=self.lead, address_verified_at=timezone.now(),
         )
         return owner

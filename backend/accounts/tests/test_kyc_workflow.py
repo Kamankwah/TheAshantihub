@@ -21,7 +21,7 @@ class KYCWorkflowTests(TestCase):
         BusinessOwnerProfile.objects.create(
             business_owner=self.owner,
             ghana_card_number="GHA-999888777-6",
-            gps_address="AK-039-5030",
+            gps_address="AK-039-5030", lat="6.688500", lng="-1.624400",
             address_verified=True, address_verified_by=self.admin, address_verified_at=timezone.now(),
             business_contact_phone="+233207778899",
             is_formal=False,

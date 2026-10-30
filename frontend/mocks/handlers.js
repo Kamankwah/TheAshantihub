@@ -865,6 +865,10 @@ export const handlers = [
   // Subscription plans — default empty list (useSubscriptionPlans fires on full-app renders).
   http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
+  // The owner's shop pin and address check — no pin yet by default (the dashboard shows its "Add your shop location" card).
+  http.get('http://localhost:8000/api/accounts/me/location/', () => HttpResponse.json({
+    pin: null, address_status: 'not_verified', wrong_reason: null, can_capture: true,
+  })),
   // What an account manager changed for the owner — nothing by default.
   http.get('http://localhost:8000/api/portfolio/owner/changes/', () => HttpResponse.json([])),
   http.post('http://localhost:8000/api/portfolio/owner/changes/:id/undo/', ({ params }) => HttpResponse.json({

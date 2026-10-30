@@ -73,6 +73,15 @@ monolith holding most components, with extractions living in `components/`,
   `vi.mock`-stubbed globally in `test/setup.js`; their real behaviour is only ever verified
   manually in a browser, never in Vitest. Points without coordinates are skipped, never faked at
   `0,0`.
+- **Map tiles come from one place.** Every Leaflet map renders `components/maps/BaseTileLayers.jsx` (never a raw
+  `TileLayer`); `lib/mapTiles.js` `tileLayers(provider)` picks the source. Build env `VITE_MAP_TILES_PROVIDER`
+  (`mapbox` | `osm`, default `osm`) and `VITE_MAPBOX_TOKEN` (a public, URL-restricted Mapbox token, never a secret
+  one) come from the build environment (Vercel project env for staging, the production server's build env), never a
+  committed value or `frontend/.env`. Unset or no token falls back to today's OSM street tiles with no satellite
+  layer and no Streets/Satellite switch. `noMapboxTokenInSource.test.js` fails on a literal token. Reverse
+  geocoding is `lib/reverseGeocode.js` (Nominatim, a suggestion for an editable field; never store its text, never
+  point it at Mapbox). A map wrapper that holds the Streets/Satellite switch is `role="group"` with an `aria-label`,
+  never `role="img"` (an image role hides the radios from assistive tech; `MapWrappersA11y.test.jsx` guards it).
 - **Run Vitest from this directory** (`cd frontend && npx vitest run`). From the repo root it
   globs stale `.worktrees/**` copies that lack `node_modules` and reports a spurious mass
   failure. A second mass-failure shape — hundreds of `[MSW] intercepted a request without a
@@ -128,6 +137,14 @@ monolith holding most components, with extractions living in `components/`,
   calls the public endpoints through `apiPostPublic` (no session, no view-as, never ends a stored session), all POST.
   The General Manager menu has no Register, Prospects or Client listings (a checker, not a maker).
   The preview query key is constant (the token rides only in the closure), with `gcTime: 0`.
+- **`/share-location` is a public page too** (`ShareLocationPage`, the owner's texted "share my shop location" link). Token from
+  the URL fragment only (no `?token=`), stripped at once, kept in state only; preview and capture are POSTs through
+  `apiPostPublic` (`hooks/useLocationLink.js`). It reuses `useDevicePosition` (its `errorKind` names why a fix failed, so the
+  page can word "unsupported" without the scout's "place the pin by hand"). A fix over 100 m is refused locally with nothing
+  sent, and one between 50 and 100 m (`VERIFY_ACCURACY_M`) is held back with a warning ("Try again" primary, "Save this one
+  anyway" posts it; `ShopLocationCard` does the same) because the link is single use and staff need 50 m to verify. It shows
+  no coordinates, only the accuracy, and never a default pin. `AddressPinMap` keys its `MapContainer` by the pin (react-leaflet
+  reads `center` once).
 - **Prospects work for Operations and Super Admin too.** They list every scout's (`?scout=<id>` narrows; the card names
   the scout), the add sheet needs a scout picker for non-scouts, and the header shows the listings-live figure only when
   the server sends it (a one-scout list). `AskOwnerAgain` offers the registration re-ask only when

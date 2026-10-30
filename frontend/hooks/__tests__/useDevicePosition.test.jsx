@@ -70,4 +70,22 @@ describe('useDevicePosition', () => {
     act(() => result.current.locate())
     expect(result.current.error).toMatch(/can't share its location\. Place the pin by hand instead\./)
   })
+
+  it('names the kind of error beside its message, and clears it on the next try', () => {
+    const answers = [{ code: 1 }, { code: 3 }, { code: 2 }]
+    stubGeolocation(vi.fn((ok, fail) => (answers.length ? fail(answers.shift()) : ok(fix(12)))))
+    const { result } = renderHook(() => useDevicePosition())
+    expect(result.current.errorKind).toBeNull()
+    for (const kind of ['blocked', 'slow', 'unavailable']) {
+      act(() => result.current.locate())
+      expect(result.current.errorKind).toBe(kind)
+    }
+    act(() => result.current.locate())
+    expect(result.current.errorKind).toBeNull()
+    expect(result.current.error).toBeNull()
+    stubGeolocation(null)
+    const none = renderHook(() => useDevicePosition())
+    act(() => none.result.current.locate())
+    expect(none.result.current.errorKind).toBe('unsupported')
+  })
 })

@@ -133,6 +133,7 @@ class StaffBadgesView(APIView):
 
         # Local imports keep this app's import surface small and avoid any
         # load-order coupling to the queue-owning apps.
+        from accounts import address_verification
         from approvals.services import waiting_for
         from billing.models import SubscriptionPlan
         from catalogue.models import CatalogueAttachRequest
@@ -264,6 +265,9 @@ class StaffBadgesView(APIView):
                 "listings": count(
                     "listings.moderate",
                     Listing.objects.filter(status=Listing.PENDING_REVIEW),
+                ),
+                "address_verification": (
+                    address_verification.pending_count() if "address.verify" in held else 0
                 ),
                 "catalogue": count(
                     "listings.moderate",

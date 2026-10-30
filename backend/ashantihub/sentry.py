@@ -14,6 +14,7 @@ EXTRA_DENYLIST = [
     # Owner confirmation links (portfolio.confirmations): frame locals that hold the texted link (`confirm_url`, and
     # `tail` of the text body, which ends with it). The raw token is `raw` and the body is `body`, both listed.
     "confirm_url", "tail",
+    # Shop-location links (accounts.location_capture) keep the token only in `raw` and the text only in `body`, both listed.
     # One-time codes (otp app): request bodies and the step-up header.
     "code", "mfa_token", "recovery_code", "device_token", "step_up_token", "otpauth_uri",
     "x-step-up-token", "x_step_up_token",
