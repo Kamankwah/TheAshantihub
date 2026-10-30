@@ -52,9 +52,10 @@ describe('StorefrontHome', () => {
     expect(screen.queryByRole('button', { name: 'Notify me' })).not.toBeInTheDocument()
     expect(before(screen.getByRole('search'), slider)).toBe(true)
     expect(before(slider, flash)).toBe(true)
-    expect(before(flash, deals)).toBe(true)
-    expect(before(deals, visited)).toBe(true)
-    expect(before(visited, cta)).toBe(true)
+    // The departments come before the products (deals, new arrivals).
+    expect(before(flash, visited)).toBe(true)
+    expect(before(visited, deals)).toBe(true)
+    expect(before(deals, cta)).toBe(true)
   })
 
   it('no_contact_details_anywhere', async () => {
