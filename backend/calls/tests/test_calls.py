@@ -252,10 +252,15 @@ class ManagerLogsProspectCallTests(TestCase):
         self.assertEqual({(c.related_type, c.related_id, c.counterpart_name) for c in calls},
                          {("prospect", str(self.prospect.pk), "Ohemaa Waakye")})
 
-    def test_a_scout_cannot_log_on_another_scouts_prospect_and_the_gm_cannot_at_all(self):
+    def test_a_scout_cannot_log_on_another_scouts_prospect(self):
         self.assertEqual(self.log(self.other).status_code, 400)
-        self.assertEqual(self.log(self.gm, purpose="other").status_code, 400)
         self.assertFalse(CallLog.objects.exists())
+
+    def test_the_gm_may_log_on_any_scouts_prospect_since_2026_10_30(self):
+        # The GM holds businesses.register and portfolio.manage now, so it works every scout's prospects like Operations.
+        response = self.log(self.gm, purpose="other")
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertTrue(CallLog.objects.exists())
 
     def test_a_registered_prospect_still_refuses_a_manager(self):
         from field.models import Prospect

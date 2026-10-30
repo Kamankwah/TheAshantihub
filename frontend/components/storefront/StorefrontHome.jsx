@@ -10,8 +10,8 @@ import { BODY_FONT } from "./storefrontType.js";
 
 // The marketplace home at "/". Order, top to bottom: the countdown takeover
 // (only before opening), the header (`header`, App's StorefrontHeader — it
-// replaces the Navbar here), then the hero slider, the flash strip, today's
-// deals, new arrivals (the newest products), the most visited categories and the call-to-action block; `children`
+// replaces the Navbar here), then the hero slider, the flash strip, the departments, today's
+// deals, new arrivals (the newest products) and the call-to-action block; `children`
 // follow for anything App adds later. Each section owns its feed and renders
 // nothing when the feed is empty or failing, so an empty marketplace still
 // shows the header and the call to action rather than a blank page — never
@@ -27,9 +27,9 @@ export default function StorefrontHome({ header, user, onNavigate, onOpenListing
       <main>
         <HeroSlider onNavigate={onNavigate} />
         <FlashStrip onNavigate={onNavigate} />
+        <MostVisitedCategories onNavigate={onNavigate} />
         <DealsRow onOpen={onOpenListing} />
         <NewArrivalsRow onOpen={onOpenListing} />
-        <MostVisitedCategories onNavigate={onNavigate} />
         <CtaBlock user={user} onSignIn={onSignIn} onSell={onSell} />
         {children}
       </main>

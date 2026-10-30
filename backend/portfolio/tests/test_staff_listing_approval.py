@@ -403,5 +403,5 @@ class WaitForKycTests(Base):
         draft = self.confirmed()
         self.as_staff(self.other_scout)
         self.assertEqual(self.call("post", self.url(tail=f"{draft.pk}/submit/")).status_code, 404)
-        self.as_staff(self.gm)
+        self.as_staff(self.support)
         self.assertEqual(self.call("post", self.url(tail=f"{draft.pk}/submit/")).status_code, 403)

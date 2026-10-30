@@ -72,7 +72,7 @@ export const NAV_ITEMS = [
   { id: "register-business", icon: "➕", label: "Register a business", show: (auth) => auth.hasPermission("businesses.register") },
   // Drafts a product, service, event or stay for a client business, to be confirmed by the owner's text. The makers only
   // (scout, Operations, Super Admin): the General Manager is a checker and never holds listings.stage.
-  { id: "client-listings", icon: "🛍️", label: "Client listings", show: (auth) => ["scout", "operations", "super_admin"].includes(auth.user?.role) && auth.hasPermission("listings.stage") },
+  { id: "client-listings", icon: "🛍️", label: "Client listings", show: (auth) => ["scout", "operations", "super_admin", "general_manager"].includes(auth.user?.role) && auth.hasPermission("listings.stage") },
   { id: "portfolio", icon: "🏪", label: "Portfolio", show: (auth) => auth.hasPermission("businesses.manage_portfolio") },
   { id: "all-portfolios", icon: "🗂️", label: "All portfolios", show: (auth) => auth.hasPermission("portfolio.manage") },
   { id: "at-risk", icon: "⚠️", label: "At risk", show: (auth) => auth.hasPermission("portfolio.manage") },
@@ -268,6 +268,7 @@ const ROLE_MENUS = {
     ["home", "Home", ["approvals"]],
     ["people", "People", ["my-team", "leave"]],
     ["marketplace", "Marketplace", ["all-portfolios", "users", "kyc", "moderation", "catalogue", "delivery", "events-moderation", "hero"]],
+    ["listing-for-clients", "Listing for clients", ["prospects", "register-business", "client-listings"]],
     ["money", "Money (read only)", ["transactions", "commissions"]],
     ["insights", "Insights", ["analytics", "team-reports"]],
     ["security-audit", "Security & audit", ["activity", "fraud-cases", "security"]],

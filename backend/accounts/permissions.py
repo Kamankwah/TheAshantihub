@@ -104,12 +104,12 @@ class RequiresSudo(BasePermission):
 
 def can_stage_for(staff, owner):
     """Whether `staff` may register, photograph and draft listings for the business `owner` on its behalf (plan M3).
-    Needs listings.stage (the General Manager never holds it). A scout acts only for a business they manage;
+    Needs listings.stage (the General Manager holds it since 2026-10-30, and acts like Operations). A scout acts only for a business they manage;
     Operations and Super Admin act for any business. This is a WRITE rule: `sees_every_team` is for reads."""
     if not isinstance(staff, StaffUser):
         return False
     perms = staff.effective_permission_codenames()
-    if "listings.stage" not in perms or staff.role.name == Role.GENERAL_MANAGER:
+    if "listings.stage" not in perms:
         return False
     if owner.account_manager_id == staff.pk:
         return True
