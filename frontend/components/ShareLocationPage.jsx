@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { captureLocation, useLocationLinkPreview } from "../hooks/useLocationLink.js";
 import { useDevicePosition } from "../hooks/useDevicePosition.js";
+import { MAX_ACCURACY_M, fieldMessage, tooCoarseMessage } from "../lib/locationFix.js";
 import { C, tint } from "../theme.js";
 
 // ─── /share-location#token=… ─────────────────────────────────────────────────
@@ -14,9 +15,6 @@ import { C, tint } from "../theme.js";
 export function readLocationToken(location = window.location) {
   return new URLSearchParams((location.hash || "").replace(/^#/, "")).get("token") || "";
 }
-
-// The most uncertainty AshantiHub accepts (metres). The server enforces the same rule; this only saves a round trip.
-const MAX_ACCURACY_M = 100;
 
 const MESSAGES = {
   invalid: "This link isn't valid. Open the whole link from the text message, or ask AshantiHub for a new one.",
@@ -41,17 +39,6 @@ function refusalOf(error) {
   if (error.status === 429) return "throttled";
   if (error.status === 400 && !fieldMessage(error)) return "invalid";
   return null;
-}
-
-// A field-keyed 400 ({accuracy_m: ["..."]} or {lat: ["..."]}): the server's own sentence, shown as it is.
-function fieldMessage(error) {
-  const body = error?.body;
-  if (error?.status !== 400 || !body || typeof body !== "object" || body.code) return "";
-  for (const key of ["accuracy_m", "lat", "lng"]) {
-    const value = Array.isArray(body[key]) ? body[key][0] : body[key];
-    if (typeof value === "string" && value) return value;
-  }
-  return "";
 }
 
 const pageStyle = { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.canvas, padding: 16, boxSizing: "border-box" };
@@ -162,7 +149,7 @@ export default function ShareLocationPage() {
       action = (
         <>
           <div role="alert" style={noticeStyle(C.kente1)}>
-            Your phone's location is only accurate to ±{position.accuracy} m. We need {MAX_ACCURACY_M} m or better: step outside or near a window and try again.
+            {tooCoarseMessage(position.accuracy)}
           </div>
           {tryAgain}
         </>
