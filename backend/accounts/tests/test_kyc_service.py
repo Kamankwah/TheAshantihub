@@ -30,6 +30,8 @@ def make_business(*, name="Adwoa Fabrics", owner_name="Adwoa Mensah", phone="+23
         registration_channel=BusinessOwner.SCOUT if scout else BusinessOwner.SELF,
         registered_by=scout, account_manager=scout,
     )
+    profile_fields.setdefault("lat", "6.688500")  # KYC approval needs the shop's map pin (kyc.pin_missing)
+    profile_fields.setdefault("lng", "-1.624400")
     BusinessOwnerProfile.objects.create(
         business_owner=owner, business_name=name, gps_address="AK-039-5028", business_contact_phone=phone,
         address_verified=address_decided_by is not None, address_verified_by=address_decided_by,

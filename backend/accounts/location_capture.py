@@ -104,8 +104,10 @@ def validated_fix(data):
 
 def clear_address_decision(profile):
     """A new pin is new evidence: any address decision (verified or marked wrong) is cleared so the business returns to
-    the verification queue. `address_first_verified_at` is never cleared. (Task 2 adds the method and note here.)"""
+    the verification queue: the decision, who made it, when, and how and why (method and note). `address_first_verified_at`
+    is never cleared: it records that a video call once happened, so a later verification may rest on the fresh pin alone."""
     profile.address_verified, profile.address_verified_by, profile.address_verified_at = False, None, None
+    profile.address_verification_method, profile.address_verification_note = "", ""
 
 
 def _apply_fix(owner, fix, source, now, row=None, request=None):
@@ -234,7 +236,7 @@ def capture_with_link(raw, data, request=None):
 
 # --- the owner's own capture ----------------------------------------------------------------------------------------
 
-def _status(profile):
+def address_status(profile):
     if profile is None or profile.address_verified_at is None:
         return "not_verified"
     return "verified" if profile.address_verified else "wrong"
@@ -245,7 +247,7 @@ def own_state(owner):
     share a new fix. The wrong-reason is the staff note, shown only while the address is marked wrong."""
     owner = BusinessOwner.objects.select_related("profile").get(pk=owner.pk)
     profile = getattr(owner, "profile", None)
-    status = _status(profile)
+    status = address_status(profile)
     pin = None
     if profile is not None and profile.lat is not None and profile.lng is not None:
         pin = {
@@ -253,7 +255,7 @@ def own_state(owner):
             "set_by": profile.location_set_by or None, "set_at": profile.location_set_at,
             "is_manual": profile.location_is_manual,
         }
-    note = getattr(profile, "address_verification_note", "") if status == "wrong" else ""
+    note = profile.address_verification_note if status == "wrong" else ""
     return {
         "pin": pin,
         "address_status": status,
@@ -268,7 +270,7 @@ def capture_for_owner(owner, data, request=None):
     with transaction.atomic():
         locked = BusinessOwner.objects.select_for_update().get(pk=owner.pk)  # 1. the owner
         profile = BusinessOwnerProfile.objects.select_for_update().filter(business_owner=locked).first()
-        if _status(profile) == "verified":
+        if address_status(profile) == "verified":
             raise ClaimError(VERIFIED, code="address_verified", status_code=409)
         if locked.kyc_status == BusinessOwner.REJECTED:
             raise ClaimError(KYC_REJECTED_OWN, code="kyc_rejected", status_code=409)

@@ -6,7 +6,7 @@ from accounts.testing import make_staff
 
 # Staff phase 2 (spec S12): who holds each new permission besides Super Admin.
 PHASE2_GRANTS = {
-    "businesses.register": {"scout", "operations"},
+    "businesses.register": {"scout", "operations", "general_manager"},  # the GM since 75bfd9d0 (owner ruling 2026-10-30)
     "businesses.manage_portfolio": {"scout"},
     "portfolio.manage": {"operations", "general_manager"},
     "targets.manage": {"operations", "general_manager"},
@@ -18,6 +18,8 @@ PHASE2_GRANTS = {
     "commission.policy": {"accountant"},
     "fraud.manage": {"operations", "general_manager"},
     "fraud.flag": {"support", "operations", "general_manager"},
+    # Shop location and address verification (migration 0072): never Support or Scout.
+    "address.verify": {"operations", "general_manager"},
 }
 
 

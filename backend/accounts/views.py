@@ -672,7 +672,12 @@ class KYCAddressVerifyView(APIView):
         profile.address_verified = verified
         profile.address_verified_by = request.user
         profile.address_verified_at = timezone.now()
-        profile.save(update_fields=["address_verified", "address_verified_by", "address_verified_at"])
+        # This door records no method or reason; a stale one from an earlier decision must not be read as this one's.
+        profile.address_verification_method, profile.address_verification_note = "", ""
+        profile.save(update_fields=[
+            "address_verified", "address_verified_by", "address_verified_at",
+            "address_verification_method", "address_verification_note",
+        ])
         return Response({
             "id": owner.id,
             "address_verified": profile.address_verified,

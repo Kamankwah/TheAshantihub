@@ -95,6 +95,15 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   two notices. Partials are named `<export id>-<uuid>.partial`; the reaper deletes only its rows'. A PDF above `PDF_SYNC_ROWS` (200)
   is built by the job, not in the request. WeasyPrint runs with a URL fetcher that refuses every
   URL (report text is user-written). Sudo is required by scope: `exports.reaches_others()`.
+- **Address verification is its own queue (`accounts/address_verification.py`).** `GET address-verification/?status=`
+  (pending default, unknown = pending; KYC-rejected businesses never listed) and `POST address-verification/{id}/decide/`
+  behind `address.verify` (Operations, General Manager, Super Admin; never Support or Scout). It reuses the `address_verified*`
+  fields the KYC gate reads and adds `address_verification_method/_note` and `address_first_verified_at` (never cleared; a new
+  owner pin blanks the decision and method/note via `location_capture.clear_address_decision`). "Verified" needs the owner's
+  own device pin (<= 50 m), the signboard photo and, the first time, a video-call note; a desk check can only mark "wrong".
+  The decision refuses `kyc.is_kyc_submitter` (Super Admin not exempt) with 403 `own_registration`; each queue row's
+  `can_decide`/`blocked_reason` calls the same function. `record()` last: `address-verified` / `address-marked-wrong`
+  (and Task 1's `address-*` events) refresh `address-verification` and `staff-badges` through `QUEUE_INVALIDATIONS`.
 - **Background jobs and live updates run in-process under `manage.py test`** (eager Celery,
   in-memory channel layer, local-memory `realtime` cache). On-commit work needs
   `captureOnCommitCallbacks(execute=True)` in a `TestCase`; consumer tests that read the database
@@ -147,6 +156,9 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   who only confirmed it is not). A correction rewrites `gps_address` and clears the address
   decision, so someone else re-checks it - a lead through address-verify or another scout's later
   visit; `GET kyc/{id}/` and the review sheet show it as `address_correction`.
+  `kyc.pin_missing()` (no stored lat/lng) comes first: either door refuses with 400 `pin_required` before it looks at the
+  address decision. Whoever last set the map pin (`BusinessOwnerProfile.location_set_by_staff`: the registrar, or the scout
+  whose `business.update` moved it; an owner capture clears it) is a submitter too.
   `kyc.address_decision_missing()` makes every business (a missing profile counts) wait for the
   Ghana Post address decision before KYC approval through either door; the Ghana Card, certificate
   and TIN are optional and never gate it. A

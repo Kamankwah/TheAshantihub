@@ -9,11 +9,14 @@ from accounts.kyc import (
     ADDRESS_FIRST,
     CONFIRMATION_MISSING_CODE,
     KYC_KIND,
+    PIN_REQUIRED,
+    PIN_REQUIRED_CODE,
     SELF_DEALING_HOLD,
     KycError,
     approve_owner,
     confirmation_missing,
     confirmation_missing_message,
+    pin_missing,
     self_dealing_open,
 )
 from accounts.models import BusinessOwner, BusinessOwnerProfile
@@ -53,6 +56,12 @@ class ConfirmationMissing(ApprovalError):
     code = CONFIRMATION_MISSING_CODE
 
 
+class PinRequired(ApprovalError):
+    """The business has no map pin: 400 with `code: pin_required`."""
+
+    code = PIN_REQUIRED_CODE
+
+
 def _profile(owner_id):
     return BusinessOwnerProfile.objects.filter(business_owner_id=owner_id).first()
 
@@ -66,6 +75,8 @@ def _kyc_validate(request):
     owner = BusinessOwner.objects.get(pk=request.target_id)
     if owner.kyc_status != BusinessOwner.PENDING:
         raise ApprovalError(NOT_WAITING)
+    if pin_missing(owner):
+        raise PinRequired(PIN_REQUIRED)
     profile = _profile(owner.pk)
     if profile is None or profile.address_verified_at is None:
         raise ApprovalError(ADDRESS_FIRST)
@@ -83,6 +94,8 @@ def _kyc_apply(request):
     except KycError as exc:
         if exc.code == CONFIRMATION_MISSING_CODE:
             raise ConfirmationMissing(exc.message) from exc
+        if exc.code == PIN_REQUIRED_CODE:
+            raise PinRequired(exc.message) from exc
         raise ApprovalError(exc.message) from exc
 
 

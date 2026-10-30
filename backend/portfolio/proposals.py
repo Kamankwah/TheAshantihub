@@ -597,10 +597,12 @@ def apply_update(approval):
         result = {
             "location_set_by_before": profile.location_set_by,
             "location_set_at_before": profile.location_set_at.isoformat() if profile.location_set_at else None,
+            "location_set_by_staff_id_before": profile.location_set_by_staff_id,
         }
         profile.location_set_by = "scout"
         profile.location_set_at = now
-        profile_fields += ["location_set_by", "location_set_at"]
+        profile.location_set_by_staff = approval.maker  # the scout who proposed the pin is who last set it
+        profile_fields += ["location_set_by", "location_set_at", "location_set_by_staff"]
     if "gps_address" in fields:
         # The address decision was about the old address; a new one needs its
         # own (a scout business can't be KYC-approved without it). Kept so an

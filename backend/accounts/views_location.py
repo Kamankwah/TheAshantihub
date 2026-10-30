@@ -37,7 +37,11 @@ class SendLocationLinkView(APIView):
 
     def post(self, request):
         raw_id = _body(request).get("business_owner")
-        if isinstance(raw_id, bool) or not isinstance(raw_id, (int, str)) or not str(raw_id).isdigit():
+        # ASCII digits only: "²" and Arabic-Indic digits pass str.isdigit() but int() refuses the first of them.
+        if (
+            isinstance(raw_id, bool) or not isinstance(raw_id, (int, str))
+            or not str(raw_id).isascii() or not str(raw_id).isdigit()
+        ):
             return Response({"business_owner": ["Choose a business."]}, status=400)
         owner = get_object_or_404(BusinessOwner, pk=int(raw_id))
         try:

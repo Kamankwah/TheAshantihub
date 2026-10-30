@@ -32,6 +32,8 @@ QUEUE_INVALIDATIONS = [
     # without an approval.* event (accounts/kyc.py), so scouts' approvals
     # lists refresh from the decision itself.
     (("kyc-approve", "kyc-reject"), ("businesses.manage_portfolio",), ("approvals", "approval", "approval-counts", "approval-stats")),
+    # Address verification: a decision, the owner sharing a location, and staff sending a link (address-*) refresh the queue.
+    (("address-",), ("address.verify",), ("address-verification", "staff-badges")),
     (("moderation-",), ("listings.moderate",), ("moderation-queue", "moderation-stats", "staff-badges")),
     (("hero-moderation-",), ("hero_media.approve",), ("hero-moderation-queue", "staff-badges")),
     (("event-moderation-",), ("event.approve",), ("event-moderation-queue", "event-moderation-detail", "staff-badges")),

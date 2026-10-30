@@ -171,6 +171,7 @@ def _create_business(registrar, values, identity):
                 location_accuracy_m=values.get("location_accuracy_m"),
                 location_set_by="scout" if registrar.role.name == Role.SCOUT else "operations",
                 location_set_at=timezone.now(),
+                location_set_by_staff=registrar,  # whoever placed the pin cannot verify the address (accounts.kyc)
                 location_is_manual=values.get("location_is_manual", False),
                 ghana_card_number=values.get("ghana_card_number"),
                 signboard_photo=values["signboard_photo"],

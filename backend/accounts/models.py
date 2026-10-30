@@ -486,6 +486,17 @@ class BusinessOwnerProfile(models.Model):
         related_name="address_verified_profiles",
     )
     address_verified_at = models.DateTimeField(null=True, blank=True)
+    # How the decision above was made (the Address verification queue: gps_capture | video_call | scout | desk) and the
+    # staff note behind it: the call outcome for a verification, the reason the owner reads for "wrong". Both are blank
+    # while there is no decision and are blanked again when a new pin clears it. `address_first_verified_at` is set by
+    # the first "verified" decision through that queue and never cleared: a later decision may then rest on the owner's
+    # fresh pin and the photo alone (no new video call).
+    ADDRESS_METHOD_CHOICES = [
+        ("gps_capture", "GPS capture"), ("video_call", "Video call"), ("scout", "Scout visit"), ("desk", "Desk check"),
+    ]
+    address_verification_method = models.CharField(max_length=12, blank=True, default="", choices=ADDRESS_METHOD_CHOICES)
+    address_verification_note = models.TextField(blank=True, default="")
+    address_first_verified_at = models.DateTimeField(null=True, blank=True)
 
     # ── Business identity and location (staff phase 2, spec S1) ─────────────
     # There is no Business model: a business is a BusinessOwner plus this

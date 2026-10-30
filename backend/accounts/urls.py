@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import view_as_views, views, views_location
+from . import view_as_views, views, views_address, views_location
 
 urlpatterns = [
     path("me/", views.me, name="accounts-me"),
@@ -12,6 +12,12 @@ urlpatterns = [
     ),
     path(
         "location-links/capture/", views_location.LocationLinkCaptureView.as_view(), name="location-link-capture",
+    ),
+    # Address verification: the staff queue and decision (permission address.verify).
+    path("address-verification/", views_address.AddressVerificationQueueView.as_view(), name="address-verification"),
+    path(
+        "address-verification/<int:pk>/decide/", views_address.AddressVerificationDecideView.as_view(),
+        name="address-verification-decide",
     ),
     path("customers/register/", views.CustomerRegisterView.as_view(), name="customer-register"),
     path("staff/invite/", views.StaffInviteView.as_view(), name="staff-invite"),
