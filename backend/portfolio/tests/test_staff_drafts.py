@@ -86,10 +86,10 @@ class ScopeTests(DraftBase):
         self.as_staff(self.admin)
         self.assertEqual(self.product().status_code, 201)
 
-    def test_general_manager_and_support_get_403_everywhere(self):
+    def test_support_gets_403_everywhere(self):
         self.as_staff(self.lead)
         draft = self.make_draft()
-        for staff in (self.gm, self.support):
+        for staff in (self.support,):
             self.as_staff(staff)
             self.assertEqual(self.product().status_code, 403)
             self.assertEqual(self.call("get", self.url()).status_code, 403)
@@ -99,6 +99,11 @@ class ScopeTests(DraftBase):
             self.assertEqual(self.call("post", self.url(tail=f"{draft.pk}/resend/")).status_code, 403)
             photo = self.client.post(f"/api/portfolio/businesses/{self.owner.pk}/photos/", {"image": jpeg()}, format="multipart")
             self.assertEqual(photo.status_code, 403)
+
+    def test_general_manager_can_stage_since_2026_10_30(self):
+        self.as_staff(self.gm)
+        self.assertEqual(self.product().status_code, 201)
+        self.assertEqual(self.call("get", self.url()).status_code, 200)
 
     def test_operations_can_stage_a_photo_for_any_business(self):
         self.as_staff(self.lead)

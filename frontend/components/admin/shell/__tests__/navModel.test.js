@@ -663,13 +663,14 @@ describe('Ashanti Direct (marketplace plan 2)', () => {
 })
 
 describe('General Manager menu (marketplace M3, Task 0)', () => {
-  // The seeded GM: Operations' permissions minus businesses.register and users.manage, plus the read views.
+  // The seeded GM: Operations' permissions minus users.manage, plus the read views. It holds businesses.register and
+  // listings.stage since 2026-10-30 (the Listing for clients group).
   const GM = [
     'kyc.approve', 'scouts.assign', 'listings.moderate', 'listings.approve_staffed', 'hero_media.approve', 'event.approve', 'reviews.moderate', 'users.view',
     'orders.manage_delivery', 'site_settings.manage', 'zones.manage', 'contact_messages.manage', 'staff.invite_team', 'activity.view_team',
     'calls.log', 'portfolio.manage', 'targets.manage', 'leave.record', 'fraud.manage', 'fraud.flag', 'service_issues.view',
     'approvals.view_all', 'activity.view_all', 'analytics.view', 'calls.view_all', 'calls.view_peers', 'commission.view_all', 'escrow.view', 'fees.view',
-    'wallets.view', 'reports.view_all', 'transactions.report',
+    'wallets.view', 'reports.view_all', 'transactions.report', 'businesses.register', 'listings.stage',
   ]
   const gmAuth = (perms = GM) => ({ user: { role: 'general_manager' }, hasPermission: (c) => perms.includes(c) })
   const idsOf = (auth) => buildNavGroups(auth).flatMap((g) => g.items.map((i) => i.id))
@@ -697,6 +698,7 @@ describe('General Manager menu (marketplace M3, Task 0)', () => {
       ['Home', [['approvals', 'Approvals inbox']]],
       ['People', [['my-team', 'Invite'], ['leave', 'Leave & calendar']]],
       ['Marketplace', [['all-portfolios', 'All portfolios'], ['users', 'Users'], ['kyc', 'KYC Queue'], ['moderation', 'Listings & services'], ['catalogue', 'Product grouping'], ['delivery', 'Delivery Management'], ['events-moderation', 'Events & tickets'], ['hero', 'Hero Approval']]],
+      ['Listing for clients', [['prospects', 'Prospects'], ['register-business', 'Register a business'], ['client-listings', 'Client listings']]],
       ['Money (read only)', [['transactions', 'Transactions Report'], ['commissions', 'Commissions']]],
       ['Insights', [['analytics', 'Analytics'], ['team-reports', 'Team reports']]],
       ['Security & audit', [['activity', 'Staff activity'], ['fraud-cases', 'Fraud cases'], ['security', 'Sign-in & Security']]],
@@ -711,12 +713,11 @@ describe('General Manager menu (marketplace M3, Task 0)', () => {
     expect(ids).not.toContain('commission-policy')
   })
 
-  it('GM menu has no Register, Prospects or Client listings entries', () => {
-    for (const auth of [gmAuth(), { user: { role: 'general_manager' }, hasPermission: () => true }]) {
-      const items = buildNavGroups(auth).flatMap((g) => g.items)
-      for (const gone of ['register-business', 'prospects', 'client-listings']) expect(items.map((i) => i.id)).not.toContain(gone)
-      expect(items.map((i) => i.label)).not.toContain('Client listings')
-    }
+  it('GM menu has Register, Prospects and Client listings in Listing for clients, each on its permission', () => {
+    const groups = buildNavGroups(gmAuth())
+    expect(groups.find((g) => g.label === 'Listing for clients').items.map((i) => i.id)).toEqual(['prospects', 'register-business', 'client-listings'])
+    const without = idsOf(gmAuth(GM.filter((p) => !['businesses.register', 'listings.stage'].includes(p))))
+    for (const gone of ['register-business', 'prospects', 'client-listings']) expect(without).not.toContain(gone)
   })
 
   it('GM menu keeps origin money and delivery items off, even holding every permission', () => {
@@ -759,9 +760,9 @@ describe('listing for clients (marketplace M3)', () => {
     }
   })
 
-  it('keeps the General Manager a checker: no Register, Prospects or Client listings', () => {
+  it('gives the General Manager Register, Prospects and Client listings (2026-10-30), as a maker that cannot decide its own listings', () => {
     const gm = idsFor('general_manager')
-    for (const id of ['register-business', 'prospects', 'client-listings']) expect(gm).not.toContain(id)
+    for (const id of ['register-business', 'prospects', 'client-listings']) expect(gm).toContain(id)
   })
 
   it('does not put Client listings in any other role menu', () => {

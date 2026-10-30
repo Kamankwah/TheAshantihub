@@ -84,6 +84,5 @@ class ListingStagingPermissionSeedTests(TestCase):
         for role in ("operations", "super_admin", "general_manager"):
             self.assertIn("listings.approve_staffed", perms(role), role)
         self.assertNotIn("listings.approve_staffed", perms("scout"))
-        for role in ("scout", "operations", "super_admin"):
+        for role in ("scout", "operations", "super_admin", "general_manager"):  # the GM too, since 2026-10-30
             self.assertIn("listings.stage", perms(role), role)
-        self.assertNotIn("listings.stage", perms("general_manager"))  # the GM checks, it does not make

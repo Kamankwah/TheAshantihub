@@ -20,10 +20,10 @@ class GmSeedTests(TestCase):
         self.assertEqual(dict(Role.NAME_CHOICES)["general_manager"], "General Manager")
         self.assertTrue(Role.objects.filter(name="general_manager").exists())
 
-    def test_gm_holds_operations_desk_work_but_not_client_onboarding(self):
+    def test_gm_holds_operations_desk_work_but_not_money_or_login_rewrites(self):
         gm = perms("general_manager")
         # users.manage would rewrite an owner's phone and email; delivery_promo.approve (0063) and redelivery_fee.manage (0065) are money kinds' pools.
-        makers = {"businesses.register", "users.manage", "listings.stage", "delivery_promo.approve", "redelivery_fee.manage"}
+        makers = {"users.manage", "delivery_promo.approve", "redelivery_fee.manage"}
         # direct.operate (marketplace plan 2) is Operations' alone: the GM is the checker of what Operations makes for Ashanti Direct.
         makers.add("direct.operate")
         self.assertEqual((perms("operations") - makers) - gm, set())
