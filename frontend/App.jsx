@@ -35,7 +35,7 @@ import { useMyTickets } from "./hooks/useMyTickets.js";
 import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
-import { C } from "./theme.js";
+import { C, optionStyle } from "./theme.js";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 import VerifiedMark from "./components/VerifiedMark.jsx";
 import Flag from "./components/Flag.jsx";
@@ -48,7 +48,8 @@ import NotifyStopPage from "./components/storefront/NotifyStopPage.jsx";
 import HeroCarousel from "./components/HeroCarousel.jsx";
 import SiteBanner from "./components/SiteBanner.jsx";
 import FeaturedRow from "./components/FeaturedRow.jsx";
-import Sidebar from "./components/Sidebar.jsx";
+import BrowseRail from "./components/storefront/BrowseRail.jsx";
+import { arrivalPatch } from "./components/storefront/browseRailSections.js";
 import ListingDetailPage from "./components/ListingDetailPage.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
 import ChatIntake from "./components/storefront/ChatIntake.jsx";
@@ -2309,6 +2310,14 @@ function FavDrawerItem({id,onRemove}) {
   </div>;
 }
 
+// ─── Results count (Business and Events headings) ────────────────────────────
+// The server's total (DRF `count`), never the rows loaded so far; null while it is not known, so nothing is shown.
+function resultsCountLabel(count) {
+  return typeof count === "number" ? `${count} result${count === 1 ? "" : "s"}` : null;
+}
+// Secondary text on the C.void band, which is dark in both themes.
+const resultsCountStyle = { color: tint(C.lightGold, "b3"), fontWeight: 400, fontSize: "0.72rem", marginLeft: 6 };
+
 // ─── Listings loading skeleton ────────────────────────────────────────────────
 function ListingsSkeleton() {
   return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
@@ -2538,7 +2547,7 @@ export default function AshantiHub() {
 
   // ── Live marketplace data (categories/zones/listings) ─────────────────────
   // No category/kind selected by default, so the grid opens on ALL published
-  // products AND services (bug fix 1a). Picking a category tab or the sidebar
+  // products AND services (bug fix 1a). Picking a category tab or the browse rail
   // Type filter narrows from there.
   const [filters, setFilters] = useState({});
   // PDP (ListingDetailPage) selection — mirrors the isAdmin/showBizDash-style
@@ -2605,6 +2614,8 @@ export default function AshantiHub() {
     refetch: refetchListings,
   } = useListings(cartTiers ? { ...filters, cartTiers: true } : filters);
   const listings = listingsData ? listingsData.pages.flatMap((page) => page.results) : [];
+  // The results heading's total is the server's `count` (first page), not the rows loaded so far; nothing while loading.
+  const listingsCountLabel = resultsCountLabel(listingsData?.pages?.[0]?.count);
 
   // ── Events tab (docs/BUSINESS_EVENTS_ROADMAP.md Phase 6) ──────────────────
   // Same filters-state/debounced-search/PDP-swap conventions as the Business
@@ -2635,13 +2646,16 @@ export default function AshantiHub() {
   // The marketplace home's header search and department links land on the
   // browse pages with the choice in the URL: /business?category=<slug>&q=<text>
   // and /events?category=<slug>. Read once per arrival into the page's own
-  // filter state (the URL is not kept in sync after that).
+  // filter state (the URL is not kept in sync after that). An arriving
+  // category picks the browsing context, so it drops the kind and (for a
+  // service) the goods-only filters no section would show (arrivalPatch;
+  // the rail drops those itself when the categories had not loaded yet).
   useEffect(()=>{
     const params=new URLSearchParams(location.search);
     const category=params.get("category")||undefined;
     const q=params.get("q");
     if(location.pathname==="/business"&&(category||q!==null)){
-      setFilters(f=>({...f,category}));
+      setFilters(f=>({...f,...arrivalPatch(category,categories)}));
       if(q!==null) setSearchInput(q);
     }
     if(location.pathname==="/events"&&category){
@@ -2659,6 +2673,7 @@ export default function AshantiHub() {
     refetch: refetchEvents,
   } = useEvents(eventFilters);
   const events = eventsData ? eventsData.pages.flatMap((page) => page.results) : [];
+  const eventsCountLabel = resultsCountLabel(eventsData?.pages?.[0]?.count);
   const eventCategories = (categories||[]).filter(c=>c.kind==="event");
   const activeEventCatObj = eventCategories.find(c=>c.slug===eventFilters.category);
 
@@ -3088,17 +3103,12 @@ export default function AshantiHub() {
             </span>
           </div>
 
-          {/* Mobile "open filters" bar — search now lives inside Sidebar as its
-              first field (docs/UI_MODERNIZATION_ROADMAP.md Phase G; the old
-              standalone top search bar, its POPULAR SEARCHES suggestions
-              dropdown, Map View toggle, Saved button, and currency selector
-              are all gone — Saved items are reachable via UserPanel's
-              existing "❤️ Saved items" tab instead). On desktop the
-              Sidebar is always visible alongside the grid, so this bar is
-              mobile-only (ah-filter-trigger-bar media query below); on mobile
-              it opens Sidebar as a slide-in panel. */}
+          {/* Mobile "open filters" bar — search lives inside the BrowseRail as its
+              first field. On desktop the rail is always beside the grid, so
+              this bar is mobile-only (media query below); it opens the rail
+              as a slide-in drawer. */}
           <div className="ah-filter-trigger-bar" style={{background:C.darkBrown,padding:"12px 16px"}}>
-            <button onClick={() => setShowFilters((f) => !f)} style={{ background: C.surface2, border: "none", borderRadius: 30, padding: "10px 20px", cursor: "pointer", fontSize: "0.8rem", fontWeight: 700, fontFamily: "inherit" }}>
+            <button onClick={() => setShowFilters((f) => !f)} aria-expanded={showFilters} style={{ background: C.surface2, border: "none", borderRadius: 30, padding: "10px 20px", cursor: "pointer", fontSize: "0.8rem", fontWeight: 700, fontFamily: "inherit" }}>
               ⚙️ Filters & Search
             </button>
             <style>{`
@@ -3122,8 +3132,9 @@ export default function AshantiHub() {
               onAddToCart={handleAddToCart}
               // The slim mini-cart opens after a successful add on the product page (the cart icons go to /cart).
               onAddedToCart={()=>setShowCart(true)}
-              // The product page's "More from Ashanti Direct": the sidebar's own "Sold by Ashanti Direct" filter, on the browse grid.
-              onShowDirect={()=>{setFilters(f=>({...f,directOnly:true}));setSelectedListingId(null);}}
+              // The product page's "More from Ashanti Direct": a fresh browse with only the rail's own "Sold by Ashanti
+              // Direct" filter, on the browse grid (no leftover kind, category, search or price from an earlier browse).
+              onShowDirect={()=>{setFilters({directOnly:true});setSearchInput("");setMinPriceInput("");setMaxPriceInput("");setSelectedListingId(null);}}
               CardComponent={Card}
               PaymentComponent={MoMoPayment}
             />
@@ -3131,14 +3142,15 @@ export default function AshantiHub() {
           <div style={{background:C.void,paddingBottom:1}}>
           {/* The old top PRODUCTS/SERVICES category-tab strips were removed at
               the user's request — product/service filtering now lives in the
-              Sidebar's Type control, and the grid opens on all listings. */}
+              BrowseRail's kind switcher, and the grid opens on all listings. */}
 
-          {/* Sidebar (filters) + main content — desktop: fixed column beside the
-              grid; mobile: Sidebar becomes a slide-in panel toggled by the ⚙️
-              trigger above, matching Navbar.jsx's mobile-menu convention. */}
+          {/* BrowseRail (filters) + main content — desktop: sticky, collapsible
+              column beside the grid; mobile: a slide-in drawer toggled by the
+              ⚙️ trigger above. No ancestor may set overflow: it would break the
+              rail's sticky. */}
           <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 40px",display:"flex",gap:20,alignItems:"flex-start"}}>
-            <Sidebar
-              zones={zones}
+            <BrowseRail
+              mode="business"
               filters={filters}
               setFilters={setFilters}
               minPriceInput={minPriceInput}
@@ -3150,8 +3162,6 @@ export default function AshantiHub() {
               onClose={()=>setShowFilters(false)}
               search={searchInput}
               onSearchChange={setSearchInput}
-              showKindFilter={true}
-              showDirectFilter={true}
             />
             <div style={{flex:1,minWidth:0}}>
             {filters.category==="grocery"?(
@@ -3179,12 +3189,21 @@ export default function AshantiHub() {
               </div>
             ):(
               <>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px 12px",marginBottom:12}}>
                   <h2 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
                     {activeCatObj ? <>{activeCatObj.icon} {activeCatObj.label}</> : (filters.kind==="product" ? "🛍️ All Products" : filters.kind==="service" ? "🛠️ All Services" : "🛍️ All Products & Services")}
-                    <span style={{color:"#999",fontWeight:400,fontSize:"0.72rem",marginLeft:6}}>{listings.length} results</span>
+                    {listingsCountLabel&&<span style={resultsCountStyle}>{listingsCountLabel}</span>}
                   </h2>
-                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                    <label style={{display:"flex",alignItems:"center",gap:6,fontSize:"0.7rem",fontWeight:700,color:C.lightGold}}>
+                      Sort by
+                      <select value={filters.ordering||""} onChange={(e)=>{const v=e.target.value;setFilters(f=>({...f,ordering:v||undefined}));}} style={{background:C.surface,color:C.ink,border:`1px solid ${C.line}`,borderRadius:8,padding:"4px 8px",fontSize:"0.72rem",fontFamily:"inherit"}}>
+                        <option value="" style={optionStyle}>Newest</option>
+                        {/* price_effective: the price paid (the sale price while a discount is live), as the cards and the price filter use. */}
+                        <option value="price_effective" style={optionStyle}>Lowest price</option>
+                        <option value="-price_effective" style={optionStyle}>Highest price</option>
+                      </select>
+                    </label>
                     <span style={{background:tint((activeCatObj?.color)||C.gold, "15"),border:`1px solid ${tint((activeCatObj?.color)||C.gold, "44")}`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:(activeCatObj?.color)||C.lightGold,fontWeight:700}}>📍 Kumasi</span>
                   </div>
                 </div>
@@ -3263,14 +3282,13 @@ export default function AshantiHub() {
       )}
 
       {/* Events page — a full Events tab rebuilt on the Business tab's
-          Sidebar/grid/PDP-swap conventions (docs/BUSINESS_EVENTS_ROADMAP.md
+          rail/grid/PDP-swap conventions (docs/BUSINESS_EVENTS_ROADMAP.md
           Phase 6): hero carousel of live events that have uploaded media ->
           intro banner + "Submit an Event" toggle (EventSubmissionPanel) ->
-          search bar -> category strip (Category.kind==="event") + Sidebar
-          (zone + clear only — price range/sort/verified toggle are hidden,
-          since GET /api/events/ has no price/ordering/verified concept) +
+          search bar -> BrowseRail in events mode (category, When, area; no
+          price/rating/verified, since GET /api/events/ has none) +
           a teaser-card grid with infinite scroll. `selectedEventId` swaps
-          the Sidebar+grid area for EventDetailPage, same "flag swaps in a
+          the rail+grid area for EventDetailPage, same "flag swaps in a
           component, scoped inside the page==='events' block" convention as
           `selectedListingId`/ListingDetailPage in the Business tab above. */}
       {page==="events"&&(
@@ -3288,12 +3306,12 @@ export default function AshantiHub() {
             </span>
           </div>
 
-          {/* Action row — search/category/zone filtering now lives in the
-              Sidebar (same view/filter as the Business tab). This row keeps
+          {/* Action row — search/category/zone filtering lives in the
+              BrowseRail (same as the Business tab). This row keeps
               the mobile filters trigger + the Submit-an-Event toggle. */}
           <div style={{background:C.darkBrown,padding:"12px 16px"}}>
             <div style={{maxWidth:1280,margin:"0 auto",display:"flex",justifyContent:"flex-end",gap:8}}>
-              <button onClick={()=>setShowEventFilters(f=>!f)} className="ah-event-filter-trigger" style={{background:"rgba(255,255,255,0.12)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}} title="Filters">⚙️ Filters & Search</button>
+              <button onClick={()=>setShowEventFilters(f=>!f)} className="ah-event-filter-trigger" aria-expanded={showEventFilters} style={{background:"rgba(255,255,255,0.12)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}} title="Filters">⚙️ Filters & Search</button>
               <button onClick={showEventSubmit?()=>setShowEventSubmit(false):openEventSubmit} style={{background:showEventSubmit?C.gold:"rgba(255,255,255,0.12)",color:showEventSubmit?C.darkBrown:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}}>
                 {showEventSubmit?"✕ Close":"📅 Submit an Event"}
               </button>
@@ -3321,12 +3339,12 @@ export default function AshantiHub() {
             <EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)} user={user} PaymentComponent={MoMoPayment}/>
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>
-            {/* Event category strips removed — filtering moved into the Sidebar
-                (search + category + zone), matching the Business tab's layout. */}
+            {/* Event category strips removed — filtering lives in the BrowseRail
+                (search, category, when, area), matching the Business tab. */}
 
             <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 40px",display:"flex",gap:20,alignItems:"flex-start"}}>
-              <Sidebar
-                zones={zones}
+              <BrowseRail
+                mode="events"
                 filters={eventFilters}
                 setFilters={setEventFilters}
                 onClear={()=>{setEventSearchInput("");setEventFilters({});}}
@@ -3334,16 +3352,12 @@ export default function AshantiHub() {
                 onClose={()=>setShowEventFilters(false)}
                 search={eventSearchInput}
                 onSearchChange={setEventSearchInput}
-                categoryOptions={eventCategories}
-                showPriceRange={false}
-                showSort={false}
-                showVerifiedToggle={false}
               />
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                   <h2 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
                     {activeEventCatObj?activeEventCatObj.icon:"🥁"} {activeEventCatObj?activeEventCatObj.label:"All Events"}
-                    <span style={{color:"#999",fontWeight:400,fontSize:"0.72rem",marginLeft:6}}>{events.length} results</span>
+                    {eventsCountLabel&&<span style={resultsCountStyle}>{eventsCountLabel}</span>}
                   </h2>
                   <span style={{background:`${C.gold}15`,border:`1px solid ${C.gold}44`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:C.gold,fontWeight:700}}>📍 Kumasi</span>
                 </div>

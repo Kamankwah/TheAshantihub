@@ -12,6 +12,8 @@ function buildQueryString(filters, page) {
   if (filters.kind) params.set('kind', filters.kind)
   if (filters.verified) params.set('verified', 'true')
   if (filters.directOnly) params.set('sold_by', 'direct')
+  if (filters.minRating != null) params.set('min_rating', filters.minRating)
+  if (filters.onSale) params.set('on_sale', '1')
   if (filters.cartTiers) params.set('cart_tiers', '1')
   if (page) params.set('page', page)
   const query = params.toString()

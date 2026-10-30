@@ -2,7 +2,7 @@
 
 Departments are the Amazon.com shop-by-department departments and sub-categories, except Prime Video, Amazon Music,
 Kindle E-readers & Books and Amazon Appstore (the data is in listings/department_seed.py). Existing service, stay and
-event categories are not touched.
+event categories are not touched. (Amazon Devices & Accessories was later removed by 0038.)
 
 Mapping of the old product categories (migrations 0002/0009/0020) to departments. Nothing is re-written on any
 Listing: the old category keeps its row and its listings, and its `parent` is set to the department, so every listing

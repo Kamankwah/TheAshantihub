@@ -218,6 +218,15 @@ monolith holding most components, with extractions living in `components/`,
   (no `tel:`/`wa.me`, no Prime/gift-card/ETA/"bought in past month" text, no "0.0" rating, tabular figures on every
   price, no "not available yet" placeholder). Add any new shopper page or wallet tab to its list.
 
+## Browse rail
+
+- **The browse rail replaced `Sidebar` on /business and /events** (`components/storefront/BrowseRail.jsx`, sections in
+  `rail/`, pure rules in `browseRailSections.js`). App owns the filters; the rail owns its data hooks (tree, zones,
+  categories). Sections come from `sectionsFor({mode, kind})`, and a section with no data never renders, not even its
+  collapsed icon. A context change drops filters whose section is now hidden. Collapse state is
+  `localStorage["ah-browse-rail-collapsed"]`. Sticky top reads `--ah-top-offset` + `--ah-header-h` (published by
+  `StorefrontHeader`), so **no ancestor of the rail may set `overflow`**.
+
 ## Owner listing panels and `basePath`
 
 Owner listing panels (`ListingsPanel`, the variants, revision and discount editors) take a `basePath` prop, default
