@@ -486,6 +486,17 @@ class BusinessOwnerProfile(models.Model):
         related_name="address_verified_profiles",
     )
     address_verified_at = models.DateTimeField(null=True, blank=True)
+    # How the decision above was made (the Address verification queue: gps_capture | video_call | scout | desk) and the
+    # staff note behind it: the call outcome for a verification, the reason the owner reads for "wrong". Both are blank
+    # while there is no decision and are blanked again when a new pin clears it. `address_first_verified_at` is set by
+    # the first "verified" decision through that queue and never cleared: a later decision may then rest on the owner's
+    # fresh pin and the photo alone (no new video call).
+    ADDRESS_METHOD_CHOICES = [
+        ("gps_capture", "GPS capture"), ("video_call", "Video call"), ("scout", "Scout visit"), ("desk", "Desk check"),
+    ]
+    address_verification_method = models.CharField(max_length=12, blank=True, default="", choices=ADDRESS_METHOD_CHOICES)
+    address_verification_note = models.TextField(blank=True, default="")
+    address_first_verified_at = models.DateTimeField(null=True, blank=True)
 
     # ── Business identity and location (staff phase 2, spec S1) ─────────────
     # There is no Business model: a business is a BusinessOwner plus this
@@ -519,6 +530,12 @@ class BusinessOwnerProfile(models.Model):
     )
     location_set_at = models.DateTimeField(null=True, blank=True)
     location_is_manual = models.BooleanField(default=False)
+    # The staff member who last set the pin (registration, a scout's update); null when the owner set it themself
+    # (location capture) or when nobody did. The address maker-checker rule reads it: whoever placed the pin cannot be
+    # the one who verifies the address.
+    location_set_by_staff = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
     signboard_photo = models.ImageField(
         upload_to="signboards/", validators=[validate_image_content_type], null=True, blank=True,
     )
@@ -569,6 +586,39 @@ class BusinessOwnerProfile(models.Model):
 
     def __str__(self):
         return f"Profile for {self.business_owner.full_name}"
+
+
+class LocationCapture(models.Model):
+    """One shop-location fix shared by the owner from the shop (plan "shop location and address verification").
+
+    `link`: staff text the owner a single-use link valid 48 hours; this row is the link until it is used (lat/lng/accuracy
+    stay empty until then). The raw token exists only in the text and the owner's browser: the row keeps its SHA-256
+    hash. `owner_app`: the owner shared the fix from the dashboard (no token). `staff_manual` is reserved: no code path
+    writes it. Rows are never deleted."""
+
+    LINK = "link"
+    OWNER_APP = "owner_app"
+    STAFF_MANUAL = "staff_manual"
+    SOURCE_CHOICES = [(LINK, "Link"), (OWNER_APP, "Owner app"), (STAFF_MANUAL, "Staff manual")]
+
+    business_owner = models.ForeignKey(BusinessOwner, on_delete=models.CASCADE, related_name="location_captures")
+    source = models.CharField(max_length=12, choices=SOURCE_CHOICES)
+    token_hash = models.CharField(max_length=64, null=True, blank=True, unique=True)
+    created_by = models.ForeignKey(StaffUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    accuracy_m = models.PositiveIntegerField(null=True, blank=True)
+    captured_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.source} location capture #{self.pk} for owner {self.business_owner_id}"
 
 
 class ScoutAssignment(models.Model):

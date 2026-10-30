@@ -15,6 +15,9 @@ const LOCATION_UNSUPPORTED = "This browser can't share its location. Place the p
 export function useDevicePosition() {
   const [position, setPosition] = useState(null)
   const [error, setError] = useState(null)
+  // Why `error` is set: 'unsupported' | 'blocked' | 'slow' | 'unavailable' (null when there is no error). Lets a
+  // page with its own wording (the owner's share-location page offers no hand-placed pin) choose its own copy.
+  const [errorKind, setErrorKind] = useState(null)
   const [locating, setLocating] = useState(false)
   const mounted = useRef(true)
 
@@ -27,9 +30,11 @@ export function useDevicePosition() {
     const geo = typeof navigator === 'undefined' ? undefined : navigator.geolocation
     if (!geo) {
       setError(LOCATION_UNSUPPORTED)
+      setErrorKind('unsupported')
       return
     }
     setError(null)
+    setErrorKind(null)
     setLocating(true)
     geo.getCurrentPosition(
       (pos) => {
@@ -46,10 +51,11 @@ export function useDevicePosition() {
         if (!mounted.current) return
         setLocating(false)
         setError(err?.code === 1 ? LOCATION_BLOCKED : err?.code === 3 ? LOCATION_SLOW : LOCATION_UNAVAILABLE)
+        setErrorKind(err?.code === 1 ? 'blocked' : err?.code === 3 ? 'slow' : 'unavailable')
       },
       POSITION_OPTIONS,
     )
   }, [])
 
-  return { position, error, locating, locate }
+  return { position, error, errorKind, locating, locate }
 }

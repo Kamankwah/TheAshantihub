@@ -98,6 +98,10 @@ def _revert_update(change, approval, owner):
         profile.location_set_by = change.result["location_set_by_before"] or ""
         set_at = change.result.get("location_set_at_before")
         profile.location_set_at = parse_datetime(set_at) if set_at else None
+        if "location_set_by_staff_id_before" in change.result:  # changes applied before this existed carry no such key
+            staff_id = change.result["location_set_by_staff_id_before"]
+            profile.location_set_by_staff_id = staff_id if StaffUser.objects.filter(pk=staff_id).exists() else None
+            profile_fields.append("location_set_by_staff")
         profile_fields += ["location_set_by", "location_set_at"]
     if "gps_address" in profile_fields and "address_verified_before" in change.result:
         # The old address comes back with the decision that was made about it.

@@ -133,6 +133,7 @@ class RegistrationTests(RegistrationBase):
             (profile.location_accuracy_m, profile.location_is_manual, profile.location_set_by), (12, False, "scout"),
         )
         self.assertIsNotNone(profile.location_set_at)
+        self.assertEqual(profile.location_set_by_staff, self.scout)  # who placed the pin: the address maker-checker reads it
         self.assertEqual(profile.ghana_card_number, "GHA-123456789-0")
         self.assertTrue(profile.signboard_photo.name.startswith("signboards/"))
         self.assertTrue(profile.ghana_card_front_image.name.startswith("ghana_cards/"))
@@ -266,7 +267,8 @@ class RegistrationTests(RegistrationBase):
         owner = BusinessOwner.objects.get(pk=response.json()["id"])
         self.assertEqual((owner.registered_by, owner.account_manager), (kojo, None))
         self.assertFalse(AccountManagerAssignment.objects.exists())
-        self.assertEqual(BusinessOwnerProfile.objects.get(business_owner=owner).location_set_by, "operations")
+        profile = BusinessOwnerProfile.objects.get(business_owner=owner)
+        self.assertEqual((profile.location_set_by, profile.location_set_by_staff), ("operations", kojo))
 
 
 class RegistrationDuplicateTests(RegistrationBase):

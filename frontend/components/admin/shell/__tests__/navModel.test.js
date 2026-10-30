@@ -537,7 +537,7 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
       ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
       // Verification calls and Pickup desk (Plan 1F), then Re-deliveries and Free delivery (wallet 5F), joined
       // Marketplace after Scheduled orders (Director ruling 8, 2026-10-20).
-      ['Marketplace', ['Businesses', 'Customers', 'KYC Queue', 'Listings & services', 'Product grouping', 'Orders & deliveries', 'Scheduled orders', 'Verification calls', 'Pickup desk', 'Re-deliveries', 'Free delivery', 'Events & tickets', 'Homepage slider', 'Disputes & returns', 'Ashanti Direct']],
+      ['Marketplace', ['Businesses', 'Customers', 'KYC Queue', 'Address verification', 'Listings & services', 'Product grouping', 'Orders & deliveries', 'Scheduled orders', 'Verification calls', 'Pickup desk', 'Re-deliveries', 'Free delivery', 'Events & tickets', 'Homepage slider', 'Disputes & returns', 'Ashanti Direct']],
       ['Listing for clients', ['Prospects', 'Register a business', 'Client listings']],
       ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Wallets', 'Withdrawals']],
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
@@ -670,7 +670,7 @@ describe('General Manager menu (marketplace M3, Task 0)', () => {
     'orders.manage_delivery', 'site_settings.manage', 'zones.manage', 'contact_messages.manage', 'staff.invite_team', 'activity.view_team',
     'calls.log', 'portfolio.manage', 'targets.manage', 'leave.record', 'fraud.manage', 'fraud.flag', 'service_issues.view',
     'approvals.view_all', 'activity.view_all', 'analytics.view', 'calls.view_all', 'calls.view_peers', 'commission.view_all', 'escrow.view', 'fees.view',
-    'wallets.view', 'reports.view_all', 'transactions.report', 'businesses.register', 'listings.stage',
+    'wallets.view', 'reports.view_all', 'transactions.report', 'businesses.register', 'listings.stage', 'address.verify',
   ]
   const gmAuth = (perms = GM) => ({ user: { role: 'general_manager' }, hasPermission: (c) => perms.includes(c) })
   const idsOf = (auth) => buildNavGroups(auth).flatMap((g) => g.items.map((i) => i.id))
@@ -697,7 +697,7 @@ describe('General Manager menu (marketplace M3, Task 0)', () => {
     expect(buildNavGroups(gmAuth()).map((g) => [g.label, g.items.map((i) => [i.id, i.label])])).toEqual([
       ['Home', [['approvals', 'Approvals inbox']]],
       ['People', [['my-team', 'Invite'], ['leave', 'Leave & calendar']]],
-      ['Marketplace', [['all-portfolios', 'All portfolios'], ['users', 'Users'], ['kyc', 'KYC Queue'], ['moderation', 'Listings & services'], ['catalogue', 'Product grouping'], ['delivery', 'Delivery Management'], ['events-moderation', 'Events & tickets'], ['hero', 'Hero Approval']]],
+      ['Marketplace', [['all-portfolios', 'All portfolios'], ['users', 'Users'], ['kyc', 'KYC Queue'], ['address-verification', 'Address verification'], ['moderation', 'Listings & services'], ['catalogue', 'Product grouping'], ['delivery', 'Delivery Management'], ['events-moderation', 'Events & tickets'], ['hero', 'Hero Approval']]],
       ['Listing for clients', [['prospects', 'Prospects'], ['register-business', 'Register a business'], ['client-listings', 'Client listings']]],
       ['Money (read only)', [['transactions', 'Transactions Report'], ['commissions', 'Commissions']]],
       ['Insights', [['analytics', 'Analytics'], ['team-reports', 'Team reports']]],
@@ -849,5 +849,42 @@ describe('Product grouping nav item', () => {
     const marketplace = buildNavGroups(auth).find((g) => g.id === 'marketplace')
     const labels = marketplace.items.map((i) => i.label)
     expect(labels[labels.indexOf('Listings & services') + 1]).toBe('Product grouping')
+  })
+})
+
+describe('Address verification menu item (shop location plan, Task 4)', () => {
+  const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
+  const placed = (role, perms) => buildNavGroups(authAs(role, perms)).find((g) => g.items.some((i) => i.id === 'address-verification'))
+  const ROLES = ['operations', 'general_manager', 'super_admin', 'support', 'scout']
+
+  it('is labelled and gated on address.verify', () => {
+    const item = NAV_ITEMS.find((i) => i.id === 'address-verification')
+    expect(item.label).toBe('Address verification')
+    expect(item.show(authAs('operations', ['address.verify']))).toBe(true)
+    expect(item.show(authAs('operations', ['kyc.approve']))).toBe(false)
+  })
+
+  it('shows for Operations, the General Manager and Super Admin who hold the permission, in their own group', () => {
+    expect(placed('operations', ['address.verify']).label).toBe('Moderation')
+    expect(placed('general_manager', ['address.verify']).label).toBe('Marketplace')
+    expect(placed('super_admin', ['address.verify']).label).toBe('Marketplace')
+  })
+
+  it('sits right after the KYC queue in each menu', () => {
+    for (const role of ['operations', 'general_manager', 'super_admin']) {
+      const ids = placed(role, ['address.verify', 'kyc.approve']).items.map((i) => i.id)
+      expect(ids.indexOf('address-verification')).toBe(ids.indexOf('kyc') + 1)
+    }
+  })
+
+  it('is hidden without the permission, and for Support and Scout (who never hold it)', () => {
+    for (const role of ROLES) expect(placed(role, [])).toBeUndefined()
+    for (const role of ['support', 'scout']) expect(placed(role, ['kyc.approve', 'listings.moderate'])).toBeUndefined()
+  })
+
+  it('reads its badge from the address_verification count', () => {
+    expect(makeBadgeFor({ address_verification: 4 }, 'operations')('address-verification')).toBe(4)
+    expect(makeBadgeFor({ address_verification: 2 }, 'super_admin')('address-verification')).toBe(2)
+    expect(makeBadgeFor({}, 'operations')('address-verification')).toBe(0)
   })
 })

@@ -87,6 +87,9 @@ class BusinessUpdateKindTests(ChangeTestBase):
         self.assertEqual(profile.location_set_by, "scout")
         self.assertGreaterEqual(profile.location_set_at, started)
         self.assertEqual(AppliedChange.objects.get(approval=approval).result["location_set_by_before"], "owner")
+        # The scout who proposed it is "who last set the pin", so cannot verify the address (accounts.kyc.is_kyc_submitter).
+        self.assertEqual(profile.location_set_by_staff, self.scout)
+        self.assertIsNone(AppliedChange.objects.get(approval=approval).result["location_set_by_staff_id_before"])
 
     def test_a_second_change_to_the_same_field_goes_stale_once_the_first_is_approved(self):
         first = self.propose({"business_name": "Abena Kente Palace"})

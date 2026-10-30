@@ -23,6 +23,10 @@ from rest_framework import serializers
 
 GPS_FORMAT = re.compile(r"^[A-Z]{2}-\d{3,4}-\d{4}$")
 ASHANTI_REGION_LETTER = "A"
+# The Ashanti Region as a generous box (a shop near the border must not be refused; a fix from Accra, Tamale or
+# a desktop's IP location must). Used by every location-capture path.
+ASHANTI_LAT = (5.5, 7.8)
+ASHANTI_LNG = (-2.7, -0.5)
 GHANA_API_VALIDATE_URL = "https://api.ghana-api.dev/api/v1/addresses/validate/{code}"
 
 

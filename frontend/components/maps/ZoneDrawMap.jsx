@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
-import { MapContainer, Polygon, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Polygon, useMap } from "react-leaflet";
+import BaseTileLayers from "./BaseTileLayers.jsx";
 import "leaflet/dist/leaflet.css";
 import "leaflet-draw";
 import "leaflet-draw/dist/leaflet.draw.css";
@@ -82,7 +83,7 @@ export default function ZoneDrawMap({ ring = null, others = [], onChange, height
         style={{ height: "100%", width: "100%" }}
         scrollWheelZoom={false}
       >
-        <TileLayer attribution='Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <BaseTileLayers />
         {others.map((r, i) => {
           const pts = latLngsFromRing(r);
           return pts.length ? <Polygon key={i} positions={pts} interactive={false} pathOptions={{ color: "#8A8178", weight: 1, fillOpacity: 0.05, interactive: false }} /> : null;

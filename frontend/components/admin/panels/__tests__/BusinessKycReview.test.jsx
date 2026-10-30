@@ -157,6 +157,17 @@ describe('BusinessKycReview', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('You do not have permission to perform this action.')
   })
 
+  it("shows the server's pin_required sentence when verified is refused for a business with no map pin", async () => {
+    serve(sheet())
+    const sentence = "Add the shop's map pin first: send the owner a location link from Address verification."
+    server.use(http.post(`${API}/api/accounts/kyc/41/address-verify/`, () => HttpResponse.json(
+      { detail: sentence, code: 'pin_required' }, { status: 400 },
+    )))
+    renderReview({ canRecordAddress: true })
+    fireEvent.click(await screen.findByRole('button', { name: 'Address verified' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(sentence)
+  })
+
   it('says when a field scout corrected the address', async () => {
     serve(sheet({ address_correction: { scout_name: 'Efua Mensah', corrected_address: 'AK-100-9999', at: '2026-10-08T09:30:00Z' } }))
     renderReview()

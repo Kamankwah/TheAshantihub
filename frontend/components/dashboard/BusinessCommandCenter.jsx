@@ -24,6 +24,7 @@ import DeliveryPromosPanel from "./panels/DeliveryPromosPanel.jsx";
 import PromotionsHubPanel from "./panels/PromotionsHubPanel.jsx";
 import RenewBanner from "./RenewBanner.jsx";
 import ManagerChangesCard from "./ManagerChangesCard.jsx";
+import ShopLocationCard from "./ShopLocationCard.jsx";
 
 // ─── Business Command Center ─────────────────────────────────────────────────
 // The unified "mission-control" dashboard for a business owner, rebuilt onto
@@ -253,6 +254,8 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
               </div>
               {/* While KYC is pending the owner can still undo an account manager's change. */}
               {!isRejected && <ManagerChangesCard />}
+              {/* The pin is what lets AshantiHub approve the address, so an owner under review can share it too. */}
+              {!isRejected && <ShopLocationCard />}
               </>
             ) : (
               <>
@@ -267,6 +270,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                 )}
                 {!plansGone && <RenewBanner subscription={subscription} onRenew={() => selectTab("subscription")} />}
                 <ManagerChangesCard />
+                {tab === "analytics" && <ShopLocationCard />}
                 {tab === "analytics" && <AnalyticsPanel user={user} onNavigate={selectTab} businessKind={profile?.business_kind} />}
                 {tab === "listings" && <ListingsPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
                 {tab === "products" && <ProductsPanel initialView={tabView || "list"} key={tabView || "list"} />}

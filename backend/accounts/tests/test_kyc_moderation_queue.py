@@ -32,7 +32,7 @@ class KYCModerationQueueTests(TestCase):
             kyc_status=kyc_status, kyc_rejection_reason=kyc_rejection_reason,
         )
         BusinessOwnerProfile.objects.create(
-            business_owner=owner, gps_address="AK-039-5030",
+            business_owner=owner, gps_address="AK-039-5030", lat="6.688500", lng="-1.624400",
             address_verified=True, address_verified_by=self.admin, address_verified_at=timezone.now(),
             business_contact_phone=phone,
         )

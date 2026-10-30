@@ -41,7 +41,7 @@ class IdentityBase(TestCase):
             registered_by=scout, account_manager=scout,
         )
         BusinessOwnerProfile.objects.create(
-            business_owner=owner, business_name=f"Shop {n}", gps_address="AK-039-5050",
+            business_owner=owner, business_name=f"Shop {n}", gps_address="AK-039-5050", lat="6.688500", lng="-1.624400",
             business_contact_phone=owner.login_phone, identity_status=identity_status,
             identity_submitted_at=submitted_at or timezone.now(),
             address_verified=address_decided, address_verified_by=self.lead if address_decided else None,

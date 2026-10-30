@@ -47,6 +47,7 @@ const gmOnly = (auth, ...perms) => auth.user?.role === "general_manager" && perm
 
 export const NAV_ITEMS = [
   { id: "kyc", icon: "🪪", label: "KYC Queue", show: (auth) => auth.hasPermission("kyc.approve") },
+  { id: "address-verification", icon: "📍", label: "Address verification", show: (auth) => auth.hasPermission("address.verify") },
   { id: "moderation", icon: "📋", label: "Listings Moderation", show: (auth) => auth.hasPermission("listings.moderate") },
   { id: "catalogue", icon: "🏷️", label: "Product grouping", show: (auth) => auth.hasPermission("listings.moderate") },
   { id: "hero", icon: "🌟", label: "Hero Approval", show: (auth) => auth.hasPermission("hero_media.approve") },
@@ -225,7 +226,7 @@ export const NAV_ITEMS = [
 // [group id, group label, item ids]. The original (pre-1B) grouping, used for
 // any session whose role has no menu below.
 const DEFAULT_GROUPS = [
-  ["moderation", "Moderation", ["kyc", "moderation", "catalogue", "hero", "events-moderation", "reviews", "fraud-cases", "ashanti-direct"]],
+  ["moderation", "Moderation", ["kyc", "address-verification", "moderation", "catalogue", "hero", "events-moderation", "reviews", "fraud-cases", "ashanti-direct"]],
   ["finance", "Finance", ["event-pricing", "subscription-plans", "subscription-plans-approval", "commission-policy", "escrow", "disputes", "transactions", "wallets", "withdrawals", "credit"]],
   ["users-roles", "Users & Roles", ["users", "staff", "sessions"]],
   ["field-ops", "Field Operations", ["scout-assignments", "field-verification", "visits", "targets", "commission", "leaderboard", "prospects", "register-business", "delivery-coordination", "my-deliveries", "portfolio", "all-portfolios", "at-risk", "subscriptions-due"]],
@@ -250,7 +251,7 @@ const ROLE_MENUS = {
     // Scheduled orders (paid orders held until their shops open, with Send now) sits beside Orders & deliveries:
     // Director ruling 7 (2026-10-20) added it to the canvas menu. Verification calls and Pickup desk (Plan 1F),
     // then Re-deliveries and Free delivery (wallet 5F, Director ruling 8) follow it.
-    ["marketplace", "Marketplace", ["all-portfolios", "users", "kyc", "moderation", "catalogue", "delivery", "delivery-scheduled", "support-verification", "pickup-desk", "redeliveries", "mk-delivery-promos", "events-moderation", "hero", "disputes", "ashanti-direct"]],
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "kyc", "address-verification", "moderation", "catalogue", "delivery", "delivery-scheduled", "support-verification", "pickup-desk", "redeliveries", "mk-delivery-promos", "events-moderation", "hero", "disputes", "ashanti-direct"]],
     ["listing-for-clients", "Listing for clients", ["prospects", "register-business", "client-listings"]],
     ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation", "wallets", "withdrawals"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
@@ -267,7 +268,7 @@ const ROLE_MENUS = {
   general_manager: [
     ["home", "Home", ["approvals"]],
     ["people", "People", ["my-team", "leave"]],
-    ["marketplace", "Marketplace", ["all-portfolios", "users", "kyc", "moderation", "catalogue", "delivery", "events-moderation", "hero"]],
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "kyc", "address-verification", "moderation", "catalogue", "delivery", "events-moderation", "hero"]],
     ["listing-for-clients", "Listing for clients", ["prospects", "register-business", "client-listings"]],
     ["money", "Money (read only)", ["transactions", "commissions"]],
     ["insights", "Insights", ["analytics", "team-reports"]],
@@ -285,7 +286,7 @@ const ROLE_MENUS = {
     ["people", "People", ["ops-scouts", "support-team", "my-team", "targets", "leave"]],
     ["businesses", "Businesses", ["all-portfolios", "at-risk", "subscriptions-due"]],
     ["listing-for-clients", "Listing for clients", ["prospects", "register-business", "client-listings"]],
-    ["moderation", "Moderation", ["kyc", "moderation", "catalogue", "hero-events", "reviews", "ashanti-direct"]],
+    ["moderation", "Moderation", ["kyc", "address-verification", "moderation", "catalogue", "hero-events", "reviews", "ashanti-direct"]],
     // Scheduled orders beside Deliveries & returns (Director ruling 7, 2026-10-20).
     ["service", "Service", ["support-issues", "deliveries-returns", "delivery-scheduled", "fraud-cases"]],
     ["activity", "Activity", ["activity", "visit-map"]],
@@ -448,6 +449,7 @@ export function buildNavGroups(auth) {
 // live updates (lib/realtime.js) refresh it sooner when a socket is up.
 export const BADGE_KEY_BY_TAB = {
   kyc: "kyc",
+  "address-verification": "address_verification",
   approvals: "approvals_waiting",
   tasks: "tasks_due",
   moderation: "listings",

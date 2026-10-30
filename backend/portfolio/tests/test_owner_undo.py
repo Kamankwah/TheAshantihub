@@ -62,6 +62,21 @@ class OwnerUndoTests(UndoTestBase):
         change.refresh_from_db()
         self.assertEqual(change.fraud_flag_id, flag.pk)
 
+    def test_undoing_a_pin_move_puts_back_who_last_set_the_pin(self):
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(location_set_by_staff=self.other_scout)
+        change = self.applied_update({"lat": "6.7012341", "lng": "-1.62", "location_accuracy_m": 9})
+        self.assertEqual(self.profile().location_set_by_staff, self.scout)
+        self.as_owner(self.owner)
+        self.assertEqual(self.client.post(self.undo_url(change)).status_code, 200)
+        profile = self.profile()
+        self.assertEqual((profile.location_set_by, profile.location_set_by_staff), ("owner", self.other_scout))
+
+    def test_undoing_a_pin_move_over_an_owner_capture_leaves_no_staff_pin_setter(self):
+        change = self.applied_update({"lat": "6.7012341", "lng": "-1.62", "location_accuracy_m": 9})
+        self.as_owner(self.owner)
+        self.assertEqual(self.client.post(self.undo_url(change)).status_code, 200)
+        self.assertIsNone(self.profile().location_set_by_staff)
+
     def test_a_partial_revert_leaves_the_case_open(self):
         change = self.applied_update({"business_name": "Abena Kente Palace", "opening_hours": "Mon–Sun 7am–8pm"})
         BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(opening_hours="Daily 6am–10pm")
