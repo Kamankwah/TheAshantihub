@@ -242,8 +242,10 @@ export default function BrowseRail({
       }
     : {
         ...panel, position: "sticky", top: STICKY_TOP, maxHeight: STICKY_MAX_HEIGHT, alignSelf: "flex-start", flexShrink: 0,
-        width: collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH, borderRadius: 16, overflowY: "auto", overflowX: "hidden",
+        width: collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH, borderRadius: 0, overflowY: "auto", overflowX: "hidden",
         overscrollBehavior: "contain",
+        // Flush with the left edge of the window like Amazon's refinements column: no card, just a hairline on its right.
+        border: "none", borderRight: `1px solid ${C.line}`, boxShadow: "none",
       };
 
   const className = ["ah-rail", isPhone && "ah-rail-drawer", isPhone && open && "ah-rail-open"].filter(Boolean).join(" ");

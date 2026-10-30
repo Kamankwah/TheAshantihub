@@ -3148,7 +3148,7 @@ export default function AshantiHub() {
               column beside the grid; mobile: a slide-in drawer toggled by the
               ⚙️ trigger above. No ancestor may set overflow: it would break the
               rail's sticky. */}
-          <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 40px",display:"flex",gap:20,alignItems:"flex-start"}}>
+          <div style={{width:"100%",boxSizing:"border-box",padding:"16px 16px 40px 0",display:"flex",gap:20,alignItems:"flex-start"}}>
             <BrowseRail
               mode="business"
               filters={filters}
@@ -3342,7 +3342,7 @@ export default function AshantiHub() {
             {/* Event category strips removed — filtering lives in the BrowseRail
                 (search, category, when, area), matching the Business tab. */}
 
-            <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 40px",display:"flex",gap:20,alignItems:"flex-start"}}>
+            <div style={{width:"100%",boxSizing:"border-box",padding:"16px 16px 40px 0",display:"flex",gap:20,alignItems:"flex-start"}}>
               <BrowseRail
                 mode="events"
                 filters={eventFilters}
