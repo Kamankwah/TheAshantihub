@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { captureLocation, useLocationLinkPreview } from "../hooks/useLocationLink.js";
 import { useDevicePosition } from "../hooks/useDevicePosition.js";
-import { MAX_ACCURACY_M, fieldMessage, tooCoarseMessage } from "../lib/locationFix.js";
+import { MAX_ACCURACY_M, VERIFY_ACCURACY_M, fieldMessage, isWeakFix, tooCoarseMessage, weakFixMessage } from "../lib/locationFix.js";
 import { C, tint } from "../theme.js";
 
 // ─── /share-location#token=… ─────────────────────────────────────────────────
@@ -46,6 +46,7 @@ const sheetStyle = { background: C.surface, color: C.ink, borderRadius: 22, widt
 const bandStyle = { background: `linear-gradient(135deg, ${C.kente1}, ${C.kente3})`, padding: "20px 24px", color: C.gold, fontWeight: 900, fontSize: "1.1rem" };
 const bodyStyle = { padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14, color: C.ink };
 const primaryStyle = { minHeight: 48, width: "100%", background: C.gold, color: C.darkBrown, border: "none", borderRadius: 24, padding: "12px 18px", fontWeight: 900, fontSize: "0.9rem", cursor: "pointer", fontFamily: "inherit" };
+const secondaryStyle = { ...primaryStyle, background: "transparent", color: C.ink, border: `1px solid ${C.ink}` };
 const noticeStyle = (color) => ({ background: tint(color, "12"), border: `1px solid ${color}`, color: C.ink, borderRadius: 10, padding: "10px 12px", fontSize: "0.85rem", fontWeight: 700, lineHeight: 1.5 });
 const mutedStyle = { fontSize: "0.76rem", opacity: 0.75, lineHeight: 1.5 };
 const whenLong = (iso) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "");
@@ -70,24 +71,29 @@ export default function ShareLocationPage() {
     return () => meta.remove();
   }, []);
 
-  // Each new fix is looked at once: too coarse is refused here (nothing is sent), anything else is posted.
+  const save = async (fix) => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      setSaved(await captureLocation(token, { lat: fix.lat, lng: fix.lng, accuracy_m: fix.accuracy }));
+    } catch (error) {
+      const refusal = refusalOf(error);
+      const text = fieldMessage(error);
+      setSaveError(refusal ? { key: refusal } : text ? { text } : { key: "failed" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Each new fix is looked at once: worse than 100 m is refused here (nothing is sent), 51-100 m is held back with a
+  // warning until the owner chooses to save it (the single-use link would otherwise be spent on a fix that cannot
+  // verify the shop), and 50 m or better is posted.
   useEffect(() => {
     if (!position || handled.current === position || !preview.data) return;
     handled.current = position;
-    if (position.accuracy > MAX_ACCURACY_M) return;
-    (async () => {
-      setSaving(true);
-      setSaveError(null);
-      try {
-        setSaved(await captureLocation(token, { lat: position.lat, lng: position.lng, accuracy_m: position.accuracy }));
-      } catch (error) {
-        const refusal = refusalOf(error);
-        const text = fieldMessage(error);
-        setSaveError(refusal ? { key: refusal } : text ? { text } : { key: "failed" });
-      } finally {
-        setSaving(false);
-      }
-    })();
+    if (position.accuracy > VERIFY_ACCURACY_M) return;
+    save(position);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position, preview.data, token]);
 
   const share = () => {
@@ -100,6 +106,7 @@ export default function ShareLocationPage() {
   const data = preview.data;
   const insecure = typeof window !== "undefined" && window.isSecureContext === false;
   const tooCoarse = position && position.accuracy > MAX_ACCURACY_M && !locating && !positionError;
+  const weak = position && isWeakFix(position.accuracy) && !locating && !positionError;
   const linkDead = saveError?.key && !["failed", "throttled"].includes(saveError.key) ? saveError.key : null;
 
   const tryAgain = (
@@ -159,6 +166,14 @@ export default function ShareLocationPage() {
         <>
           <div role="alert" style={noticeStyle(C.kente1)}>{saveError.text || MESSAGES[saveError.key]}</div>
           {tryAgain}
+        </>
+      );
+    } else if (weak) {
+      action = (
+        <>
+          <div role="alert" style={noticeStyle(C.kente1)}>{weakFixMessage(position.accuracy)}</div>
+          {tryAgain}
+          <button type="button" onClick={() => save(position)} style={secondaryStyle}>Save this one anyway</button>
         </>
       );
     } else {

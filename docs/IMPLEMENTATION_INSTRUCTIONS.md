@@ -117,9 +117,9 @@ Phase 2 (separate plan): reverse-geocode adapter for the Ghana Post code behind 
 
 Owner actions before relying on it:
 
-1. Create a public Mapbox token restricted to the site's URL for each environment. Staging: Vercel project env `VITE_MAPBOX_TOKEN` and `VITE_MAP_TILES_PROVIDER=mapbox`. Production: the same two keys in the server's `.deploy.conf` (`infra/README.md`); the next `deploy.sh` builds them in. Without them every map stays on OpenStreetMap streets.
-2. Open the texted link on a real phone standing at a shop in Kumasi and check the fix, the accuracy line and the refusal when indoors (over 100 m).
+1. Create a public Mapbox token restricted to the site's URL for each environment. Staging: Vercel project env `VITE_MAPBOX_TOKEN` and `VITE_MAP_TILES_PROVIDER=mapbox`. Production: the same two keys in the server's `.deploy.conf` (`infra/README.md`); the next `deploy.sh` builds them in. Without them every map stays on OpenStreetMap streets. Production's token lists both `https://theashantihub.com/*` and `https://www.theashantihub.com/*`; staging's lists `https://test.theashantihub.com/*`. **Before setting the token, add the official Mapbox wordmark to the Mapbox-tiled maps** (Mapbox's attribution terms require it for raster tiles in Leaflet); the code shows text attribution only, and no wordmark asset is fabricated in code. This is an owner action before the token is switched on.
+2. Open the texted link on a real phone standing at a shop in Kumasi and check the fix, the accuracy line, the refusal when indoors (over 100 m) and the warning with "Save this one anyway" between 50 and 100 m.
 3. Hold one verification on staging end to end. Seeded staging businesses have no pins, so KYC approval there answers `pin_required` until a pin is captured.
-4. Decide what to do with the old KYC-queue address toggle (`kyc/<id>/address-verify/`): it still marks an address verified without the evidence ladder.
+4. Decide what to do with the old KYC-queue address toggle (`kyc/<id>/address-verify/`): it still marks an address verified without the evidence ladder (it now refuses "verified" for a business with no pin, 400 `pin_required`).
 5. Live Hubtel SMS is still needed for the link to reach owners as a real text; on simulated texts staff copy the link from the send response.
 6. Render checks owed: the Address verification panel and the owner card at 360/768/1280 px, light and dark; the satellite switch with a live token.

@@ -174,7 +174,10 @@ VITE_MAP_TILES_PROVIDER=mapbox             # defaults to osm when absent
 ```
 
 Both are public values baked into the page (the token is a public `pk.` token, never a
-secret one, so restrict it to `https://theashantihub.com/*` in the Mapbox dashboard).
+secret one, so restrict it by URL in the Mapbox dashboard: for production list **both**
+`https://theashantihub.com/*` and `https://www.theashantihub.com/*` (the Hestia vhost serves the
+www alias too, and a token restricted to the bare host gets 403s on it), and for staging
+`https://test.theashantihub.com/*`, the Vercel host named above).
 Leave them unset and every map shows OpenStreetMap streets, with no satellite switch. Staging
 has `SERVE_FRONTEND=no`; its SPA is on Vercel, so set the same two names in the Vercel project
 environment instead.

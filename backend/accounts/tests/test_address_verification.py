@@ -624,6 +624,96 @@ class DecideVerifiedTests(Base):
         self.assertEqual(response.status_code, 200, response.content)
 
 
+class ScoutReportDecisionTests(Base):
+    """A scout's field report is the other old writer of the decision: it must not keep the last decision's reason."""
+
+    def report(self, owner, **body):
+        assignment = ScoutAssignment.objects.create(business_owner=owner, scout=self.scout)
+        self.as_staff(self.scout)
+        return self.client.post(f"/api/accounts/scout-assignments/{assignment.pk}/verify/", body, format="json")
+
+    def test_a_scout_report_after_a_video_call_decision_shows_no_old_note(self):
+        owner = self.make_owner()
+        self.assertEqual(self.verify_by_call(owner, note="Call showed the shop at the pin").status_code, 200)
+        first_verified_at = self.profile(owner).address_first_verified_at
+        response = self.report(owner, address_confirmed=False)
+        self.assertEqual(response.status_code, 200, response.content)
+        profile = self.profile(owner)
+        self.assertEqual((profile.address_verified, profile.address_verification_method, profile.address_verification_note), (False, "scout", ""))
+        self.assertEqual(profile.address_first_verified_at, first_verified_at)
+        self.as_owner(owner)
+        state = self.client.get(ME).json()
+        self.assertEqual((state["address_status"], state["wrong_reason"]), ("wrong", None))
+        self.as_staff(self.ops)
+        row = self.client.get(QUEUE, {"status": "wrong"}).json()["results"][0]
+        self.assertEqual((row["verification"]["method"], row["verification"]["note"]), ("scout", None))
+
+    def test_a_scout_confirmation_after_a_desk_wrong_shows_no_old_reason(self):
+        owner = self.make_owner()
+        self.decided(owner, verified=False, address_verification_method="desk", address_verification_note="Old reason")
+        self.assertEqual(self.report(owner, address_confirmed=True).status_code, 200)
+        profile = self.profile(owner)
+        self.assertEqual((profile.address_verified, profile.address_verification_method, profile.address_verification_note), (True, "scout", ""))
+
+    def test_a_corrected_address_clears_the_decision_and_blanks_method_and_note(self):
+        owner = self.make_owner()
+        self.decided(owner, verified=False, address_verification_method="desk", address_verification_note="Old reason")
+        self.assertEqual(self.report(owner, address_confirmed=False, corrected_address="AK-100-9999").status_code, 200)
+        profile = self.profile(owner)
+        self.assertEqual(
+            (profile.address_verified_at, profile.address_verification_method, profile.address_verification_note),
+            (None, "", ""),
+        )
+
+
+class PinChangedTests(Base):
+    """The decision is tied to the pin the staffer saw (`pin_set_at` echoed from the row)."""
+
+    def row(self, owner):
+        self.as_staff(self.ops)
+        return next(r for r in self.client.get(QUEUE).json()["results"] if r["id"] == owner.pk)
+
+    def test_deciding_on_the_pin_the_staffer_saw_works(self):
+        owner = self.make_owner(registered_by=self.scout)
+        seen = self.row(owner)["pin"]["set_at"]
+        response = self.verify_by_call(owner, pin_set_at=seen)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(self.profile(owner).address_verified)
+
+    def test_a_new_pin_since_the_row_was_read_is_a_409_pin_changed(self):
+        owner = self.make_owner(registered_by=self.scout)
+        seen = self.row(owner)["pin"]["set_at"]
+        BusinessOwnerProfile.objects.filter(business_owner=owner).update(location_set_at=timezone.now() + timedelta(seconds=5))
+        for body in ({"result": "verified", "method": "video_call", "note": "ok"}, {"result": "wrong", "method": "desk", "note": "no"}):
+            with self.subTest(result=body["result"]):
+                response = self.decide(owner, pin_set_at=seen, **body)
+                self.assertEqual((response.status_code, response.json()["code"]), (409, "pin_changed"))
+                self.assertIn("new location", response.json()["detail"])
+        self.assertIsNone(self.profile(owner).address_verified_at)
+
+    def test_a_pin_that_appeared_after_a_pinless_row_was_read_is_a_409(self):
+        owner = self.make_owner(pin=False)
+        self.assertIsNone(self.row(owner)["pin"])
+        BusinessOwnerProfile.objects.filter(business_owner=owner).update(
+            lat=Decimal("6.6885"), lng=Decimal("-1.6244"), location_set_at=timezone.now(),
+        )
+        response = self.decide(owner, result="wrong", method="desk", note="No such shop", pin_set_at=None)
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "pin_changed"))
+
+    def test_a_pinless_row_still_decides_wrong_with_a_null_pin_set_at(self):
+        owner = self.make_owner(pin=False)
+        response = self.decide(owner, result="wrong", method="desk", note="No such shop", pin_set_at=None)
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_an_old_client_that_sends_no_pin_set_at_is_not_checked(self):
+        owner = self.make_owner(registered_by=self.scout)
+        self.assertEqual(self.verify_by_call(owner).status_code, 200)
+
+    def test_an_unreadable_pin_set_at_is_a_400(self):
+        owner = self.make_owner(registered_by=self.scout)
+        self.assertEqual(self.verify_by_call(owner, pin_set_at="yesterday-ish").status_code, 400)
+
+
 class MakerCheckerTests(Base):
     def test_the_registrar_is_refused_with_own_registration(self):
         owner = self.make_owner(registered_by=self.gm)
@@ -719,6 +809,17 @@ class RealtimeTests(Base):
         self.assertIn(
             (("address-",), ("address.verify",), ("address-verification", "staff-badges")), QUEUE_INVALIDATIONS,
         )
+
+    def test_kyc_approvers_refetch_the_kyc_queue_when_an_address_changes(self):
+        from realtime.publish import QUEUE_INVALIDATIONS
+
+        self.assertIn((("address-",), ("kyc.approve",), ("kyc-queue", "kyc-detail")), QUEUE_INVALIDATIONS)
+        owner = self.make_owner()
+        approvers = self.listen("perm.kyc.approve")
+        self.as_staff(self.ops)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(decide_url(owner), {"result": "wrong", "method": "desk", "note": "x"}, format="json")
+        self.assertIn(["kyc-queue", "kyc-detail"], self.invalidations(approvers))
 
     def test_a_decision_refreshes_the_queue_and_badge_of_every_verifier(self):
         owner = self.make_owner()
@@ -845,6 +946,26 @@ class OldAddressVerifyDoorTests(Base):
         self.assertEqual(response.status_code, 200, response.content)
         profile = self.profile(owner)
         self.assertEqual((profile.address_verified, profile.address_verification_method, profile.address_verification_note), (True, "", ""))
+
+    def test_the_kyc_door_refuses_verified_without_a_pin_but_still_marks_wrong(self):
+        owner = self.make_owner(pin=False)
+        self.as_staff(self.boss)
+        url = f"/api/accounts/kyc/{owner.pk}/address-verify/"
+        response = self.client.post(url, {"verified": True}, format="json")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["code"], "pin_required")
+        self.assertEqual(response.json()["detail"], kyc.PIN_REQUIRED)
+        self.assertIsNone(self.profile(owner).address_verified_at)
+        wrong = self.client.post(url, {"verified": False}, format="json")
+        self.assertEqual(wrong.status_code, 200, wrong.content)
+        self.assertEqual((self.profile(owner).address_verified, self.profile(owner).address_verified_at is None), (False, False))
+
+    def test_the_kyc_door_accepts_verified_with_a_pin(self):
+        owner = self.make_owner()
+        self.as_staff(self.boss)
+        response = self.client.post(f"/api/accounts/kyc/{owner.pk}/address-verify/", {"verified": True}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(self.profile(owner).address_verified)
 
     def test_the_kyc_door_refuses_whoever_last_set_the_pin(self):
         owner = self.make_owner(location_set_by_staff=self.ops, owner_pin=False)

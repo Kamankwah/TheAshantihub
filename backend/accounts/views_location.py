@@ -101,6 +101,10 @@ class MyLocationView(APIView):
     """GET / POST the signed-in business owner's own shop location (dashboard capture)."""
 
     permission_classes = [IsBusinessOwner]
+    throttle_scope = "owner_location"  # each POST writes a capture row, an activity event and a fan-out to every verifier
+
+    def get_throttles(self):
+        return super().get_throttles() if self.request.method == "POST" else []
 
     def get(self, request):
         return Response(location_capture.own_state(request.user))

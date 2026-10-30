@@ -85,6 +85,83 @@ describe('ShopLocationCard', () => {
     expect(seen.posts).toEqual([])
   })
 
+  it('posts a 50 m fix at once; a 51 m fix is held back with a warning until "Save this one anyway"', async () => {
+    const readings = [fix(50), fix(50.2), fix(20)]
+    const getCurrentPosition = vi.fn((ok) => ok(readings.shift()))
+    stubGeolocation(getCurrentPosition)
+    const seen = serve(state(), { onPost: (_b, set) => { set(state({ pin: pin() })) } })
+    renderCard()
+    await screen.findByRole('heading', { name: 'Add your shop location' })
+    capture()
+    await screen.findByText('Address not verified yet')
+    expect(seen.posts).toHaveLength(1) // 50 m posted directly
+    // 51 m, from the "share again" button the card offers while the address is not decided
+    fireEvent.click(screen.getByRole('button', { name: "I'm at my shop — share my location again" }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Your location is accurate to ±51 m. AshantiHub needs 50 m or better to verify your shop: step outside and try again.',
+    )
+    expect(seen.posts).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(seen.posts).toHaveLength(2))
+    expect(getCurrentPosition).toHaveBeenCalledTimes(3)
+    expect(seen.posts[1].accuracy_m).toBe(20)
+  })
+
+  it('"Save this one anyway" posts the held-back fix', async () => {
+    stubGeolocation(vi.fn((ok) => ok(fix(80))))
+    const seen = serve(state(), { onPost: (_b, set) => { set(state({ pin: pin({ accuracy_m: 80 }) })) } })
+    renderCard()
+    await screen.findByRole('heading', { name: 'Add your shop location' })
+    capture()
+    await screen.findByRole('button', { name: 'Save this one anyway' })
+    expect(seen.posts).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: 'Save this one anyway' }))
+    expect(await screen.findByText('Address not verified yet')).toBeInTheDocument()
+    expect(seen.posts).toEqual([{ lat: 6.6885, lng: -1.6244, accuracy_m: 80 }])
+  })
+
+  it('tells a phone that is hundreds of metres off to turn on Precise location', async () => {
+    stubGeolocation(vi.fn((ok) => ok(fix(2500))))
+    serve(state())
+    renderCard()
+    await screen.findByRole('heading', { name: 'Add your shop location' })
+    capture()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/turn on Precise location for your browser in your phone's settings/i)
+  })
+
+  it('wrong with no pin: says AshantiHub could not confirm it and shows the reason beside the prompt', async () => {
+    stubGeolocation(vi.fn())
+    serve(state({ address_status: 'wrong', wrong_reason: 'No shop at that address.' }))
+    renderCard()
+    expect(await screen.findByRole('heading', { name: 'Add your shop location' })).toBeInTheDocument()
+    expect(screen.getByText("AshantiHub couldn't confirm this location")).toBeInTheDocument()
+    expect(screen.getByText(/Reason: No shop at that address\./)).toBeInTheDocument()
+  })
+
+  it('verified with no pin does not claim the address still needs checking', async () => {
+    stubGeolocation(vi.fn())
+    serve(state({ address_status: 'verified', can_capture: true }))
+    renderCard()
+    await screen.findByRole('heading', { name: 'Add your shop location' })
+    expect(screen.queryByText(/checks it before your address counts as verified/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: "I'm at my shop — use my location" })).toBeInTheDocument()
+  })
+
+  it('keeps the card when a background refetch fails after data has loaded', async () => {
+    stubGeolocation(vi.fn((ok) => ok(fix(20))))
+    let gets = 0
+    server.use(
+      http.get(URL, () => { gets += 1; return gets === 1 ? HttpResponse.json(state()) : HttpResponse.json({ detail: 'boom' }, { status: 500 }) }),
+      http.post(URL, () => HttpResponse.json({})),
+    )
+    renderCard()
+    await screen.findByRole('heading', { name: 'Add your shop location' })
+    capture()
+    await waitFor(() => expect(gets).toBeGreaterThanOrEqual(2))
+    expect(screen.getByRole('heading', { name: 'Add your shop location' })).toBeInTheDocument()
+    expect(screen.queryByText(/Couldn't load your shop location/)).not.toBeInTheDocument()
+  })
+
   it('says plainly that location is blocked, with no hand-placed pin offered', async () => {
     stubGeolocation(vi.fn((_ok, fail) => fail({ code: 1 })))
     const seen = serve(state())

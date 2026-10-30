@@ -92,7 +92,7 @@ describe('ShareLocationPage', () => {
     expect(getCurrentPosition).toHaveBeenCalledTimes(2)
   })
 
-  it('accepts a fix of exactly 100 m', async () => {
+  it('accepts a fix of exactly 100 m once the owner chooses to save it', async () => {
     stubGeolocation(vi.fn((ok) => ok(fix(100))))
     let sent = null
     server.use(
@@ -102,8 +102,74 @@ describe('ShareLocationPage', () => {
     renderAt()
     await screen.findByRole('heading', { name: "Akosua's Kitchen" })
     share()
+    fireEvent.click(await screen.findByRole('button', { name: 'Save this one anyway' }))
     await screen.findByText(/AshantiHub staff will check it/)
     expect(sent.accuracy_m).toBe(100)
+  })
+
+  it('posts a fix of exactly 50 m straight away', async () => {
+    stubGeolocation(vi.fn((ok) => ok(fix(50))))
+    let sent = null
+    server.use(
+      http.post(`${API}/preview/`, () => HttpResponse.json(live())),
+      http.post(`${API}/capture/`, async ({ request }) => { sent = await request.json(); return HttpResponse.json({ business_name: 'B', accuracy_m: 50, captured_at: 'x' }) }),
+    )
+    renderAt()
+    await screen.findByRole('heading', { name: "Akosua's Kitchen" })
+    share()
+    await screen.findByText(/AshantiHub staff will check it/)
+    expect(sent.accuracy_m).toBe(50)
+  })
+
+  it('warns about a 51 m fix and posts nothing until "Save this one anyway"; Try again re-locates', async () => {
+    const readings = [fix(50.4), fix(30)]
+    const getCurrentPosition = vi.fn((ok) => ok(readings.shift()))
+    stubGeolocation(getCurrentPosition)
+    const sent = []
+    server.use(
+      http.post(`${API}/preview/`, () => HttpResponse.json(live())),
+      http.post(`${API}/capture/`, async ({ request }) => { sent.push(await request.json()); return HttpResponse.json({ business_name: 'B', accuracy_m: 51, captured_at: 'x' }) }),
+    )
+    renderAt()
+    await screen.findByRole('heading', { name: "Akosua's Kitchen" })
+    share()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Your location is accurate to ±51 m. AshantiHub needs 50 m or better to verify your shop: step outside and try again.',
+    )
+    expect(sent).toEqual([])
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save this one anyway' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await screen.findByText(/AshantiHub staff will check it/)
+    expect(getCurrentPosition).toHaveBeenCalledTimes(2)
+    expect(sent).toHaveLength(1)
+    expect(sent[0].accuracy_m).toBe(30)
+  })
+
+  it('"Save this one anyway" posts the 51 m fix', async () => {
+    stubGeolocation(vi.fn((ok) => ok(fix(75))))
+    const sent = []
+    server.use(
+      http.post(`${API}/preview/`, () => HttpResponse.json(live())),
+      http.post(`${API}/capture/`, async ({ request }) => { sent.push(await request.json()); return HttpResponse.json({ business_name: 'B', accuracy_m: 75, captured_at: 'x' }) }),
+    )
+    renderAt()
+    await screen.findByRole('heading', { name: "Akosua's Kitchen" })
+    share()
+    await screen.findByRole('button', { name: 'Save this one anyway' })
+    expect(sent).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: 'Save this one anyway' }))
+    await screen.findByText(/AshantiHub staff will check it/)
+    expect(sent).toEqual([{ token: 'raw-tok_1', lat: 6.6885, lng: -1.6244, accuracy_m: 75 }])
+  })
+
+  it('tells a phone that is hundreds of metres off to turn on Precise location', async () => {
+    stubGeolocation(vi.fn((ok) => ok(fix(1800))))
+    server.use(http.post(`${API}/preview/`, () => HttpResponse.json(live())))
+    renderAt()
+    await screen.findByRole('heading', { name: "Akosua's Kitchen" })
+    share()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/turn on Precise location for your browser in your phone's settings/i)
   })
 
   it('says how to unblock location when permission is denied, posts nothing, and offers another try', async () => {
@@ -186,7 +252,7 @@ describe('ShareLocationPage', () => {
   })
 
   it('shows the server sentence for a fix it refuses (accuracy) and lets the owner try again', async () => {
-    stubGeolocation(vi.fn((ok) => ok(fix(80))))
+    stubGeolocation(vi.fn((ok) => ok(fix(40))))
     const detail = "Your phone's location is only accurate to ±120 m. We need 100 m or better: step outside or near a window and try again."
     server.use(
       http.post(`${API}/preview/`, () => HttpResponse.json(live())),

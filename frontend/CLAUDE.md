@@ -141,7 +141,10 @@ monolith holding most components, with extractions living in `components/`,
   the URL fragment only (no `?token=`), stripped at once, kept in state only; preview and capture are POSTs through
   `apiPostPublic` (`hooks/useLocationLink.js`). It reuses `useDevicePosition` (its `errorKind` names why a fix failed, so the
   page can word "unsupported" without the scout's "place the pin by hand"). A fix over 100 m is refused locally with nothing
-  sent; it shows no coordinates, only the accuracy, and never a default pin.
+  sent, and one between 50 and 100 m (`VERIFY_ACCURACY_M`) is held back with a warning ("Try again" primary, "Save this one
+  anyway" posts it; `ShopLocationCard` does the same) because the link is single use and staff need 50 m to verify. It shows
+  no coordinates, only the accuracy, and never a default pin. `AddressPinMap` keys its `MapContainer` by the pin (react-leaflet
+  reads `center` once).
 - **Prospects work for Operations and Super Admin too.** They list every scout's (`?scout=<id>` narrows; the card names
   the scout), the add sheet needs a scout picker for non-scouts, and the header shows the listings-live figure only when
   the server sends it (a one-scout list). `AskOwnerAgain` offers the registration re-ask only when

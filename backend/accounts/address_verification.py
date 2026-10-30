@@ -9,8 +9,12 @@ The queue lists the businesses whose shop address nobody has decided yet (plus t
 * "Wrong" always carries a reason; the owner reads it on their dashboard and in a notice, and must share the location again.
 * Maker-checker: `kyc.is_kyc_submitter` (registrar, account manager, makers of the business's requests, whoever last set the
   pin, ...) never decides, Super Admin included. Super Admin is the fallback only for businesses someone else registered.
+* A decision names the pin the staffer saw (`pin_set_at`); if the owner shared a new one since, it is refused with 409
+  `pin_changed` so nothing is verified unseen.
 * Lock order: the owner row, then the profile row, then the activity chain (`record()` last), as the capture paths do.
 """
+from datetime import timedelta
+
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -41,6 +45,7 @@ SIGNBOARD_MISSING = "There is no signboard photo on file for this business, so i
 VIDEO_CALL_REQUIRED = "The first verification needs a video call with the owner. Choose Video call and write what the call showed."
 DESK_CANNOT_VERIFY = "A desk check can only mark an address wrong. Verify with a video call, a scout's report or the owner's GPS capture."
 SCOUT_REPORT_MISSING = "No scout has reported visiting this shop and confirming its address."
+PIN_CHANGED = "The owner shared a new location since you opened this. Reload to see it before you decide."
 CALL_NOTE_REQUIRED = "Write what the video call showed."
 WRONG_TITLE = "Your shop's address needs attention"
 WRONG_BODY = "AshantiHub could not confirm your shop's location: {reason} Open your dashboard and share your shop's location again from the shop."
@@ -189,6 +194,8 @@ class DecisionSerializer(serializers.Serializer):
     result = serializers.ChoiceField(choices=[VERIFIED, WRONG])
     method = serializers.ChoiceField(choices=[value for value, _ in BusinessOwnerProfile.ADDRESS_METHOD_CHOICES])
     note = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=NOTE_MAX, trim_whitespace=True)
+    # The pin's `set_at` from the row the staffer decided on (null: the row had no pin). Absent: an old client, not checked.
+    pin_set_at = serializers.DateTimeField(required=False, allow_null=True)
 
     def validate(self, attrs):
         attrs["note"] = attrs.get("note") or ""
@@ -220,11 +227,21 @@ def _require_evidence(owner, profile, method):
         raise ClaimError(SIGNBOARD_MISSING, code="signboard_missing")
 
 
+def _pin_changed(profile, seen):
+    """Whether the stored pin is no longer the one the staffer saw. Compared as instants, to the millisecond (the row's
+    JSON and the database both round-trip a timestamp, and a replaced pin is never within a millisecond of the old)."""
+    stored = profile.location_set_at if profile is not None else None
+    if seen is None or stored is None:
+        return seen is not stored
+    return abs(stored - seen) >= timedelta(milliseconds=1)
+
+
 def decide(owner_id, staff, data, *, http_request=None):
     """Record the address decision for one business and return nothing; the caller answers the queue row."""
     body = DecisionSerializer(data=data if hasattr(data, "get") else {})
     body.is_valid(raise_exception=True)
     result, method, note = body.validated_data["result"], body.validated_data["method"], body.validated_data["note"]
+    check_pin = "pin_set_at" in body.validated_data
     with transaction.atomic():
         try:
             owner = BusinessOwner.objects.select_for_update().get(pk=owner_id)  # 1. the owner
@@ -237,6 +254,8 @@ def decide(owner_id, staff, data, *, http_request=None):
         profile = BusinessOwnerProfile.objects.select_for_update().filter(business_owner=owner).first()  # 2. the profile
         if profile is not None and profile.address_verified_at is not None:
             raise ClaimError(ALREADY_DECIDED, code="already_decided", status_code=409)
+        if check_pin and _pin_changed(profile, body.validated_data["pin_set_at"]):
+            raise ClaimError(PIN_CHANGED, code="pin_changed", status_code=409)
         before = address_status(profile)
         if result == VERIFIED:
             _require_evidence(owner, profile, method)

@@ -668,6 +668,9 @@ class KYCAddressVerifyView(APIView):
         if kyc.is_kyc_submitter(owner, request.user):
             return Response({"detail": kyc.OWN_REGISTRATION}, status=403)
         verified = bool(request.data.get("verified", False))
+        # "Verified" is a decision about a pin: the new door's rule (a pin is truth) holds on this door too.
+        if verified and kyc.pin_missing(owner):
+            return Response({"detail": kyc.PIN_REQUIRED, "code": kyc.PIN_REQUIRED_CODE}, status=400)
         profile = owner.profile
         profile.address_verified = verified
         profile.address_verified_by = request.user
@@ -1446,17 +1449,24 @@ class ScoutVerifyView(APIView):
         # registration, so it exists for any real business).
         profile = getattr(assignment.business_owner, "profile", None)
         if profile is not None:
-            update_fields = ["address_verified", "address_verified_by", "address_verified_at"]
+            update_fields = [
+                "address_verified", "address_verified_by", "address_verified_at",
+                "address_verification_method", "address_verification_note",
+            ]
+            # The report replaces any earlier decision, so a stale method and note must not be read as its reason.
+            profile.address_verification_note = ""
             if not address_confirmed and corrected:
                 profile.gps_address = corrected
                 profile.address_verified = False
                 profile.address_verified_by = None
                 profile.address_verified_at = None
+                profile.address_verification_method = ""
                 update_fields.append("gps_address")
             else:
                 profile.address_verified = bool(address_confirmed)
                 profile.address_verified_by = request.user
                 profile.address_verified_at = now
+                profile.address_verification_method = "scout"
             profile.save(update_fields=update_fields)
 
         return Response(ScoutAssignmentSerializer(assignment).data)

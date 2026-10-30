@@ -242,6 +242,16 @@ def address_status(profile):
     return "verified" if profile.address_verified else "wrong"
 
 
+def has_pin(profile):
+    return profile is not None and profile.lat is not None and profile.lng is not None
+
+
+def owner_locked(profile):
+    """The owner may not change a location staff verified. A "verified" with no pin (an old door once allowed it) protects
+    nothing, so it does not lock: sharing a pin there clears the pinless decision and returns the business to the queue."""
+    return address_status(profile) == "verified" and has_pin(profile)
+
+
 def own_state(owner):
     """`GET me/location/`: the pin the owner has, the address decision as the owner may see it, and whether they may
     share a new fix. The wrong-reason is the staff note, shown only while the address is marked wrong."""
@@ -249,7 +259,7 @@ def own_state(owner):
     profile = getattr(owner, "profile", None)
     status = address_status(profile)
     pin = None
-    if profile is not None and profile.lat is not None and profile.lng is not None:
+    if has_pin(profile):
         pin = {
             "lat": float(profile.lat), "lng": float(profile.lng), "accuracy_m": profile.location_accuracy_m,
             "set_by": profile.location_set_by or None, "set_at": profile.location_set_at,
@@ -260,17 +270,17 @@ def own_state(owner):
         "pin": pin,
         "address_status": status,
         "wrong_reason": note or None,
-        "can_capture": status != "verified" and owner.kyc_status != BusinessOwner.REJECTED,
+        "can_capture": not owner_locked(profile) and owner.kyc_status != BusinessOwner.REJECTED,
     }
 
 
 def capture_for_owner(owner, data, request=None):
-    """`POST me/location/`: the owner shares a fix from the dashboard. 409 once the address is verified (staff change it)
+    """`POST me/location/`: the owner shares a fix from the dashboard. 409 once the address is verified with a pin (staff change it)
     or the business's KYC was rejected."""
     with transaction.atomic():
         locked = BusinessOwner.objects.select_for_update().get(pk=owner.pk)  # 1. the owner
         profile = BusinessOwnerProfile.objects.select_for_update().filter(business_owner=locked).first()
-        if address_status(profile) == "verified":
+        if owner_locked(profile):
             raise ClaimError(VERIFIED, code="address_verified", status_code=409)
         if locked.kyc_status == BusinessOwner.REJECTED:
             raise ClaimError(KYC_REJECTED_OWN, code="kyc_rejected", status_code=409)

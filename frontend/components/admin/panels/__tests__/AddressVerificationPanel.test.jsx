@@ -100,7 +100,8 @@ describe('AddressVerificationPanel: the detail', () => {
     expect(within(group).getByText(/^No pin yet\. There is nothing to show on a map/)).toBeInTheDocument()
     expect(within(group).getByText('No signboard photo')).toBeInTheDocument()
     expect(within(group).getByText('Not stored')).toBeInTheDocument()
-    expect(within(group).getByText('Registered online by the owner')).toBeInTheDocument()
+    expect(within(group).getByText('No staff registrar on record')).toBeInTheDocument()
+    expect(within(group).queryByText(/Registered online/)).not.toBeInTheDocument()
   })
 })
 
@@ -178,7 +179,7 @@ describe('AddressVerificationPanel: mark verified', () => {
     expect(bodies).toEqual([])
     fireEvent.change(within(group).getByLabelText(/What the video call showed/), { target: { value: '  Showed the signboard and the gate.  ' } })
     fireEvent.click(within(group).getByRole('button', { name: 'Confirm verified' }))
-    await waitFor(() => expect(bodies).toEqual([{ result: 'verified', method: 'video_call', note: 'Showed the signboard and the gate.' }]))
+    await waitFor(() => expect(bodies).toEqual([{ result: 'verified', method: 'video_call', note: 'Showed the signboard and the gate.', pin_set_at: '2026-10-30T08:00:00Z' }]))
     expect(await screen.findByRole('status')).toHaveTextContent("Akosua's Chop Bar: address marked verified.")
     await waitFor(() => expect(queue.length).toBeGreaterThan(1)) // the list was fetched again
   })
@@ -196,7 +197,34 @@ describe('AddressVerificationPanel: mark verified', () => {
     fireEvent.change(within(group).getByLabelText('Method'), { target: { value: 'scout' } })
     fireEvent.click(within(group).getByRole('button', { name: 'Confirm verified' }))
     expect(await within(group).findByRole('alert')).toHaveTextContent('No scout has reported visiting this shop and confirming its address.')
-    expect(bodies).toEqual([{ result: 'verified', method: 'scout', note: '' }])
+    expect(bodies).toEqual([{ result: 'verified', method: 'scout', note: '', pin_set_at: '2026-10-30T08:00:00Z' }])
+  })
+})
+
+describe('AddressVerificationPanel: the pin the staffer saw', () => {
+  it('sends a null pin_set_at for a row with no pin', async () => {
+    mockQueue({ pending: [row({ pin: null, evidence: { owner_gps_50m: false, signboard: true, scout_report: false, first_verification: true } })] })
+    const bodies = []
+    server.use(http.post(`${QUEUE}7/decide/`, async ({ request }) => { bodies.push(await request.json()); return HttpResponse.json(row({ address_status: 'wrong' })) }))
+    renderPanel()
+    const group = await openRow()
+    fireEvent.click(within(group).getByRole('button', { name: 'Mark wrong' }))
+    fireEvent.change(within(group).getByLabelText(/Reason \(the owner will see this\)/), { target: { value: 'No such shop.' } })
+    fireEvent.click(within(group).getByRole('button', { name: 'Confirm wrong' }))
+    await waitFor(() => expect(bodies).toEqual([{ result: 'wrong', method: 'desk', note: 'No such shop.', pin_set_at: null }]))
+  })
+
+  it('shows the server sentence and reloads the queue when the owner shared a new location meanwhile', async () => {
+    const asked = mockQueue({ pending: [row()] })
+    const sentence = 'The owner shared a new location since you opened this. Reload to see it before you decide.'
+    server.use(http.post(`${QUEUE}7/decide/`, () => HttpResponse.json({ detail: sentence, code: 'pin_changed' }, { status: 409 })))
+    renderPanel()
+    const group = await openRow()
+    fireEvent.click(within(group).getByRole('button', { name: 'Mark verified' }))
+    fireEvent.change(within(group).getByLabelText(/What the video call showed/), { target: { value: 'Matches.' } })
+    fireEvent.click(within(group).getByRole('button', { name: 'Confirm verified' }))
+    expect(await within(group).findByRole('alert')).toHaveTextContent(sentence)
+    await waitFor(() => expect(asked.length).toBeGreaterThan(1))
   })
 })
 
@@ -213,7 +241,7 @@ describe('AddressVerificationPanel: mark wrong', () => {
     expect(bodies).toEqual([])
     fireEvent.change(within(group).getByLabelText(/Reason \(the owner will see this\)/), { target: { value: 'The pin is on the main road, not at the shop.' } })
     fireEvent.click(within(group).getByRole('button', { name: 'Confirm wrong' }))
-    await waitFor(() => expect(bodies).toEqual([{ result: 'wrong', method: 'desk', note: 'The pin is on the main road, not at the shop.' }]))
+    await waitFor(() => expect(bodies).toEqual([{ result: 'wrong', method: 'desk', note: 'The pin is on the main road, not at the shop.', pin_set_at: '2026-10-30T08:00:00Z' }]))
     expect(await screen.findByRole('status')).toHaveTextContent('address marked wrong; the owner has been told why.')
   })
 })

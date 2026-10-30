@@ -122,7 +122,7 @@ function SendLink({ row, onSent }) {
 }
 
 // Mark verified / Mark wrong. Both buttons are disabled with the reason beside them when the row is blocked.
-function Decision({ row, onDecided }) {
+function Decision({ row, onDecided, onChanged }) {
   const [mode, setMode] = useState(null); // null | "verify" | "wrong"
   const [method, setMethod] = useState("video_call");
   const [note, setNote] = useState("");
@@ -139,11 +139,12 @@ function Decision({ row, onDecided }) {
     setBusy(true); setError(null);
     try {
       await apiPost(`/api/accounts/address-verification/${row.id}/decide/`, mode === "verify"
-        ? { result: "verified", method, note: text }
-        : { result: "wrong", method: "desk", note: text });
+        ? { result: "verified", method, note: text, pin_set_at: row.pin?.set_at ?? null }
+        : { result: "wrong", method: "desk", note: text, pin_set_at: row.pin?.set_at ?? null });
       onDecided(mode === "verify" ? `${row.business_name}: address marked verified.` : `${row.business_name}: address marked wrong; the owner has been told why.`);
     } catch (err) {
       setError(refusal(err, "Could not record the decision. Please try again."));
+      if (err?.body?.code === "pin_changed") onChanged?.(); // the owner shared a new location: show the new row
     } finally { setBusy(false); }
   };
 
@@ -207,7 +208,7 @@ function Detail({ row, tab, onChanged, onDecided }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "0 20px", marginTop: 12 }}>
         <Fact label="Ghana Post code">{row.gps_address || "Not stored"}</Fact>
-        <Fact label="Registered by">{row.registrar ? row.registrar.name : "Registered online by the owner"}</Fact>
+        <Fact label="Registered by">{row.registrar ? row.registrar.name : "No staff registrar on record"}</Fact>
         <Fact label="Pin">{pin ? `${pinText(pin)}${pin.set_at ? `, ${when(pin.set_at)}` : ""}` : "No pin yet"}</Fact>
         <Fact label="Latest location link">{linkText(row.last_capture)}</Fact>
       </div>
@@ -240,7 +241,7 @@ function Detail({ row, tab, onChanged, onDecided }) {
       )}
 
       <div style={sectionHead}>Actions</div>
-      {decided ? <div style={{ ...dim, fontSize: "0.78rem" }}>{REOPEN_TEXT}</div> : <Decision row={row} onDecided={onDecided} />}
+      {decided ? <div style={{ ...dim, fontSize: "0.78rem" }}>{REOPEN_TEXT}</div> : <Decision row={row} onDecided={onDecided} onChanged={onChanged} />}
       <SendLink row={row} onSent={onChanged} />
     </div>
   );

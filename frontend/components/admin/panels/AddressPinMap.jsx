@@ -8,7 +8,9 @@ import { D } from "../theme.js";
 // first when a satellite source is configured (Streets otherwise). Leaflet does
 // not render under jsdom, so tests stub this file (test/setup.js); its real
 // behaviour is checked in a browser. A pin without finite coordinates, or at
-// exactly 0,0, draws nothing: never a default location.
+// exactly 0,0, draws nothing: never a default location. react-leaflet reads a MapContainer's
+// `center` and `zoom` only once, when it mounts, so the container is keyed by the pin: a new
+// pin (the owner shared again) mounts a fresh map centred on it.
 const goldPin = L.divIcon({
   className: "",
   html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#D4A017;border:2px solid #2C1810"></div>',
@@ -24,7 +26,7 @@ export default function AddressPinMap({ pin, label, height = 240 }) {
   const hasRadius = Number.isFinite(radius) && radius > 0;
   return (
     <div role="group" aria-label={label} style={{ position: "relative", height, borderRadius: 12, overflow: "hidden" }}>
-      <MapContainer center={[lat, lng]} zoom={18} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
+      <MapContainer key={`${lat},${lng}`} center={[lat, lng]} zoom={18} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
         <BaseTileLayers initial="satellite" />
         <Marker position={[lat, lng]} icon={goldPin} />
         {hasRadius && <Circle center={[lat, lng]} radius={radius} pathOptions={{ color: "#006400", weight: 1.5, dashArray: "6 5", fillOpacity: 0.12 }} />}

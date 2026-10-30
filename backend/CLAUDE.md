@@ -109,8 +109,10 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   note; `gps_capture` = the same without the call, only when `address_first_verified_at` is set (else 400
   `video_call_required`); `scout` = a visited `ScoutAssignment` with `address_confirmed=True`; `desk` can only mark "wrong"
   (400 `desk_cannot_verify` for verified). "Verified" always needs a stored pin (400 `pin_required`). **The old
-  `kyc/<id>/address-verify/` door still bypasses this evidence ladder** (known; the owner decides whether to retire its
-  toggle). A "wrong" decision still sets `address_verified_at`, so the KYC gate counts the address as decided.
+  `kyc/<id>/address-verify/` door still bypasses the rest of this evidence ladder** (known; the owner decides whether to
+  retire its toggle) but refuses `verified: true` without a pin (400 `pin_required`), and `ScoutVerifyView` stamps method
+  `scout` and blanks the note, so a decision never shows the previous one's reason. `decide` takes the row's `pin_set_at`;
+  a different stored `location_set_at` is 409 `pin_changed` (absent = old client, unchecked). A "wrong" decision still sets `address_verified_at`, so the KYC gate counts the address as decided.
 - **The shop location link is a bearer token (`accounts/location_capture.py`).** Same house rules as the confirmation link:
   `secrets.token_urlsafe(32)` stored only as a SHA-256 hash, URL `<FRONTEND_BASE_URL>/share-location#token=<raw>` (a
   fragment, out of request logs), single use, expires in 48 hours, a newer link revokes the older live ones, at most five
@@ -127,7 +129,8 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   (`gps.ASHANTI_LAT/ASHANTI_LNG`, generous), KYC not rejected. A capture sets `location_set_by="owner"`, clears
   `location_set_by_staff` and any address decision (a new pin is new evidence), and records `address-location-captured`
   (`after` = accuracy and source only). The owner's own `me/location/` capture is refused once the address is verified
-  (409 `address_verified`); a staff-sent link still works, which is how a verified address is reopened.
+  **and has a pin** (409 `address_verified`; a pinless "verified" does not lock, and a capture clears it); a staff-sent link
+  still works, which is how a verified address is reopened. `MyLocationView` POST is throttled (`owner_location`, 10/min).
 - **Background jobs and live updates run in-process under `manage.py test`** (eager Celery,
   in-memory channel layer, local-memory `realtime` cache). On-commit work needs
   `captureOnCommitCallbacks(execute=True)` in a `TestCase`; consumer tests that read the database

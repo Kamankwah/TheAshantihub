@@ -466,6 +466,7 @@ class OwnerOwnCaptureTests(Base):
     def test_address_status_follows_the_decision(self):
         profile = self.profile()
         self.as_owner(self.owner)
+        profile.lat, profile.lng = Decimal("6.688500"), Decimal("-1.624400")  # a verified address with a pin is locked
         profile.address_verified_at, profile.address_verified = timezone.now(), True
         profile.save()
         body = self.client.get(ME).json()
@@ -522,6 +523,7 @@ class OwnerOwnCaptureTests(Base):
 
     def test_a_verified_address_cannot_be_recaptured(self):
         profile = self.profile()
+        profile.lat, profile.lng = Decimal("6.688500"), Decimal("-1.624400")
         profile.address_verified, profile.address_verified_at = True, timezone.now()
         profile.save()
         self.as_owner(self.owner)
@@ -532,7 +534,24 @@ class OwnerOwnCaptureTests(Base):
             response.json()["detail"],
             "Your shop's location is verified. To change it, contact AshantiHub Support.",
         )
-        self.assertIsNone(self.profile().lat)
+        self.assertEqual(self.profile().lat, Decimal("6.688500"))
+
+    def test_a_verified_address_with_no_pin_is_not_locked_and_a_capture_returns_it_to_the_queue(self):
+        # An old door once marked "verified" without a pin. There is nothing to protect, so the owner may share one.
+        profile = self.profile()
+        profile.address_verified, profile.address_verified_at = True, timezone.now()
+        profile.address_verification_method, profile.address_verification_note = "desk", "old"
+        profile.save()
+        self.as_owner(self.owner)
+        state = self.client.get(ME).json()
+        self.assertEqual((state["pin"], state["address_status"], state["can_capture"]), (None, "verified", True))
+        response = self.client.post(ME, KUMASI, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["address_status"], "not_verified")
+        profile = self.profile()
+        self.assertEqual((profile.address_verified, profile.address_verified_at), (False, None))
+        self.assertEqual((profile.address_verification_method, profile.address_verification_note), ("", ""))
+        self.assertIsNotNone(profile.lat)
 
     def test_rejected_kyc_is_409(self):
         owner = self.make_owner(kyc=BusinessOwner.REJECTED)
@@ -559,6 +578,19 @@ class OwnerOwnCaptureTests(Base):
         self.as_owner(self.owner)
         for _ in range(6):
             self.assertEqual(self.client.post(ME, KUMASI, format="json").status_code, 200)
+
+
+class OwnerLocationThrottleTests(Base):
+    def test_the_owners_own_capture_is_throttled_to_ten_a_minute_and_reading_is_not(self):
+        from accounts.views_location import MyLocationView
+
+        self.assertEqual(MyLocationView.throttle_scope, "owner_location")
+        self.assertEqual(settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["owner_location"], "10/min")
+        self.as_owner(self.owner)
+        for _ in range(10):
+            self.assertEqual(self.client.post(ME, {"lat": 1, "lng": 1, "accuracy_m": 5}, format="json").status_code, 400)
+        self.assertEqual(self.client.post(ME, KUMASI, format="json").status_code, 429)
+        self.assertEqual(self.client.get(ME).status_code, 200)
 
 
 class NoLinkLeakTests(Base):
