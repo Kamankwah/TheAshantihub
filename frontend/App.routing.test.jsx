@@ -1071,6 +1071,28 @@ describe('AshantiHub routing — /business/confirm', () => {
   }, 8000)
 })
 
+// Address verification — /share-location is the owner's texted "share my shop location" page (token in the #fragment,
+// POSTed in the body), a standalone public page: not the storefront and not a 404.
+describe('AshantiHub routing — /share-location', () => {
+  it('opens the share-location page and previews the token from the fragment', async () => {
+    let body = null
+    server.use(
+      http.post('http://localhost:8000/api/accounts/location-links/preview/', async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json({ business_name: "Akosua's Kitchen", valid: true, expires_at: '2099-01-01T00:00:00Z' })
+      }),
+    )
+    window.history.replaceState(null, '', '/share-location#token=frag-tok')
+    renderStaffAt('/share-location')
+    expect(await screen.findByText("Akosua's Kitchen", {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByText(/place your shop on the map/)).toBeInTheDocument()
+    expect(screen.getByTestId('location').textContent).toBe('/share-location')
+    expect(body).toEqual({ token: 'frag-tok' })
+    expect(screen.queryByText('Page Not Found')).not.toBeInTheDocument()
+    window.history.replaceState(null, '', '/')
+  }, 8000)
+})
+
 // Dark mode covers every page (owner decision, plan M1B task 4): the app root
 // and the marketplace home both paint from the --ah-* theme tokens.
 describe('AshantiHub — dark theme scope', () => {

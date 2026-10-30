@@ -128,6 +128,11 @@ monolith holding most components, with extractions living in `components/`,
   calls the public endpoints through `apiPostPublic` (no session, no view-as, never ends a stored session), all POST.
   The General Manager menu has no Register, Prospects or Client listings (a checker, not a maker).
   The preview query key is constant (the token rides only in the closure), with `gcTime: 0`.
+- **`/share-location` is a public page too** (`ShareLocationPage`, the owner's texted "share my shop location" link). Token from
+  the URL fragment only (no `?token=`), stripped at once, kept in state only; preview and capture are POSTs through
+  `apiPostPublic` (`hooks/useLocationLink.js`). It reuses `useDevicePosition` (its `errorKind` names why a fix failed, so the
+  page can word "unsupported" without the scout's "place the pin by hand"). A fix over 100 m is refused locally with nothing
+  sent; it shows no coordinates, only the accuracy, and never a default pin.
 - **Prospects work for Operations and Super Admin too.** They list every scout's (`?scout=<id>` narrows; the card names
   the scout), the add sheet needs a scout picker for non-scouts, and the header shows the listings-live figure only when
   the server sends it (a one-scout list). `AskOwnerAgain` offers the registration re-ask only when

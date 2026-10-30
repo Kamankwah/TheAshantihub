@@ -66,6 +66,7 @@ import { ContactPage } from "./components/ui/contact-page.tsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 import BusinessClaimPage from "./components/BusinessClaimPage.jsx";
 import OwnerConfirmPage from "./components/OwnerConfirmPage.jsx";
+import ShareLocationPage from "./components/ShareLocationPage.jsx";
 import MarketingConsentCard from "./components/MarketingConsentCard.jsx";
 import AccountSecurityCard from "./components/security/AccountSecurityCard.jsx";
 import UnsubscribePage from "./components/UnsubscribePage.jsx";
@@ -2384,6 +2385,8 @@ const PATH_TO_PAGE = {
   "/business/claim": "business-claim",
   // The owner's texted confirmation link (staff listing pipeline): public, token in the #fragment. Never a listing.
   "/business/confirm": "business-confirm",
+  // The owner's texted "share my shop location" link (address verification): public, token in the #fragment.
+  "/share-location": "share-location",
   // The full shopping cart (Marketplace Plan 4); the Navbar/StorefrontHeader cart icons go here.
   "/cart": "cart",
   // The secure checkout (Marketplace Plan 4): a standalone page with its own slim header, no Navbar/Footer.
@@ -2404,6 +2407,7 @@ const PAGE_TO_PATH = {
   "payment-return": "/payment/return",
   "business-claim": "/business/claim",
   "business-confirm": "/business/confirm",
+  "share-location": "/share-location",
   cart: "/cart",
   checkout: "/checkout",
   "checkout-verify": "/checkout/verify",
@@ -2952,6 +2956,7 @@ export default function AshantiHub() {
   if(page==="checkout") return <CheckoutPage user={user} currency={currency} PaymentComponent={MoMoPayment} authLoading={auth.isLoading} onNavigate={navigate} onSignIn={()=>{setAuthReturn("/checkout");setAuthModal("login");setPage("home");}}/>;
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
   if(page==="business-confirm") return <OwnerConfirmPage/>;
+  if(page==="share-location") return <ShareLocationPage/>;
   if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
   if(unsubscribeMatch) return <UnsubscribePage token={unsubscribeMatch.params.token} onHome={()=>navigate("/")}/>;
   if(notifyStopMatch) return <NotifyStopPage token={notifyStopMatch.params.token} onHome={()=>navigate("/")}/>;
