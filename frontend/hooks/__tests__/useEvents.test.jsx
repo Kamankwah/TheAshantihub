@@ -67,6 +67,17 @@ describe('useEvents', () => {
     expect(url.searchParams.get('search')).toBe('akwasidae')
   })
 
+  it('sends the when filter, and omits it when unset', async () => {
+    const seen = []
+    server.use(http.get('http://localhost:8000/api/events/', ({ request }) => { seen.push(new URL(request.url)); return HttpResponse.json(PAGE_ONE) }))
+    const on = renderWithClient(() => useEvents({ when: 'week' }))
+    await waitFor(() => expect(on.result.current.isLoading).toBe(false))
+    expect(seen[0].searchParams.get('when')).toBe('week')
+    const off = renderWithClient(() => useEvents({ when: undefined }))
+    await waitFor(() => expect(off.result.current.isLoading).toBe(false))
+    expect(seen[1].searchParams.has('when')).toBe(false)
+  })
+
   it('defaults filters to an empty object', async () => {
     server.use(http.get('http://localhost:8000/api/events/', () => HttpResponse.json(PAGE_ONE)))
     const { result } = renderWithClient(() => useEvents())

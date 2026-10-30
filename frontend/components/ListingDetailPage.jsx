@@ -64,7 +64,7 @@ export default function ListingDetailPage(props) {
 // Product/service detail page (PDP) for the Business tab redesign
 // (docs/BUSINESS_EVENTS_ROADMAP.md Phase 3). Follows this app's no-router
 // convention: AshantiHub holds a `selectedListingId` state and swaps this in
-// for the Sidebar+grid area (rather than a top-level early return like
+// for the rail+grid area (rather than a top-level early return like
 // StaffDashboard/BusinessDashboard) so the surrounding hero/banner/search/
 // category tabs/CTA stay mounted around it.
 //

@@ -26,9 +26,6 @@ DEPARTMENTS = [
         "Smart Home Lighting", "Smart Locks & Entry", "Smart Plugs & Outlets", "Smart Speakers & Displays",
         "Smart Thermostats", "Security Cameras & Systems",
     ]),
-    ("amazon-devices", "Amazon Devices & Accessories", "🔌", "#00897B", [
-        "Amazon Echo & Alexa", "Fire Tablets", "Fire TV", "Ring", "Device Accessories",
-    ]),
     ("home-kitchen", "Home & Kitchen", "🍳", "#E8621A", [
         "Bath", "Bedding", "Furniture", "Home Décor", "Kitchen & Dining", "Storage & Organization",
         "Vacuums & Floor Care", "Heating, Cooling & Air Quality", "Irons & Steamers", "Event & Party Supplies",

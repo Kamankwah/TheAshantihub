@@ -102,6 +102,19 @@ describe('useListings', () => {
     expect(seen[1].searchParams.has('sold_by')).toBe(false)
   })
 
+  it('sends min_rating and on_sale=1, and omits them when unset', async () => {
+    const seen = []
+    server.use(http.get('http://localhost:8000/api/listings/', ({ request }) => { seen.push(new URL(request.url)); return HttpResponse.json(PAGE_ONE) }))
+    const on = renderWithClient(() => useListings({ minRating: 4, onSale: true }))
+    await waitFor(() => expect(on.result.current.isLoading).toBe(false))
+    expect(seen[0].searchParams.get('min_rating')).toBe('4')
+    expect(seen[0].searchParams.get('on_sale')).toBe('1')
+    const off = renderWithClient(() => useListings({ minRating: undefined, onSale: undefined }))
+    await waitFor(() => expect(off.result.current.isLoading).toBe(false))
+    expect(seen[1].searchParams.has('min_rating')).toBe(false)
+    expect(seen[1].searchParams.has('on_sale')).toBe(false)
+  })
+
   it('omits verified when falsy', async () => {
     let capturedUrl
     server.use(

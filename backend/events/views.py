@@ -36,6 +36,7 @@ from payments.services import process_payment
 from wallets.approval_kinds import mask_numbers
 
 from . import cancel_notice, cancellation, scan_notice
+from .windows import event_window
 from .models import Event, EventPricingTier, EventRSVP, EventTicketType, Ticket
 from .permissions import (
     IsCustomerOrBusinessOwner,
@@ -121,7 +122,9 @@ class EventListView(generics.ListAPIView):
     teaser subset for every live event regardless of access_level (private
     events still appear in the grid, just without sensitive fields) — see
     EventTeaserSerializer. Supports `category` (slug) and `zone` (name)
-    filters plus `search` (name/description), mirroring
+    filters, `when` (today | week | month: the event date falls in that
+    calendar window in Africa/Accra; see events.windows; anything else is
+    ignored) plus `search` (name/description), mirroring
     PublicListingListView's filter conventions.
     """
 
@@ -144,6 +147,10 @@ class EventListView(generics.ListAPIView):
         zone_name = self.request.query_params.get("zone")
         if zone_name:
             queryset = queryset.filter(zone__name=zone_name)
+
+        window = event_window(self.request.query_params.get("when"))
+        if window:
+            queryset = queryset.filter(event_date__gte=window[0], event_date__lt=window[1])
 
         seller = self.request.query_params.get("seller")
         if seller and seller.isdigit():  # the seller page's Events tab
