@@ -29,6 +29,17 @@ describe("BaseTileLayers", () => {
     expect(container.querySelector(".leaflet-control-attribution").textContent).toContain("Mapbox");
   });
 
+  it("shows Mapbox's wordmark on Mapbox tiles only", () => {
+    const mapbox = inMap(<BaseTileLayers layers={tileLayers("mapbox", "pk.test-token-not-real")} />)
+    const logo = mapbox.container.querySelector("a.ah-mapbox-logo")
+    expect(logo).not.toBeNull()
+    expect(logo).toHaveAttribute("aria-label", "Mapbox")
+    expect(logo.querySelector("img").getAttribute("src")).toContain("data:image/svg+xml")
+    mapbox.unmount()
+    const osm = inMap(<BaseTileLayers layers={tileLayers("osm")} />)
+    expect(osm.container.querySelector("a.ah-mapbox-logo")).toBeNull()
+  });
+
   it("can open on satellite", () => {
     inMap(<BaseTileLayers initial="satellite" layers={tileLayers("mapbox", "pk.test-token-not-real")} />);
     expect(screen.getByLabelText("Satellite")).toBeChecked();
