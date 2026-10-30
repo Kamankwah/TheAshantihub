@@ -5,6 +5,7 @@ import {
   PRICE_BANDS,
   SECTION_META,
   WHEN_OPTIONS,
+  arrivalPatch,
   availableSections,
   clearSectionPatch,
   departmentNodes,
@@ -221,5 +222,40 @@ describe('departmentPatch', () => {
   it('a service node drops the goods-only filters even when kind was unset', () => {
     expect(departmentPatch(service, {})).toStrictEqual({ category: 'hotels', onSale: undefined, directOnly: undefined })
     expect(departmentPatch(service, { kind: 'service' })).toStrictEqual({ category: 'hotels', onSale: undefined, directOnly: undefined })
+  })
+})
+
+describe('arrivalPatch', () => {
+  // The flat useCategories() list: every category with its kind, sub-categories included.
+  const CATEGORIES = [
+    { id: 1, slug: 'hotels', label: 'Hotels', kind: 'service' },
+    { id: 2, slug: 'beauty-services-braiding', label: 'Braiding', kind: 'service' },
+    { id: 3, slug: 'electronics', label: 'Electronics', kind: 'product' },
+    { id: 4, slug: 'concerts', label: 'Concerts', kind: 'event' },
+  ]
+  const state = { kind: 'product', category: 'books', onSale: true, directOnly: true, verified: true, zone: 'Adum' }
+
+  it('a goods category sets the category and always clears kind', () => {
+    expect(arrivalPatch('electronics', CATEGORIES)).toStrictEqual({ category: 'electronics', kind: undefined })
+    expect({ ...state, ...arrivalPatch('electronics', CATEGORIES) }).toStrictEqual({ ...state, category: 'electronics', kind: undefined })
+  })
+
+  it('a service category, top-level or nested, also drops the goods-only filters', () => {
+    const dropped = { kind: undefined, onSale: undefined, directOnly: undefined }
+    expect(arrivalPatch('hotels', CATEGORIES)).toStrictEqual({ category: 'hotels', ...dropped })
+    expect(arrivalPatch('beauty-services-braiding', CATEGORIES)).toStrictEqual({ category: 'beauty-services-braiding', ...dropped })
+    expect({ ...state, ...arrivalPatch('hotels', CATEGORIES) }).toStrictEqual({
+      category: 'hotels', kind: undefined, onSale: undefined, directOnly: undefined, verified: true, zone: 'Adum',
+    })
+  })
+
+  it('an unknown slug, or categories not loaded yet, only clears kind (the rail drops the rest once it knows)', () => {
+    expect(arrivalPatch('gone', CATEGORIES)).toStrictEqual({ category: 'gone', kind: undefined })
+    expect(arrivalPatch('hotels', undefined)).toStrictEqual({ category: 'hotels', kind: undefined })
+    expect(arrivalPatch('hotels', { detail: 'error' })).toStrictEqual({ category: 'hotels', kind: undefined })
+  })
+
+  it('an arrival with no category (a search alone) clears the category and leaves kind alone', () => {
+    expect(arrivalPatch(undefined, CATEGORIES)).toStrictEqual({ category: undefined })
   })
 })

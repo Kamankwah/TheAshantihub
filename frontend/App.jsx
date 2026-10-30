@@ -49,6 +49,7 @@ import HeroCarousel from "./components/HeroCarousel.jsx";
 import SiteBanner from "./components/SiteBanner.jsx";
 import FeaturedRow from "./components/FeaturedRow.jsx";
 import BrowseRail from "./components/storefront/BrowseRail.jsx";
+import { arrivalPatch } from "./components/storefront/browseRailSections.js";
 import ListingDetailPage from "./components/ListingDetailPage.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
 import ChatIntake from "./components/storefront/ChatIntake.jsx";
@@ -2635,13 +2636,16 @@ export default function AshantiHub() {
   // The marketplace home's header search and department links land on the
   // browse pages with the choice in the URL: /business?category=<slug>&q=<text>
   // and /events?category=<slug>. Read once per arrival into the page's own
-  // filter state (the URL is not kept in sync after that).
+  // filter state (the URL is not kept in sync after that). An arriving
+  // category picks the browsing context, so it drops the kind and (for a
+  // service) the goods-only filters no section would show (arrivalPatch;
+  // the rail drops those itself when the categories had not loaded yet).
   useEffect(()=>{
     const params=new URLSearchParams(location.search);
     const category=params.get("category")||undefined;
     const q=params.get("q");
     if(location.pathname==="/business"&&(category||q!==null)){
-      setFilters(f=>({...f,category}));
+      setFilters(f=>({...f,...arrivalPatch(category,categories)}));
       if(q!==null) setSearchInput(q);
     }
     if(location.pathname==="/events"&&category){
@@ -3117,8 +3121,9 @@ export default function AshantiHub() {
               onAddToCart={handleAddToCart}
               // The slim mini-cart opens after a successful add on the product page (the cart icons go to /cart).
               onAddedToCart={()=>setShowCart(true)}
-              // The product page's "More from Ashanti Direct": the browse rail's own "Sold by Ashanti Direct" filter, on the browse grid.
-              onShowDirect={()=>{setFilters(f=>({...f,directOnly:true}));setSelectedListingId(null);}}
+              // The product page's "More from Ashanti Direct": a fresh browse with only the rail's own "Sold by Ashanti
+              // Direct" filter, on the browse grid (no leftover kind, category, search or price from an earlier browse).
+              onShowDirect={()=>{setFilters({directOnly:true});setSearchInput("");setMinPriceInput("");setMaxPriceInput("");setSelectedListingId(null);}}
               CardComponent={Card}
               PaymentComponent={MoMoPayment}
             />

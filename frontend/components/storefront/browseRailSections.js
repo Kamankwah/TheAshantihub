@@ -110,6 +110,20 @@ export function departmentPatch(node, filters = {}) {
   return patch;
 }
 
+// Landing on /business?category=<slug> from outside the rail (header strip,
+// search, a home department link). The arrival picks the context, so `kind`
+// always goes; when the flat `useCategories()` list already says the category
+// is a service, the goods-only filters go too. Before the list loads (or for a
+// slug it lacks) the rail's own backstop drops them once the tree says
+// "service". With no category (a search alone), only the category is reset.
+export function arrivalPatch(category, categories) {
+  if (!category) return { category: undefined };
+  const patch = { category, kind: undefined };
+  const known = Array.isArray(categories) ? categories.find((c) => c.slug === category) : undefined;
+  if (known?.kind === "service") Object.assign(patch, { onSale: undefined, directOnly: undefined });
+  return patch;
+}
+
 // GH₵ price bands; a missing bound is open.
 export const PRICE_BANDS = [
   { label: "Under GH₵ 50", max: 50 },

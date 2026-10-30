@@ -114,6 +114,19 @@ export default function BrowseRail({
     eventCategories,
   });
 
+  // Backstop for "a context change drops hidden filters". The rail's own
+  // controls already do it, but filters set from outside (a URL arrival before
+  // the categories load, "More from Ashanti Direct") can leave On sale or
+  // Ashanti Direct set while services are browsed, where no section shows
+  // them and they would narrow the results invisibly. Drop them here, whatever
+  // set them. Once dropped the condition is false, and the updater hands back
+  // the same object when there is nothing to drop, so this cannot loop.
+  const hiddenGoodsOnly = mode === "business" && kind === "service" && (!!filters.onSale || !!filters.directOnly);
+  useEffect(() => {
+    if (!hiddenGoodsOnly) return;
+    setFilters((f) => (f.onSale === undefined && f.directOnly === undefined ? f : { ...f, onSale: undefined, directOnly: undefined }));
+  }, [hiddenGoodsOnly, setFilters]);
+
   const asideRef = useRef(null);
   const closeRef = useRef(null);
   const collapseRef = useRef(null);
@@ -303,7 +316,8 @@ export default function BrowseRail({
                   <legend style={{ ...smallLabel, padding: 0 }}>Show</legend>
                   <div className="ah-rail-seg" style={{ display: "flex", gap: 2, padding: 3, borderRadius: 12, background: C.surface2 }}>
                     {KIND_OPTIONS.map((option) => {
-                      const checked = (filters.kind || undefined) === option.value;
+                      // The effective kind (filters.kind, else the selected node's), so it agrees with the sections shown.
+                      const checked = kind === option.value;
                       return (
                         <label key={option.label} className="ah-rail-hit" style={{ flex: 1, position: "relative", display: "flex", cursor: "pointer" }}>
                           <input

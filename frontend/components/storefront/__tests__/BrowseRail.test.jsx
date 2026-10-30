@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../../mocks/server.js'
 import { TREE, TREE_URL, json } from '../../../mocks/storefront.js'
@@ -323,6 +324,65 @@ describe('BrowseRail phone drawer', () => {
   })
 })
 
+// Filters set from outside the rail (a URL arrival, "More from Ashanti
+// Direct") can leave goods-only filters behind in a services context, where
+// no section shows them. The rail drops them, whatever set them.
+describe('BrowseRail drops goods-only filters a services context hides', () => {
+  const GOODS_ONLY = { onSale: undefined, directOnly: undefined }
+
+  it('kind service with On sale and Ashanti Direct set: one updater dropping exactly those two', async () => {
+    const { props, queryClient } = renderRail({ filters: { kind: 'service', onSale: true, directOnly: true, zone: 'Adum' } })
+    await settled(queryClient)
+    expect(props.setFilters).toHaveBeenCalledTimes(1)
+    const updater = props.setFilters.mock.calls[0][0]
+    expect(updater({ kind: 'service', onSale: true, directOnly: true, zone: 'Adum', minRating: 4 })).toStrictEqual({
+      kind: 'service', zone: 'Adum', minRating: 4, ...GOODS_ONLY,
+    })
+    // Already clean: the same object back, so React does not re-render.
+    const clean = { kind: 'service', zone: 'Adum' }
+    expect(updater(clean)).toBe(clean)
+  })
+
+  it('a service category with no kind set drops them once the tree says it is a service', async () => {
+    server.use(json(TREE_URL, TREE))
+    const { props } = renderRail({ filters: { category: 'hotels', onSale: true } })
+    await waitFor(() => expect(props.setFilters).toHaveBeenCalledTimes(1))
+    expect(props.setFilters.mock.calls[0][0]({ category: 'hotels', onSale: true })).toStrictEqual({ category: 'hotels', ...GOODS_ONLY })
+  })
+
+  it('leaves goods and events contexts alone', async () => {
+    server.use(json(TREE_URL, TREE))
+    const goods = renderRail({ filters: { kind: 'product', onSale: true, directOnly: true } })
+    await settled(goods.queryClient)
+    goods.rerender({ filters: { category: 'books', onSale: true, directOnly: true } })
+    goods.rerender({ filters: { onSale: true, directOnly: true } })
+    expect(goods.props.setFilters).not.toHaveBeenCalled()
+    goods.unmount()
+    const events = renderRail({ mode: 'events', filters: { kind: 'service', onSale: true } })
+    await settled(events.queryClient)
+    expect(events.props.setFilters).not.toHaveBeenCalled()
+  })
+
+  it('does not loop: with real state, one drop and the filters settle', async () => {
+    const spy = vi.fn()
+    function Stateful() {
+      const [filters, setFilters] = useState({ kind: 'service', onSale: true, directOnly: true, zone: 'Adum' })
+      const set = (update) => { spy(update); setFilters(update) }
+      return (
+        <>
+          <output data-testid="filters">{JSON.stringify(filters)}</output>
+          <BrowseRail {...railProps({ filters, setFilters: set })} />
+        </>
+      )
+    }
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><Stateful /></QueryClientProvider>)
+    await settled(queryClient)
+    await waitFor(() => expect(screen.getByTestId('filters')).toHaveTextContent('{"kind":"service","zone":"Adum"}'))
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('BrowseRail controls', () => {
   it('kind switcher: Services drops the category and the goods-only filters', () => {
     const { props } = renderRail()
@@ -344,6 +404,19 @@ describe('BrowseRail controls', () => {
     const sample = { kind: 'service', category: 'hotels', verified: true }
     expect(toProducts(sample)).toStrictEqual({ kind: 'product', category: undefined, verified: true })
     expect(toAll(sample)).toStrictEqual({ kind: undefined, category: undefined, verified: true })
+  })
+
+  it('kind switcher shows the effective kind: the selected node\'s kind when no kind is set', async () => {
+    server.use(json(TREE_URL, TREE))
+    const { rerender } = renderRail({ filters: { category: 'hotels' } })
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Services' })).toBeChecked())
+    expect(screen.getByRole('radio', { name: 'All' })).not.toBeChecked()
+    rerender({ filters: { category: 'books' } })
+    expect(screen.getByRole('radio', { name: 'Products' })).toBeChecked()
+    rerender({ filters: { kind: 'service', category: 'books' } })
+    expect(screen.getByRole('radio', { name: 'Services' })).toBeChecked()
+    rerender({ filters: {} })
+    expect(screen.getByRole('radio', { name: 'All' })).toBeChecked()
   })
 
   it('Clear all filters calls onClear', () => {
