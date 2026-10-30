@@ -418,6 +418,28 @@ describe('BrowseRail controls', () => {
       expect(screen.queryByRole('checkbox', { name: 'Sold by Ashanti Direct' })).not.toBeInTheDocument()
     })
 
+    it('goods context draws On sale and the area radios from the zones', async () => {
+      server.use(json(TREE_URL, TREE), json(ZONES_URL, [{ id: 1, name: 'Manhyia' }, { id: 2, name: 'Adum' }]))
+      const { props } = renderRail()
+      const area = await screen.findByRole('region', { name: 'Area' })
+      fireEvent.click(within(area).getByRole('radio', { name: 'Adum' }))
+      expect(props.setFilters.mock.calls[0][0]({})).toStrictEqual({ zone: 'Adum' })
+      fireEvent.click(within(screen.getByRole('region', { name: 'Deals' })).getByRole('checkbox', { name: 'On sale' }))
+      expect(props.setFilters.mock.calls[1][0]({})).toStrictEqual({ onSale: true })
+    })
+
+    it('events context draws Category and When, and no goods sections', async () => {
+      server.use(json(CATEGORIES_URL, EVENT_CATEGORIES))
+      const { props } = renderRail({ mode: 'events' })
+      const category = await screen.findByRole('region', { name: 'Category' })
+      fireEvent.click(within(category).getByRole('radio', { name: 'Concerts' }))
+      expect(props.setFilters.mock.calls[0][0]({})).toStrictEqual({ category: 'concerts' })
+      const when = screen.getByRole('region', { name: 'When' })
+      fireEvent.click(within(when).getByRole('radio', { name: 'This week' }))
+      expect(props.setFilters.mock.calls[1][0]({})).toStrictEqual({ when: 'week' })
+      expect(screen.queryByRole('region', { name: 'Price' })).not.toBeInTheDocument()
+    })
+
     it('a selected leaf marks itself current inside the rail', async () => {
       server.use(json(TREE_URL, TREE))
       renderRail({ filters: { category: 'books' } })

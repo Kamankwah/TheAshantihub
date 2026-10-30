@@ -4,11 +4,15 @@ import useBreakpoint from "../../hooks/useBreakpoint.js";
 import { useCategories } from "../../hooks/useCategories.js";
 import { useCategoryTree } from "../../hooks/useCategoryTree.js";
 import { useZones } from "../../hooks/useZones.js";
+import AreaSection from "./rail/AreaSection.jsx";
+import DealsSection from "./rail/DealsSection.jsx";
 import DepartmentSection from "./rail/DepartmentSection.jsx";
+import EventCategorySection from "./rail/EventCategorySection.jsx";
 import PriceSection from "./rail/PriceSection.jsx";
 import RailSection from "./rail/RailSection.jsx";
 import RatingSection from "./rail/RatingSection.jsx";
 import SoldBySection from "./rail/SoldBySection.jsx";
+import WhenSection from "./rail/WhenSection.jsx";
 import { BODY_FONT, HEADING_FONT } from "./storefrontType.js";
 import {
   KIND_OPTIONS, SECTION_META, availableSections, clearSectionPatch, departmentNodes, effectiveKind,
@@ -193,6 +197,14 @@ export default function BrowseRail({
             setMaxPriceInput={setMaxPriceInput}
           />
         );
+      case "deals":
+        return <DealsSection filters={filters} setFilters={setFilters} />;
+      case "area":
+        return <AreaSection zones={zones} filters={filters} setFilters={setFilters} />;
+      case "eventCategory":
+        return <EventCategorySection categories={eventCategories} filters={filters} setFilters={setFilters} />;
+      case "when":
+        return <WhenSection filters={filters} setFilters={setFilters} />;
       case "soldBy":
       case "verified":
         return <SoldBySection variant={id} filters={filters} setFilters={setFilters} />;
