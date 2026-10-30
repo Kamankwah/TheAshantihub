@@ -58,7 +58,7 @@ export default function TrackMap({ markers = [], route = null, height = 320, lab
   }
   const points = [...pins.map((m) => [Number(m.lat), Number(m.lng)]), ...(line || [])];
   return (
-    <div {...(label ? { role: "img", "aria-label": label } : {})} style={{ position: "relative", height, borderRadius: 12, overflow: "hidden" }}>
+    <div {...(label ? { role: "group", "aria-label": label } : {})} style={{ position: "relative", height, borderRadius: 12, overflow: "hidden" }}>
       <MapContainer center={points[0]} zoom={13} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
         <BaseTileLayers />
         <Fit points={points} signature={signature} />

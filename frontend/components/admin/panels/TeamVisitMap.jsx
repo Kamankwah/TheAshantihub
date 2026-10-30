@@ -29,7 +29,7 @@ function Fit({ points }) {
 export default function TeamVisitMap({ points, selectedId, onSelect, height = 420, label }) {
   if (!points.length) return null;
   return (
-    <div role="img" aria-label={label} style={{ position: "relative", height, borderRadius: 12, overflow: "hidden" }}>
+    <div role="group" aria-label={label} style={{ position: "relative", height, borderRadius: 12, overflow: "hidden" }}>
       <MapContainer center={[points[0].lat, points[0].lng]} zoom={14} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
         <BaseTileLayers />
         <Fit points={points} />

@@ -29,20 +29,20 @@ vi.mock('../components/LocationPicker.jsx', () => ({
 
 // The scout's check-in map (Leaflet) is stubbed the same way.
 vi.mock('../components/admin/panels/VisitMap.jsx', () => ({
-  default: ({ label }) => createElement('div', { 'data-testid': 'visit-map', role: 'img', 'aria-label': label }, 'visit map'),
+  default: ({ label }) => createElement('div', { 'data-testid': 'visit-map', role: 'group', 'aria-label': label }, 'visit map'),
 }))
 
 // The Operations team Visit map (several Leaflet markers) is stubbed too.
 vi.mock('../components/admin/panels/TeamVisitMap.jsx', () => ({
   default: ({ label, points, onSelect }) =>
-    createElement('div', { 'data-testid': 'team-visit-map', role: 'img', 'aria-label': label },
+    createElement('div', { 'data-testid': 'team-visit-map', role: 'group', 'aria-label': label },
       points.map((p) => createElement('button', { key: p.id, type: 'button', 'data-state': p.state, onClick: () => onSelect?.(p.id) }, `pin ${p.label}`))),
 }))
 
 // The Delivery Manager's rider map (Leaflet) is stubbed the same way.
 vi.mock('../components/admin/panels/delivery/RiderMap.jsx', () => ({
   default: ({ label, points, onSelect }) =>
-    createElement('div', { 'data-testid': 'rider-map', role: 'img', 'aria-label': label },
+    createElement('div', { 'data-testid': 'rider-map', role: 'group', 'aria-label': label },
       points.map((p) => createElement('button', { key: p.id, type: 'button', 'data-state': p.state, onClick: () => onSelect?.(p.id) }, `pin ${p.label}`))),
 }))
 
@@ -50,7 +50,7 @@ vi.mock('../components/admin/panels/delivery/RiderMap.jsx', () => ({
 // assert the road route was passed through.
 vi.mock('../components/maps/TrackMap.jsx', () => ({
   default: ({ label, markers = [], route, onSelect }) =>
-    createElement('div', { 'data-testid': 'track-map', role: 'img', 'aria-label': label, 'data-route-points': route ? route.length : 0 },
+    createElement('div', { 'data-testid': 'track-map', role: 'group', 'aria-label': label, 'data-route-points': route ? route.length : 0 },
       markers.map((m) => createElement('button', { key: m.id, type: 'button', 'data-kind': m.kind, onClick: () => onSelect?.(m.id) }, `pin ${m.label}`))),
 }))
 

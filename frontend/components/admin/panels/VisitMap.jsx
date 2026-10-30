@@ -23,7 +23,7 @@ export default function VisitMap({ pin, fix, radiusM = 100, height = 200, label 
   const center = hasPin ? [pin.lat, pin.lng] : hasFix ? [fix.lat, fix.lng] : null;
   if (!center) return null;
   return (
-    <div role="img" aria-label={label} style={{ position: "relative", height, borderRadius: 12, overflow: "hidden" }}>
+    <div role="group" aria-label={label} style={{ position: "relative", height, borderRadius: 12, overflow: "hidden" }}>
       <MapContainer center={center} zoom={17} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
         <BaseTileLayers />
         {hasPin && <Marker position={[pin.lat, pin.lng]} icon={goldPin} />}
