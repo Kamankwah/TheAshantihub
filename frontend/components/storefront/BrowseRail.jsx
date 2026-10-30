@@ -94,6 +94,8 @@ export default function BrowseRail({
   onClose,
 }) {
   const uid = useId();
+  // Bumped by every Clear, so the price section remounts and drops an unapplied draft even when App's inputs were already "".
+  const [priceResetKey, setPriceResetKey] = useState(0);
   const isPhone = useBreakpoint() === "phone";
   const narrow = useMediaQuery(NARROW_QUERY);
   const [storedCollapsed, setStoredCollapsed] = useState(readStoredCollapsed);
@@ -172,6 +174,7 @@ export default function BrowseRail({
 
   const clearSection = (id) => {
     if (id === "price") {
+      setPriceResetKey((k) => k + 1);
       setMinPriceInput?.("");
       setMaxPriceInput?.("");
     }
@@ -189,6 +192,7 @@ export default function BrowseRail({
       case "price":
         return (
           <PriceSection
+            key={priceResetKey}
             filters={filters}
             setFilters={setFilters}
             minPriceInput={minPriceInput}
@@ -339,7 +343,7 @@ export default function BrowseRail({
               </div>
 
               <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 12 }}>
-                <button type="button" className="ah-rail-hit" onClick={onClear} style={{ width: "100%", padding: "0 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.surface2, color: C.ink, fontFamily: BODY_FONT, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                <button type="button" className="ah-rail-hit" onClick={() => { setPriceResetKey((k) => k + 1); onClear?.(); }} style={{ width: "100%", padding: "0 12px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.surface2, color: C.ink, fontFamily: BODY_FONT, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
                   Clear all filters
                 </button>
               </div>

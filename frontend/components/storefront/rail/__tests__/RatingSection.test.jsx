@@ -13,7 +13,7 @@ describe('RatingSection', () => {
     setup()
     const group = screen.getByRole('radiogroup', { name: 'Customer reviews' })
     expect(group).toBeInTheDocument()
-    expect(screen.getAllByRole('radio').map((r) => r.getAttribute('aria-label') || r.labels?.[0]?.textContent)).toBeTruthy()
+    expect(screen.getAllByRole('radio').map((r) => r.getAttribute('aria-label'))).toEqual(['4 stars and up', '3 stars and up'])
     expect(screen.getByRole('radio', { name: '4 stars and up' })).not.toBeChecked()
     expect(screen.getByRole('radio', { name: '3 stars and up' })).not.toBeChecked()
   })
@@ -32,9 +32,13 @@ describe('RatingSection', () => {
     expect(screen.getByRole('radio', { name: '4 stars and up' })).not.toBeChecked()
   })
 
-  it('the star glyphs are hidden from assistive tech', () => {
+  it('each radio label holds an aria-hidden glyph span with the visible text', () => {
     setup()
-    expect(document.querySelectorAll('[aria-hidden="true"]').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByRole('radio', { name: '4 stars and up' }).closest('label')).toHaveTextContent('4★ & up')
+    const texts = ['4★ & up', '3★ & up']
+    screen.getAllByRole('radio').forEach((radio, index) => {
+      const glyph = radio.closest('label').querySelector('span')
+      expect(glyph).toHaveAttribute('aria-hidden', 'true')
+      expect(glyph).toHaveTextContent(texts[index])
+    })
   })
 })

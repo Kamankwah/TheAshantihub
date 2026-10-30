@@ -440,6 +440,29 @@ describe('BrowseRail controls', () => {
       expect(screen.queryByRole('region', { name: 'Price' })).not.toBeInTheDocument()
     })
 
+    it('Clear all filters empties an unapplied price draft and its alert', async () => {
+      server.use(json(TREE_URL, TREE))
+      renderRail()
+      const min = await screen.findByLabelText('Min price (GH₵)')
+      fireEvent.change(min, { target: { value: '20' } })
+      fireEvent.change(screen.getByLabelText('Max price (GH₵)'), { target: { value: '5' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Go' }))
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+      fireEvent.change(min, { target: { value: '20' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Clear all filters' }))
+      expect(screen.getByLabelText('Min price (GH₵)')).toHaveValue('')
+      expect(screen.getByLabelText('Max price (GH₵)')).toHaveValue('')
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it("the Price section's Clear empties an unapplied draft", async () => {
+      server.use(json(TREE_URL, TREE))
+      renderRail({ filters: { minPrice: 50 }, minPriceInput: '', maxPriceInput: '' })
+      fireEvent.change(await screen.findByLabelText('Min price (GH₵)'), { target: { value: '20' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Clear Price' }))
+      expect(screen.getByLabelText('Min price (GH₵)')).toHaveValue('')
+    })
+
     it('a selected leaf marks itself current inside the rail', async () => {
       server.use(json(TREE_URL, TREE))
       renderRail({ filters: { category: 'books' } })
