@@ -39,6 +39,7 @@ export default function BusinessListings() {
                     accessibilityRole="button"
                     accessibilityLabel={f.label}
                     accessibilityState={{ selected: on }}
+                    hitSlop={{ top: 2, bottom: 2 }}
                     onPress={() => setFilter(f.key)}
                     style={{ height: 44, paddingHorizontal: 16, borderRadius: 999, justifyContent: "center", backgroundColor: on ? c.gold : c.surface, borderWidth: 1, borderColor: on ? c.gold : c.line }}
                   >
@@ -63,7 +64,7 @@ export default function BusinessListings() {
               accessibilityRole="button"
               accessibilityLabel={`${l.name}, ${s.label}`}
               onPress={() => router.push(`/manage/listing/${l.id}` as never)}
-              style={{ backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 14, gap: 6 }}
+              style={{ minHeight: 48, backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 14, gap: 6 }}
             >
               <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, fontSize: 16 }}>{l.name}</Text>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>

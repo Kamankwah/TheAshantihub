@@ -23,6 +23,7 @@ export function ListingCard({ listing, onPress, compact }: Props) {
       onPress={() => void captureFlight(listing.id).then(() => onPress(listing.id))}
       style={({ pressed }) => ({
         width: compact ? 160 : undefined,
+        minHeight: 48,
         borderRadius: radius.card,
         borderWidth: 1,
         borderColor: c.line,

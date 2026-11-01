@@ -67,6 +67,7 @@ export default function SupportChat() {
         </View>
         <FlatList
           ref={listRef}
+          showsVerticalScrollIndicator={false}
           data={convo.messages}
           keyExtractor={(m) => String(m.id)}
           contentContainerStyle={{ padding: 20, gap: 10 }}

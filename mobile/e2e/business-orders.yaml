@@ -1,0 +1,16 @@
+# Maestro: business owner opens Orders, an order, and Listings.
+appId: com.ashantihub.app
+---
+- launchApp
+- tapOn: "Orders"
+- assertVisible: "Orders"
+- tapOn:
+    text: "Order #.*"
+    index: 0
+- assertVisible: "Pickup code|Your items"
+- assertNotVisible: "tel:.*"
+- back
+- tapOn: "Listings"
+- assertVisible: "Listings"
+- tapOn: "More"
+- assertVisible: "Delete my account"

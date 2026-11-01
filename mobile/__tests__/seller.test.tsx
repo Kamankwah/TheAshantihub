@@ -61,7 +61,7 @@ describe("seller page", () => {
   it("seller_page_has_no_phone_or_whatsapp_links", async () => {
     mockSeller({ products: 1, services: 1 });
     await render(client(<SellerScreen />));
-    expect(await screen.findByText("Akosua Ntoma Store")).toBeTruthy();
+    expect(await screen.findByRole("header", { name: "Akosua Ntoma Store" })).toBeTruthy();
     expect(screen.getByText("Contact Support")).toBeTruthy();
     expect(screen.queryByText(/whatsapp|call |phone|tel:/i)).toBeNull();
     expect(screen.getByText(/On AshantiHub since January 2026/)).toBeTruthy();

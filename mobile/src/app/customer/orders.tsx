@@ -42,7 +42,7 @@ export default function ScreenOrders() {
               accessibilityRole="button"
               accessibilityLabel={`Order ${o.id}, ${s.label}`}
               onPress={() => router.push(`/order/${o.id}` as never)}
-              style={{ backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 14, gap: 8 }}
+              style={{ minHeight: 48, backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 14, gap: 8 }}
             >
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, fontSize: 16 }}>{`Order #${o.id}`}</Text>

@@ -24,6 +24,7 @@ export function CategoryChips({ departments, selected, onSelect }: Props) {
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
+            hitSlop={{ top: 2, bottom: 2 }}
             onPress={() => onSelect(item.slug || undefined)}
             style={{ height: 44, paddingHorizontal: 18, borderRadius: 999, justifyContent: "center", borderWidth: active ? 0 : 1, borderColor: c.line, backgroundColor: active ? c.gold : c.surface }}
           >

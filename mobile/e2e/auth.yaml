@@ -1,0 +1,25 @@
+# Maestro: sign in as the demo customer, sign out, sign in as the demo business.
+# Run: maestro test -e CUSTOMER_PHONE=... -e CUSTOMER_PASSWORD=... -e BUSINESS_PHONE=... -e BUSINESS_PASSWORD=... e2e/auth.yaml
+appId: com.ashantihub.app
+---
+- launchApp:
+    clearState: true
+- assertVisible: "I'm a customer"
+- tapOn: "I'm a customer"
+- tapOn: "Phone or email"
+- inputText: ${CUSTOMER_PHONE}
+- tapOn: "Password"
+- inputText: ${CUSTOMER_PASSWORD}
+- tapOn: "Sign in"
+- assertVisible: "Akwaaba.*"
+- tapOn: "Account"
+- tapOn: "Sign out"
+- assertVisible: "I own a business"
+- tapOn: "I own a business"
+- tapOn: "Phone or email"
+- inputText: ${BUSINESS_PHONE}
+- tapOn: "Password"
+- inputText: ${BUSINESS_PASSWORD}
+- tapOn: "Sign in"
+- assertVisible: "Orders"
+- assertNotVisible: "Add to cart"

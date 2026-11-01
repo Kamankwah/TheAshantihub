@@ -21,7 +21,7 @@ export default function BusinessHome() {
   const more = !!orders.hasNextPage;
   const low = stock.data?.results.filter((r) => r.low) ?? [];
   const first = me.data?.full_name.split(" ")[0];
-  const card = { backgroundColor: c.surface, borderRadius: radius.card, borderWidth: 1, borderColor: c.line, padding: 14, gap: 8 } as const;
+  const card = { minHeight: 48, backgroundColor: c.surface, borderRadius: radius.card, borderWidth: 1, borderColor: c.line, padding: 14, gap: 8 } as const;
 
   return (
     <Screen>

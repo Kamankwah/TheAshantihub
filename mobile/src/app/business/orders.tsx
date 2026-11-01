@@ -39,7 +39,7 @@ export default function BusinessOrders() {
             accessibilityRole="button"
             accessibilityLabel={`Order ${o.id} from ${firstName(o.customer_name)}`}
             onPress={() => router.push(`/manage/order/${o.id}` as never)}
-            style={{ backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 14, gap: 6 }}
+            style={{ minHeight: 48, backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 14, gap: 6 }}
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
               <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, fontSize: 16 }}>{`Order #${o.id}`}</Text>
