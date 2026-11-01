@@ -814,3 +814,26 @@ class CustomerAddress(models.Model):
 
     def __str__(self):
         return f"{self.label} ({self.gps_address}) for customer {self.customer_id}"
+
+
+class MobileSession(models.Model):
+    """A signed-in phone: an opaque refresh token (kept only as a SHA-256 hash) that mints new access tokens.
+    Customers and business owners only. Every refresh rotates the token into a new row of the same `family`;
+    presenting a token that was already rotated means it leaked, so the whole family is revoked."""
+
+    account_type = models.CharField(max_length=20)
+    account_id = models.PositiveBigIntegerField()
+    family = models.CharField(max_length=32, db_index=True)
+    token_hash = models.CharField(max_length=64, unique=True)
+    device_name = models.CharField(max_length=100, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField()
+    rotated_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["account_type", "account_id"])]
+
+    def __str__(self):
+        return f"{self.account_type}:{self.account_id} mobile session {self.family}"

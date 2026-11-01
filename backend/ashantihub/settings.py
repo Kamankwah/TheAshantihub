@@ -395,6 +395,9 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
     "DEFAULT_THROTTLE_RATES": {
         "vendor_statement_export": "6/min",
+        # The native app's silent token refresh and sign-out: 30/min, not the login 5/min, because many phones
+        # share one carrier address (CGNAT) and the throttle keys on the address.
+        "mobile_refresh": "30/min",
         # Marketplace opening: the public "Notify me" form and its one-click stop link. 30/hour, not 5: mobile
         # carriers put many phones behind one address (CGNAT), and the throttle keys on the address.
         "notify_me": "30/hour",
