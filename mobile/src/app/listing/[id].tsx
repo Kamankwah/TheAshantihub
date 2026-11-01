@@ -27,25 +27,10 @@ import { Button } from "../../ui/Button";
 import { EmptyState } from "../../ui/EmptyState";
 import { Price } from "../../ui/Price";
 import { Skeleton } from "../../ui/Skeleton";
+import { Stepper } from "../../ui/Stepper";
 import { VerifiedBadge } from "../../ui/VerifiedBadge";
 
 const HEADER_H = 320;
-
-function Stepper({ value, max, onChange, label }: { value: number; max: number; onChange: (n: number) => void; label: string }) {
-  const { c } = useTheme();
-  const btn = { width: 48, height: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: c.line } as const;
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`One fewer ${label}`} disabled={value <= 0} onPress={() => onChange(value - 1)} style={[btn, { opacity: value <= 0 ? 0.4 : 1 }]}>
-        <Feather name="minus" size={18} color={c.ink} />
-      </Pressable>
-      <Text style={{ minWidth: 28, textAlign: "center", color: c.ink, fontFamily: fonts.bodyBold, fontSize: 16, fontVariant: ["tabular-nums"] }}>{value}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel={`One more ${label}`} disabled={value >= max} onPress={() => onChange(value + 1)} style={[btn, { opacity: value >= max ? 0.4 : 1 }]}>
-        <Feather name="plus" size={18} color={c.ink} />
-      </Pressable>
-    </View>
-  );
-}
 
 /** The photo flies from where the card was to the header; with reduce-motion (or no card) the page just fades in. */
 function FlightLayer({ onDone }: { onDone: () => void }) {

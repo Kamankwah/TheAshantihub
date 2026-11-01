@@ -19,5 +19,6 @@ export type ListingDetail = Listing & {
   return_policy?: string | null;
   brand?: string | null;
   condition?: string | null;
-  category?: { id: number; label: string; kind: string; is_food?: boolean };
+  category?: { id: number; label: string; kind: string; is_food?: boolean; is_accommodation?: boolean };
+  cancellation_policy?: string;
 };
