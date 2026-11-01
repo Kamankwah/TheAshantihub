@@ -112,6 +112,9 @@ class Customer(AuthenticatableAccountMixin, models.Model):
     # an already-signed-in account stays valid until expiry — suspension is
     # enforced at the login boundary, not per-request.
     is_suspended = models.BooleanField(default=False)
+    # Set when the person deletes their account in the app (accounts/deletion.py); personal details are erased,
+    # order and money rows are kept for legal and financial reasons.
+    deleted_at = models.DateTimeField(null=True, blank=True)
     suspension_reason = models.CharField(max_length=500, blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -333,6 +336,9 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     # Customer.is_suspended above: blocks login and hides this owner's
     # listings/events from public browse.
     is_suspended = models.BooleanField(default=False)
+    # Set when the person deletes their account in the app (accounts/deletion.py); personal details are erased,
+    # order and money rows are kept for legal and financial reasons.
+    deleted_at = models.DateTimeField(null=True, blank=True)
     suspension_reason = models.CharField(max_length=500, blank=True, default="")
 
     registration_channel = models.CharField(

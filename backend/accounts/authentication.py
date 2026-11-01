@@ -51,6 +51,11 @@ class MultiAccountJWTAuthentication(authentication.BaseAuthentication):
         except model.DoesNotExist as exc:
             raise exceptions.AuthenticationFailed("Account not found") from exc
 
+        # A customer or business owner who deleted their account (accounts/deletion.py) holds a token that is
+        # still unexpired; refuse it so the deletion takes effect at once.
+        if getattr(account, "deleted_at", None):
+            raise exceptions.AuthenticationFailed("This account has been deleted")
+
         # A staffer suspended or deactivated mid-session still holds a valid,
         # unexpired token — refuse it here so the block takes effect
         # immediately rather than only at their next login (punch-list item

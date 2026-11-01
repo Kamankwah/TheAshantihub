@@ -749,7 +749,7 @@ class CustomerLoginSerializer(serializers.Serializer):
         ).first()
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
         password_valid = check_password(attrs["password"], password_hash)
-        if account is None or not password_valid:
+        if account is None or not password_valid or account.deleted_at:
             raise serializers.ValidationError("Invalid credentials")
         # Only surfaced after valid credentials — never leaks a suspension to
         # someone who couldn't otherwise sign in.
@@ -780,7 +780,7 @@ class BusinessOwnerLoginSerializer(serializers.Serializer):
                 account = matches[0]
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
         password_valid = check_password(attrs["password"], password_hash)
-        if account is None or not password_valid:
+        if account is None or not password_valid or account.deleted_at:
             raise serializers.ValidationError("Invalid credentials")
         if account.is_suspended:
             raise serializers.ValidationError(SUSPENDED_LOGIN_MESSAGE)
