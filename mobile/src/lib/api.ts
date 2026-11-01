@@ -37,12 +37,13 @@ function build(path: string, query?: Init["query"]) {
 
 async function send(path: string, init: Init) {
   const headers: Record<string, string> = { "X-Client": "mobile" };
-  if (init.body !== undefined) headers["Content-Type"] = "application/json";
+  const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (init.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   if (init.auth !== false && session.access) headers.Authorization = `Bearer ${session.access}`;
   return fetch(build(path, init.query), {
     method: init.method ?? (init.body !== undefined ? "POST" : "GET"),
     headers,
-    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+    body: init.body === undefined ? undefined : isForm ? (init.body as FormData) : JSON.stringify(init.body),
   });
 }
 

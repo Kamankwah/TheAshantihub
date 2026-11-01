@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Pressable, Text } from "react-native";
 
 import { messageFor, otpSend, otpVerify } from "../../lib/authApi";
+import { resumeRegistration } from "../../lib/registrationApi";
 import { useAuth } from "../../state/auth";
 import { fonts } from "../../theme/fonts";
 import { useTheme } from "../../theme/useTheme";
@@ -12,7 +13,8 @@ import { Screen } from "../../ui/Screen";
 
 export default function Otp() {
   const { c } = useTheme();
-  const { mfa_token, channels } = useLocalSearchParams<{ mfa_token: string; channels?: string }>();
+  const { mfa_token, channels, kind } = useLocalSearchParams<{ mfa_token: string; channels?: string; kind?: string }>();
+  const accountType = kind === "business_owner" ? "business_owner" : "customer";
   const channel = (channels ?? "sms").split(",")[0] || "sms";
   const [code, setCode] = useState("");
   const [hint, setHint] = useState<string>();
@@ -46,12 +48,13 @@ export default function Otp() {
     setBusy(true);
     setError(undefined);
     try {
-      const result = await otpVerify({ mfa_token: String(mfa_token), code }, "customer");
+      const result = await otpVerify({ mfa_token: String(mfa_token), code }, accountType);
       if (result.kind === "signedIn") {
         await useAuth.getState().signIn(result.body);
-        router.replace("/");
+        if (accountType === "business_owner") await resumeRegistration();
+        else router.replace("/");
       } else {
-        router.push({ pathname: "/otp", params: { mfa_token: result.challenge.mfa_token, channels: result.challenge.channels.join(",") } });
+        router.push({ pathname: "/otp", params: { mfa_token: result.challenge.mfa_token, channels: result.challenge.channels.join(","), kind: accountType } });
       }
     } catch (e) {
       setError(messageFor(e, "That code is not right. Check it and try again."));
