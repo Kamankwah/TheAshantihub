@@ -11,6 +11,8 @@ from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
 EXTRA_DENYLIST = [
     "password_confirm", "raw", "token", "claim_link",
+    # Mobile refresh tokens (accounts.mobile_sessions): the request body key and the frame locals that hold one.
+    "refresh_token", "raw_token", "new_raw",
     # Owner confirmation links (portfolio.confirmations): frame locals that hold the texted link (`confirm_url`, and
     # `tail` of the text body, which ends with it). The raw token is `raw` and the body is `body`, both listed.
     "confirm_url", "tail",

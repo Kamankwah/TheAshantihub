@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from accounts import mobile_sessions
 from accounts.models import Customer, MobileSession
 
 MOBILE = {"HTTP_X_CLIENT": "mobile"}
@@ -63,6 +64,10 @@ class MobileSessionTests(TestCase):
         newer = self.client.post(
             "/api/accounts/session/refresh/", {"refresh_token": first}, format="json"
         ).json()["refresh_token"]
+        # Past the short retry window, a rotated token coming back means it leaked.
+        MobileSession.objects.filter(token_hash=mobile_sessions._hash(first)).update(
+            rotated_at=timezone.now() - timedelta(minutes=2)
+        )
         reuse = self.client.post("/api/accounts/session/refresh/", {"refresh_token": first}, format="json")
         self.assertEqual(reuse.status_code, 401)
         after = self.client.post("/api/accounts/session/refresh/", {"refresh_token": newer}, format="json")
@@ -96,3 +101,46 @@ class MobileSessionTests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.content)
         self.assertIn("refresh_token", response.json())
+
+    def test_password_change_ends_refresh_sessions(self):
+        raw = self._login(**MOBILE).json()["refresh_token"]
+        Customer.objects.filter(pk=self.customer.pk).update(password_hash=make_password("a-new-password-1"))
+        response = self.client.post("/api/accounts/session/refresh/", {"refresh_token": raw}, format="json")
+        self.assertEqual(response.status_code, 401)
+
+    def test_retry_inside_the_window_gets_a_fresh_token_and_keeps_the_chain(self):
+        first = self._login(**MOBILE).json()["refresh_token"]
+        newer = self.client.post(
+            "/api/accounts/session/refresh/", {"refresh_token": first}, format="json"
+        ).json()["refresh_token"]
+        retry = self.client.post("/api/accounts/session/refresh/", {"refresh_token": first}, format="json")
+        self.assertEqual(retry.status_code, 200)
+        self.assertNotIn(retry.json()["refresh_token"], (first, newer))
+        again = self.client.post(
+            "/api/accounts/session/refresh/", {"refresh_token": retry.json()["refresh_token"]}, format="json"
+        )
+        self.assertEqual(again.status_code, 200)
+
+    def test_other_devices_keep_their_sessions_when_one_chain_is_revoked(self):
+        phone = self._login(**MOBILE).json()["refresh_token"]
+        tablet = self._login(**MOBILE).json()["refresh_token"]
+        MobileSession.objects.filter(token_hash=mobile_sessions._hash(phone)).update(
+            rotated_at=timezone.now() - timedelta(minutes=2)
+        )
+        self.client.post("/api/accounts/session/refresh/", {"refresh_token": phone}, format="json")
+        ok = self.client.post("/api/accounts/session/refresh/", {"refresh_token": tablet}, format="json")
+        self.assertEqual(ok.status_code, 200)
+
+    def test_non_string_refresh_token_is_401_not_500(self):
+        for body in ({"refresh_token": 123}, [1, 2], {"refresh_token": ["x"]}):
+            response = self.client.post("/api/accounts/session/refresh/", body, format="json")
+            self.assertEqual(response.status_code, 401, body)
+        self.assertEqual(
+            self.client.post("/api/accounts/session/logout/", [1], format="json").status_code, 204
+        )
+
+    def test_refresh_token_is_in_the_sentry_denylist(self):
+        from ashantihub import sentry
+
+        for name in ("refresh_token", "raw_token", "new_raw"):
+            self.assertIn(name, sentry.EXTRA_DENYLIST)

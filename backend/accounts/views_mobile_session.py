@@ -14,7 +14,7 @@ class MobileSessionRefreshView(APIView):
 
     def post(self, request):
         try:
-            account, account_type, refresh_token = mobile_sessions.rotate(request.data.get("refresh_token", ""))
+            account, account_type, refresh_token = mobile_sessions.rotate(mobile_sessions.token_from(request))
         except mobile_sessions.InvalidRefresh:
             return Response({"detail": "Your session has ended. Please sign in again."}, status=status.HTTP_401_UNAUTHORIZED)
         return Response({
@@ -32,5 +32,5 @@ class MobileSessionLogoutView(APIView):
     throttle_scope = "mobile_refresh"
 
     def post(self, request):
-        mobile_sessions.revoke(request.data.get("refresh_token", ""))
+        mobile_sessions.revoke(mobile_sessions.token_from(request))
         return Response(status=status.HTTP_204_NO_CONTENT)

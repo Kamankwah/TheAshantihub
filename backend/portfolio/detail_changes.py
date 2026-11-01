@@ -646,6 +646,9 @@ def approval_apply(approval):
         # A new sign-in contact ends every trusted device, as a staff-assisted recovery does (otp.approval_kinds): the
         # next sign-in asks for a code on the new contact. Owner JWTs are stateless and cannot be revoked here.
         devices_ended = devices.revoke_all(owner, TrustedDevice.STAFF_RECOVERY, now=now)
+        from accounts import mobile_sessions
+
+        mobile_sessions.revoke_all("business_owner", owner.pk)  # the phone must sign in again on the new contact
     if channel and before:
         # After commit, so the old contact never hears of a change that rolled back; the raw value stays in this
         # closure and the delivery path only.

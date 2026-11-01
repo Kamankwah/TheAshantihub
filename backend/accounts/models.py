@@ -831,6 +831,8 @@ class MobileSession(models.Model):
     account_id = models.PositiveBigIntegerField()
     family = models.CharField(max_length=32, db_index=True)
     token_hash = models.CharField(max_length=64, unique=True)
+    # Fingerprint of the password hash at sign-in: a changed or reset password ends the session (see mobile_sessions).
+    password_fingerprint = models.CharField(max_length=32, blank=True, default="")
     device_name = models.CharField(max_length=100, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(null=True, blank=True)

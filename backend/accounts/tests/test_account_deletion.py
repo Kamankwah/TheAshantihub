@@ -2,13 +2,17 @@ from datetime import timedelta
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer, CustomerAddress, MobileSession
 from listings.models import Category, Listing, Promotion, Zone
+from marketing import consent as marketing_consent
+from marketing.models_consent import SMS, ConsentRecord
+from otp.models import VerifiedContact
+from wallets.models import PayoutDestination
 from orders.models import Order, OrderItem
 
 PASSWORD = "s3cret-pass"
@@ -85,7 +89,8 @@ class AccountDeletionTests(TestCase):
         self._auth(self.customer, "customer")
         response = self.client.post(URL, {"password": PASSWORD}, format="json")
         self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.json(), {"code": "deletion_blocked", "reasons": ["open_orders"]})
+        body = response.json()
+        self.assertEqual((body["code"], body["reasons"]), ("deletion_blocked", ["open_orders"]))
         self.customer.refresh_from_db()
         self.assertIsNone(self.customer.deleted_at)
 
@@ -173,3 +178,91 @@ class AccountDeletionTests(TestCase):
             response = self.client.post(URL, {"password": PASSWORD}, format="json")
             self.assertEqual(response.status_code, 204, response.content)
         self.assertEqual(BusinessOwnerProfile.objects.filter(ghana_card_number__isnull=True).count(), 2)
+
+    def test_old_undelivered_order_does_not_block_but_a_recent_one_does_and_names_the_order(self):
+        old = self._paid_order(self._listing())
+        Order.objects.filter(pk=old.pk).update(placed_at=timezone.now() - timedelta(days=60))
+        self._auth(self.customer, "customer")
+        self.assertEqual(self.client.post(URL, {"password": PASSWORD}, format="json").status_code, 204)
+
+    def test_recent_open_order_names_its_id(self):
+        order = self._paid_order(self._listing())
+        self._auth(self.customer, "customer")
+        body = self.client.post(URL, {"password": PASSWORD}, format="json").json()
+        self.assertEqual(body["order_ids"], [order.pk])
+
+    @override_settings(OTP_STEP_UP_ENFORCED=True)
+    def test_deletion_asks_for_a_step_up_code_when_enforced(self):
+        self._auth(self.customer, "customer")
+        response = self.client.post(URL, {"password": PASSWORD}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json().get("code"), "step_up_required")
+        self.customer.refresh_from_db()
+        self.assertIsNone(self.customer.deleted_at)
+
+    def test_company_account_cannot_delete_itself(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(is_company=True)
+        self._auth(self.owner, "business_owner")
+        response = self.client.post(URL, {"password": PASSWORD}, format="json")
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("company_account", response.json()["reasons"])
+
+    def test_open_withdrawal_blocks_deletion(self):
+        from wallets.models import Withdrawal
+
+        dest = PayoutDestination.objects.create(
+            holder_type="customer", holder_id=self.customer.pk, rail="momo", institution="MTN",
+            account_number="0241234567", account_name="Ama Owusu", matched_name="Ama Owusu",
+            name_source="simulated", usable_from=timezone.now(),
+        )
+        Withdrawal.objects.create(
+            holder_type="customer", holder_id=self.customer.pk, destination=dest, amount_pesewas=1000,
+            charge_pesewas=0, net_pesewas=1000, status=Withdrawal.PENDING, reference="wd-test-1",
+        )
+        self._auth(self.customer, "customer")
+        response = self.client.post(URL, {"password": PASSWORD}, format="json")
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("open_withdrawal", response.json()["reasons"])
+
+    def test_owner_deletion_closes_unpublished_listings_and_hides_them(self):
+        pending = self._listing(status=Listing.PENDING_REVIEW)
+        self._auth(self.owner, "business_owner")
+        self.assertEqual(self.client.post(URL, {"password": PASSWORD}, format="json").status_code, 204)
+        pending.refresh_from_db()
+        self.assertEqual(pending.status, Listing.DISCONTINUED)
+
+    def test_deleted_business_listings_are_hidden_even_if_published(self):
+        from listings.visibility import hidden_business_q
+
+        listing = self._listing()
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(deleted_at=timezone.now())
+        hidden = Listing.objects.filter(hidden_business_q("business_owner__"), pk=listing.pk)
+        self.assertTrue(hidden.exists())
+
+    def test_erasure_reaches_payout_numbers_contacts_consent_and_listing_phones(self):
+        PayoutDestination.objects.create(
+            holder_type="business_owner", holder_id=self.owner.pk, rail="momo", institution="MTN",
+            account_number="0207886600", account_name="Kwame Trader", matched_name="Kwame Trader",
+            name_source="simulated", usable_from=timezone.now(),
+        )
+        VerifiedContact.objects.create(
+            account_type="business_owner", account_id=self.owner.pk, channel="sms", destination="+233207886600",
+        )
+        ConsentRecord.objects.create(
+            channel=SMS, status=ConsentRecord.OPTED_IN, source="test", wording_text="x", business_owner=self.owner,
+        )
+        listing = self._listing(status=Listing.DROPPED)
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(identity_status="verified")
+        self._auth(self.owner, "business_owner")
+        self.assertEqual(self.client.post(URL, {"password": PASSWORD}, format="json").status_code, 204)
+        self.assertFalse(PayoutDestination.objects.filter(holder_id=self.owner.pk, removed_at__isnull=True).exists())
+        self.assertFalse(VerifiedContact.objects.filter(account_type="business_owner", account_id=self.owner.pk).exists())
+        self.assertFalse(marketing_consent.is_opted_in(self.owner, SMS))
+        listing.refresh_from_db()
+        self.assertEqual(listing.contact_phone, "")
+        self.owner.profile.refresh_from_db()
+        self.assertEqual(self.owner.profile.identity_status, "not_submitted")
+
+    def test_list_body_is_400_not_500(self):
+        self._auth(self.customer, "customer")
+        self.assertEqual(self.client.post(URL, [1, 2], format="json").status_code, 400)

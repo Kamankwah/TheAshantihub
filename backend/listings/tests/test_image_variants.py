@@ -2,6 +2,8 @@ import io
 import shutil
 import tempfile
 
+from unittest import mock
+
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.test import TestCase, override_settings
@@ -80,3 +82,34 @@ class ImageVariantTests(TestCase):
             self.assertTrue(all(url.startswith("http") for url in photo["variants"].values()))
         self.assertEqual(set(body["main_photo_variants"]), {"thumb", "medium", "large"})
         self.assertTrue(body["photos"][0]["variants"]["thumb"].endswith(".webp"))
+
+    def test_saving_an_unchanged_listing_does_not_rebuild_or_build_for_legacy_rows(self):
+        self.listing.main_photo = jpeg(1800, 1200)
+        self.listing.save()
+        built = dict(self.listing.main_photo_variants)
+        self.assertIn("thumb", built)
+        self.listing.save()
+        self.assertEqual(self.listing.main_photo_variants, built)
+        # A row from before this feature (photo present, variants empty) is left alone by ordinary saves.
+        Listing.objects.filter(pk=self.listing.pk).update(main_photo_variants={})
+        legacy = Listing.objects.get(pk=self.listing.pk)
+        legacy.price_amount = "120.00"
+        legacy.save()
+        self.assertEqual(Listing.objects.get(pk=self.listing.pk).main_photo_variants, {})
+
+    def test_storage_error_does_not_break_the_save(self):
+        real_save = default_storage.save
+
+        def fail_for_variants(name, *args, **kwargs):
+            if name.startswith(image_variants.FOLDER):
+                raise OSError("disk full")
+            return real_save(name, *args, **kwargs)
+
+        with mock.patch.object(default_storage, "save", side_effect=fail_for_variants):
+            photo = ListingPhoto.objects.create(listing=self.listing, image=jpeg(2000, 1000), order=0)
+        self.assertTrue(ListingPhoto.objects.filter(pk=photo.pk).exists())
+        self.assertEqual(photo.variants, {})
+
+    def test_very_large_image_is_skipped(self):
+        with mock.patch.object(image_variants, "MAX_PIXELS", 1_000_000):
+            self.assertEqual(image_variants.build(jpeg(1500, 1000)), {})
