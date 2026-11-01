@@ -39,6 +39,10 @@ const config: ExpoConfig = {
       { backgroundColor: "#FDF6E3", image: "./assets/images/splash-icon.png", imageWidth: 76 },
     ],
     [
+      "expo-location",
+      { locationWhenInUsePermission: "AshantiHub uses your location only to pin your delivery door so we can work out the delivery fee." },
+    ],
+    [
       "expo-image-picker",
       {
         photosPermission: "AshantiHub uses your photos for listings and business verification.",

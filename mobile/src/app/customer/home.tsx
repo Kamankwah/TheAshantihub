@@ -8,6 +8,7 @@ import { useDeals, useDepartments, useListings } from "../../features/browse/que
 import { useAuth } from "../../state/auth";
 import { fonts } from "../../theme/fonts";
 import { useTheme } from "../../theme/useTheme";
+import { CartButton } from "../../ui/CartButton";
 import { EmptyState } from "../../ui/EmptyState";
 import { Skeleton } from "../../ui/Skeleton";
 
@@ -30,9 +31,12 @@ export default function CustomerHome() {
         contentContainerStyle={{ padding: 20, gap: 14 }}
         ListHeaderComponent={
           <View style={{ gap: 16, marginBottom: 6 }}>
-            <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 30 }}>
-              {name ? `Akwaaba, ${name}` : "Akwaaba"}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text accessibilityRole="header" style={{ flex: 1, color: c.ink, fontFamily: fonts.display, fontSize: 30 }}>
+                {name ? `Akwaaba, ${name}` : "Akwaaba"}
+              </Text>
+              {useAuth.getState().account ? <CartButton /> : null}
+            </View>
             <Pressable
               accessibilityRole="search"
               accessibilityLabel="Search AshantiHub"
