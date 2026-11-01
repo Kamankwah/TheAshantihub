@@ -3,6 +3,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 
 import { useAuth } from "../state/auth";
+import { usePrefs } from "../state/prefs";
 import { useAppFonts } from "../theme/fonts";
 import { LockGate } from "../ui/LockGate";
 
@@ -12,6 +13,7 @@ export default function RootLayout() {
   const ready = useAppFonts();
   useEffect(() => {
     void useAuth.getState().bootstrap();
+    void usePrefs.getState().hydrate();
   }, []);
   useEffect(() => {
     if (ready) SplashScreen.hideAsync();

@@ -19,6 +19,7 @@ type Init = {
   body?: unknown;
   auth?: boolean;
   query?: Record<string, string | number | undefined>;
+  headers?: Record<string, string>;
 };
 
 let onSessionLost: () => void = () => {};
@@ -36,7 +37,7 @@ function build(path: string, query?: Init["query"]) {
 }
 
 async function send(path: string, init: Init) {
-  const headers: Record<string, string> = { "X-Client": "mobile" };
+  const headers: Record<string, string> = { "X-Client": "mobile", ...(init.headers ?? {}) };
   const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
   if (init.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   if (init.auth !== false && session.access) headers.Authorization = `Bearer ${session.access}`;
