@@ -1,6 +1,72 @@
-import { ComingSoon } from "../../ui/ComingSoon";
+import { router } from "expo-router";
+import { Linking, Pressable, Text, View } from "react-native";
 
-// Filled in by a later task; until then it says so plainly.
-export default function ScreenHome() {
-  return <ComingSoon title="Home" />;
+import { useHoursStatus, useMe, useStock } from "../../features/business/queries";
+import { toPrepare, useOwnerOrders } from "../../features/business/orders";
+import { SUPPORT_WHATSAPP } from "../../lib/config";
+import { fonts } from "../../theme/fonts";
+import { useTheme } from "../../theme/useTheme";
+import { Button } from "../../ui/Button";
+import { Pill } from "../../ui/Pill";
+import { Screen } from "../../ui/Screen";
+import { VerifiedBadge } from "../../ui/VerifiedBadge";
+
+export default function BusinessHome() {
+  const { c, radius } = useTheme();
+  const me = useMe();
+  const orders = useOwnerOrders();
+  const stock = useStock();
+  const hours = useHoursStatus();
+  const waiting = (orders.data?.pages ?? []).flatMap((p) => p.results).filter(toPrepare).length;
+  const more = !!orders.hasNextPage;
+  const low = stock.data?.results.filter((r) => r.low) ?? [];
+  const first = me.data?.full_name.split(" ")[0];
+  const card = { backgroundColor: c.surface, borderRadius: radius.card, borderWidth: 1, borderColor: c.line, padding: 14, gap: 8 } as const;
+
+  return (
+    <Screen>
+      <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 30 }}>{first ? `Akwaaba, ${first}` : "Akwaaba"}</Text>
+      {me.data?.identity_status === "verified" ? <VerifiedBadge /> : me.data ? <Pill tone={me.data.kyc_status === "rejected" ? "error" : "warn"} icon="clock" label={me.data.kyc_status === "rejected" ? "Verification needs attention" : "Verification in progress"} /> : null}
+
+      {hours.data && !hours.data.has_hours ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Add your opening hours" onPress={() => router.push("/manage/hours" as never)} style={card}>
+          <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, fontSize: 16 }}>Add your opening hours</Text>
+          <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>Customers see when you are open. This is needed before your listings go live.</Text>
+        </Pressable>
+      ) : null}
+
+      <Pressable accessibilityRole="button" accessibilityLabel="Open orders" onPress={() => router.push("/business/orders")} style={card}>
+        <Text style={{ color: c.dim, fontFamily: fonts.bodySemi, fontSize: 13 }}>Orders</Text>
+        <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, fontSize: 20 }}>
+          {orders.isPending ? "Loading…" : waiting > 0 ? `${waiting}${more ? "+" : ""} ${waiting === 1 && !more ? "order" : "orders"} to prepare` : "Nothing to prepare right now"}
+        </Text>
+      </Pressable>
+
+      {low.length > 0 ? (
+        <View accessibilityRole="alert" style={{ ...card, backgroundColor: c.well }}>
+          <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, fontSize: 16 }}>Running low on stock</Text>
+          {low.map((r) => (
+            <Pressable key={r.listing_id} accessibilityRole="button" accessibilityLabel={`${r.name}, restock`} onPress={() => router.push(`/manage/listing/${r.listing_id}` as never)} style={{ minHeight: 48, justifyContent: "center", gap: 2 }}>
+              <Text style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 15 }}>{r.name}</Text>
+              <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>
+                {r.sold_out ? "Sold out" : `${r.stock} left${r.days_of_cover ? `, about ${r.days_of_cover} days of sales left` : ""}`}
+              </Text>
+              <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>
+                {r.line != null ? `Your alert line: ${r.line} units` : `Alert when fewer than ${stock.data?.settings?.cover_days ?? 7} days of sales left`}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={{ gap: 10 }}>
+        <Button
+          variant="secondary"
+          label="WhatsApp Update to AshantiHub"
+          onPress={() => void Linking.openURL(`${SUPPORT_WHATSAPP}?text=${encodeURIComponent("UPDATE: ")}`)}
+        />
+        <Button variant="secondary" label="Contact Support" onPress={() => router.push({ pathname: "/support/new", params: { about: "My business" } } as never)} />
+      </View>
+    </Screen>
+  );
 }

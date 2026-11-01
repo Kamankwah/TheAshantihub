@@ -10,3 +10,6 @@ export const LEGAL_DOCS: Record<string, { title: string; path: string }> = {
   "business-agreement": { title: "Business agreement", path: "/business-agreement" },
   "account-deletion": { title: "How to delete your account", path: "/account-deletion" },
 };
+
+/** AshantiHub's own WhatsApp (a business telling AshantiHub about an update). Never a business's number. */
+export const SUPPORT_WHATSAPP = "https://wa.me/233244000000";
