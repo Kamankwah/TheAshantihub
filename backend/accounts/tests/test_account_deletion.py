@@ -160,3 +160,16 @@ class AccountDeletionTests(TestCase):
         )
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(staff, 'staff')}")
         self.assertEqual(self.client.post(URL, {"password": PASSWORD}, format="json").status_code, 403)
+
+    def test_two_owners_with_ghana_cards_can_both_delete(self):
+        """The card number column is unique, so erasing it must store NULL, never an empty string twice."""
+        second = BusinessOwner.objects.create(
+            full_name="Efua Trader", login_phone="+233207886611", password_hash=make_password(PASSWORD),
+        )
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(ghana_card_number="GHA-111111111-1")
+        BusinessOwnerProfile.objects.create(business_owner=second, ghana_card_number="GHA-222222222-2")
+        for owner in (self.owner, second):
+            self._auth(owner, "business_owner")
+            response = self.client.post(URL, {"password": PASSWORD}, format="json")
+            self.assertEqual(response.status_code, 204, response.content)
+        self.assertEqual(BusinessOwnerProfile.objects.filter(ghana_card_number__isnull=True).count(), 2)

@@ -73,19 +73,13 @@ def delete_account(account, account_type):
                 stale = getattr(profile, field)
                 if stale:
                     stale_files.append(stale.name)
-            profile.ghana_card_number = ""
-            profile.ghana_card_front_image = None
-            profile.ghana_card_back_image = None
-            profile.business_reg_certificate = None
-            profile.signboard_photo = None
-            profile.business_contact_phone = ""
-            profile.tin = ""
-            profile.payout_bank_name = ""
-            profile.payout_bank_account_number = ""
-            profile.payout_bank_account_name = ""
-            profile.payout_momo_network = ""
-            profile.payout_momo_number = ""
-            profile.payout_momo_name = ""
+            # NULL, never "": the card number column is unique, and two erased cards must not collide.
+            for field in (
+                "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image", "business_reg_certificate",
+                "signboard_photo", "business_contact_phone", "tin", "payout_bank_name", "payout_bank_account_number",
+                "payout_bank_account_name", "payout_momo_network", "payout_momo_number", "payout_momo_name",
+            ):
+                setattr(profile, field, None)
             profile.save()
     mobile_sessions.revoke_all(account_type, account.pk)
     files.delete_after_commit(stale_files)
