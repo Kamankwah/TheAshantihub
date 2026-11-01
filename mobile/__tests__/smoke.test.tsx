@@ -1,10 +1,15 @@
 import { render, screen } from "@testing-library/react-native";
 
-import Index from "../src/app/index";
+import Welcome from "../src/app/(auth)/welcome";
 
-describe("app shell", () => {
-  it("renders the AshantiHub name", async () => {
-    await render(<Index />);
-    expect(screen.getByText("AshantiHub")).toBeTruthy();
+jest.mock("expo-router", () => ({ router: { push: jest.fn() } }));
+
+describe("welcome screen", () => {
+  it("offers the customer and business doors", async () => {
+    await render(<Welcome />);
+    expect(screen.getByRole("header", { name: /Akwaaba/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "I'm a customer: create account" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "I'm a customer: sign in" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "I own a business" })).toBeTruthy();
   });
 });
