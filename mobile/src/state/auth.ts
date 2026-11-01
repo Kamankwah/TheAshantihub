@@ -4,7 +4,14 @@ import { api, ApiError, setSessionLostHandler } from "../lib/api";
 import { queryClient } from "../lib/queryClient";
 import { session } from "../lib/session";
 
-export type Account = { type: "customer" | "business_owner"; id: number; fullName: string; canBuy?: boolean };
+export type Account = {
+  type: "customer" | "business_owner";
+  id: number;
+  fullName: string;
+  canBuy?: boolean;
+  registrationStep?: string;
+  kycStatus?: string;
+};
 
 /** The body every successful sign-in, sign-up or code check answers with. */
 export type LoginBody = {
@@ -56,13 +63,20 @@ export const useAuth = create<AuthState>((set, get) => ({
       return;
     }
     try {
-      const me = await api<{ account_type: string; id: number; full_name: string; can_buy?: boolean }>(
+      const me = await api<{ account_type: string; id: number; full_name: string; can_buy?: boolean; registration_step?: string; kyc_status?: string }>(
         "/api/accounts/me/",
       );
       if (me.account_type !== "customer" && me.account_type !== "business_owner") throw new Error("staff");
       set({
         status: "signedIn",
-        account: { type: me.account_type, id: me.id, fullName: me.full_name, canBuy: me.can_buy },
+        account: {
+          type: me.account_type,
+          id: me.id,
+          fullName: me.full_name,
+          canBuy: me.can_buy,
+          registrationStep: me.registration_step,
+          kycStatus: me.kyc_status,
+        },
       });
     } catch {
       await get().signOut();
