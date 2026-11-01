@@ -145,6 +145,7 @@ class Listing(models.Model):
         upload_to="listing_photos/main/", null=True, blank=True,
         validators=[validate_image_content_type, validate_image_size],
     )
+    main_photo_variants = models.JSONField(default=dict, blank=True)  # as ListingPhoto.variants
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
@@ -399,6 +400,8 @@ class ListingPhoto(models.Model):
         upload_to="listing_photos/gallery/", validators=[validate_image_content_type]
     )
     order = models.PositiveSmallIntegerField(default=0)
+    # Resized WebP copies (listings.image_variants): {"src": <image name they came from>, "thumb": path, ...}.
+    variants = models.JSONField(default=dict, blank=True)
     # Set while the photo is staged in an open edit of an approved listing; the public never sees such a row.
     revision = models.ForeignKey(
         "ListingRevision", on_delete=models.CASCADE, null=True, blank=True, related_name="staged_photos",

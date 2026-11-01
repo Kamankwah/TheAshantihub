@@ -1,8 +1,12 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
+from django.views.decorators.cache import cache_page
+from drf_spectacular.views import SpectacularAPIView
 
 urlpatterns = [
+    # Building the schema walks every route, so it is built once an hour, not per request.
+    path("api/schema/", cache_page(60 * 60)(SpectacularAPIView.as_view()), name="api-schema"),
     path("api/", include("core.urls")),
     path("api/", include("contact.urls")),
     path("api/accounts/", include("accounts.urls")),

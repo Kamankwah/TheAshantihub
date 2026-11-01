@@ -26,6 +26,7 @@ CONTACT_CHANGE = "contact_change"
 AUTHENTICATOR_CHANGE = "authenticator_change"
 PASSWORD_CHANGE = "password_change"
 WITHDRAWAL = "withdrawal"
+ACCOUNT_DELETE = "account_delete"
 DETAIL_CHANGE = "detail_change"  # a business asking to change its name, sign-in phone or email (portfolio.detail_changes)
 ACTIONS = {
     PAYOUT_DESTINATION: "Change where your money is paid",
@@ -34,6 +35,7 @@ ACTIONS = {
     PASSWORD_CHANGE: "Change your password",
     WITHDRAWAL: "Withdraw money",
     DETAIL_CHANGE: "Ask to change your name, sign-in phone or email",
+    ACCOUNT_DELETE: "Delete your account",
 }
 TOKEN_TTL = timedelta(minutes=5)
 HEADER = "HTTP_X_STEP_UP_TOKEN"

@@ -155,4 +155,10 @@ def signed_in_body(account, request):
         from accounts.views import _staff_sign_in_response  # accounts.views imports this module
 
         return _staff_sign_in_response(account, request, two_factor_used=True)
-    return {"token": issue_token(account, kind), "account_type": kind, "id": account.id, "full_name": account.full_name}
+    body = {"token": issue_token(account, kind), "account_type": kind, "id": account.id, "full_name": account.full_name}
+    from accounts import mobile_sessions  # accounts.views imports this module
+
+    refresh_token = mobile_sessions.issue(request, account, kind)
+    if refresh_token:
+        body["refresh_token"] = refresh_token
+    return body
