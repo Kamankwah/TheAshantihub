@@ -8,7 +8,7 @@ import { useDeals, useDepartments, useListings } from "../../features/browse/que
 import { useAuth } from "../../state/auth";
 import { fonts } from "../../theme/fonts";
 import { useTheme } from "../../theme/useTheme";
-import { CartButton } from "../../ui/CartButton";
+import { HeaderActions } from "../../ui/HeaderActions";
 import { EmptyState } from "../../ui/EmptyState";
 import { Skeleton } from "../../ui/Skeleton";
 
@@ -16,7 +16,8 @@ const open = (id: number) => router.push(`/listing/${id}` as never);
 
 export default function CustomerHome() {
   const { c } = useTheme();
-  const name = useAuth((s) => s.account?.fullName.split(" ")[0]);
+  const account = useAuth((s) => s.account);
+  const name = account?.fullName.split(" ")[0];
   const departments = useDepartments();
   const deals = useDeals();
   const fresh = useListings({});
@@ -31,12 +32,10 @@ export default function CustomerHome() {
         contentContainerStyle={{ padding: 20, gap: 14 }}
         ListHeaderComponent={
           <View style={{ gap: 16, marginBottom: 6 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text accessibilityRole="header" style={{ flex: 1, color: c.ink, fontFamily: fonts.display, fontSize: 30 }}>
-                {name ? `Akwaaba, ${name}` : "Akwaaba"}
-              </Text>
-              {useAuth.getState().account ? <CartButton /> : null}
-            </View>
+            {account ? <HeaderActions /> : null}
+            <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 30 }}>
+              {name ? `Akwaaba, ${name}` : "Akwaaba"}
+            </Text>
             <Pressable
               accessibilityRole="search"
               accessibilityLabel="Search AshantiHub"

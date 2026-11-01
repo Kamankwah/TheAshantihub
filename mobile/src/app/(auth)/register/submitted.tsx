@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { Text, View } from "react-native";
 
 import { useAuth } from "../../../state/auth";
@@ -27,6 +28,7 @@ export default function Submitted() {
           <Text key={line} style={{ color: c.ink, fontFamily: fonts.body, fontSize: 15, lineHeight: 22 }}>{`${i + 1}. ${line}`}</Text>
         ))}
       </View>
+      <Button variant="secondary" label="Contact Support" onPress={() => router.push({ pathname: "/support/new", params: { about: "My business application" } } as never)} />
       <Button variant="secondary" label="Sign out" onPress={() => void useAuth.getState().signOut()} />
     </Screen>
   );

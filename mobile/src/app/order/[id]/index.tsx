@@ -148,6 +148,7 @@ export default function OrderDetail() {
             onPress={() => router.push({ pathname: "/review/[id]", params: { id: String(it.listing), name: it.listing_name } } as never)}
           />
         ))}
+        <Button variant="secondary" label="Contact Support" onPress={() => router.push({ pathname: "/support/new", params: { about: `Order #${o.id}`, order: String(o.id) } } as never)} />
         <Button variant="secondary" label="Report a problem" onPress={() => router.push(`/order/${o.id}/problem` as never)} />
       </ScrollView>
     </SafeAreaView>
