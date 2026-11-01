@@ -1,8 +1,10 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
+from drf_spectacular.views import SpectacularAPIView
 
 urlpatterns = [
+    path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
     path("api/", include("core.urls")),
     path("api/", include("contact.urls")),
     path("api/accounts/", include("accounts.urls")),
