@@ -4,7 +4,7 @@ import { stepRoute } from "./registrationApi";
 
 type Icon = keyof typeof Feather.glyphMap;
 export type Tab = { name: string; label: string; icon: Icon };
-type Status = "loading" | "signedOut" | "signedIn";
+type Status = "loading" | "signedOut" | "signedIn" | "offline";
 type AccountType = "customer" | "business_owner";
 
 export const CUSTOMER_TABS: Tab[] = [

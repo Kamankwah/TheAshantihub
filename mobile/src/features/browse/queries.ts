@@ -20,12 +20,26 @@ export function useListings(params: { search?: string; category?: string; orderi
   });
 }
 
+type DealRow = {
+  id: number; name: string; photo: string | null; category_label?: string; price_amount: string; sale_price: string | null;
+  was_price: string | null; sponsored?: boolean; review_count?: number; avg_rating?: number | null;
+};
+
+/** The deals feed has its own row shape (no seller, one photo); make it a card. */
+export function normalizeDeal(r: DealRow): Listing {
+  return {
+    id: r.id, name: r.name, price_amount: r.price_amount, effective_price: r.sale_price ?? r.price_amount, sale_price: r.sale_price,
+    was_price: r.was_price, main_photo: r.photo, main_photo_variants: { thumb: r.photo, medium: r.photo, large: r.photo },
+    avg_rating: r.avg_rating, review_count: r.review_count ?? 0, is_promoted: !!r.sponsored,
+  };
+}
+
 export function useDeals() {
   return useQuery({
     queryKey: ["deals"],
     queryFn: async () => {
-      const data = await api<Listing[] | Page<Listing>>("/api/storefront/deals/", { auth: false, query: { limit: 12 } });
-      return Array.isArray(data) ? data : (data.results ?? []);
+      const data = await api<DealRow[] | { results?: DealRow[] }>("/api/storefront/deals/", { auth: false, query: { limit: 12 } });
+      return (Array.isArray(data) ? data : (data.results ?? [])).map(normalizeDeal);
     },
   });
 }

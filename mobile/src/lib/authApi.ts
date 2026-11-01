@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, ApiError } from "./api";
 import type { LoginBody } from "../state/auth";
 
 export type Challenge = { mfa_token: string; channels: string[] };
@@ -6,8 +6,10 @@ export type AuthResult = { kind: "signedIn"; body: LoginBody } | { kind: "challe
 
 /** A sign-in, sign-up or code check answers either with a session or with a code still owed. */
 export function toResult(response: any, accountType: "customer" | "business_owner"): AuthResult {
+  if (response?.two_factor_required) throw new ApiError(403, response, "authenticator_required"); // asked from an authenticator app, not a text
   if (response?.mfa_token && !response?.token) {
-    return { kind: "challenge", challenge: { mfa_token: response.mfa_token, channels: response.channels ?? [] } };
+    const channels = ((response.channels ?? []) as (string | { channel: string })[]).map((c) => (typeof c === "string" ? c : c.channel));
+    return { kind: "challenge", challenge: { mfa_token: response.mfa_token, channels } };
   }
   return {
     kind: "signedIn",
@@ -45,6 +47,9 @@ export async function otpVerify(input: { mfa_token: string; code: string }, acco
 
 /** A readable message for a failed form request. */
 export function messageFor(error: unknown, fallback: string): string {
+  const code = (error as { code?: string })?.code;
+  if (code === "staff_not_supported") return "Staff accounts sign in on the AshantiHub web dashboard, not in this app.";
+  if (code === "authenticator_required") return "This account uses an authenticator app. Please sign in on the AshantiHub website.";
   const body = (error as { body?: Record<string, unknown> })?.body;
   if (body && typeof body === "object") {
     const first = Object.values(body).flat()[0];

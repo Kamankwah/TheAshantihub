@@ -10,7 +10,7 @@ export const useConversations = (poll = false) =>
   useQuery({
     queryKey: ["conversations"],
     queryFn: () => api<Conversation[]>("/api/messaging/conversations/"),
-    refetchInterval: poll ? 15_000 : false,
+    refetchInterval: poll ? 60_000 : false, // the messaging API allows 60 requests an hour
   });
 
 export function sourceFor(about: { order?: string; listing?: string }, accountType: "customer" | "business_owner"): string {

@@ -19,7 +19,7 @@ export function ListingCard({ listing, onPress, compact }: Props) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${listing.name}, ${listing.business_owner.name}`}
+      accessibilityLabel={listing.business_owner ? `${listing.name}, ${listing.business_owner.name}` : listing.name}
       onPress={() => void captureFlight(listing.id).then(() => onPress(listing.id))}
       style={({ pressed }) => ({
         width: compact ? 160 : undefined,
@@ -44,10 +44,12 @@ export function ListingCard({ listing, onPress, compact }: Props) {
         <Text numberOfLines={2} style={{ color: c.ink, fontFamily: fonts.bodyBold, fontSize: 15 }}>
           {listing.name}
         </Text>
-        <Text numberOfLines={1} style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>
-          {listing.business_owner.name}
-        </Text>
-        {listing.business_owner.identity_verified ? <VerifiedBadge /> : null}
+        {listing.business_owner ? (
+          <Text numberOfLines={1} style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>
+            {listing.business_owner.name}
+          </Text>
+        ) : null}
+        {listing.business_owner?.identity_verified ? <VerifiedBadge /> : null}
         <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
           <Price amount={now} />
           {listing.was_price ? (

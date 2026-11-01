@@ -41,7 +41,7 @@ export default function SupportChat() {
   );
 
   if (list.isLoading) return <SafeAreaView style={{ flex: 1, backgroundColor: c.canvas, padding: 20 }}><Skeleton height={160} /></SafeAreaView>;
-  if (list.isError) return <SafeAreaView style={{ flex: 1, backgroundColor: c.canvas }}>{back}<EmptyState title="We couldn’t load this conversation" action={{ label: "Try again", onPress: () => void list.refetch() }} /></SafeAreaView>;
+  if (list.isError && !list.data) return <SafeAreaView style={{ flex: 1, backgroundColor: c.canvas }}>{back}<EmptyState title="We couldn’t load this conversation" action={{ label: "Try again", onPress: () => void list.refetch() }} /></SafeAreaView>;
   if (!convo) return <SafeAreaView style={{ flex: 1, backgroundColor: c.canvas }}>{back}<EmptyState title="We couldn’t find this conversation" action={{ label: "Open inbox", onPress: () => router.replace("/inbox" as never) }} /></SafeAreaView>;
 
   async function send() {

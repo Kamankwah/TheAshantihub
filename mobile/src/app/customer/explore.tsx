@@ -22,6 +22,10 @@ export default function Explore() {
   const listings = useListings({ search, category });
 
   useEffect(() => {
+    setCategory(params.category);
+  }, [params.category]);
+
+  useEffect(() => {
     const t = setTimeout(() => setSearch(text.trim()), 350);
     return () => clearTimeout(t);
   }, [text]);

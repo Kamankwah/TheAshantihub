@@ -119,7 +119,7 @@ describe("delete my account", () => {
     await fireEvent.changeText(await screen.findByLabelText("Code we sent you"), "123456");
     await fireEvent.press(screen.getByLabelText("Confirm and delete"));
     await waitFor(() => expect(signOut).toHaveBeenCalled());
-    expect(apiMock).toHaveBeenCalledWith("/api/otp/step-up/send/", { body: { action: "account_delete" } });
+    expect(apiMock).toHaveBeenCalledWith("/api/otp/step-up/send/", { body: { action: "account_delete", channel: "sms" } });
     expect(apiMock).toHaveBeenCalledWith("/api/otp/step-up/verify/", { body: { action: "account_delete", code: "123456" } });
   });
 });

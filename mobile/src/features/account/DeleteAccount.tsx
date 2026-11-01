@@ -45,7 +45,8 @@ export function DeleteAccount() {
         else if (body.code === "deletion_blocked") setBlocked({ reasons: body.reasons ?? [], orderIds: body.order_ids ?? [] });
         else if (body.code === "step_up_required") {
           try {
-            const sent = await api<{ hint?: string }>("/api/otp/step-up/send/", { body: { action: "account_delete" } });
+            const send = (channel: string) => api<{ hint?: string }>("/api/otp/step-up/send/", { body: { action: "account_delete", channel } });
+            const sent = await send("sms").catch(() => send("email"));
             setHint(sent?.hint ?? null);
             setStepUp(true);
           } catch (e2) {

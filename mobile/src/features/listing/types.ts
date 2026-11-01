@@ -9,7 +9,8 @@ export type Variant = {
   stock_quantity: number | null;
 };
 
-export type ListingDetail = Listing & {
+export type ListingDetail = Omit<Listing, "business_owner"> & {
+  business_owner: { id: number; name: string; identity_verified?: boolean };
   description?: string;
   photos: { id: number; image: string; variants: PhotoSizes }[];
   variants: Variant[];

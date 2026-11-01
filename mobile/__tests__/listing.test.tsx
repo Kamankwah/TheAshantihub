@@ -86,10 +86,16 @@ describe("motion rules", () => {
     expect(openingMode(false, null)).toBe("fade");
   });
 
-  it("reduce_motion_hook_follows_the_system_setting", async () => {
-    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+  it("reduce_motion_hook_follows_a_change_of_the_system_setting", async () => {
+    let listener: (v: boolean) => void = () => {};
+    jest.spyOn(AccessibilityInfo, "addEventListener").mockImplementation(((_n: string, fn: (v: boolean) => void) => {
+      listener = fn;
+      return { remove: jest.fn() };
+    }) as never);
     const { result } = await renderHook(() => useReducedMotion());
-    await waitFor(() => expect(result.current).toBe(true));
+    expect(result.current).toBe(false);
+    await act(async () => listener(true));
+    expect(result.current).toBe(true);
   });
 
   it("placeholder_is_thumb_then_large_url", () => {

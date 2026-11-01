@@ -23,7 +23,7 @@ export type LoginBody = {
 };
 
 type AuthState = {
-  status: "loading" | "signedOut" | "signedIn";
+  status: "loading" | "signedOut" | "signedIn" | "offline";
   account?: Account;
   signIn: (body: LoginBody) => Promise<void>;
   signOut: () => Promise<void>;
@@ -78,8 +78,11 @@ export const useAuth = create<AuthState>((set, get) => ({
           kycStatus: me.kyc_status,
         },
       });
-    } catch {
-      await get().signOut();
+    } catch (e) {
+      // Only a refusal ends the session; a network failure keeps it so the person can try again.
+      if (e instanceof ApiError && e.status !== 0 && e.status < 500) await get().signOut();
+      else if (e instanceof Error && e.message === "staff") await get().signOut();
+      else set({ status: "offline" });
     }
   },
 }));

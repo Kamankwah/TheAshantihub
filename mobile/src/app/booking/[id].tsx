@@ -78,8 +78,8 @@ function StayBooking({ listing }: { listing: ListingDetail }) {
     return (
       <View style={{ gap: 12 }}>
         <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 24 }}>Booking confirmed</Text>
-        <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 15 }}>{`${listing.name}, ${isoDay(checkIn)} to ${isoDay(checkOut)}. You can see it under Orders.`}</Text>
-        <Button label="View my orders" onPress={() => router.replace("/customer/orders" as never)} />
+        <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 15 }}>{`${listing.name}, ${isoDay(checkIn)} to ${isoDay(checkOut)}. You can manage this booking on the AshantiHub website, or ask Support.`}</Text>
+        <Button label="Contact Support" onPress={() => router.replace({ pathname: "/support/new", params: { about: listing.name, listing: String(listing.id) } } as never)} />
       </View>
     );
   }
@@ -137,8 +137,8 @@ function ServiceRequest({ listing }: { listing: ListingDetail }) {
     return (
       <View style={{ gap: 12 }}>
         <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 24 }}>Request sent</Text>
-        <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 15 }}>You’ll be notified when the business replies with a quote. You pay from your orders once you accept it.</Text>
-        <Button label="View my orders" onPress={() => router.replace("/customer/orders" as never)} />
+        <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 15 }}>AshantiHub will let you know when the business replies with a quote. You can accept and pay on the AshantiHub website, or ask Support.</Text>
+        <Button label="Contact Support" onPress={() => router.replace({ pathname: "/support/new", params: { about: listing.name, listing: String(listing.id) } } as never)} />
       </View>
     );
   }

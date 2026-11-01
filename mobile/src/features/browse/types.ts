@@ -12,7 +12,7 @@ export type Listing = {
   avg_rating?: number | null;
   review_count?: number | null;
   is_promoted?: boolean;
-  business_owner: { id: number; name: string; identity_verified?: boolean };
+  business_owner?: { id: number; name: string; identity_verified?: boolean };
 };
 
 export type Page<T> = { count: number; next: string | null; results: T[] };

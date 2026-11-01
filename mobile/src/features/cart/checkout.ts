@@ -59,8 +59,8 @@ export async function waitForPayment(reference: string, stopped: () => boolean):
     if (stopped()) return { status: "stopped" };
     try {
       const s = await api<{ status: string; order_id: number | null }>(`/api/payments/checkout-sessions/${reference}/`);
-      if (s.status === "paid") return { status: "paid", orderId: s.order_id ?? undefined };
-      if (s.status === "failed") return { status: "failed" };
+      if (s.status === "success" || s.status === "paid") return { status: "paid", orderId: s.order_id ?? undefined };
+      if (s.status === "failed" || s.status === "expired") return { status: "failed" };
     } catch {
       // a dropped request is not a failed payment: keep asking
     }

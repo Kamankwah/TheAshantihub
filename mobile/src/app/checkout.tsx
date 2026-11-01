@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -46,6 +46,10 @@ export default function CheckoutScreen() {
   const [waiting, setWaiting] = useState(false);
   const [locating, setLocating] = useState(false);
   const stop = useRef(false);
+  const [stopped, setStopped] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+  useEffect(() => () => { stop.current = true; }, []);
 
   const door = form.method === "door_to_door";
   const preview = useDeliveryPreview(door, form.lat, form.lng);
@@ -87,11 +91,15 @@ export default function CheckoutScreen() {
         setWaiting(true);
         if (res.checkout_url) void WebBrowser.openBrowserAsync(res.checkout_url);
         const settled = await waitForPayment(res.reference, () => stop.current);
+        if (!mounted.current) return; // left the screen while waiting: no surprise jump
         setWaiting(false);
         if (settled.status === "paid") {
           router.replace({ pathname: "/order-confirmed", params: { id: String(settled.orderId ?? "") } } as never);
         } else if (settled.status === "failed") {
           setError("Your payment didn’t go through. Nothing was taken and your cart is unchanged.");
+        } else if (settled.status === "stopped") {
+          if (!mounted.current) return;
+          setStopped(true);
         } else if (settled.status === "timeout") {
           setError("We’re still waiting for your payment. If you paid, it will appear under Orders shortly.");
         }
@@ -121,7 +129,8 @@ export default function CheckoutScreen() {
     return <SafeAreaView style={{ flex: 1, backgroundColor: c.canvas }}>{back}<EmptyState title="Your cart is empty" action={{ label: "Start browsing", onPress: () => router.replace("/customer/explore" as never) }} /></SafeAreaView>;
   }
 
-  const payLabel = `Pay ${formatCedis(total)} with Mobile Money`;
+  const feeUnknown = door && fee == null;
+  const payLabel = feeUnknown ? "Pay with Mobile Money (delivery fee added)" : `Pay ${formatCedis(total)} with Mobile Money`;
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.canvas }}>
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 16 }}>
@@ -197,6 +206,11 @@ export default function CheckoutScreen() {
           <View style={{ gap: 10 }}>
             <Text accessibilityLiveRegion="polite" style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 15 }}>Waiting for your payment…</Text>
             <Button variant="secondary" label="Stop waiting" onPress={() => { stop.current = true; }} />
+          </View>
+        ) : stopped ? (
+          <View style={{ gap: 10 }}>
+            <Text style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 15 }}>We stopped waiting. If you paid, check your orders in a few minutes; please don’t pay twice.</Text>
+            <Button label="View my orders" onPress={() => router.replace("/customer/orders" as never)} />
           </View>
         ) : canBuy ? (
           <Button label={payLabel} onPress={() => void pay()} loading={busy} disabled={!canPay(form)} />

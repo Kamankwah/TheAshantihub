@@ -1,17 +1,14 @@
 import { useEffect, useState } from "react";
 import { AccessibilityInfo } from "react-native";
+import { useReducedMotion as useSystemReducedMotion } from "react-native-reanimated";
 
-/** The system "reduce motion" setting, kept current. */
+/** The system "reduce motion" setting: right on the first render (so no flight starts), then kept current. */
 export function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
+  const initial = useSystemReducedMotion();
+  const [live, setLive] = useState<boolean | null>(null);
   useEffect(() => {
-    let alive = true;
-    AccessibilityInfo.isReduceMotionEnabled().then((v) => alive && setReduced(v));
-    const sub = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduced);
-    return () => {
-      alive = false;
-      sub.remove();
-    };
+    const sub = AccessibilityInfo.addEventListener("reduceMotionChanged", setLive);
+    return () => sub.remove();
   }, []);
-  return reduced;
+  return live ?? initial;
 }
