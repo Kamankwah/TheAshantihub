@@ -23,6 +23,7 @@ def hidden_business_q(prefix="business_owner__"):
     is never matched by the pause half, and the pause half applies only while
     SUBSCRIPTION_PAUSE_ENABLED is on."""
     hidden = Q(**{f"{prefix}is_suspended": True})
+    hidden |= Q(**{f"{prefix}deleted_at__isnull": False})  # a deleted account (accounts.deletion) is never public
     if settings.SUBSCRIPTION_PAUSE_ENABLED:
         hidden |= Q(**{f"{prefix}subscription__paused_at__isnull": False})
     return hidden

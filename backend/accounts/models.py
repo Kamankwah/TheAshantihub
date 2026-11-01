@@ -112,6 +112,9 @@ class Customer(AuthenticatableAccountMixin, models.Model):
     # an already-signed-in account stays valid until expiry — suspension is
     # enforced at the login boundary, not per-request.
     is_suspended = models.BooleanField(default=False)
+    # Set when the person deletes their account in the app (accounts/deletion.py); personal details are erased,
+    # order and money rows are kept for legal and financial reasons.
+    deleted_at = models.DateTimeField(null=True, blank=True)
     suspension_reason = models.CharField(max_length=500, blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -333,6 +336,9 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     # Customer.is_suspended above: blocks login and hides this owner's
     # listings/events from public browse.
     is_suspended = models.BooleanField(default=False)
+    # Set when the person deletes their account in the app (accounts/deletion.py); personal details are erased,
+    # order and money rows are kept for legal and financial reasons.
+    deleted_at = models.DateTimeField(null=True, blank=True)
     suspension_reason = models.CharField(max_length=500, blank=True, default="")
 
     registration_channel = models.CharField(
@@ -814,3 +820,28 @@ class CustomerAddress(models.Model):
 
     def __str__(self):
         return f"{self.label} ({self.gps_address}) for customer {self.customer_id}"
+
+
+class MobileSession(models.Model):
+    """A signed-in phone: an opaque refresh token (kept only as a SHA-256 hash) that mints new access tokens.
+    Customers and business owners only. Every refresh rotates the token into a new row of the same `family`;
+    presenting a token that was already rotated means it leaked, so the whole family is revoked."""
+
+    account_type = models.CharField(max_length=20)
+    account_id = models.PositiveBigIntegerField()
+    family = models.CharField(max_length=32, db_index=True)
+    token_hash = models.CharField(max_length=64, unique=True)
+    # Fingerprint of the password hash at sign-in: a changed or reset password ends the session (see mobile_sessions).
+    password_fingerprint = models.CharField(max_length=32, blank=True, default="")
+    device_name = models.CharField(max_length=100, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField()
+    rotated_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["account_type", "account_id"])]
+
+    def __str__(self):
+        return f"{self.account_type}:{self.account_id} mobile session {self.family}"

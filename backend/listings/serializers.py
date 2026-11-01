@@ -8,7 +8,7 @@ from accounts import direct
 from accounts.models import BusinessOwner
 from billing.models import Subscription
 
-from . import pricing, services, variants
+from . import image_variants, pricing, services, variants
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, ListingVariant, ListingVideo, Promotion, Zone
 
 # The product/service decision fields added by the comprehensive listing-
@@ -25,9 +25,15 @@ LISTING_DECISION_FIELDS = [
 
 
 class ListingPhotoSerializer(serializers.ModelSerializer):
+    variants = serializers.SerializerMethodField()
+
     class Meta:
         model = ListingPhoto
-        fields = ["id", "image", "order"]
+        fields = ["id", "image", "order", "variants"]
+
+    def get_variants(self, obj):
+        """thumb / medium / large URLs; the original's URL stands in for any size that was not made."""
+        return image_variants.urls(self.context.get("request"), obj.variants, obj.image)
 
 
 class OwnerPhotoSerializer(ListingPhotoSerializer):
@@ -242,6 +248,7 @@ class PublicListingSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     zone = ZoneSerializer(read_only=True)
     photos = serializers.SerializerMethodField()
+    main_photo_variants = serializers.SerializerMethodField()
     videos = serializers.SerializerMethodField()
     business_owner = BusinessOwnerMiniSerializer(read_only=True)
     # Only present (True) when the queryset annotated it — PublicListingListView
@@ -268,7 +275,7 @@ class PublicListingSerializer(serializers.ModelSerializer):
         model = Listing
         fields = [
             "id", "name", "description", "category", "zone", "price_amount", "price_unit",
-            "tag", "lat", "lng", "main_photo", "photos", "created_at",
+            "tag", "lat", "lng", "main_photo", "main_photo_variants", "photos", "created_at",
             "is_promoted", "specs", "service_duration", "avg_rating", "review_count",
             "sale_price", "sale_ends_at", "was_price", "effective_price", "variants", "has_variants", "videos",
             "business_owner", *LISTING_DECISION_FIELDS, "cancellation_policy",
@@ -280,6 +287,9 @@ class PublicListingSerializer(serializers.ModelSerializer):
 
     def get_photos(self, obj):
         return live_photos(obj, self.context)
+
+    def get_main_photo_variants(self, obj):
+        return image_variants.urls(self.context.get("request"), obj.main_photo_variants, obj.main_photo)
 
     def get_videos(self, obj):
         """Ready uploads and YouTube links that are not staged in an open edit."""

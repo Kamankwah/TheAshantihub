@@ -27,7 +27,7 @@ from otp import step_up
 from staffsecurity import signin as signin_log
 from staffsecurity.models import StaffSignInRecord
 
-from . import claims, files, hours, kyc, sessions, two_factor
+from . import claims, files, hours, kyc, mobile_sessions, sessions, two_factor
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
 from .models import (
@@ -136,6 +136,13 @@ def me(request):
     return Response(data)
 
 
+def _with_refresh_token(body, request, account, account_type):
+    """Adds `refresh_token` to a sign-in body when the request comes from the mobile app (X-Client: mobile)."""
+    refresh_token = mobile_sessions.issue(request, account, account_type)
+    if refresh_token:
+        body["refresh_token"] = refresh_token
+
+
 class CustomerRegisterView(generics.CreateAPIView):
     serializer_class = CustomerRegistrationSerializer
     permission_classes = [AllowAny]
@@ -150,6 +157,7 @@ class CustomerRegisterView(generics.CreateAPIView):
             response.data.update(otp_signin.code_challenge(customer, otp_signin.SIGN_UP))
             return response
         response.data["token"] = issue_token(customer, "customer")
+        _with_refresh_token(response.data, request, customer, "customer")
         return response
 
 
@@ -194,6 +202,7 @@ class BusinessOwnerRegisterView(generics.CreateAPIView):
             response.data.update(otp_signin.code_challenge(owner, otp_signin.SIGN_UP))
             return response
         response.data["token"] = issue_token(owner, "business_owner")
+        _with_refresh_token(response.data, request, owner, "business_owner")
         return response
 
 
@@ -285,12 +294,14 @@ class CustomerLoginView(generics.GenericAPIView):
         step = otp_signin.sign_in_step(account, _device_token(request))
         if step is not None:
             return otp_signin.step_response(step)
-        return Response({
+        body = {
             "token": issue_token(account, "customer"),
             "account_type": "customer",
             "id": account.id,
             "full_name": account.full_name,
-        })
+        }
+        _with_refresh_token(body, request, account, "customer")
+        return Response(body)
 
 
 class BusinessOwnerLoginView(generics.GenericAPIView):
@@ -305,12 +316,14 @@ class BusinessOwnerLoginView(generics.GenericAPIView):
         step = otp_signin.sign_in_step(account)
         if step is not None:
             return otp_signin.step_response(step)
-        return Response({
+        body = {
             "token": issue_token(account, "business_owner"),
             "account_type": "business_owner",
             "id": account.id,
             "full_name": account.full_name,
-        })
+        }
+        _with_refresh_token(body, request, account, "business_owner")
+        return Response(body)
 
 
 def _truthy(value):
