@@ -1,6 +1,7 @@
-import { Image } from "expo-image";
 import { Pressable, Text, View } from "react-native";
 
+import { captureFlight } from "../listing/flight";
+import { SharedPhoto } from "../listing/SharedPhoto";
 import { fonts } from "../../theme/fonts";
 import { useTheme } from "../../theme/useTheme";
 import { Price } from "../../ui/Price";
@@ -19,7 +20,7 @@ export function ListingCard({ listing, onPress, compact }: Props) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${listing.name}, ${listing.business_owner.name}`}
-      onPress={() => onPress(listing.id)}
+      onPress={() => void captureFlight(listing.id).then(() => onPress(listing.id))}
       style={({ pressed }) => ({
         width: compact ? 160 : undefined,
         borderRadius: radius.card,
@@ -31,7 +32,7 @@ export function ListingCard({ listing, onPress, compact }: Props) {
       })}
     >
       <View style={{ height: compact ? 96 : 150, backgroundColor: c.well }}>
-        {photo ? <Image source={{ uri: photo }} contentFit="cover" transition={200} style={{ flex: 1 }} accessibilityIgnoresInvertColors /> : null}
+        {photo ? <SharedPhoto id={listing.id} uri={photo} style={{ flex: 1 }} /> : null}
         {listing.is_promoted ? (
           <View style={{ position: "absolute", top: 10, left: 10, backgroundColor: c.lightGold, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
             <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, fontSize: 12 }}>Promoted</Text>

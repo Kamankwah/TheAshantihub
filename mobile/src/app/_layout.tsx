@@ -19,7 +19,9 @@ export default function RootLayout() {
   if (!ready) return null;
   return (
     <LockGate>
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="listing/[id]" options={{ animation: "fade", animationDuration: 200 }} />
+      </Stack>
     </LockGate>
   );
 }

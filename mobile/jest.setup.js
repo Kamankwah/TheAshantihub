@@ -6,3 +6,6 @@ jest.mock("@expo/vector-icons", () => {
   Icon.glyphMap = {};
   return { Feather: Icon, Ionicons: Icon, MaterialIcons: Icon };
 });
+require("react-native-gesture-handler/jestSetup");
+// The worklets runtime does not exist under Jest; skip the gesture handler's UI-runtime install.
+jest.mock("react-native-gesture-handler/lib/module/handlers/gestures/installUIRuntimeBindings", () => ({ installUIRuntimeBindings: () => {} }));

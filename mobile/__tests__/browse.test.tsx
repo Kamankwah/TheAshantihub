@@ -76,7 +76,7 @@ describe("listing card", () => {
     const onPress = jest.fn();
     await render(<ListingCard listing={listing()} onPress={onPress} />);
     await fireEvent.press(screen.getByRole("button", { name: /Hand-woven kente stole/ }));
-    expect(onPress).toHaveBeenCalledWith(1);
+    await waitFor(() => expect(onPress).toHaveBeenCalledWith(1));
   });
 });
 
