@@ -42,7 +42,7 @@ function BookingCard({ booking, onChanged }) {
         <span style={{ background: tint(meta.color, "22"), color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.label}</span>
       </div>
 
-      {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
 
       <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
         {booking.status === "confirmed" && <button onClick={() => act("check-in")} style={{ ...btn, background: D.green, color: "#fff" }}>🔑 Check in</button>}

@@ -73,7 +73,7 @@ function PermissionEditor({ staff, roleCodenames, onDone }) {
           })}
         </div>
       )}
-      {actionError && <div style={{ color: D.red, fontSize: "0.75rem", marginTop: 8 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.75rem", marginTop: 8 }}>{actionError}</div>}
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <button onClick={save} disabled={saving} style={{ ...pillBtn, background: D.gold, color: "#1a1205", opacity: saving ? 0.6 : 1 }}>{saving ? "Saving…" : "Save permissions"}</button>
         <button onClick={onDone} style={{ ...pillBtn, background: D.panelBg, color: D.textDim, border: `1px solid ${D.cardBorder}` }}>Close</button>
@@ -131,7 +131,7 @@ function StaffRow({ staff, onResend, resent, resending, onChanged }) {
         </div>
       </div>
 
-      {actionError && <div style={{ color: D.red, fontSize: "0.75rem", marginTop: 6 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.75rem", marginTop: 6 }}>{actionError}</div>}
 
       {suspending && !isSuspended && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -187,7 +187,7 @@ export default function StaffManagementPanel() {
     <div>
       <div style={{ ...glassCard, padding: 18, marginBottom: 16 }}>
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 12 }}>Invite a staff member</div>
-        {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
+        {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <input value={inviteName} onChange={e => setInviteName(e.target.value)} placeholder="Full name" style={{ flex: 1, minWidth: 120, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
           <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="Email" style={{ flex: 1, minWidth: 120, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
@@ -214,7 +214,7 @@ export default function StaffManagementPanel() {
       </div>
 
       {isLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>}
-      {isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the staff roster.</div>}
+      {isError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the staff roster.</div>}
       {data && <div style={{ ...glassCard, padding: 18 }}>
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 10 }}>{data.count} staff members</div>
         {data.results.map(s => (

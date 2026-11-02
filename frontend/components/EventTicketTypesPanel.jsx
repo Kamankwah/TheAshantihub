@@ -106,7 +106,7 @@ export default function EventTicketTypesPanel({ eventId }) {
 
   return (
     <div style={{ marginTop: 10, background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: "10px 12px" }}>
-      {actionError && <div style={{ marginBottom: 8, color: "#ffb4b4", fontSize: "0.72rem" }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ marginBottom: 8, color: "#ffb4b4", fontSize: "0.72rem" }}>{actionError}</div>}
 
       {isLoading && <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.74rem" }}>Loading ticket types…</div>}
       {isError && (

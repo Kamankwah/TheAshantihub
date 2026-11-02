@@ -76,7 +76,7 @@ function RevealPhone({ kind, id, name }) {
     <div style={{ marginBottom: 8 }}>
       {full ? <span style={{ color: D.text, fontSize: "0.78rem" }}>{full}</span>
         : <button type="button" aria-label={`Show full phone of ${name}`} onClick={reveal} style={{ border: "none", borderRadius: 20, padding: "3px 10px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer", background: D.panelBg, color: D.text }}>Show full phone</button>}
-      {error && <div style={{ color: D.red, fontSize: "0.72rem" }}>{error}</div>}
+      {error && <div role="alert" style={{ color: D.red, fontSize: "0.72rem" }}>{error}</div>}
     </div>
   );
 }
@@ -264,7 +264,7 @@ function UserRow({ user, config, canManage, onChanged }) {
         </div>
       </div>
 
-      {actionError && <div style={{ color: D.red, fontSize: "0.78rem", marginTop: 8 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.78rem", marginTop: 8 }}>{actionError}</div>}
       {notice && <div role="status" style={{ color: D.textDim, fontSize: "0.78rem", marginTop: 8 }}>{notice}</div>}
 
       {canManage && suspending && !user.is_suspended && (

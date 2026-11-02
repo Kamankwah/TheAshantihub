@@ -176,7 +176,7 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
       <button type="button" onClick={() => setSpecs(prev => [...prev, { label: "", value: "" }])} style={{ ...quietBtn, marginBottom: 10 }}>+ Add spec</button>
       </>
       )}
-      {error && <div style={{ color: D.red, fontSize: "0.74rem", marginBottom: 6 }}>{error}</div>}
+      {error && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginBottom: 6 }}>{error}</div>}
       <div style={{ display: "flex", gap: 6 }}>
         <button type="button" onClick={save} style={{ ...btn, background: D.gold, color: "#1a1205" }}>Save changes</button>
         <button type="button" onClick={onCancel} style={quietBtn}>Cancel</button>
@@ -255,7 +255,7 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
         <MediaManager listing={listing} basePath={basePath} onChanged={onChanged} />
       )}
 
-      {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
       {soldOut && !restockOpen && <div style={{ color: D.red, fontSize: "0.7rem", marginTop: 6 }}>Sold out — restock to keep selling.</div>}
       {low && !restockOpen && <div style={{ color: D.amber, fontSize: "0.7rem", marginTop: 6 }}>Running low — restock soon.</div>}
 

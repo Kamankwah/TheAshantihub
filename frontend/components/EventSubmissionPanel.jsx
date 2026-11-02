@@ -338,7 +338,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                 </button>
                 {mediaUploaded && <span style={{ color: C.trust, fontSize: "0.76rem" }}>Photo added ✓</span>}
               </div>
-              {mediaError && <div style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.74rem" }}>{mediaError}</div>}
+              {mediaError && <div role="alert" style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.74rem" }}>{mediaError}</div>}
               <button
                 onClick={() => { setJustSubmitted(null); setShowForm(false); setMediaUploaded(false); }}
                 style={{ marginTop: 14, background: "rgba(255,255,255,0.1)", color: "white", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 20, padding: "8px 16px", fontWeight: 700, fontSize: "0.76rem", cursor: "pointer", fontFamily: "inherit" }}
@@ -416,7 +416,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                 <span style={{ color: "white", fontSize: "0.78rem", fontWeight: 700 }}>Make this a private event (code required to view details)</span>
               </label>
 
-              {submitError && <div style={{ marginTop: 10, color: "#ffb4b4", fontSize: "0.76rem" }}>{submitError}</div>}
+              {submitError && <div role="alert" style={{ marginTop: 10, color: "#ffb4b4", fontSize: "0.76rem" }}>{submitError}</div>}
 
               <button
                 type="submit"
@@ -430,7 +430,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
         </div>
       )}
 
-      {payError && <div style={{ marginBottom: 12, color: "#ffb4b4", fontSize: "0.76rem" }}>{payError}</div>}
+      {payError && <div role="alert" style={{ marginBottom: 12, color: "#ffb4b4", fontSize: "0.76rem" }}>{payError}</div>}
 
       <div>
         <h3 style={{ color: C.gold, fontSize: "0.85rem", fontWeight: 900, margin: "0 0 10px" }}>My Events</h3>
@@ -574,7 +574,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                 <input type="number" min={1} max={365} step={1} aria-label="Refund tickets until this many days before" value={editForm.refund_until_days_before ?? ""} onChange={(e) => setEditForm((s) => ({ ...s, refund_until_days_before: e.target.value }))} style={{ ...inputStyle, marginBottom: 8 }} />
                 <div style={{ color: C.lightGold, fontSize: "0.68rem", marginBottom: 4 }}>Add a photo (optional)</div>
                 <input type="file" accept="image/*,video/*" onChange={(e) => setEditFile(e.target.files?.[0] || null)} style={{ color: "white", fontSize: "0.72rem", marginBottom: 8 }} />
-                {editError && <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{editError}</div>}
+                {editError && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{editError}</div>}
                 <button onClick={() => saveEdit(ev)} disabled={savingEdit} style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 20, padding: "7px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit", opacity: savingEdit ? 0.6 : 1 }}>{savingEdit ? "Saving…" : "Save & resubmit"}</button>
               </div>
             )}

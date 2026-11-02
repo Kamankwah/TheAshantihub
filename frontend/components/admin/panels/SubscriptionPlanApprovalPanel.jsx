@@ -59,7 +59,7 @@ function PlanRow({ plan, state, onDone }) {
         </div>
       </div>
 
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
 
       {rejecting && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>

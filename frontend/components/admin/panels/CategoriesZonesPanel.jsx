@@ -176,7 +176,7 @@ function CategoriesAndZones({ auth }) {
 
   return (
     <div>
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
       <div style={{ marginBottom: 16 }}><CategoryPictures canEdit={canManageCategories} /></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 16 }}>
         <div style={{ ...glassCard, padding: 18 }}>

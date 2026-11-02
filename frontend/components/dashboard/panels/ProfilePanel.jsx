@@ -70,7 +70,7 @@ export default function ProfilePanel({ user }) {
       <IdentityPanel />
 
       {isLoading && <div style={{ color: D.textDim, fontSize: "0.82rem" }}>Loading your business profile…</div>}
-      {isError && <div style={{ color: D.red, fontSize: "0.82rem" }}>Could not load your business profile.</div>}
+      {isError && <div role="alert" style={{ color: D.red, fontSize: "0.82rem" }}>Could not load your business profile.</div>}
 
       {!isLoading && !isError && (
         <div style={{ ...glassCard, padding: "20px 22px" }}>

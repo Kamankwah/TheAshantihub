@@ -171,7 +171,7 @@ export default function DeliveriesPanel() {
       </div>
 
       {isLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading your orders…</div>}
-      {isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your orders.</div>}
+      {isError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your orders.</div>}
       {!isLoading && !isError && orders.length === 0 && (
         <div style={{ ...glassCard, padding: "40px 24px", textAlign: "center" }}>
           <div style={{ fontSize: "2.4rem", marginBottom: 10 }}>🚚</div>
