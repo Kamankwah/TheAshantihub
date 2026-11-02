@@ -8,9 +8,9 @@ import { apiMessage } from "../../lib/errors";
 import { fonts } from "../../theme/fonts";
 import { useTheme } from "../../theme/useTheme";
 import { Button } from "../../ui/Button";
-import { Field } from "../../ui/Field";
 import { formatCedis } from "../../ui/Price";
 import { useBookingTerms } from "../seller/queries";
+import { ReportForm } from "./ReportForm";
 import { type BookingKind, type Money, moneyLines, policyLines } from "./terms";
 
 const PAYEE: Record<BookingKind, string> = { service: "business", stay: "host", tickets: "organiser" };
@@ -23,6 +23,10 @@ type Props = {
   cancelPath: string;
   about: string;
   ticketCount?: number;
+  /** Where "Report a problem" posts; the ledger's booking report unless the thing has its own (a service request). */
+  reportPath?: string;
+  /** Which controls to offer; both unless the caller shows its own (a finished service has Accept instead). */
+  actions?: ("cancel" | "report")[];
   onChanged?: () => void;
 };
 
@@ -30,13 +34,12 @@ type Props = {
  * The money panel under a paid booking, ticket or service: when the business is paid, what a cancel would refund
  * (the server's own quote), Cancel and Report a problem. Every amount and time is the server's.
  */
-export function MoneyBar({ kind, money, cancelPath, about, ticketCount = 1, onChanged }: Props) {
+export function MoneyBar({ kind, money, cancelPath, about, ticketCount = 1, reportPath, actions = ["cancel", "report"], onChanged }: Props) {
   const { c, radius } = useTheme();
   const terms = useBookingTerms();
   const qc = useQueryClient();
   const [panel, setPanel] = useState<null | "cancel" | "report">(null);
   const [result, setResult] = useState<{ text: string; signature: string } | null>(null);
-  const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -73,21 +76,6 @@ export function MoneyBar({ kind, money, cancelPath, about, ticketCount = 1, onCh
       finish(body?.wallet_refund ? `Cancelled. ${formatCedis(body.wallet_refund)} went back to your AshantiHub wallet.` : "Cancelled.");
     } catch (e) {
       setError(apiMessage(e, "We couldn’t cancel. Nothing was changed."));
-      inFlight.current = false;
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function report() {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setBusy(true);
-    setError(null);
-    try {
-      await api(`/api/ledger/bookings/${money!.sale}/report-problem/`, { body: { reason: reason.trim() } });
-      finish(`Problem reported. AshantiHub Support has been told, and the payment to the ${P} is on hold until it is settled.`);
-    } catch (e) {
-      setError(apiMessage(e, "We couldn’t send the report. Nothing was changed."));
       inFlight.current = false;
     } finally {
       setBusy(false);
@@ -131,17 +119,16 @@ export function MoneyBar({ kind, money, cancelPath, about, ticketCount = 1, onCh
             </View>
           ) : null}
           {panel === "report" ? (
-            <View style={{ gap: 8 }}>
-              <Field label="What went wrong?" value={reason} onChangeText={setReason} multiline numberOfLines={3} textAlignVertical="top" style={{ minHeight: 80, paddingTop: 10 }} />
-              {error ? <Text accessibilityRole="alert" style={{ ...line, color: c.red }}>{error}</Text> : null}
-              <Button variant="destructive" label="Send report" onPress={report} loading={busy} disabled={reason.trim().length < 5} />
-              <Button variant="secondary" label="Back" onPress={() => setPanel(null)} disabled={busy} />
-            </View>
+            <ReportForm
+              path={reportPath ?? `/api/ledger/bookings/${money.sale}/report-problem/`}
+              onDone={() => finish(`Problem reported. AshantiHub Support has been told, and the payment to the ${P} is on hold until it is settled.`)}
+              onBack={() => setPanel(null)}
+            />
           ) : null}
           {!panel ? (
             <View style={{ gap: 8 }}>
-              {money.can_cancel ? <Button variant="secondary" label={kind === "tickets" ? "Cancel tickets" : `Cancel ${NOUN[kind]}`} onPress={() => { setError(null); inFlight.current = false; setPanel("cancel"); }} /> : null}
-              {money.can_report ? <Button variant="secondary" label="Report a problem" onPress={() => { setError(null); inFlight.current = false; setPanel("report"); }} /> : null}
+              {money.can_cancel && actions.includes("cancel") ? <Button variant="secondary" label={kind === "tickets" ? "Cancel tickets" : `Cancel ${NOUN[kind]}`} onPress={() => { setError(null); inFlight.current = false; setPanel("cancel"); }} /> : null}
+              {money.can_report && actions.includes("report") ? <Button variant="secondary" label="Report a problem" onPress={() => { setError(null); inFlight.current = false; setPanel("report"); }} /> : null}
               {released ? <Button variant="secondary" label="Contact Support" onPress={() => router.push({ pathname: "/support/new", params: { about } } as never)} /> : null}
             </View>
           ) : null}

@@ -22,6 +22,7 @@ export default function ScreenAccount() {
 
       <SectionTitle>Your activity</SectionTitle>
       <View style={{ gap: 8 }}>
+        <LinkRow label="Bookings and requests" onPress={() => router.push("/bookings" as never)} />
         <LinkRow label="My tickets" onPress={() => router.push("/tickets" as never)} />
       </View>
 
