@@ -38,13 +38,20 @@ function Toggle({ selected, label, onPress }: { selected: boolean; label: string
 }
 
 /** A dashed photo slot for one side of the Ghana Card. Declared outside the screen so typing never remounts it. */
-function Upload({ label, value, onPick }: { label: string; value?: Picked; onPick: (p?: Picked) => void }) {
+function Upload({ label, value, onPick, onError }: { label: string; value?: Picked; onPick: (p?: Picked) => void; onError: (message: string | null) => void }) {
   const { c } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={value ? `${label} added` : label}
-      onPress={async () => onPick(await pickPhoto(label.replace(/\W+/g, "-").toLowerCase()))}
+      onPress={async () => {
+        onError(null);
+        try {
+          onPick(await pickPhoto(label.replace(/\W+/g, "-").toLowerCase()));
+        } catch {
+          onError("We couldn’t open your photos. Try again, or restart the app.");
+        }
+      }}
       style={{ flex: 1, minHeight: 96, borderRadius: 12, borderWidth: 1.5, borderStyle: "dashed", borderColor: c.ink, alignItems: "center", justifyContent: "center", backgroundColor: c.surface }}
     >
       <Text style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 13 }}>{value ? `${label} ✓` : label}</Text>
@@ -64,6 +71,7 @@ export default function BusinessInfo() {
   const [back, setBack] = useState<Picked>();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   async function submit() {
     const address = gps.trim().toUpperCase();
@@ -99,9 +107,10 @@ export default function BusinessInfo() {
       {formal ? <Field label="TIN" value={tin} onChangeText={setTin} placeholder="Tax Identification Number" helper="Only needed for formal businesses." /> : null}
       <Field label="Ghana Card number (optional)" value={card} onChangeText={setCard} autoCapitalize="characters" placeholder="GHA-000000000-0" />
       <View style={{ flexDirection: "row", gap: 10 }}>
-        <Upload label="Card front" value={front} onPick={setFront} />
-        <Upload label="Card back" value={back} onPick={setBack} />
+        <Upload label="Card front" value={front} onPick={setFront} onError={setPhotoError} />
+        <Upload label="Card back" value={back} onPick={setBack} onError={setPhotoError} />
       </View>
+      {photoError ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 13 }}>{photoError}</Text> : null}
       <Field label="Ghana Post GPS address" value={gps} onChangeText={setGps} autoCapitalize="characters" placeholder="AK-039-5028" helper="Example: AK-039-5028" error={errors.gps} />
       <Field label="Business contact phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" />
       {errors.form ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 13 }}>{errors.form}</Text> : null}

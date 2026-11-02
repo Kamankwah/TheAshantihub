@@ -39,3 +39,27 @@ export const useMyListings = () =>
       return Array.isArray(data) ? data : data.results;
     },
   });
+
+import type { CategoryNode } from "./newListing";
+
+/** The full category tree a business picks from (events are left out by the form). */
+export const useCategoryTree = () =>
+  useQuery({ queryKey: ["category-tree", "full"], staleTime: 10 * 60_000, queryFn: () => api<CategoryNode[]>("/api/listings/categories/tree/", { query: { full: 1 } }) });
+
+export const useZones = () =>
+  useQuery({
+    queryKey: ["zones"],
+    staleTime: 10 * 60_000,
+    queryFn: async () => {
+      const data = await api<{ id: number; name: string }[] | { results: { id: number; name: string }[] }>("/api/listings/zones/", { auth: false });
+      return Array.isArray(data) ? data : data.results;
+    },
+  });
+
+/** The kind of business ("product" or "service") this account registered as; null for older accounts (then both kinds are offered). */
+export const useBusinessKind = () =>
+  useQuery({
+    queryKey: ["owner-business-kind"],
+    staleTime: 10 * 60_000,
+    queryFn: async () => (await api<{ business_kind?: string | null }>("/api/accounts/business-owners/me/profile/")).business_kind ?? null,
+  });
