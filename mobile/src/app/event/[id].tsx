@@ -4,12 +4,13 @@ import { Pressable, ScrollView, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useEvent } from "../../features/seller/queries";
+import { TicketsSection } from "../../features/tickets/TicketsSection";
 import { fonts } from "../../theme/fonts";
 import { useTheme } from "../../theme/useTheme";
 import { EmptyState } from "../../ui/EmptyState";
 import { Skeleton } from "../../ui/Skeleton";
 
-/** An event's public details. Ticket sales and RSVPs are not in the app yet, and the page says so. */
+/** An event's public details and its tickets (types, quantity, terms, Mobile Money or wallet). RSVPs stay on the website. */
 export default function EventScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { c } = useTheme();
@@ -40,7 +41,7 @@ export default function EventScreen() {
         {e.address ? <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 15 }}>{e.address}</Text> : null}
         {reviews > 0 && e.avg_rating ? <Text style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 14 }}>{`${Number(e.avg_rating).toFixed(1)} · ${reviews} ${reviews === 1 ? "review" : "reviews"}`}</Text> : null}
         {e.description ? <Text style={{ color: c.ink, fontFamily: fonts.body, fontSize: 15, lineHeight: 22 }}>{e.description}</Text> : null}
-        {e.has_tickets ? <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>Ticket sales are not in the app yet. They are on the AshantiHub website.</Text> : null}
+        <TicketsSection event={e} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Contact Support"

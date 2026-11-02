@@ -2,6 +2,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { api } from "../../lib/api";
 import type { Listing } from "../browse/types";
+import type { LedgerTerms } from "../bookings/terms";
 
 export type Seller = {
   id: number;
@@ -21,7 +22,7 @@ export type EventSummary = {
 
 export type EventDetail = EventSummary & {
   description?: string;
-  organizer?: { name?: string } | string | null;
+  organizer?: { name?: string; kind?: string } | string | null;
   media?: { id?: number; url?: string; image?: string }[];
   avg_rating?: number | null;
   review_count?: number | null;
@@ -53,9 +54,6 @@ export const useSellerEvents = (id: string, enabled: boolean) => sellerPages<Eve
 export const useEvent = (id: string) =>
   useQuery({ queryKey: ["event", id], queryFn: () => api<EventDetail>(`/api/events/${id}/`, { auth: false }) });
 
-export type BookingTerms = {
-  enabled: boolean;
-  policies?: Record<string, { label: string; text: string; tiers: [number, number][] }>;
-};
+export type BookingTerms = LedgerTerms;
 export const useBookingTerms = () =>
   useQuery({ queryKey: ["booking-terms"], staleTime: 5 * 60_000, queryFn: () => api<BookingTerms>("/api/ledger/booking-terms/", { auth: false }) });
