@@ -21,6 +21,37 @@ async function pickPhoto(name: string): Promise<Picked | undefined> {
   return asset ? { uri: asset.uri, name: `${name}.jpg`, type: asset.mimeType ?? "image/jpeg" } : undefined;
 }
 
+/** One side of the formal/informal switch. Declared outside the screen so typing never remounts it. */
+function Toggle({ selected, label, onPress }: { selected: boolean; label: string; onPress: () => void }) {
+  const { c } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={{ flex: 1, minHeight: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: selected ? c.gold : "transparent" }}
+    >
+      <Text style={{ color: selected ? c.onGold : c.ink, fontFamily: fonts.bodyBold, fontSize: 14 }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** A dashed photo slot for one side of the Ghana Card. Declared outside the screen so typing never remounts it. */
+function Upload({ label, value, onPick }: { label: string; value?: Picked; onPick: (p?: Picked) => void }) {
+  const { c } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={value ? `${label} added` : label}
+      onPress={async () => onPick(await pickPhoto(label.replace(/\W+/g, "-").toLowerCase()))}
+      style={{ flex: 1, minHeight: 96, borderRadius: 12, borderWidth: 1.5, borderStyle: "dashed", borderColor: c.ink, alignItems: "center", justifyContent: "center", backgroundColor: c.surface }}
+    >
+      <Text style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 13 }}>{value ? `${label} ✓` : label}</Text>
+    </Pressable>
+  );
+}
+
 export default function BusinessInfo() {
   usePreventScreenCapture(); // the Ghana Card must not end up in screenshots or recordings
   const { c } = useTheme();
@@ -58,35 +89,12 @@ export default function BusinessInfo() {
     }
   }
 
-  const Toggle = ({ on, label }: { on: boolean; label: string }) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected: formal === on }}
-      onPress={() => setFormal(on)}
-      style={{ flex: 1, minHeight: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: formal === on ? c.gold : "transparent" }}
-    >
-      <Text style={{ color: formal === on ? c.onGold : c.ink, fontFamily: fonts.bodyBold, fontSize: 14 }}>{label}</Text>
-    </Pressable>
-  );
-
-  const Upload = ({ label, value, onPick }: { label: string; value?: Picked; onPick: (p?: Picked) => void }) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={value ? `${label} added` : label}
-      onPress={async () => onPick(await pickPhoto(label.replace(/\W+/g, "-").toLowerCase()))}
-      style={{ flex: 1, minHeight: 96, borderRadius: 12, borderWidth: 1.5, borderStyle: "dashed", borderColor: c.ink, alignItems: "center", justifyContent: "center", backgroundColor: c.surface }}
-    >
-      <Text style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 13 }}>{value ? `${label} ✓` : label}</Text>
-    </Pressable>
-  );
-
   return (
     <Screen>
       <RegistrationHeader step={2} title="Tell us about your business" back />
       <View accessibilityRole="radiogroup" style={{ flexDirection: "row", backgroundColor: c.well, borderRadius: 12, padding: 4, gap: 4 }}>
-        <Toggle on={true} label="Formal (registered)" />
-        <Toggle on={false} label="Informal" />
+        <Toggle selected={formal} label="Formal (registered)" onPress={() => setFormal(true)} />
+        <Toggle selected={!formal} label="Informal" onPress={() => setFormal(false)} />
       </View>
       {formal ? <Field label="TIN" value={tin} onChangeText={setTin} placeholder="Tax Identification Number" helper="Only needed for formal businesses." /> : null}
       <Field label="Ghana Card number (optional)" value={card} onChangeText={setCard} autoCapitalize="characters" placeholder="GHA-000000000-0" />

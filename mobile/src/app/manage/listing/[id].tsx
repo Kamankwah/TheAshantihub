@@ -69,14 +69,21 @@ export default function ListingManage() {
   }
 
   async function addPhoto() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      setError("Allow photo access in your phone’s settings to add pictures.");
+    setError(null);
+    let a: ImagePicker.ImagePickerAsset | undefined;
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        setError("Allow photo access in your phone’s settings to add pictures.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
+      if (result.canceled || !result.assets[0]) return;
+      a = result.assets[0];
+    } catch {
+      setError("We couldn’t open your photos. Try again, or restart the app.");
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
-    if (result.canceled || !result.assets[0]) return;
-    const a = result.assets[0];
     const form = new FormData();
     form.append("image", { uri: a.uri, name: a.fileName ?? "photo.jpg", type: a.mimeType ?? "image/jpeg" } as never);
     await run("photo", () => api(`/api/listings/mine/${l!.id}/photos/`, { method: "POST", body: form }), "Photo added.", "We couldn’t add that photo. Try a smaller picture.");

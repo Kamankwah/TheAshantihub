@@ -4,7 +4,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { RegistrationHeader } from "../../../features/business/RegistrationHeader";
 import { messageFor } from "../../../lib/authApi";
-import { listPlans, resumeRegistration, saveBusinessKind, startTrial } from "../../../lib/registrationApi";
+import { listPlans, resumeRegistration, saveBusinessKind, startTrial, type Plan } from "../../../lib/registrationApi";
 import { fonts } from "../../../theme/fonts";
 import { useTheme } from "../../../theme/useTheme";
 import { Button } from "../../../ui/Button";
@@ -13,6 +13,13 @@ import { Price } from "../../../ui/Price";
 import { Screen } from "../../../ui/Screen";
 import { Skeleton } from "../../../ui/Skeleton";
 
+/** The plans may arrive bare or wrapped in a page; anything else counts as no plans rather than crashing the step. */
+function asList(data: unknown): Plan[] {
+  if (Array.isArray(data)) return data as Plan[];
+  const wrapped = (data as { results?: unknown } | null | undefined)?.results;
+  return Array.isArray(wrapped) ? (wrapped as Plan[]) : [];
+}
+
 export default function PlanStep() {
   const { c } = useTheme();
   const [kind, setKind] = useState<"product" | "service">();
@@ -20,13 +27,15 @@ export default function PlanStep() {
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const plans = useQuery({ queryKey: ["plans"], queryFn: listPlans });
-  const shown = (plans.data ?? []).filter((p) => p.kind === kind);
+  const shown = asList(plans.data).filter((p) => p.kind === kind);
+  // Plans are only asked for when this kind of business has some; otherwise it continues without choosing one.
+  const needsPlan = shown.length > 0;
 
   async function submit() {
     setBusy(true);
     setError(undefined);
     try {
-      if (plans.data?.length && tier) await startTrial({ business_kind: kind!, plan: tier, cycle_months: 1 });
+      if (needsPlan && tier) await startTrial({ business_kind: kind!, plan: tier, cycle_months: 1 });
       else await saveBusinessKind(kind!);
       await resumeRegistration();
     } catch (e) {
@@ -50,7 +59,6 @@ export default function PlanStep() {
     </Pressable>
   );
 
-  const needsPlan = !!plans.data?.length;
   return (
     <Screen>
       <RegistrationHeader step={3} title="Choose your plan" back />
@@ -59,6 +67,9 @@ export default function PlanStep() {
       {option(kind === "service", "Services, stays and events", () => { setKind("service"); setTier(undefined); })}
       {plans.isPending ? <Skeleton height={72} /> : null}
       {plans.isError ? <EmptyState title="We couldn't load the plans" action={{ label: "Try again", onPress: () => plans.refetch() }} /> : null}
+      {kind && !plans.isPending && !plans.isError && !needsPlan ? (
+        <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14, lineHeight: 20 }}>There are no plans for this yet. You can continue, and we will tell you when plans open.</Text>
+      ) : null}
       {kind && needsPlan ? (
         <View style={{ gap: 10 }}>
           {shown.map((p) =>
@@ -75,7 +86,7 @@ export default function PlanStep() {
         </View>
       ) : null}
       {error ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 13 }}>{error}</Text> : null}
-      <Button label="Continue" onPress={submit} loading={busy} disabled={!kind || (needsPlan && !tier)} />
+      <Button label="Continue" onPress={submit} loading={busy} disabled={!kind || plans.isPending || (needsPlan && !tier)} />
     </Screen>
   );
 }

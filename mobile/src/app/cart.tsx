@@ -58,10 +58,10 @@ export default function CartScreen() {
             {i.seller_name ? <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>{`Sold by ${i.seller_name}`}</Text> : null}
             {i.in_stock === false ? <Text style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 13 }}>Out of stock. Remove it to continue.</Text> : null}
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Stepper label={i.listing_name} value={i.quantity} min={1} max={i.stock_quantity ?? 99} onChange={(n) => void act(i.id, () => setLineQuantity(i.id, n), "We couldn’t change the quantity.")} />
+              <Stepper label={i.listing_name} value={i.quantity} min={1} max={i.stock_quantity ?? 99} disabled={busy !== null} onChange={(n) => void act(i.id, () => setLineQuantity(i.id, n), "We couldn’t change the quantity.")} />
               <Price amount={i.line_total} />
             </View>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${i.listing_name}`} disabled={busy === i.id} onPress={() => void act(i.id, () => removeLine(i.id), "We couldn’t remove this item.")} style={{ minHeight: 48, justifyContent: "center" }}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${i.listing_name}`} accessibilityState={{ disabled: busy !== null }} disabled={busy !== null} onPress={() => void act(i.id, () => removeLine(i.id), "We couldn’t remove this item.")} style={{ minHeight: 48, justifyContent: "center" }}>
               <Text style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 14, textDecorationLine: "underline" }}>Remove</Text>
             </Pressable>
           </View>
@@ -76,7 +76,7 @@ export default function CartScreen() {
             <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14, lineHeight: 20 }}>
               The delivery fee is worked out at checkout from your GhanaPost address. Choose store pickup to skip it.
             </Text>
-            <Button label="Go to checkout" onPress={() => router.push("/checkout" as never)} disabled={blocked} />
+            <Button label="Go to checkout" onPress={() => router.push("/checkout" as never)} disabled={blocked || busy !== null} />
           </View>
         ) : null}
       </ScrollView>
