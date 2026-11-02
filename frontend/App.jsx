@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import FeedbackEcho from "./components/FeedbackEcho.jsx";
 import { useLocation, useNavigate, useMatch } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCategories } from "./hooks/useCategories.js";
@@ -1508,7 +1509,7 @@ function ResetPasswordPage({auth,setPage,setAuthModal}) {
           </>
         ) : (
           <>
-            {error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+            {error && <div role="alert" style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
             {!token && !error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No reset token found in this link. Please request a new one from the sign-in screen.</div>}
             <form onSubmit={handleSubmit}>
               <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="New password (min 8 characters)" required minLength={8} style={authInputStyle}/>
@@ -2448,7 +2449,7 @@ const KNOWN_PATHS = new Set([...Object.keys(PATH_TO_PAGE), ...Object.keys(DASH_P
 const STAFF_STANDALONE_PAGES = new Set(["activate", "install"]);
 
 export default function AshantiHub() {
-  return <Suspense fallback={<LoadingScreen/>}><AshantiHubApp/></Suspense>;
+  return <><Suspense fallback={<LoadingScreen/>}><AshantiHubApp/></Suspense><FeedbackEcho/></>;
 }
 
 function AshantiHubApp() {

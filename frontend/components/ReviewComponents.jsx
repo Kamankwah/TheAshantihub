@@ -174,7 +174,7 @@ export function ReviewWriteForm({ targetType, targetId, organizerKind, user, onR
             ))}
           </div>
           <textarea value={newText} onChange={(e) => setNewText(e.target.value)} placeholder="Share your experience..." style={fieldStyle(t)} />
-          {actionError && <div style={{ color: t.error, fontSize: "0.72rem", marginBottom: 8 }}>{actionError}</div>}
+          {actionError && <div role="alert" style={{ color: t.error, fontSize: "0.72rem", marginBottom: 8 }}>{actionError}</div>}
           <button onClick={handleSubmit} disabled={!canSubmit} style={submitStyle(canSubmit, t)}>
             Submit Review
           </button>

@@ -104,9 +104,9 @@ export default function TasksPanel({ auth }) {
         <div role="group" aria-label="Which tasks" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {VIEWS.map(([id, label]) => <button key={id} type="button" aria-pressed={view === id} onClick={() => setView(id)} style={pill(view === id)}>{label}</button>)}
         </div>
-        {actionError && <div style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
+        {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
         {isLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>}
-        {isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>{teamMode ? "Could not load your team's tasks." : "Could not load your tasks."}</div>}
+        {isError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{teamMode ? "Could not load your team's tasks." : "Could not load your tasks."}</div>}
         {!isLoading && !isError && tasks.length === 0 && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>{teamMode ? "Nothing here. Your team has no tasks in this view." : "Nothing here."}</div>}
         {view === "done"
           ? tasks.map(row)

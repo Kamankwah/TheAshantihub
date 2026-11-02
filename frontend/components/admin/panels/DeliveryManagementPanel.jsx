@@ -39,7 +39,7 @@ export default function DeliveryManagementPanel() {
   return (
     <div style={{ ...glassCard, padding: 18 }}>
       <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 14 }}>Orders ({data?.count ?? items.length})</div>
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
       {items.length === 0 && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>No orders yet.</div>}
       {items.map(o => (
         <div key={o.id} style={{ padding: "12px 0", borderBottom: `1px solid ${D.divider}` }}>

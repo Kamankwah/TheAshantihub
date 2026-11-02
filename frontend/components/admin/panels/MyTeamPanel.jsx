@@ -51,11 +51,11 @@ export default function MyTeamPanel({ currentStaffId, rosterOnly = false }) {
         <div style={{ width: "100%", color: D.textDim, fontSize: "0.72rem" }}>They get an email link to set their password. The link works for 7 days and you can resend it.</div>
       </form>}
       {message && <div style={{ color: D.green, fontSize: "0.8rem" }}>{message}</div>}
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
       <div style={{ ...glassCard, padding: 18 }}>
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.95rem", marginBottom: 8 }}>{rosterOnly ? "On your team" : "My team"} ({members.length})</div>
         {isLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>}
-        {isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your team.</div>}
+        {isError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your team.</div>}
         {!isLoading && !isError && members.length === 0 && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Nobody reports to you yet.</div>}
         {members.map((m) => (
           <div key={m.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center", padding: "10px 0", borderTop: `1px solid ${D.divider}` }}>

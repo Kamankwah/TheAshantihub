@@ -314,7 +314,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
       <div style={{maxWidth:440,margin:"0 auto",padding:"24px 20px 60px"}}>
         <div style={{fontSize:"0.68rem",fontWeight:800,color:C.trust,marginBottom:16,letterSpacing:1}}>STEP {step==="plan_selection" && typeOnly ? TYPE_STEP_LABEL : STEP_LABELS[step]}</div>
 
-        {error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+        {error && <div role="alert" style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
         {step==="personal_info" && otpChallenge && (
           <OtpSignIn

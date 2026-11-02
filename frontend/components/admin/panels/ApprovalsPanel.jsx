@@ -260,7 +260,7 @@ function ApprovalsInbox({ onOpen, initialBox = "mine" }) {
         </div>
         {summary.length > 0 && <div style={dim}>{summary.join(" · ")}</div>}
         {isLoading && <div style={dim}>Loading…</div>}
-        {isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load approvals.</div>}
+        {isError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load approvals.</div>}
         {!isLoading && !isError && rows.length === 0 && (
           <div style={dim}>{filtered ? "No request matches these filters." : `${EMPTY[box]} Requests appear here when a change needs someone else's approval.`}</div>
         )}

@@ -136,7 +136,7 @@ export default function SubscriptionPlansManagePanel() {
 
   return (
     <div>
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
       <div style={{ color: D.textDim, fontSize: "0.75rem", marginBottom: 10, lineHeight: 1.5 }}>Changing a live plan sends it back to the Super Admin for approval, and the live price stays in force until it is approved.</div>
       <div style={{ ...glassCard, padding: 18, marginBottom: 16, maxWidth: 560 }}>
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 12 }}>Create a new plan</div>

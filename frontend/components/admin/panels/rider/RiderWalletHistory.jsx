@@ -59,7 +59,7 @@ function DeliveriesList({ day }) {
           )
         })}
       </ul>
-      {loadError && <div style={{ ...s.error, marginTop: 12 }}>{loadError.text}</div>}
+      {loadError && <div role="alert" style={{ ...s.error, marginTop: 12 }}>{loadError.text}</div>}
       {hasMore && (
         <button type="button" style={{ ...s.ghost, marginTop: 12 }} disabled={query.isFetching} onClick={loadMore}>Load more</button>
       )}

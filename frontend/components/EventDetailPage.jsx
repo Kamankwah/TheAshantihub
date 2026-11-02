@@ -237,7 +237,7 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
               {unlocking ? "Checking…" : "Unlock"}
             </button>
           </form>
-          {unlockError && <div style={{ marginTop: 10, color: "#ffb4b4", fontSize: "0.76rem" }}>{unlockError}</div>}
+          {unlockError && <div role="alert" style={{ marginTop: 10, color: "#ffb4b4", fontSize: "0.76rem" }}>{unlockError}</div>}
         </div>
       </div>
     );
@@ -360,7 +360,7 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
                     {rsvpBusy ? "…" : rsvpStatus === "going" ? "✓ Going — Can't Go?" : "🎉 I'm Going"}
                   </button>
                 )}
-                {rsvpError && <div style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.74rem" }}>{rsvpError}</div>}
+                {rsvpError && <div role="alert" style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.74rem" }}>{rsvpError}</div>}
               </div>
             ) : (
               <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.78rem" }}>Only customer accounts can RSVP to events.</div>
@@ -525,7 +525,7 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, inLed
           <button onClick={() => ticketTypesQuery.refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "2px 10px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button>
         </div>
       )}
-      {payError && <div style={{ marginBottom: 12, color: "#ffb4b4", fontSize: "0.76rem" }}>{payError}</div>}
+      {payError && <div role="alert" style={{ marginBottom: 12, color: "#ffb4b4", fontSize: "0.76rem" }}>{payError}</div>}
       {/* The refund and payout terms are the event's, not each ticket type's: shown once, above the list, to someone who can buy. */}
       {ticketTypes.length > 0 && user && (isCustomer || staffGate.isStaff) && (
         <BookingTermsNote kind="ticket" start={eventDate ? new Date(eventDate) : null} refundDays={refundDays ?? null} />

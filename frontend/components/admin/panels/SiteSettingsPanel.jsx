@@ -42,7 +42,7 @@ function History() {
     <section aria-labelledby="ss-history" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
       <h3 id="ss-history" style={{ ...h2, fontSize: "1rem" }}>Change history</h3>
       {isLoading && <div style={dim}>Loading…</div>}
-      {isError && <div style={errorStyle}>Could not load the change history.</div>}
+      {isError && <div role="alert" style={errorStyle}>Could not load the change history.</div>}
       {data && data.length === 0 && <div style={dim}>No changes recorded yet.</div>}
       {(data || []).map((h) => (
         <div key={h.id} style={{ borderTop: `1px solid ${D.divider}`, paddingTop: 6 }}>

@@ -174,7 +174,7 @@ export default function MediaManager({ listing = null, basePath = DEFAULT_LISTIN
         <input aria-label="YouTube link" value={link} onChange={e => setLink(e.target.value)} placeholder="Or paste a YouTube link" style={{ ...inputStyle, flex: 1, minWidth: 180 }} />
         <button type="button" onClick={submitLink} disabled={!link.trim() || busy} style={{ ...quietBtn, opacity: link.trim() ? 1 : 0.6 }}>Add link</button>
       </div>
-      {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
     </div>
   );
 }

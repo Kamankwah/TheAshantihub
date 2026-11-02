@@ -94,7 +94,7 @@ function AssignmentCard({ assignment, onDone }) {
           <YesNo label="Is the business legitimate?" value={legit} onChange={setLegit} />
           <YesNo label="Do the owner's details match?" value={detailsCorrect} onChange={setDetailsCorrect} />
           <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes (optional)" rows={2} style={{ ...inputStyle, marginBottom: 10, resize: "vertical" }} />
-          {actionError && <div style={{ color: D.red, fontSize: "0.76rem", marginBottom: 8 }}>{actionError}</div>}
+          {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.76rem", marginBottom: 8 }}>{actionError}</div>}
           <button
             onClick={submit}
             disabled={addressConfirmed === null || submitting}

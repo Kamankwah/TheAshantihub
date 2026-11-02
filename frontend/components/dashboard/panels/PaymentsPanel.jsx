@@ -158,7 +158,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
       </div>
 
       <div style={{ padding: "22px 0 20px" }}>
-        {actionError && <div style={{ background: tint(D.red, "1f"), color: D.red, border: `1px solid ${tint(D.red, "55")}`, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 16 }}>{actionError}</div>}
+        {actionError && <div role="alert" style={{ background: tint(D.red, "1f"), color: D.red, border: `1px solid ${tint(D.red, "55")}`, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 16 }}>{actionError}</div>}
 
         {/* ── SALES OVERVIEW (customer sales) ── */}
         {payTab === "overview" && (
@@ -245,7 +245,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
             {/* Owner's own outgoing payments */}
             <div style={{ fontWeight: 800, color: D.text, marginBottom: 10, fontSize: "0.85rem" }}>Your payments (subscriptions, promotions, events)</div>
             {txLoading && <div style={{ color: D.textDim, fontSize: "0.82rem", marginBottom: 18 }}>Loading…</div>}
-            {txError && <div style={{ color: D.red, fontSize: "0.82rem", marginBottom: 18 }}>Could not load your transactions.</div>}
+            {txError && <div role="alert" style={{ color: D.red, fontSize: "0.82rem", marginBottom: 18 }}>Could not load your transactions.</div>}
             {!txLoading && !txError && (
               <div style={{ marginBottom: 24 }}>
                 <DataTableCard
@@ -285,7 +285,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
               </div>
             </div>
             {plansLoading && <div style={{ color: D.textDim, fontSize: "0.82rem", textAlign: "center" }}>Loading plans…</div>}
-            {plansError && <div style={{ color: D.red, fontSize: "0.82rem", textAlign: "center" }}>Could not load plans.</div>}
+            {plansError && <div role="alert" style={{ color: D.red, fontSize: "0.82rem", textAlign: "center" }}>Could not load plans.</div>}
             {!plansLoading && !plansError && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 14 }}>
                 {visiblePlans.map(plan => (

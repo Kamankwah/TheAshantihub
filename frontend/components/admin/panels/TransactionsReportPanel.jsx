@@ -55,7 +55,7 @@ export default function TransactionsReportPanel() {
       </div>
 
       {isLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>}
-      {isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the transactions report.</div>}
+      {isError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the transactions report.</div>}
 
       {data && (
         <>

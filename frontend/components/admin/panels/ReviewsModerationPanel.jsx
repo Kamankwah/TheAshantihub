@@ -91,7 +91,7 @@ function ReviewRow({ review, state, canReReview, onDone }) {
         </div>
       </div>
 
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
 
       {/* Re-review is a supervisor action (reviews.re_review, super_admin
           only) — say so rather than silently rendering no button. */}

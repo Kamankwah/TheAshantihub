@@ -94,7 +94,7 @@ function PlainHeroApproval({ auth }) {
 
   return (
     <>
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
       {canCreate && (
         <div style={{ marginBottom: 12 }}>
           <button type="button" onClick={() => setCreating((v) => !v)} aria-expanded={creating} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "6px 14px", fontSize: "0.74rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>{creating ? "Close" : "New slide"}</button>
