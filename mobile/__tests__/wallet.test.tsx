@@ -109,6 +109,13 @@ describe("wallet switched off", () => {
 });
 
 describe("wallet on", () => {
+  it("blocks_screenshots_and_screen_recording_of_money", async () => {
+    const capture = jest.requireMock("expo-screen-capture").usePreventScreenCapture as jest.Mock;
+    await render(client(<ScreenWallet />));
+    await screen.findByText("GH₵ 1,250.50");
+    expect(capture).toHaveBeenCalled();
+  });
+
   it("shows_balance_and_activity_with_signs", async () => {
     await render(client(<ScreenWallet />));
     expect(await screen.findByText("GH₵ 1,250.50")).toBeTruthy();

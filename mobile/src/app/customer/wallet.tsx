@@ -1,3 +1,4 @@
+import { usePreventScreenCapture } from "expo-screen-capture";
 import { useState } from "react";
 import { Text, View } from "react-native";
 
@@ -16,6 +17,7 @@ import { Skeleton } from "../../ui/Skeleton";
 /** The customer wallet: balance, top-up, withdrawals and payout accounts. Calm and plain: no motion, no decoration. */
 export default function ScreenWallet() {
   const { c } = useTheme();
+  usePreventScreenCapture(); // balances and payout numbers must not end up in screenshots
   const wallet = useWallet();
   const [topUp, setTopUp] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);

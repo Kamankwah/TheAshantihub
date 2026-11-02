@@ -46,13 +46,13 @@ function Choice({ label, selected, disabled, onPress, children }: { label: strin
 }
 
 /** Opens the withdraw sheet. Disabled until there is at least one payout account that can receive money. */
-export function WithdrawButton({ onDone }: { onDone?: (text: string) => void }) {
+export function WithdrawButton({ onDone, blocked }: { onDone?: (text: string) => void; blocked?: boolean }) {
   const dest = useDestinations();
   const [open, setOpen] = useState(false);
   const usable = (dest.data?.results ?? []).filter((d) => d.usable);
   return (
     <>
-      <Button variant="secondary" label="Withdraw" onPress={() => setOpen(true)} disabled={usable.length === 0} />
+      <Button variant="secondary" label="Withdraw" onPress={() => setOpen(true)} disabled={usable.length === 0 || !!blocked} />
       {open ? <WithdrawSheet destinations={usable} onClose={() => setOpen(false)} onDone={(t) => { setOpen(false); onDone?.(t); }} /> : null}
     </>
   );
