@@ -24,8 +24,12 @@ describe('DepartmentShowcase', () => {
     expect(within(electronics).getByRole('button', { name: /Headphones/ })).toBeInTheDocument()
     expect(container.querySelector('img[src="https://cdn.test/headphones.jpg"]')).not.toBeNull()
     // A picture with resized copies loads the small one first and offers the 800 px copy to sharper screens.
-    const big = container.querySelector('img[src="https://cdn.test/electronics_320.webp"]')
-    expect(big).toBeNull() // electronics has sub-category tiles, so its own picture is not drawn on the card
+    // The department's own picture leads its card and opens the department.
+    const banner = container.querySelector('img[src="https://cdn.test/electronics_320.webp"]')
+    expect(banner).not.toBeNull()
+    expect(banner).toHaveAttribute('srcset', expect.stringContaining('electronics_800.webp 800w'))
+    fireEvent.click(within(electronics).getByRole('button', { name: 'Shop Electronics' }))
+    expect(onNavigate).toHaveBeenLastCalledWith('/business?category=electronics')
     expect(within(electronics).getByText('🔊')).toBeInTheDocument() // Home Audio has no picture yet
     fireEvent.click(within(electronics).getByRole('button', { name: 'See all Electronics' }))
     expect(onNavigate).toHaveBeenLastCalledWith('/business?category=electronics')
