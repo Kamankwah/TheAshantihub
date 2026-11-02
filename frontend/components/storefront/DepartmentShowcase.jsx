@@ -1,6 +1,7 @@
 import { C, tint } from "../../theme.js";
 import { categoryPath, sendCategoryVisit } from "../../hooks/useCategoryTree.js";
 import { useHomeFeed } from "../../hooks/useStorefront.js";
+import { pictureProps } from "../../lib/pictureSrc.js";
 import { BODY_FONT, HEADING_FONT, SECTION, SECTION_TITLE } from "./storefrontType.js";
 
 // "Shop by category" (headed "Most visited categories" only when the feed reports `ranked: true`, so nothing claims
@@ -20,7 +21,7 @@ function Tile({ node, big, onOpen }) {
     >
       <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", aspectRatio: big ? "16 / 10" : "1 / 1", borderRadius: 12, overflow: "hidden", background: tint(node.color || C.gold, "26"), fontSize: big ? "3rem" : "2rem" }}>
         {node.image
-          ? <img src={node.image} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          ? <img {...pictureProps(node, big ? "(max-width: 600px) 80vw, 260px" : "(max-width: 600px) 40vw, 120px")} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           : <span aria-hidden="true">{node.icon}</span>}
       </span>
       <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{node.label}</span>

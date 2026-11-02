@@ -42,6 +42,8 @@ class Category(models.Model):
     image = models.ImageField(
         upload_to="category_images/", validators=[validate_image_content_type, validate_image_size], null=True, blank=True,
     )
+    # Resized WebP copies of `image` (listings.image_variants): {"src": <image name>, "thumb": path, ...}. Made when the picture is uploaded.
+    image_variants = models.JSONField(default=dict, blank=True)
 
     @property
     def is_department(self):
@@ -96,6 +98,7 @@ class Zone(models.Model):
     image = models.ImageField(
         upload_to="zone_images/", validators=[validate_image_content_type, validate_image_size], null=True, blank=True,
     )
+    image_variants = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
         return self.name

@@ -119,3 +119,23 @@ mark_photo = _mark_new_image("image")
 mark_listing = _mark_new_image("main_photo")
 on_photo_saved = _make_after_save("image", "variants")
 on_listing_saved = _make_after_save("main_photo", "main_photo_variants")
+
+
+def picture_urls(request, instance):
+    """{thumb, medium, large} URLs for a category or zone picture (a missing size falls back to the original); None
+    when the row has no picture."""
+    if not instance.image:
+        return None
+    stored = instance.image_variants if (instance.image_variants or {}).get("src") == instance.image.name else {}
+    return urls(request, stored, instance.image)
+
+
+def discard(stored):
+    """Delete the variant files named in a stored {"src", "thumb", ...} dict; a file already gone is ignored."""
+    for name in WIDTHS:
+        path = (stored or {}).get(name)
+        if path:
+            try:
+                default_storage.delete(path)
+            except Exception:
+                logger.warning("Couldn't delete image variant %s", path, exc_info=True)

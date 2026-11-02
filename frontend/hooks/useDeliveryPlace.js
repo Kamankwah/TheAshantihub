@@ -3,10 +3,12 @@ import { placeFromChoice, placeFromGeocode, readStoredPlace, storePlace } from '
 import { reverseGeocodePlace } from '../lib/reverseGeocode.js'
 
 const ASKED_KEY = 'ashantihub.deliverToAsked'
+const LOCATED_KEY = 'ashantihub.deliverToLocated'
 
-// Where this shopper is, as a suggestion they confirm: `locate()` asks the browser for the position (the browser
-// shows its own permission prompt, so it only ever runs from a tap, or on arrival when the shopper has already
-// allowed it) and reverse-geocodes it to a Ghana region or a country. Nothing is stored until `choose()`.
+// Where this shopper is, as a suggestion they confirm: `locate()` asks the browser for the position and
+// reverse-geocodes it to a Ghana region or a country. The browser shows its own permission prompt; on arrival with
+// no choice made the page asks once per session (never when the shopper has blocked location for the site), and the
+// "Use my current location" button asks again on demand. Nothing is stored until `choose()`.
 // `place` is the confirmed choice (localStorage); `suggestion` is what was detected and awaits a yes.
 export function useDeliveryPlace() {
   const [place, setPlace] = useState(() => readStoredPlace())
@@ -38,10 +40,19 @@ export function useDeliveryPlace() {
     )
   }, [])
 
-  // On arrival with nothing chosen: locate by itself only when the shopper has already allowed location.
+  // On arrival with nothing chosen: ask the browser for the location once per session. A blocked site is never asked.
   useEffect(() => {
-    if (place || typeof navigator === 'undefined' || !navigator.permissions?.query) return
-    navigator.permissions.query({ name: 'geolocation' }).then((p) => { if (live.current && p.state === 'granted') locate() }).catch(() => {})
+    if (place || typeof navigator === 'undefined' || !navigator.geolocation) return
+    try {
+      if (sessionStorage.getItem(LOCATED_KEY)) return
+      sessionStorage.setItem(LOCATED_KEY, '1')
+    } catch {
+      return
+    }
+    if (!navigator.permissions?.query) { locate(); return }
+    navigator.permissions.query({ name: 'geolocation' })
+      .then((p) => { if (live.current && p.state !== 'denied') locate() })
+      .catch(() => { if (live.current) locate() })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

@@ -3,6 +3,7 @@ import { categoryPath, sendCategoryVisit } from "../../hooks/useCategoryTree.js"
 import { useListings } from "../../hooks/useListings.js";
 import useBreakpoint from "../../hooks/useBreakpoint.js";
 import { useHomeFeed } from "../../hooks/useStorefront.js";
+import { pictureProps } from "../../lib/pictureSrc.js";
 import { ProductTile } from "../shop/ProductCarousel.jsx";
 import { BODY_FONT, HEADING_FONT, SECTION } from "./storefrontType.js";
 
@@ -26,7 +27,7 @@ function Shelf({ department, onNavigate, onOpen }) {
   return (
     <section aria-label={department.label} style={{ margin: "0 0 28px", color: C.ink, fontFamily: BODY_FONT, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px" }}>
-        {department.image && <img src={department.image} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />}
+        {department.image && <img {...pictureProps(department, "36px")} alt="" loading="lazy" decoding="async" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />}
         <h2 style={{ margin: 0, fontFamily: HEADING_FONT, fontWeight: 600, fontSize: "1.3rem", lineHeight: 1.15, letterSpacing: "-0.02em", color: C.ink, flex: 1, minWidth: 0 }}>{department.label}</h2>
         <button type="button" onClick={seeAll} aria-label={`See all ${department.label}`} style={{ border: "none", background: "none", padding: 0, color: C.ink, fontSize: 13, fontWeight: 700, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer", fontFamily: BODY_FONT, whiteSpace: "nowrap" }}>See all</button>
       </div>

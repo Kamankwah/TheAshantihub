@@ -32,7 +32,7 @@ class HomeFeedTests(TestCase):
         rows = response.json()["most_visited"]
         self.assertEqual([r["slug"] for r in rows[:2]], ["electronics", "books"])
         for row in rows:
-            self.assertEqual(set(row), {"id", "slug", "label", "icon", "color", "image", "children"})
+            self.assertEqual(set(row), {"id", "slug", "label", "icon", "color", "image", "image_variants", "children"})
         self.assertEqual(rows[0]["label"], Category.objects.get(slug="electronics").label)
 
     def test_departments_carry_up_to_four_open_sub_categories_with_pictures(self):
@@ -43,8 +43,9 @@ class HomeFeedTests(TestCase):
         self.assertLessEqual(len(row["children"]), 4)
         self.assertGreaterEqual(len(row["children"]), 1)
         for child in row["children"]:
-            self.assertEqual(set(child), {"id", "slug", "label", "icon", "image"})
+            self.assertEqual(set(child), {"id", "slug", "label", "icon", "image", "image_variants"})
             self.assertIsNone(child["image"])
+            self.assertIsNone(child["image_variants"])
 
     def test_home_feed_lists_only_departments_a_shopper_can_open(self):
         # Seed order alone would name eight empty departments; a shopper sees only those with something in them.

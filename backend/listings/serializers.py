@@ -120,15 +120,19 @@ def image_url(file_field, request=None):
 class CategorySerializer(serializers.ModelSerializer):
     # Read-only: the picture is set through categories/<id>/image/ (staff upload), never in a PATCH body.
     image = serializers.SerializerMethodField()
+    image_variants = serializers.SerializerMethodField()
 
     def get_image(self, obj):
         return image_url(obj.image, self.context.get("request"))
+
+    def get_image_variants(self, obj):
+        return image_variants.picture_urls(self.context.get("request"), obj)
 
     class Meta:
         model = Category
         # `parent` (the parent category's id, or null for a department / top-level row) lets business and staff
         # forms group the ~300 flat rows under their department (ruling R34). Read-only: the tree is set by migration.
-        fields = ["id", "slug", "icon", "label", "color", "kind", "is_accommodation", "is_food", "parent", "image"]
+        fields = ["id", "slug", "icon", "label", "color", "kind", "is_accommodation", "is_food", "parent", "image", "image_variants"]
         # `kind` has a model-level default (PRODUCT), which would otherwise
         # make it optional on create — but staff must consciously choose
         # Product vs Service when creating a category (the admin form forces
@@ -156,13 +160,17 @@ class CategoryStaffSerializer(CategorySerializer):
 
 class ZoneSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
+    image_variants = serializers.SerializerMethodField()
 
     def get_image(self, obj):
         return image_url(obj.image, self.context.get("request"))
 
+    def get_image_variants(self, obj):
+        return image_variants.picture_urls(self.context.get("request"), obj)
+
     class Meta:
         model = Zone
-        fields = ["id", "name", "image"]
+        fields = ["id", "name", "image", "image_variants"]
 
 
 class BusinessOwnerMiniSerializer(serializers.ModelSerializer):

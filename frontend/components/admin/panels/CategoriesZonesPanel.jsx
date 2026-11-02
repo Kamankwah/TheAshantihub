@@ -220,7 +220,7 @@ function CategoriesAndZones({ auth }) {
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 12 }}>Zones</div>
           {(zones.data || []).map(z => (
             <div key={z.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: `1px solid ${D.divider}`, color: D.text, fontSize: "0.8rem" }}>
-              <PictureSlot label={z.name} path={`/api/listings/zones/${z.id}/image/`} image={z.image} fallback="📍" size={48} canEdit={canManageZones} onChanged={zones.refetch} />
+              <PictureSlot label={z.name} path={`/api/listings/zones/${z.id}/image/`} image={z.image_variants?.thumb || z.image} fallback="📍" size={48} canEdit={canManageZones} onChanged={zones.refetch} />
               <span style={{ fontWeight: 700 }}>{z.name}</span>
             </div>
           ))}

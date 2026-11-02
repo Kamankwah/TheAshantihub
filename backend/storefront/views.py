@@ -188,6 +188,7 @@ class HomeFeedView(APIView):
         from listings.visits import most_visited_ranking
 
         from listings.models import Category
+        from listings import image_variants
         from listings.serializers import image_url
 
         open_ids = shopper_ids()
@@ -202,8 +203,12 @@ class HomeFeedView(APIView):
             {
                 "id": c.pk, "slug": c.slug, "label": c.label, "icon": c.icon, "color": c.color,
                 "image": image_url(c.image, request),
+                "image_variants": image_variants.picture_urls(request, c),
                 "children": [
-                    {"id": k.pk, "slug": k.slug, "label": k.label, "icon": k.icon, "image": image_url(k.image, request)}
+                    {
+                        "id": k.pk, "slug": k.slug, "label": k.label, "icon": k.icon, "image": image_url(k.image, request),
+                        "image_variants": image_variants.picture_urls(request, k),
+                    }
                     for k in children.get(c.pk, [])[:CHILD_TILES]
                 ],
             }

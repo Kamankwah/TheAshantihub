@@ -13,9 +13,9 @@ from listings.models import Category, Zone
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
 
 
-def jpeg(name="p.jpg", size=None):
+def jpeg(name="p.jpg", size=None, dims=(4, 4)):
     buf = io.BytesIO()
-    Image.new("RGB", (4, 4), "orange").save(buf, format="JPEG")
+    Image.new("RGB", dims, "orange").save(buf, format="JPEG")
     data = buf.getvalue()
     if size:
         data += b"\0" * (size - len(data))
@@ -110,3 +110,63 @@ class CategoryZoneImageTests(TestCase):
         self.assertTrue(cats["books"]["image"])
         self.assertIsNone(cats["electronics"]["image"])
         self.assertIn("image", self.client.get("/api/listings/zones/").json()[0])
+
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+class PictureVariantTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        staff = StaffUser.objects.create(full_name="M", email="m-var@example.com", password_hash="x", role=Role.objects.get(name="marketing"))
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(staff, 'staff')}")
+        self.category = Category.objects.get(slug="books")
+        self.url = f"/api/listings/categories/{self.category.pk}/image/"
+
+    def upload(self, **kw):
+        return self.client.post(self.url, {"image": jpeg(**kw)}, format="multipart")
+
+    def test_upload_makes_resized_webp_copies_the_home_can_use(self):
+        body = self.upload(dims=(2000, 1000)).json()
+        variants = body["image_variants"]
+        self.assertEqual(set(variants), {"thumb", "medium", "large"})
+        self.assertTrue(all(url.endswith(".webp") for url in variants.values()))
+        self.category.refresh_from_db()
+        storage = self.category.image.storage
+        self.assertTrue(storage.exists(self.category.image_variants["thumb"]))
+        with storage.open(self.category.image_variants["thumb"]) as f:
+            self.assertEqual(max(Image.open(f).size), 320)
+
+    def test_a_small_picture_falls_back_to_the_original_for_every_size(self):
+        body = self.upload().json()
+        self.assertEqual(set(body["image_variants"].values()), {body["image"]})
+
+    def test_replacing_and_clearing_remove_the_old_copies(self):
+        self.upload(dims=(2000, 1000))
+        self.category.refresh_from_db()
+        first = {k: v for k, v in self.category.image_variants.items() if k != "src"}
+        storage = self.category.image.storage
+        self.upload(dims=(1500, 900))
+        self.assertFalse(any(storage.exists(path) for path in first.values()))
+        self.category.refresh_from_db()
+        second = {k: v for k, v in self.category.image_variants.items() if k != "src"}
+        self.assertTrue(second and all(storage.exists(path) for path in second.values()))
+        response = self.client.delete(self.url)
+        self.assertIsNone(response.json()["image_variants"])
+        self.assertFalse(any(storage.exists(path) for path in second.values()))
+        self.category.refresh_from_db()
+        self.assertEqual(self.category.image_variants, {})
+
+    def test_variants_reach_the_public_tree_and_home_feed_and_never_for_a_missing_picture(self):
+        self.upload(dims=(2000, 1000))
+        self.client.credentials()
+        cats = {c["slug"]: c for c in self.client.get("/api/listings/categories/").json()}
+        self.assertEqual(set(cats["books"]["image_variants"]), {"thumb", "medium", "large"})
+        self.assertIsNone(cats["electronics"]["image_variants"])
+
+    def test_backfill_makes_copies_for_pictures_uploaded_before_variants_existed(self):
+        from django.core.management import call_command
+
+        self.upload(dims=(2000, 1000))
+        Category.objects.filter(pk=self.category.pk).update(image_variants={})
+        call_command("backfill_image_variants", verbosity=0)
+        self.category.refresh_from_db()
+        self.assertIn("thumb", self.category.image_variants)

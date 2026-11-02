@@ -276,6 +276,6 @@ ads are Marketing's). Never hardcode `/api/listings/mine` in a panel.
 - **Category and zone pictures are uploaded in the staff panel** (`CategoryPictures`, `PictureSlot`; Marketing,
   Operations and Super Admin hold `categories.manage` / `zones.manage`). The server validates the file; show its message.
 - **`DeliverTo` is the header's location control.** The choice (`ashantihub.deliverTo`: country code + Ghana region) is
-  stored only on a tap; detection (`useDeliveryPlace`) only suggests, and only runs by itself when location is already
-  allowed. Door-to-door delivery is Ashanti only (`lib/deliveryPlace.js` `deliveryNote`); never add a delivery time or fee
+  stored only on a tap; detection (`useDeliveryPlace`) only suggests: it asks the browser for the location once per session on arrival
+  (the browser's own prompt; a blocked site is never asked) and again from "Use my current location". Door-to-door delivery is Ashanti only (`lib/deliveryPlace.js` `deliveryNote`); never add a delivery time or fee
   there. Reverse geocoding is `reverseGeocodePlace` (Nominatim, a suggestion).

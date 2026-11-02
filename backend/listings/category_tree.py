@@ -25,12 +25,14 @@ def _populated_ids():
 
 
 def _node(category, request=None):
+    from . import image_variants
     from .serializers import image_url
 
     return {
         "id": category.pk, "slug": category.slug, "label": category.label, "icon": category.icon,
         "color": category.color, "kind": category.kind, "is_accommodation": category.is_accommodation,
-        "image": image_url(category.image, request), "children": [],
+        "image": image_url(category.image, request),
+        "image_variants": image_variants.picture_urls(request, category), "children": [],
     }
 
 

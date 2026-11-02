@@ -25,7 +25,7 @@ from accounts.views import IsBusinessOwner
 from billing.models import Transaction
 from notifications.services import notify_business_owner, notify_staff_role
 
-from . import lifecycle, revisions, variants
+from . import image_variants, lifecycle, revisions, variants
 from .moderation_checks import (
     CONTACT_DETAILS_MESSAGE,
     blocking_failures,
@@ -210,10 +210,14 @@ class PictureView(APIView):
         upload = _PictureUpload(data=request.data)
         upload.is_valid(raise_exception=True)
         old = obj.image.name if obj.image else None
+        old_variants = obj.image_variants
         obj.image = upload.validated_data["image"]
         obj.save(update_fields=["image"])
+        # Resized copies for the storefront; never fails the upload (the page then serves the original).
+        image_variants.refresh(obj, "image", "image_variants")
         if old and old != obj.image.name:
             obj.image.storage.delete(old)
+            image_variants.discard(old_variants)
         activity_record(
             request.user, f"{self.action_prefix}.image_set", target=obj,
             summary=f"Set the picture for {self._label(obj)}", method="POST", request=request,
@@ -224,9 +228,12 @@ class PictureView(APIView):
         obj = generics.get_object_or_404(self.model, pk=pk)
         old = obj.image.name if obj.image else None
         if old:
+            old_variants = obj.image_variants
             obj.image = None
-            obj.save(update_fields=["image"])
+            obj.image_variants = {}
+            obj.save(update_fields=["image", "image_variants"])
             obj.image.storage.delete(old)
+            image_variants.discard(old_variants)
             activity_record(
                 request.user, f"{self.action_prefix}.image_cleared", target=obj,
                 summary=f"Removed the picture for {self._label(obj)}", method="DELETE", request=request,

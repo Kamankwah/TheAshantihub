@@ -91,7 +91,7 @@ class ShopperTreeTests(Base):
         self.assertEqual([n["slug"] for n in nodes], ["health-household"])
         self.assertEqual([c["slug"] for c in nodes[0]["children"]], ["pharmacy"])
         self.assertEqual(nodes[0]["kind"], "product")
-        self.assertEqual(set(nodes[0]), {"id", "slug", "label", "icon", "color", "kind", "is_accommodation", "image", "children"})
+        self.assertEqual(set(nodes[0]), {"id", "slug", "label", "icon", "color", "kind", "is_accommodation", "image", "image_variants", "children"})
 
     def test_service_stay_and_event_nodes_show_when_populated(self):
         self.listing("tours")

@@ -23,6 +23,9 @@ describe('DepartmentShowcase', () => {
     const electronics = await screen.findByRole('article', { name: 'Electronics' })
     expect(within(electronics).getByRole('button', { name: /Headphones/ })).toBeInTheDocument()
     expect(container.querySelector('img[src="https://cdn.test/headphones.jpg"]')).not.toBeNull()
+    // A picture with resized copies loads the small one first and offers the 800 px copy to sharper screens.
+    const big = container.querySelector('img[src="https://cdn.test/electronics_320.webp"]')
+    expect(big).toBeNull() // electronics has sub-category tiles, so its own picture is not drawn on the card
     expect(within(electronics).getByText('🔊')).toBeInTheDocument() // Home Audio has no picture yet
     fireEvent.click(within(electronics).getByRole('button', { name: 'See all Electronics' }))
     expect(onNavigate).toHaveBeenLastCalledWith('/business?category=electronics')
@@ -60,5 +63,17 @@ describe('DepartmentShowcase heading', () => {
     server.use(json(HOME_FEED_URL, { most_visited: MOST_VISITED, ranked: true }))
     renderWithClient(<DepartmentShowcase onNavigate={() => {}} />)
     expect(await screen.findByRole('heading', { name: 'Most visited categories' })).toBeInTheDocument()
+  })
+})
+
+describe('DepartmentShowcase pictures', () => {
+  it('a single large tile loads the resized copy with a srcset', async () => {
+    const department = { ...MOST_VISITED[0], children: [] }
+    server.use(json(HOME_FEED_URL, { most_visited: [department], ranked: true }))
+    const { container } = renderWithClient(<DepartmentShowcase onNavigate={() => {}} />)
+    await screen.findByRole('article', { name: 'Electronics' })
+    const img = container.querySelector('img')
+    expect(img).toHaveAttribute('src', 'https://cdn.test/electronics_320.webp')
+    expect(img.getAttribute('srcset')).toBe('https://cdn.test/electronics_320.webp 320w, https://cdn.test/electronics_800.webp 800w')
   })
 })

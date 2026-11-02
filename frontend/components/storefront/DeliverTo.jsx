@@ -9,7 +9,8 @@ import { BODY_FONT } from "./storefrontType.js";
 //  - offers to use their current location (the browser asks permission), then asks "Deliver to Accra?" as a yes/no;
 //  - or lets them pick a country, and in Ghana a region, by hand;
 //  - says plainly where door-to-door delivery is available (Ashanti only), never a made-up delivery time.
-// Opens by itself once per session while nothing is chosen. The choice lives in this browser only. A signed-in
+// Opens by itself once per session while nothing is chosen, and on that first visit asks the browser for the location
+// (its own permission prompt; a site the shopper has blocked is not asked). The choice lives in this browser only. A signed-in
 // customer's saved address is the fallback label until they choose.
 export default function DeliverTo({ firstName, savedAddress }) {
   const { place, suggestion, status, locate, choose, dismissSuggestion } = useDeliveryPlace();

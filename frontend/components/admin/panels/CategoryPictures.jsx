@@ -18,7 +18,7 @@ export default function CategoryPictures({ canEdit }) {
   if (categories.isLoading || departments.length === 0) return null;
   const slot = (c) => (
     <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <PictureSlot label={c.label} path={`/api/listings/categories/${c.id}/image/`} image={c.image} fallback={c.icon} canEdit={canEdit} onChanged={categories.refetch} />
+      <PictureSlot label={c.label} path={`/api/listings/categories/${c.id}/image/`} image={c.image_variants?.thumb || c.image} fallback={c.icon} canEdit={canEdit} onChanged={categories.refetch} />
       <span style={{ color: D.text, fontSize: "0.72rem", fontWeight: 700, maxWidth: 108, lineHeight: 1.3 }}>{c.label}</span>
     </div>
   );
