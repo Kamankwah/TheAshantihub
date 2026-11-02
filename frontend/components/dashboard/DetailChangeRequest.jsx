@@ -118,7 +118,7 @@ export default function DetailChangeRequest() {
 
       <div style={{ fontWeight: 800, color: D.text, fontSize: "0.8rem", margin: "18px 0 8px" }}>Your requests</div>
       {isLoading && <div style={{ color: D.textDim, fontSize: "0.78rem" }}>Loading your requests…</div>}
-      {isError && <div style={{ color: D.red, fontSize: "0.78rem" }}>Could not load your requests.</div>}
+      {isError && <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>Could not load your requests.</div>}
       {!isLoading && !isError && requests.length === 0 && <div style={{ color: D.textDim, fontSize: "0.78rem" }}>No change requests yet.</div>}
       {requests.map((r) => (
         <div key={r.id} style={{ padding: "10px 0", borderTop: `1px solid ${D.divider}`, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>

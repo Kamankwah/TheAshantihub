@@ -87,7 +87,7 @@ function DeskCallLog({ auth }) {
         {!form && <button type="button" onClick={() => setForm(blank())} style={{ background: D.gold, color: D.darkBrown, border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Log a call</button>}
       </div>
       {leadsTeam && today.data?.strip && <Strip strip={today.data.strip} />}
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
       {form && (
         <form onSubmit={save} noValidate style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10, padding: 12, background: D.pageBg, borderRadius: 12 }}>
           <label style={labelStyle}>Direction<select value={form.direction} onChange={set("direction")} style={field}><option value="out">Outbound</option><option value="in">Inbound</option></select></label>
@@ -109,7 +109,7 @@ function DeskCallLog({ auth }) {
         </form>
       )}
       {isLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>}
-      {isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the call log.</div>}
+      {isError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the call log.</div>}
       {!isLoading && !isError && calls.length === 0 && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>{teamMode ? "Your team hasn't logged any calls yet." : "No calls logged yet."}</div>}
       {calls.map((c) => (
         <div key={c.id} style={{ padding: "10px 0", borderTop: `1px solid ${D.divider}`, fontSize: "0.8rem" }}>

@@ -85,7 +85,7 @@ function DeliveryCard({ delivery, onDone }) {
         </div>
       )}
 
-      {actionError && <div style={{ color: D.red, fontSize: "0.76rem", marginTop: 8 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.76rem", marginTop: 8 }}>{actionError}</div>}
 
       <div style={{ marginTop: 12 }}>
         {delivery.status === "assigned" && (

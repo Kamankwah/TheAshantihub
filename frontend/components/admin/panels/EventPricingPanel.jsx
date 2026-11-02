@@ -39,7 +39,7 @@ export default function EventPricingPanel({ auth }) {
   return (
     <div style={{ ...glassCard, padding: 18 }}>
       <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 14 }}>Event Pricing Tiers</div>
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
       {tiers.map(t => (
         <div key={t.id} style={{ padding: "12px 0", borderBottom: `1px solid ${D.divider}` }}>
           <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{t.duration_days} days — GHS {t.live_price}</div>

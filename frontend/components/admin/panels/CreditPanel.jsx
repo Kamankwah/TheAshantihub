@@ -65,7 +65,7 @@ function ScoreRow({ row, onChanged }) {
           <button onClick={() => setAdjusting(a => !a)} style={{ ...pillBtn, background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}` }}>⚖️ Adjust</button>
         </div>
       </div>
-      {actionError && <div style={{ color: D.red, fontSize: "0.72rem", marginTop: 6 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginTop: 6 }}>{actionError}</div>}
       {adjusting && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <input type="number" value={delta} onChange={e => setDelta(e.target.value)} placeholder="+/- points" style={{ ...inputStyle, width: 100 }} />
@@ -150,7 +150,7 @@ function PartnersSection() {
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem" }}>Lending partners</div>
         <button onClick={() => setAdding(a => !a)} style={{ ...pillBtn, background: D.gold, color: "#1a1205" }}>{adding ? "Close" : "+ Add partner"}</button>
       </div>
-      {actionError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{actionError}</div>}
       {adding && <PartnerForm initial={BLANK_PARTNER} onSubmit={create} onCancel={() => setAdding(false)} submitLabel="Add partner" />}
       {partners.length === 0 && <div style={{ color: D.textDim, fontSize: "0.78rem", marginBottom: 6 }}>No lending partner has been signed yet.</div>}
       {partners.map(p => (
@@ -205,7 +205,7 @@ function LoanRow({ app, onChanged }) {
           </div>
         )}
       </div>
-      {actionError && <div style={{ color: D.red, fontSize: "0.72rem", marginTop: 6 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginTop: 6 }}>{actionError}</div>}
       {reviewing && !isFinal && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Decision notes (optional)" style={{ ...inputStyle, flex: 1, minWidth: 160 }} />

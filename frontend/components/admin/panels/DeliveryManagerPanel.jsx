@@ -53,7 +53,7 @@ function OrderCard({ order, dispatches, onDone, canSend }) {
         </div>
       )}
 
-      {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
 
       <div style={{ display: "flex", gap: 6, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
         <select value={dispatchId} onChange={e => setDispatchId(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 140 }}>

@@ -97,8 +97,8 @@ function SponsoredAd({ listings, listingId, promoteBase, PaymentComponent, user,
       </div>
       {pricing?.enabled === false && <div style={{ color: D.green, fontSize: "0.72rem", fontWeight: 700, marginBottom: 6 }}>Free for now. Prices will be announced before any charge.</div>}
       <div style={{ color: D.textFaint, fontSize: "0.68rem", marginBottom: 8 }}>ℹ️ Promotions are reviewed by our team before they go live. Your listing starts ranking higher once approved.</div>
-      {notice && <div style={{ color: D.green, fontSize: "0.74rem", marginBottom: 8 }}>{notice}</div>}
-      {error && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{error}</div>}
+      {notice && <div role="status" style={{ color: D.green, fontSize: "0.74rem", marginBottom: 8 }}>{notice}</div>}
+      {error && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{error}</div>}
       <button onClick={submit} disabled={!target || needsKeywords} style={{ width: "100%", background: (!target || needsKeywords) ? D.panelBg2 : D.kente1, color: (!target || needsKeywords) ? D.textFaint : "#fff", border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: (!target || needsKeywords) ? "default" : "pointer", fontFamily: "inherit" }}>📣 Promote {days}d</button>
     </div>
   );
@@ -112,7 +112,7 @@ function FlashInvitations() {
     <div style={{ ...glassCard, padding: "14px 16px", marginTop: 12 }}>
       <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text, marginBottom: 8 }}>⚡ Flash-sale invitations</div>
       {isLoading && <div style={{ color: D.textDim, fontSize: "0.78rem" }}>Loading invitations…</div>}
-      {isError && <div style={{ color: D.red, fontSize: "0.78rem" }}>Could not load your invitations.</div>}
+      {isError && <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>Could not load your invitations.</div>}
       {!isLoading && !isError && rows.length === 0 && <div style={{ color: D.textDim, fontSize: "0.78rem" }}>No flash-sale invitations yet. When AshantiHub invites you to a sale, it shows here.</div>}
       {rows.map((r) => (
         <div key={r.sale_id} style={{ borderTop: `1px solid ${D.divider}`, padding: "8px 0", fontSize: "0.78rem", color: D.text }}>

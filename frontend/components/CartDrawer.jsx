@@ -81,7 +81,7 @@ export default function CartDrawer({ onClose, onGoToCart }) {
 
         {!isLoading && !isError && (
           <>
-            {actionError && <div style={{ margin: "10px 14px 0", background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem" }}>{actionError}</div>}
+            {actionError && <div role="alert" style={{ margin: "10px 14px 0", background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem" }}>{actionError}</div>}
 
             {items.length === 0 && (
               <div style={{ padding: "20px", textAlign: "center", color: C.inkFaint, fontSize: "0.78rem" }}>Your cart is empty.<br />Add items from the Business tab to get started.</div>

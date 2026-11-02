@@ -464,7 +464,7 @@ function ServiceListingDetail({
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: "0.8rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
                 />
                 <BookingTermsNote kind="service" policy={item.cancellation_policy} />
-                {requestError && <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{requestError}</div>}
+                {requestError && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{requestError}</div>}
                 <button
                   disabled={requesting || !requestMessage.trim()}
                   onClick={async () => {

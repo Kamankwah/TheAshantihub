@@ -428,7 +428,7 @@ export default function CreditPanel({ user }) {
                     </select>
                   </div>
 
-                  {submitError && <div style={{ color:D.red, fontSize:"0.72rem", marginBottom:8 }}>{submitError}</div>}
+                  {submitError && <div role="alert" style={{ color:D.red, fontSize:"0.72rem", marginBottom:8 }}>{submitError}</div>}
                   <button
                     onClick={()=>{ if(loanAmount&&loanPurpose&&Number(loanAmount)<=maxLoan) submitLoan(); }}
                     disabled={submitting}

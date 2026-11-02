@@ -133,13 +133,10 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   const [creating, setCreating] = useState(false);
   const [showSlides, setShowSlides] = useState(false);
   const [heroSubmitPhoto, setHeroSubmitPhoto] = useState(null);
-  // The caption form sits above the listing list, so picking a photo further down would otherwise look like a dead click.
-  const heroFormRef = useRef(null);
   const heroCaptionRef = useRef(null);
   useEffect(() => {
     if (!heroSubmitPhoto) return;
-    heroFormRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-    heroCaptionRef.current?.focus({ preventScroll: true });
+    heroCaptionRef.current?.focus();
   }, [heroSubmitPhoto]);
   const [heroCaption, setHeroCaption] = useState("");
   const [heroActionError, setHeroActionError] = useState(null);
@@ -318,7 +315,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         </div>
       </div>
 
-      {actionError && <div style={{ background: tint(D.red, "1f"), color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ background: tint(D.red, "1f"), color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
 
       {showCreate && (
         <div style={{ ...glassCard, padding: "16px", marginBottom: 14, border: `2px solid ${D.cardBorderStrong}` }}>
@@ -373,7 +370,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
           </div>
           {createCanHaveVariants && <VariantEditor rows={createVariants} onRowsChange={setCreateVariants} basePath={basePath} />}
           <MediaManager pending={createMedia} onPendingChange={setCreateMedia} baseImageCount={createPhoto ? 1 : 0} basePath={basePath} />
-          {createError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8, marginTop: 8 }}>{createError}</div>}
+          {createError && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8, marginTop: 8 }}>{createError}</div>}
           <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
             <button onClick={() => { setShowCreate(false); setCreateError(null); }} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
             <button onClick={submitCreate} disabled={!canSubmitCreate || creating} style={{ flex: 2, background: canSubmitCreate && !creating ? D.gold : D.panelBg2, color: canSubmitCreate && !creating ? "#1a1205" : D.textFaint, border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: canSubmitCreate && !creating ? "pointer" : "default", fontFamily: "inherit" }}>{creating ? "Creating…" : "✓ Create Listing"}</button>
@@ -381,23 +378,6 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         </div>
       )}
 
-      {heroSubmitPhoto && (
-        <div ref={heroFormRef} style={{ ...glassCard, padding: "14px 16px", marginBottom: 14, border: `2px solid ${D.cardBorderStrong}` }}>
-          <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-            <img src={heroSubmitPhoto.image} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 10, flexShrink: 0 }} />
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text, marginBottom: 6 }}>🌟 Submit this photo for Hero Spotlight</div>
-              <textarea ref={heroCaptionRef} value={heroCaption} onChange={e => setHeroCaption(e.target.value.slice(0, 140))} maxLength={140} placeholder="A one-sentence caption for the hero slider…" style={{ ...inputStyle, minHeight: 56, resize: "vertical" }} />
-              <div style={{ fontSize: "0.62rem", color: D.textFaint, textAlign: "right", marginBottom: 8 }}>{heroCaption.length}/140</div>
-              {heroActionError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{heroActionError}</div>}
-              <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => { setHeroSubmitPhoto(null); setHeroCaption(""); setHeroActionError(null); }} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-                <button onClick={submitHeroPhoto} disabled={!heroCaption.trim()} style={{ flex: 2, background: heroCaption.trim() ? D.gold : D.panelBg2, color: heroCaption.trim() ? "#1a1205" : D.textFaint, border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: heroCaption.trim() ? "pointer" : "default", fontFamily: "inherit" }}>✓ Submit for Hero</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Dated, free homepage-slider slides (image, video or YouTube link). The one-photo Hero Spotlight below is the older flow and stays for existing submissions. */}
       {!direct && <div style={{ ...glassCard, padding: "12px 16px", marginBottom: 14 }}>
@@ -433,7 +413,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
               </div>
             )}
           </div>
-          {heroActionError && <div style={{ color: D.red, fontSize: "0.72rem", marginTop: 8 }}>{heroActionError}</div>}
+          {heroActionError && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginTop: 8 }}>{heroActionError}</div>}
         </div>
       )}
 
@@ -448,7 +428,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       )}
 
       {listingsLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading your listings…</div>}
-      {listingsError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your listings. Make sure you're signed in as a business owner.</div>}
+      {listingsError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your listings. Make sure you're signed in as a business owner.</div>}
       {!listingsLoading && !listingsError && listingList.length === 0 && (
         <div style={{ ...glassCard, padding: "24px", textAlign: "center", color: D.textDim, fontSize: "0.82rem" }}>You don't have any listings yet.</div>
       )}
@@ -547,6 +527,23 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                       </div>
                     ))}
                   </div>
+                  {heroSubmitPhoto?.listingId === item.id && (
+        <div style={{ ...glassCard, padding: "14px 16px", marginTop: 10, border: `2px solid ${D.cardBorderStrong}` }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <img src={heroSubmitPhoto.image} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 10, flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text, marginBottom: 6 }}>🌟 Submit this photo for Hero Spotlight</div>
+              <textarea ref={heroCaptionRef} value={heroCaption} onChange={e => setHeroCaption(e.target.value.slice(0, 140))} maxLength={140} placeholder="A one-sentence caption for the hero slider…" style={{ ...inputStyle, minHeight: 56, resize: "vertical" }} />
+              <div style={{ fontSize: "0.62rem", color: D.textFaint, textAlign: "right", marginBottom: 8 }}>{heroCaption.length}/140</div>
+              {heroActionError && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{heroActionError}</div>}
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => { setHeroSubmitPhoto(null); setHeroCaption(""); setHeroActionError(null); }} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+                <button onClick={submitHeroPhoto} disabled={!heroCaption.trim()} style={{ flex: 2, background: heroCaption.trim() ? D.gold : D.panelBg2, color: heroCaption.trim() ? "#1a1205" : D.textFaint, border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: heroCaption.trim() ? "pointer" : "default", fontFamily: "inherit" }}>✓ Submit for Hero</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
                 </div>
               ) : (
                 <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${D.divider}`, fontSize: "0.64rem", color: D.textFaint }}>

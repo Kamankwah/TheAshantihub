@@ -91,7 +91,7 @@ export default function EventCheckinPanel({ eventId }) {
       </form>
       {scanning && <QrScanner onDetected={handleScanned} onClose={() => setScanning(false)} />}
 
-      {checkinError && <div style={{ marginBottom: 8, color: "#ffb4b4", fontSize: "0.72rem" }}>{checkinError}</div>}
+      {checkinError && <div role="alert" style={{ marginBottom: 8, color: "#ffb4b4", fontSize: "0.72rem" }}>{checkinError}</div>}
       {lastCheckedIn && (
         <div style={{ marginBottom: 10, color: C.trust, fontSize: "0.72rem", fontWeight: 700 }}>
           ✓ Checked in {lastCheckedIn.purchased_by_name} — {lastCheckedIn.ticket_type_name}
