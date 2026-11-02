@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiPost, apiPatch, apiPostForm } from "../../../apiClient.js";
 import { useMyListings, DEFAULT_LISTINGS_PATH } from "../../../hooks/useMyListings.js";
 import { useMyHeroSubmission } from "../../../hooks/useMyHeroSubmission.js";
@@ -133,6 +133,14 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   const [creating, setCreating] = useState(false);
   const [showSlides, setShowSlides] = useState(false);
   const [heroSubmitPhoto, setHeroSubmitPhoto] = useState(null);
+  // The caption form sits above the listing list, so picking a photo further down would otherwise look like a dead click.
+  const heroFormRef = useRef(null);
+  const heroCaptionRef = useRef(null);
+  useEffect(() => {
+    if (!heroSubmitPhoto) return;
+    heroFormRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    heroCaptionRef.current?.focus({ preventScroll: true });
+  }, [heroSubmitPhoto]);
   const [heroCaption, setHeroCaption] = useState("");
   const [heroActionError, setHeroActionError] = useState(null);
   const [heroExtendDays, setHeroExtendDays] = useState(7);
@@ -374,12 +382,12 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       )}
 
       {heroSubmitPhoto && (
-        <div style={{ ...glassCard, padding: "14px 16px", marginBottom: 14, border: `2px solid ${D.cardBorderStrong}` }}>
+        <div ref={heroFormRef} style={{ ...glassCard, padding: "14px 16px", marginBottom: 14, border: `2px solid ${D.cardBorderStrong}` }}>
           <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
             <img src={heroSubmitPhoto.image} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 10, flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 200 }}>
               <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text, marginBottom: 6 }}>🌟 Submit this photo for Hero Spotlight</div>
-              <textarea value={heroCaption} onChange={e => setHeroCaption(e.target.value.slice(0, 140))} maxLength={140} placeholder="A one-sentence caption for the hero slider…" style={{ ...inputStyle, minHeight: 56, resize: "vertical" }} />
+              <textarea ref={heroCaptionRef} value={heroCaption} onChange={e => setHeroCaption(e.target.value.slice(0, 140))} maxLength={140} placeholder="A one-sentence caption for the hero slider…" style={{ ...inputStyle, minHeight: 56, resize: "vertical" }} />
               <div style={{ fontSize: "0.62rem", color: D.textFaint, textAlign: "right", marginBottom: 8 }}>{heroCaption.length}/140</div>
               {heroActionError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{heroActionError}</div>}
               <div style={{ display: "flex", gap: 6 }}>

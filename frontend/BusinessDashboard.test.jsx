@@ -145,6 +145,18 @@ describe('BusinessDashboard Submit for Hero', () => {
     expect(screen.getByText('Pending Review')).toBeInTheDocument()
   })
 
+  it('brings the caption form into view and focuses it when a photo is picked', async () => {
+    mockDashboardDataWithPhotos()
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+    fireEvent.click(await screen.findByText('🌟 Submit for Hero'))
+    const caption = screen.getByPlaceholderText('A one-sentence caption for the hero slider…')
+    await waitFor(() => expect(caption).toHaveFocus())
+    expect(scrollIntoView).toHaveBeenCalled()
+  })
+
   it('shows an inline error when the submission fails', async () => {
     mockDashboardDataWithPhotos()
     server.use(
