@@ -13,3 +13,7 @@ export const SECTION_TITLE = {
   margin: "0 0 12px", fontFamily: HEADING_FONT, fontWeight: 600, fontSize: 24, lineHeight: 1.15,
   letterSpacing: "-0.02em", color: "var(--ah-ink, #2C1810)",
 };
+// A heading kept for screen readers and the page outline but not drawn: the home shows tiles and rows without titles.
+export const VISUALLY_HIDDEN = {
+  position: "absolute", width: 1, height: 1, margin: -1, padding: 0, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0,
+};

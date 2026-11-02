@@ -1,7 +1,7 @@
 import { C } from "../../theme.js";
 import { D } from "../dashboard/theme.js";
 import { cedis, useDeals } from "../../hooks/useStorefront.js";
-import { BODY_FONT, SECTION, SECTION_TITLE, TABULAR } from "./storefrontType.js";
+import { BODY_FONT, SECTION, TABULAR, VISUALLY_HIDDEN } from "./storefrontType.js";
 
 // Today's deals: a horizontally scrolling row of product cards from
 // GET /api/storefront/deals/. The price shown is the sale price when there is
@@ -19,7 +19,7 @@ export default function DealsRow({ onOpen }) {
 
   return (
     <section aria-labelledby="ah-deals-title" style={{ ...SECTION, paddingTop: 28 }}>
-      <h2 id="ah-deals-title" style={SECTION_TITLE}>Today's deals</h2>
+      <h2 id="ah-deals-title" style={VISUALLY_HIDDEN}>Today's deals</h2>
       <ul className="ah-deals-row" style={{ listStyle: "none", margin: 0, padding: "2px 2px 12px", display: "flex", gap: 12, overflowX: "auto", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}>
         {rows.map((row) => {
           const price = cedis(row.sale_price ?? row.price_amount);
