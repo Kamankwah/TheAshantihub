@@ -1,0 +1,81 @@
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { Pressable, Text, View } from "react-native";
+
+import { RegistrationHeader } from "../../../features/business/RegistrationHeader";
+import { messageFor } from "../../../lib/authApi";
+import { listPlans, resumeRegistration, saveBusinessKind, startTrial } from "../../../lib/registrationApi";
+import { fonts } from "../../../theme/fonts";
+import { useTheme } from "../../../theme/useTheme";
+import { Button } from "../../../ui/Button";
+import { EmptyState } from "../../../ui/EmptyState";
+import { Price } from "../../../ui/Price";
+import { Screen } from "../../../ui/Screen";
+import { Skeleton } from "../../../ui/Skeleton";
+
+export default function PlanStep() {
+  const { c } = useTheme();
+  const [kind, setKind] = useState<"product" | "service">();
+  const [tier, setTier] = useState<string>();
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const plans = useQuery({ queryKey: ["plans"], queryFn: listPlans });
+  const shown = (plans.data ?? []).filter((p) => p.kind === kind);
+
+  async function submit() {
+    setBusy(true);
+    setError(undefined);
+    try {
+      if (plans.data?.length && tier) await startTrial({ business_kind: kind!, plan: tier, cycle_months: 1 });
+      else await saveBusinessKind(kind!);
+      await resumeRegistration();
+    } catch (e) {
+      setError(messageFor(e, "We couldn't save your plan. Try again."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const option = (selected: boolean, label: string, onPress: () => void, sub?: React.ReactNode) => (
+    <Pressable
+      key={label}
+      accessibilityRole="radio"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={{ minHeight: 56, padding: 14, borderRadius: 16, borderWidth: selected ? 2 : 1, borderColor: selected ? c.gold : c.line, backgroundColor: c.surface, gap: 4 }}
+    >
+      <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, fontSize: 16 }}>{label}</Text>
+      {sub}
+    </Pressable>
+  );
+
+  const needsPlan = !!plans.data?.length;
+  return (
+    <Screen>
+      <RegistrationHeader step={3} title="Choose your plan" back />
+      <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>What will you sell?</Text>
+      {option(kind === "product", "Products", () => { setKind("product"); setTier(undefined); })}
+      {option(kind === "service", "Services, stays and events", () => { setKind("service"); setTier(undefined); })}
+      {plans.isPending ? <Skeleton height={72} /> : null}
+      {plans.isError ? <EmptyState title="We couldn't load the plans" action={{ label: "Try again", onPress: () => plans.refetch() }} /> : null}
+      {kind && needsPlan ? (
+        <View style={{ gap: 10 }}>
+          {shown.map((p) =>
+            option(
+              tier === p.tier,
+              p.name,
+              () => setTier(p.tier),
+              <View style={{ flexDirection: "row", gap: 6, alignItems: "baseline" }}>
+                <Price amount={p.monthly_price} />
+                <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>a month</Text>
+              </View>,
+            ),
+          )}
+        </View>
+      ) : null}
+      {error ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 13 }}>{error}</Text> : null}
+      <Button label="Continue" onPress={submit} loading={busy} disabled={!kind || (needsPlan && !tier)} />
+    </Screen>
+  );
+}

@@ -24,3 +24,9 @@ infra/compose/.env
 # Promo-video workspace (Remotion + ElevenLabs). Not part of the web app and never
 # in a Docker build context (both builds use backend/); kept local only.
 /marketing/
+
+# Expo mobile app
+mobile/.expo/
+mobile/ios/
+mobile/android/
+mobile/.env

@@ -1,0 +1,25 @@
+# Maestro: browse, open a product, add to cart, reach checkout with store pickup.
+# Needs the marketplace open (or the demo customer allow-listed) so Add to cart is enabled.
+appId: com.ashantihub.app
+---
+- launchApp
+- assertVisible: "Akwaaba.*"
+- tapOn: "Search AshantiHub"
+- assertVisible: "Explore"
+- back
+- scrollUntilVisible:
+    element: "Discover"
+- tapOn:
+    index: 0
+    text: ".*"
+    below: "Discover"
+- assertVisible: "Contact Support"
+- assertVisible: "Delivery and pickup"
+- tapOn: "Add to cart"
+- back
+- tapOn: "Cart.*"
+- assertVisible: "Your cart"
+- tapOn: "Go to checkout"
+- tapOn: "Store pickup"
+- assertVisible: "Pay with"
+- assertVisible: "AshantiHub wallet.*"
