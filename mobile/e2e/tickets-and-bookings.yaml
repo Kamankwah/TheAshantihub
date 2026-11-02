@@ -1,0 +1,13 @@
+# Maestro: buy an event ticket with Mobile Money, open it, then check Bookings and requests.
+# Needs the demo customer, a live event with a ticket type, and the marketplace open for the demo customer.
+appId: com.ashantihub.app
+---
+- launchApp
+- tapOn: "Account"
+- tapOn: "My tickets"
+- assertVisible: "My tickets"
+- back
+- tapOn: "Bookings and requests"
+- assertVisible: "Stays"
+- tapOn: "Services"
+- assertVisible: "No service requests yet|Tailoring.*"

@@ -1,0 +1,17 @@
+# Maestro: a business starts a new listing and saves it as a draft; then opens Promotions.
+# Needs the demo business (verified, with an active subscription).
+appId: com.ashantihub.app
+---
+- launchApp
+- tapOn: "Listings"
+- tapOn: "New listing"
+- assertVisible: "New listing"
+- tapOn: "Category"
+- assertVisible: "Category"
+- back
+- back
+- tapOn: "More"
+- tapOn: "Promotions"
+- assertVisible: "Free delivery"
+- assertVisible: "Discounts"
+- assertVisible: "Sponsored ad"

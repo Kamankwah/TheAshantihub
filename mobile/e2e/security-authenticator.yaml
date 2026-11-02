@@ -1,0 +1,7 @@
+# Maestro: Security shows the authenticator app section. Turning it on needs a real texted code, so this flow stops at the prompt.
+appId: com.ashantihub.app
+---
+- launchApp
+- tapOn: "Account"
+- tapOn: "Security"
+- assertVisible: "Authenticator app is (on|off)"
