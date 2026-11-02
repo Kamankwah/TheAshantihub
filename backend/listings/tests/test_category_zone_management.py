@@ -38,8 +38,19 @@ class CategoryZoneManagementTests(TestCase):
         self.assertEqual(response.status_code, 400, response.content)
         self.assertIn("kind", response.json())
 
-    def test_admin_cannot_create_category(self):
+    def test_operations_can_create_category(self):
+        # Operations runs categories and zones alongside Marketing and Super Admin.
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('operations', 1)}")
+        response = self.client.post(
+            "/api/listings/categories/",
+            {"slug": "ops-cat", "icon": "🧰", "label": "Ops Category", "color": "#000000",
+             "kind": Category.PRODUCT},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+
+    def test_support_cannot_create_category(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('support', 1)}")
         response = self.client.post(
             "/api/listings/categories/",
             {"slug": "blocked-cat", "icon": "🚫", "label": "Blocked", "color": "#000000",
@@ -67,11 +78,11 @@ class CategoryZoneManagementTests(TestCase):
         # A partial edit that omits `kind` keeps the existing kind unchanged.
         self.assertEqual(category.kind, Category.PRODUCT)
 
-    def test_admin_cannot_edit_category(self):
+    def test_support_cannot_edit_category(self):
         category = Category.objects.create(
             slug="noedit", icon="🔒", label="No Edit", color="#444444", kind=Category.PRODUCT,
         )
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('operations', 5)}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('support', 5)}")
         response = self.client.patch(
             f"/api/listings/categories/{category.id}/", {"label": "Hacked"}, format="json",
         )

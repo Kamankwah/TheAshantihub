@@ -33,8 +33,12 @@ export const DEALS = [
 ]
 
 export const MOST_VISITED = [
-  { id: 10, slug: 'electronics', label: 'Electronics', icon: '📱' },
-  { id: 20, slug: 'books', label: 'Books', icon: '📚' },
+  { id: 10, slug: 'electronics', label: 'Electronics', icon: '📱', color: '#000080', image: 'https://cdn.test/electronics.jpg',
+    children: [
+      { id: 11, slug: 'electronics-headphones', label: 'Headphones', icon: '🎧', image: 'https://cdn.test/headphones.jpg' },
+      { id: 12, slug: 'electronics-home-audio', label: 'Home Audio', icon: '🔊', image: null },
+    ] },
+  { id: 20, slug: 'books', label: 'Books', icon: '📚', color: '#006400', image: null, children: [] },
 ]
 
 export const json = (url, body, method = 'get') => http[method](url, () => HttpResponse.json(body))
