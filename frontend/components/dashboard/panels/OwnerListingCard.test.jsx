@@ -70,6 +70,34 @@ describe('OwnerListingCard live edits and approval', () => {
   })
 })
 
+describe('OwnerListingCard category', () => {
+  const CATS = [
+    { id: 10, label: 'Fabrics', kind: 'product', parent: null },
+    { id: 11, label: 'Kente', kind: 'product', parent: 10 },
+    { id: 12, label: 'Wax print', kind: 'product', parent: 10 },
+    { id: 40, label: 'Tailoring', kind: 'service', parent: null },
+  ]
+
+  it('moves a listing to another category of the same kind through the revision', async () => {
+    let revision = null
+    server.use(
+      http.get(`${API}/api/listings/categories/`, () => HttpResponse.json(CATS)),
+      http.put(`${API}/api/listings/mine/1/revision/`, async ({ request }) => { revision = await request.json(); return HttpResponse.json({}) }),
+    )
+    const onChanged = vi.fn()
+    renderCard({ ...LISTING, category: 11 }, { onChanged })
+    fireEvent.click(screen.getByRole('button', { name: /Edit price & specs/ }))
+    const select = await screen.findByLabelText('Category')
+    await waitFor(() => expect(select).toHaveValue('11'))
+    // A service category is not offered for a product.
+    expect(screen.queryByRole('option', { name: 'Tailoring' })).not.toBeInTheDocument()
+    fireEvent.change(select, { target: { value: '12' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(onChanged).toHaveBeenCalled())
+    expect(revision).toEqual({ changes: { category: 12 } })
+  })
+})
+
 describe('OwnerListingCard drop, restore and discontinue', () => {
   it('Drop asks for confirmation and says it can be reversed', async () => {
     let drops = 0

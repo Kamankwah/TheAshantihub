@@ -762,6 +762,43 @@ class ListingSponsoredView(APIView):
         return Response({"id": listing.pk, "sponsored": listing.sponsored})
 
 
+class ListingCategoryMoveView(APIView):
+    """POST /api/listings/<id>/category/ {"category": <id>} - staff move a listing to another category at once, with
+    no approval round (`categories.manage`: marketing, operations, super admin). The new category must be the same
+    sort of listing (product, food, service, stay) so the answers already given still apply, must match the business's
+    registered kind, and must allow variants when the listing has any. The move is recorded in the activity log."""
+
+    def get_permissions(self):
+        return [HasRolePermission("categories.manage")]
+
+    def post(self, request, pk):
+        from cart import guard
+        from . import pricing
+
+        listing = generics.get_object_or_404(Listing.objects.select_related("category", "business_owner"), pk=pk)
+        try:
+            target = Category.objects.get(pk=int(request.data.get("category")))
+        except (TypeError, ValueError, Category.DoesNotExist):
+            return Response({"category": "Choose a category."}, status=400)
+        old = listing.category
+        if target.pk == old.pk:
+            return Response({"category": "It is already in that category."}, status=400)
+        if guard.kind_of_category(target) != guard.kind_of_category(old):
+            return Response({"category": "Choose a category of the same kind. Products, services and stays have different details."}, status=400)
+        profile = getattr(listing.business_owner, "profile", None)
+        if profile is not None and profile.business_kind and target.kind and target.kind != profile.business_kind:
+            return Response({"category": f"This business is registered for {profile.business_kind} listings only."}, status=400)
+        if not pricing.sale_allowed(target) and variants.has_variants(listing):
+            return Response({"category": "Only products and food can have variants. Remove the variants first."}, status=400)
+        listing.category = target
+        listing.save(update_fields=["category", "updated_at"])
+        activity_record(
+            request.user, "listing-category-move", target=listing, method="POST", request=request,
+            summary=f"Moved {listing.name} from {old.label} to {target.label}",
+        )
+        return Response({"id": listing.pk, "category": target.pk, "category_label": target.label})
+
+
 class SponsoredListView(APIView):
     """GET /api/listings/sponsored/ - every listing flagged sponsored now, newest change first, for the Marketing
     Sponsored products screen (`deals.manage`). Read straight from the flag, not from the Deals feed, so a flagged
