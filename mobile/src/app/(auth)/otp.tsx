@@ -2,7 +2,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, Text } from "react-native";
 
-import { messageFor, otpSend, otpVerify } from "../../lib/authApi";
+import { challengeParams, messageFor, otpSend, otpVerify } from "../../lib/authApi";
 import { resumeRegistration } from "../../lib/registrationApi";
 import { useAuth } from "../../state/auth";
 import { fonts } from "../../theme/fonts";
@@ -13,10 +13,13 @@ import { Screen } from "../../ui/Screen";
 
 export default function Otp() {
   const { c } = useTheme();
-  const { mfa_token, channels, kind } = useLocalSearchParams<{ mfa_token: string; channels?: string; kind?: string }>();
+  const { mfa_token, channels, kind, authenticator } = useLocalSearchParams<{ mfa_token: string; channels?: string; kind?: string; authenticator?: string }>();
+  const app = authenticator === "1";
   const accountType = kind === "business_owner" ? "business_owner" : "customer";
   const channel = (channels ?? "sms").split(",")[0] || "sms";
   const [code, setCode] = useState("");
+  const [recovery, setRecovery] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState("");
   const [hint, setHint] = useState<string>();
   const [wait, setWait] = useState(0);
   const [error, setError] = useState<string>();
@@ -34,7 +37,7 @@ export default function Otp() {
   }
 
   useEffect(() => {
-    void send();
+    if (!app) void send(); // an authenticator app code is not sent: the app already has it
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -48,19 +51,47 @@ export default function Otp() {
     setBusy(true);
     setError(undefined);
     try {
-      const result = await otpVerify({ mfa_token: String(mfa_token), code }, accountType);
+      const result = await otpVerify(recovery ? { mfa_token: String(mfa_token), recovery_code: recoveryCode.trim() } : { mfa_token: String(mfa_token), code }, accountType);
       if (result.kind === "signedIn") {
         await useAuth.getState().signIn(result.body);
         if (accountType === "business_owner") await resumeRegistration();
         else router.replace("/");
       } else {
-        router.push({ pathname: "/otp", params: { mfa_token: result.challenge.mfa_token, channels: result.challenge.channels.join(","), kind: accountType } });
+        router.push({ pathname: "/otp", params: challengeParams(result.challenge, accountType === "business_owner" ? "business_owner" : undefined) });
       }
     } catch (e) {
       setError(messageFor(e, "That code is not right. Check it and try again."));
     } finally {
       setBusy(false);
     }
+  }
+
+  if (app) {
+    return (
+      <Screen>
+        <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 30 }}>Enter the code from your authenticator app</Text>
+        <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 15 }}>
+          {recovery ? "Type one of the recovery codes you saved when you turned the app on. Each works once." : "Open your authenticator app and type the 6-digit code it shows for AshantiHub."}
+        </Text>
+        {recovery ? (
+          <Field label="Recovery code" value={recoveryCode} onChangeText={setRecoveryCode} autoCapitalize="none" autoCorrect={false} error={error} style={{ fontFamily: fonts.mono, fontSize: 18 }} />
+        ) : (
+          <Field
+            label="6-digit code"
+            value={code}
+            onChangeText={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))}
+            keyboardType="number-pad"
+            maxLength={6}
+            error={error}
+            style={{ fontFamily: fonts.mono, letterSpacing: 6, fontSize: 22 }}
+          />
+        )}
+        <Button label="Verify" onPress={verify} loading={busy} disabled={recovery ? recoveryCode.trim().length < 8 : code.length !== 6} />
+        <Pressable accessibilityRole="button" accessibilityLabel={recovery ? "Use the app code instead" : "Use a recovery code instead"} onPress={() => { setRecovery((r) => !r); setError(undefined); }} style={{ minHeight: 48, justifyContent: "center" }}>
+          <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, textAlign: "center", textDecorationLine: "underline" }}>{recovery ? "Use the app code instead" : "Use a recovery code instead"}</Text>
+        </Pressable>
+      </Screen>
+    );
   }
 
   return (

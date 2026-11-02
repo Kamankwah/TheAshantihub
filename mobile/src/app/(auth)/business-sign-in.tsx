@@ -2,7 +2,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { messageFor } from "../../lib/authApi";
+import { messageFor, challengeParams } from "../../lib/authApi";
 import { ownerLogin, signInAndResume } from "../../lib/registrationApi";
 import { fonts } from "../../theme/fonts";
 import { useTheme } from "../../theme/useTheme";
@@ -25,7 +25,7 @@ export default function BusinessSignIn() {
       if (result.kind === "challenge") {
         router.push({
           pathname: "/otp",
-          params: { mfa_token: result.challenge.mfa_token, channels: result.challenge.channels.join(","), kind: "business_owner" },
+          params: challengeParams(result.challenge, "business_owner"),
         });
       } else {
         await signInAndResume(result);

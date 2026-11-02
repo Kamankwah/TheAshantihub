@@ -88,11 +88,9 @@ describe("review fix 3: sign-in challenges", () => {
     const r = toResult({ mfa_token: "t", channels: [{ channel: "sms", hint: "•••4567" }, { channel: "email", hint: "a•••@x.com" }] }, "customer");
     expect(r.kind === "challenge" && r.challenge.channels).toEqual(["sms", "email"]);
   });
-  it("authenticator_accounts_get_a_clear_message_not_a_dead_code_form", () => {
-    expect(() => toResult({ two_factor_required: true, mfa_token: "t" }, "business_owner")).toThrow();
-    try { toResult({ two_factor_required: true, mfa_token: "t" }, "business_owner"); } catch (e) {
-      expect(messageFor(e, "x")).toMatch(/authenticator app.*website/i);
-    }
+  it("authenticator_accounts_get_their_own_challenge_not_a_dead_end", () => {
+    const r = toResult({ two_factor_required: true, mfa_token: "t" }, "business_owner");
+    expect(r.kind === "challenge" && r.challenge).toEqual({ mfa_token: "t", channels: [], authenticator: true });
   });
   it("staff_refusal_says_use_the_web_dashboard_not_a_token", () => {
     const e = new ApiError(403, { token: "eyJhbGciOi...", full_name: "S" }, "staff_not_supported");
