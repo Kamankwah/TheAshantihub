@@ -88,6 +88,7 @@ urlpatterns = [
     path("<int:pk>/related/", views.RelatedListingsView.as_view(), name="listing-related"),
     path("<int:pk>/view/", views_viewed.ListingViewRecordView.as_view(), name="listing-view-record"),
     path("<int:pk>/also-viewed/", views_viewed.AlsoViewedView.as_view(), name="listing-also-viewed"),
+    path("<int:pk>/category/", views.ListingCategoryMoveView.as_view(), name="listing-category-move"),
     path("<int:pk>/sponsored/", views.ListingSponsoredView.as_view(), name="listing-sponsored"),
     path("<int:pk>/promote/", views.ListingPromoteView.as_view(), name="listing-promote"),
 ]

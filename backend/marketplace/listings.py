@@ -106,6 +106,7 @@ def item(listing, counts):
         "business_name": owner.display_name,
         "type": listing_type(listing),
         "category": listing.category.label,
+        "category_id": listing.category_id,
         "price_amount": str(listing.price_amount) if listing.price_amount is not None else None,
         "price_unit": listing.price_unit,
         "status": listing.status,

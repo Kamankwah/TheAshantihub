@@ -224,6 +224,36 @@ describe('SaListingsPanel', () => {
     expect(screen.queryByRole('button', { name: /as sponsored/ })).toBeNull()
   })
 
+  it('moves a listing to another category of the same kind, and offers it only with categories.manage', async () => {
+    const seen = []
+    setup()
+    server.use(
+      http.get(`${API}/api/listings/categories/`, () => HttpResponse.json([
+        { id: 5, label: 'Fashion', kind: 'product', parent: null },
+        { id: 6, label: 'Fabrics', kind: 'product', parent: null },
+        { id: 7, label: 'Tailoring', kind: 'service', parent: null },
+      ])),
+      http.get(`${API}/api/marketplace/listings/`, () => HttpResponse.json(page([
+        { ...base, id: 1, category_id: 5, name: 'Handwoven kente stole', status: 'published', state: 'live', state_note: '' },
+      ]))),
+      http.post(`${API}/api/listings/:id/category/`, async ({ request, params }) => { seen.push({ id: params.id, ...(await request.json()) }); return HttpResponse.json({ id: 1, category: 6 }) }),
+    )
+    const { unmount } = renderPanel(<SaListingsPanel auth={SA} />)
+    const table = await screen.findByRole('table', { name: 'Listings' })
+    fireEvent.click(within(table).getByRole('button', { name: 'Move Handwoven kente stole to another category' }))
+    const form = await screen.findByRole('form', { name: 'Move Handwoven kente stole' })
+    await waitFor(() => expect(within(form).getByRole('option', { name: 'Fabrics' })).toBeInTheDocument())
+    expect(within(form).queryByRole('option', { name: 'Tailoring' })).toBeNull()
+    fireEvent.change(within(form).getByLabelText('New category'), { target: { value: '6' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Move' }))
+    await waitFor(() => expect(seen).toEqual([{ id: '1', category: 6 }]))
+    expect(await screen.findByText(/Moved “Handwoven kente stole” to Fabrics/)).toBeInTheDocument()
+    unmount()
+    renderPanel(<SaListingsPanel auth={{ ...SA, hasPermission: (c) => c !== 'categories.manage' }} />)
+    await screen.findByRole('table', { name: 'Listings' })
+    expect(screen.queryByRole('button', { name: /to another category/ })).toBeNull()
+  })
+
   it('reaches the changes-to-live-listings queue from a toggle', async () => {
     setup()
     server.use(http.get(`${API}/api/listings/revisions/pending/`, () => HttpResponse.json([
