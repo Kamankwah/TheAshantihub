@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Text, View } from "react-native";
 
 import { isWalletOff, useVendorOverview } from "../../features/wallet/api";
+import { StatementExport } from "../../features/wallet/StatementExport";
 import { DestinationsSection, Notice, WithdrawalsSection, WithdrawButton } from "../../features/wallet/Payouts";
 import { DaysList, FeesList, SalesList, Segments, TABS, type Tab } from "../../features/wallet/VendorMoney";
 import { fonts } from "../../theme/fonts";
@@ -63,7 +64,7 @@ export default function ScreenMoney() {
       <Segments items={TABS} value={tab} onChange={setTab} />
       {tab === "Sales" ? <SalesList kind="sales" /> : null}
       {tab === "Bookings" ? <SalesList kind="bookings" /> : null}
-      {tab === "Days" ? <DaysList /> : null}
+      {tab === "Days" ? <View style={{ gap: 20 }}><DaysList /><StatementExport /></View> : null}
       {tab === "Fees" ? <FeesList /> : null}
       {tab === "Payouts" ? (
         <View style={{ gap: 20 }}>
