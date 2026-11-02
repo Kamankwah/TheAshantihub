@@ -46,24 +46,24 @@ describe('StorefrontHome', () => {
     renderWithClient(home())
     const slider = await screen.findByRole('region', { name: 'Featured slides' })
     const flash = await screen.findByText('Kente week: 20% off woven stoles')
-    const deals = await screen.findByRole('heading', { name: "Today's deals" })
-    const visited = await screen.findByRole('heading', { name: 'Most visited categories' })
+    const tiles = await screen.findByRole('region', { name: 'Departments' })
     const cta = screen.getByRole('heading', { name: 'Sell on AshantiHub' })
     expect(screen.queryByRole('button', { name: 'Notify me' })).not.toBeInTheDocument()
     expect(before(screen.getByRole('search'), slider)).toBe(true)
     expect(before(slider, flash)).toBe(true)
-    // The departments come before the products (deals, new arrivals).
-    expect(before(flash, visited)).toBe(true)
-    expect(before(visited, deals)).toBe(true)
-    expect(before(deals, cta)).toBe(true)
+    // The department tiles come after the banners, with no section headings of their own.
+    expect(before(flash, tiles)).toBe(true)
+    expect(before(tiles, cta)).toBe(true)
+    for (const name of ['Shop by category', 'Most visited categories', "Today's deals", 'New arrivals']) {
+      expect(screen.queryByRole('heading', { name })).not.toBeInTheDocument()
+    }
   })
 
   it('no_contact_details_anywhere', async () => {
     server.use(...fullHome())
     const { container } = renderWithClient(home())
     await screen.findByRole('region', { name: 'Featured slides' })
-    await screen.findByRole('heading', { name: "Today's deals" })
-    await screen.findByRole('heading', { name: 'Most visited categories' })
+    await screen.findByRole('region', { name: 'Departments' })
     await screen.findByText('Kente week: 20% off woven stoles')
     expect(container.querySelectorAll('a[href^="tel:"], a[href^="mailto:"], a[href^="sms:"], a[href*="wa.me"], a[href*="whatsapp"]')).toHaveLength(0)
     expect(container.textContent).not.toMatch(/\+233|\b0[235]\d{8}\b|@[a-z0-9-]+\.[a-z]/i)
