@@ -47,14 +47,16 @@ describe('StorefrontHome', () => {
     const slider = await screen.findByRole('region', { name: 'Featured slides' })
     const flash = await screen.findByText('Kente week: 20% off woven stoles')
     const tiles = await screen.findByRole('region', { name: 'Departments' })
+    const deals = await screen.findByRole('heading', { name: "Today's deals" })
     const cta = screen.getByRole('heading', { name: 'Sell on AshantiHub' })
     expect(screen.queryByRole('button', { name: 'Notify me' })).not.toBeInTheDocument()
     expect(before(screen.getByRole('search'), slider)).toBe(true)
     expect(before(slider, flash)).toBe(true)
-    // The department tiles come after the banners, with no section headings of their own.
+    // The department tiles come after the banners and before the products; the tiles carry no heading of their own.
     expect(before(flash, tiles)).toBe(true)
-    expect(before(tiles, cta)).toBe(true)
-    for (const name of ['Shop by category', 'Most visited categories', "Today's deals", 'New arrivals']) {
+    expect(before(tiles, deals)).toBe(true)
+    expect(before(deals, cta)).toBe(true)
+    for (const name of ['Shop by category', 'Most visited categories']) {
       expect(screen.queryByRole('heading', { name })).not.toBeInTheDocument()
     }
   })

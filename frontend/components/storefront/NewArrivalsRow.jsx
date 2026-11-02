@@ -2,7 +2,7 @@ import { useListings } from "../../hooks/useListings.js";
 import useBreakpoint from "../../hooks/useBreakpoint.js";
 import { C } from "../../theme.js";
 import { ProductTile } from "../shop/ProductCarousel.jsx";
-import { BODY_FONT, HEADING_FONT, SECTION } from "./storefrontType.js";
+import { BODY_FONT, SECTION, VISUALLY_HIDDEN } from "./storefrontType.js";
 
 const FILTERS = { kind: "product", ordering: "-created_at" };
 const COLUMNS = { phone: 2, tablet: 4, desktop: 6 };
@@ -22,7 +22,7 @@ export default function NewArrivalsRow({ onOpen }) {
   return (
     <div style={{ ...SECTION, paddingTop: 28 }}>
       <section aria-label="New arrivals" style={{ margin: "4px 0 28px", fontFamily: BODY_FONT, color: C.ink, minWidth: 0 }}>
-        <h2 style={{ margin: "0 0 12px", fontFamily: HEADING_FONT, fontWeight: 600, fontSize: "1.3rem", lineHeight: 1.15, letterSpacing: "-0.02em", color: C.ink }}>New arrivals</h2>
+        <h2 style={VISUALLY_HIDDEN}>New arrivals</h2>
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: "20px 14px" }}>
           {items.map((item) => (
             <li key={item.id} style={{ minWidth: 0 }}>

@@ -1,4 +1,4 @@
-import { C, tint } from "../../theme.js";
+import { C } from "../../theme.js";
 import { categoryPath, sendCategoryVisit } from "../../hooks/useCategoryTree.js";
 import { useHomeFeed } from "../../hooks/useStorefront.js";
 import { pictureProps } from "../../lib/pictureSrc.js";
@@ -6,7 +6,7 @@ import { BODY_FONT, HEADING_FONT, SECTION } from "./storefrontType.js";
 
 // The department tiles on the home: one picture tile per department from GET /api/storefront/home/ `most_visited`,
 // with no heading above them. The picture is the one Marketing, Operations and Super Admin upload; a department
-// without one shows its icon on a wash of its own colour. A department shows when something is live in it or when
+// without one shows its icon on its own colour. Each tile is the full picture with the department name written over it. A department shows when something is live in it or when
 // staff gave it a picture. A click counts one visit (the beacon) and opens the department. Hidden when the feed is
 // empty or failing.
 function Tile({ node, onOpen }) {
@@ -16,14 +16,12 @@ function Tile({ node, onOpen }) {
       type="button"
       onClick={() => onOpen(node)}
       className="ah-dept-tile"
-      style={{ display: "flex", flexDirection: "column", width: "100%", padding: 0, border: `1px solid ${colour}40`, borderBottom: `4px solid ${colour}`, borderRadius: 16, overflow: "hidden", background: C.surface, textAlign: "left", cursor: "pointer", color: C.ink, fontFamily: BODY_FONT, minWidth: 0, boxShadow: "0 4px 14px rgba(44,24,16,0.08)" }}
+      style={{ position: "relative", display: "block", width: "100%", aspectRatio: "4 / 5", padding: 0, border: "none", borderRadius: 16, overflow: "hidden", background: `linear-gradient(rgba(0,0,0,0.28), rgba(0,0,0,0.28)), ${colour}`, textAlign: "left", cursor: "pointer", color: "#fff", fontFamily: BODY_FONT, minWidth: 0, boxShadow: "0 4px 14px rgba(44,24,16,0.12)" }}
     >
-      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", aspectRatio: "1 / 1", background: tint(colour, "26"), fontSize: "3rem", overflow: "hidden" }}>
-        {node.image
-          ? <img {...pictureProps(node, "(max-width: 600px) 45vw, 260px")} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-          : <span aria-hidden="true">{node.icon}</span>}
-      </span>
-      <span style={{ padding: "10px 12px 12px", fontFamily: HEADING_FONT, fontWeight: 600, fontSize: 16, lineHeight: 1.25, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{node.label}</span>
+      {node.image
+        ? <img {...pictureProps(node, "(max-width: 600px) 45vw, 260px")} alt="" loading="lazy" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        : <span aria-hidden="true" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "4rem", paddingBottom: 28 }}>{node.icon}</span>}
+      <span style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "36px 12px 12px", background: "linear-gradient(to top, rgba(20,10,5,0.82), rgba(20,10,5,0))", fontFamily: HEADING_FONT, fontWeight: 600, fontSize: 18, lineHeight: 1.2, letterSpacing: "-0.01em", textShadow: "0 1px 2px rgba(0,0,0,0.4)" }}>{node.label}</span>
     </button>
   );
 }
