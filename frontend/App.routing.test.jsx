@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import AshantiHub from './App.jsx'
 import { apiFetch, getStoredAuth, setStoredAuth } from './apiClient.js'
 import { server } from './mocks/server.js'
@@ -33,6 +33,10 @@ function renderAtPath(path) {
     </QueryClientProvider>,
   )
 }
+
+// The staff shell is React.lazy in App.jsx; importing it once up front keeps the first lazy
+// load (a cold transform of the whole shell) out of the 3 s findBy timeouts below.
+beforeAll(() => import('./components/admin/AdminCommandCenter.jsx'), 30000)
 
 describe('AshantiHub routing', () => {
   it(
