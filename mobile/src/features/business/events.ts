@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../../lib/api";
+import { asArray } from "../../lib/asArray";
 import type { Feather } from "@expo/vector-icons";
 
 export type OwnerEvent = {
@@ -15,10 +16,10 @@ export type OwnerTicketType = {
   quantity_sold: number; quantity_remaining: number | null; is_active: boolean;
 };
 
-export const useMyEvents = () => useQuery({ queryKey: ["owner-events"], queryFn: () => api<OwnerEvent[]>("/api/events/mine/") });
-export const usePricingTiers = () => useQuery({ queryKey: ["event-pricing-tiers"], staleTime: 10 * 60_000, queryFn: () => api<PricingTier[]>("/api/events/pricing-tiers/", { auth: false }) });
+export const useMyEvents = () => useQuery({ queryKey: ["owner-events"], queryFn: async () => asArray<OwnerEvent>(await api<unknown>("/api/events/mine/")) });
+export const usePricingTiers = () => useQuery({ queryKey: ["event-pricing-tiers"], staleTime: 10 * 60_000, queryFn: async () => asArray<PricingTier>(await api<unknown>("/api/events/pricing-tiers/", { auth: false })) });
 export const useOwnerTicketTypes = (eventId: string) =>
-  useQuery({ queryKey: ["owner-ticket-types", eventId], queryFn: () => api<OwnerTicketType[]>(`/api/events/${eventId}/ticket-types/mine/`) });
+  useQuery({ queryKey: ["owner-ticket-types", eventId], queryFn: async () => asArray<OwnerTicketType>(await api<unknown>(`/api/events/${eventId}/ticket-types/mine/`)) });
 
 export type EventForm = {
   category: number | null; zone: number | null; name: string; description: string; address: string;

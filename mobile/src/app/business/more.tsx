@@ -22,6 +22,7 @@ export default function BusinessMore() {
       </View>
       <SectionTitle>Your business</SectionTitle>
       <View style={{ gap: 8 }}>
+        <LinkRow label="Promotions" onPress={go("/manage/promotions")} />
         <LinkRow label="Your events" onPress={go("/manage/events")} />
         <LinkRow label="Opening hours" onPress={go("/manage/hours")} />
         <LinkRow label="Verification" onPress={go("/manage/verification")} />

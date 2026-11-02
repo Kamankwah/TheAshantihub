@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../../lib/api";
+import { asArray } from "../../lib/asArray";
 import type { Money } from "../bookings/terms";
 
 export type TicketType = { id: number; name: string; description?: string; price: string; delivery_method: string; quantity_remaining: number | null };
@@ -10,9 +11,9 @@ export type Ticket = {
 };
 
 export const useTicketTypes = (eventId: string, enabled: boolean) =>
-  useQuery({ queryKey: ["ticket-types", eventId], enabled, queryFn: () => api<TicketType[]>(`/api/events/${eventId}/ticket-types/`, { auth: false }) });
+  useQuery({ queryKey: ["ticket-types", eventId], enabled, queryFn: async () => asArray<TicketType>(await api<unknown>(`/api/events/${eventId}/ticket-types/`, { auth: false })) });
 
-export const useMyTickets = () => useQuery({ queryKey: ["tickets", "mine"], queryFn: () => api<Ticket[]>("/api/events/tickets/mine/") });
+export const useMyTickets = () => useQuery({ queryKey: ["tickets", "mine"], queryFn: async () => asArray<Ticket>(await api<unknown>("/api/events/tickets/mine/")) });
 
 /** The ticket's status in plain words: refunded first, then delivered, then the escrow state (the web's wording). */
 export function ticketStatus(t: Pick<Ticket, "refunded_at" | "delivered_at" | "escrow_status">): string {

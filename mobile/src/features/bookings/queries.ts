@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../../lib/api";
+import { asArray } from "../../lib/asArray";
 import type { Money } from "./terms";
 
 export type Booking = {
@@ -13,8 +14,8 @@ export type ServiceRequest = {
   paid_at: string | null; completed_at: string | null; created_at: string; auto_accept_at: string | null; settled: boolean; problem_reported: boolean; money: Money | null;
 };
 
-export const useMyBookings = () => useQuery({ queryKey: ["my-bookings"], queryFn: () => api<Booking[]>("/api/bookings/mine/") });
-export const useMyRequests = () => useQuery({ queryKey: ["my-requests"], queryFn: () => api<ServiceRequest[]>("/api/services/requests/mine/") });
+export const useMyBookings = () => useQuery({ queryKey: ["my-bookings"], queryFn: async () => asArray<Booking>(await api<unknown>("/api/bookings/mine/")) });
+export const useMyRequests = () => useQuery({ queryKey: ["my-requests"], queryFn: async () => asArray<ServiceRequest>(await api<unknown>("/api/services/requests/mine/")) });
 
 export const BOOKING_STATUS: Record<string, string> = {
   pending: "Pending payment", confirmed: "Confirmed", checked_in: "Checked in", checked_out: "Checked out", cancelled: "Cancelled",

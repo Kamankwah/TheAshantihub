@@ -36,7 +36,7 @@ export default function MyTickets() {
                 accessibilityRole="button"
                 accessibilityLabel={`Show ticket ${t.code}`}
                 onPress={() => router.push(`/ticket/${t.id}` as never)}
-                style={{ borderRadius: 12, borderWidth: 1, borderColor: c.line, backgroundColor: c.surface, padding: 14, gap: 4 }}
+                style={{ minHeight: 48, borderRadius: 12, borderWidth: 1, borderColor: c.line, backgroundColor: c.surface, padding: 14, gap: 4 }}
               >
                 <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, fontSize: 16 }}>{t.event.name}</Text>
                 <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>{`${t.ticket_type.name} · ${formatCedis(t.price)}`}</Text>
