@@ -265,3 +265,17 @@ ads are Marketing's). Never hardcode `/api/listings/mine` in a panel.
 - **`components/catalogue/__tests__/CatalogueNoInventionSweep.test.jsx` is the conformance contract** (no contact links, no
   distance, no null shown, tabular prices, no gold on prices or the verified mark). Add every new catalogue screen to it
   (`OtherSellersPanel`, in `components/shop/`, is already covered; its `ShortfallPrompt` sits beside BuyBox's low and out-of-stock lines).
+
+## Home departments and "Deliver to"
+
+- **The home's department section is `DepartmentShowcase`** (cards, one per department from the home feed, up to four
+  sub-category picture tiles each, "See all") followed later by `DepartmentShelves` (a product row per department,
+  each shelf asking for its own `useListings({kind:"product", category})` and hiding itself when empty). The heading
+  says "Most visited categories" only when the feed reports `ranked: true`. A category with no picture shows its icon
+  on a wash of its own `color`; never invent a picture.
+- **Category and zone pictures are uploaded in the staff panel** (`CategoryPictures`, `PictureSlot`; Marketing,
+  Operations and Super Admin hold `categories.manage` / `zones.manage`). The server validates the file; show its message.
+- **`DeliverTo` is the header's location control.** The choice (`ashantihub.deliverTo`: country code + Ghana region) is
+  stored only on a tap; detection (`useDeliveryPlace`) only suggests: it asks the browser for the location once per session on arrival
+  (the browser's own prompt; a blocked site is never asked) and again from "Use my current location". Door-to-door delivery is Ashanti only (`lib/deliveryPlace.js` `deliveryNote`); never add a delivery time or fee
+  there. Reverse geocoding is `reverseGeocodePlace` (Nominatim, a suggestion).

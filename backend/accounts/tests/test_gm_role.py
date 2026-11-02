@@ -26,6 +26,8 @@ class GmSeedTests(TestCase):
         makers = {"users.manage", "delivery_promo.approve", "redelivery_fee.manage"}
         # direct.operate (marketplace plan 2) is Operations' alone: the GM is the checker of what Operations makes for Ashanti Direct.
         makers.add("direct.operate")
+        # categories.manage (accounts 0076) is a maker's tool too: Marketing, Operations and Super Admin run categories and their pictures.
+        makers.add("categories.manage")
         self.assertEqual((perms("operations") - makers) - gm, set())
         self.assertEqual(gm & makers, set())
         self.assertTrue({"kyc.approve", "listings.moderate", "event.approve", "hero_media.approve"} <= gm)

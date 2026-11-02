@@ -4,6 +4,7 @@ import { useCategories } from "../../../../hooks/useCategories.js";
 import { apiErrorMessage } from "../../../../lib/apiErrorMessage.js";
 import { C } from "../../../../theme.js";
 import { D } from "../../theme.js";
+import CategoryPictures from "../CategoryPictures.jsx";
 import { Loading, PageHead, Section, button, dim, errorStyle, inputStyle, labelStyle, page, scroll, table, td, th } from "./mkParts.jsx";
 
 // ─── 21 Categories (the categories half of CategoriesZonesPanel, for Marketing) ──
@@ -67,6 +68,7 @@ export default function CategoriesMarketing({ auth }) {
       {refused && <div role="alert" style={{ ...errorStyle, color: D.text }}><b>{"“"}{refused.label}{"”"} wasn{"’"}t deleted.</b> {refused.detail}</div>}
       {categories.isLoading || categories.isError ? <Loading error={categories.isError} onRetry={categories.refetch} what="categories" /> : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
+          <div style={{ gridColumn: "1 / -1" }}><CategoryPictures canEdit={canManage} /></div>
           <Section id="all-cats" title={`All categories · ${rows.length}`}>
             <div style={scroll}>
               <table style={table}>
