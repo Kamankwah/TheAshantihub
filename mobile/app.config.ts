@@ -51,7 +51,10 @@ const config: ExpoConfig = {
     ],
   ],
   experiments: { typedRoutes: true, reactCompiler: true },
-  extra: { apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL },
+  extra: {
+    apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL,
+    eas: { projectId: "aef33392-3255-437b-85d2-c888f1532348" },
+  },
 };
 
 export default config;
