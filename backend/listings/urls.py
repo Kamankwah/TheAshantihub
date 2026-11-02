@@ -56,9 +56,11 @@ urlpatterns = [
     path("categories/", views.CategoryListView.as_view(), name="category-list"),
     path("categories/tree/", views.CategoryTreeView.as_view(), name="category-tree"),
     path("categories/<int:pk>/visit/", views.CategoryVisitView.as_view(), name="category-visit"),
+    path("categories/<int:pk>/image/", views.CategoryImageView.as_view(), name="category-image"),
     path("categories/<int:pk>/", views.CategoryDetailView.as_view(), name="category-detail"),
     path("zones/", views.ZoneListView.as_view(), name="zone-list"),
     path("zones/summary/", views.ZoneSummaryView.as_view(), name="zone-summary"),
+    path("zones/<int:pk>/image/", views.ZoneImageView.as_view(), name="zone-image"),
     path("zones/<int:pk>/", views.ZoneDetailView.as_view(), name="zone-detail"),
     # Before the `<int:pk>/` patterns below, so "promotions" is never parsed
     # as a listing id.

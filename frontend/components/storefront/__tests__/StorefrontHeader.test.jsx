@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../../mocks/server.js'
 import { gatedOpening } from '../../../mocks/opening.js'
 import { TREE, TREE_URL, VISIT_URL, json } from '../../../mocks/storefront.js'
@@ -37,6 +37,9 @@ function props(extra = {}) {
 const CUSTOMER = { fullName: 'Ama Boateng', accountType: 'customer', id: 1 }
 
 describe('StorefrontHeader', () => {
+  // The delivery panel opens itself once per session while nothing is chosen; these tests are about the rest of the header.
+  beforeEach(() => { localStorage.clear(); sessionStorage.setItem('ashantihub.deliverToAsked', '1') })
+
   it('wishlist_and_cart_present_cart_greyed_before_opening', async () => {
     server.use(gatedOpening({ opensAt: '2026-11-06T06:00:00Z', serverNow: '2026-11-03T06:00:00Z' }))
     const p = props({ wishlistCount: 2 })
@@ -61,10 +64,10 @@ describe('StorefrontHeader', () => {
     expect(p.setShowCart).toHaveBeenCalledWith(true)
   })
 
-  it('deliver to Ghana when signed out — no invented address', () => {
+  it('asks the shopper to choose a location when signed out — no invented address', () => {
     renderWithClient(<StorefrontHeader {...props()} />)
     expect(screen.getByText('Deliver to')).toBeInTheDocument()
-    expect(screen.getByText('Ghana')).toBeInTheDocument()
+    expect(screen.getByText('Choose location')).toBeInTheDocument()
   })
 
   it("shows a signed-in customer's saved address", async () => {

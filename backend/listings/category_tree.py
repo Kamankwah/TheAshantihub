@@ -24,11 +24,15 @@ def _populated_ids():
     return ids
 
 
-def _node(category):
+def _node(category, request=None):
+    from . import image_variants
+    from .serializers import image_url
+
     return {
         "id": category.pk, "slug": category.slug, "label": category.label, "icon": category.icon,
         "color": category.color, "kind": category.kind, "is_accommodation": category.is_accommodation,
-        "children": [],
+        "image": image_url(category.image, request),
+        "image_variants": image_variants.picture_urls(request, category), "children": [],
     }
 
 
@@ -45,10 +49,10 @@ def shopper_ids(categories=None):
     return keep
 
 
-def build_tree(full=False):
+def build_tree(full=False, request=None):
     categories = list(Category.objects.order_by("sort_order", "id"))
     keep = None if full else shopper_ids(categories)
-    nodes = {c.pk: _node(c) for c in categories if keep is None or c.pk in keep}
+    nodes = {c.pk: _node(c, request) for c in categories if keep is None or c.pk in keep}
     roots = []
     for category in categories:
         node = nodes.get(category.pk)

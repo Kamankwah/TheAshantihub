@@ -559,3 +559,11 @@ rating-annotation tests.
 Run through compose; the service is named **`web`**, not `backend`:
 `docker compose run --rm web python manage.py <cmd>`. On the server, target an environment via its
 compose project — see the `deploy` skill.
+
+## Category and zone pictures
+
+`Category.image` and `Zone.image` are set only through `POST`/`DELETE categories/<id>/image/` and `zones/<id>/image/`
+(`listings.views.PictureView`: multipart `image`, sniffed type, 5 MB cap, old file removed on replace or clear, activity
+logged); the serializers expose `image` read-only, and the category tree and `storefront/home/` carry it (the home feed
+also sends each department's first four open sub-categories as `children`). Marketing, Operations and Super Admin hold
+`categories.manage` and `zones.manage` (accounts 0076 gave Operations the former).

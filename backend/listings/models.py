@@ -37,6 +37,13 @@ class Category(models.Model):
     # stay top-level. `sort_order` is the seed order within a parent.
     parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="children")
     sort_order = models.PositiveIntegerField(default=0)
+    # The picture the storefront shows for this category (department tiles, "shop by category" cards). Set by marketing,
+    # operations or super admin through POST/DELETE categories/<id>/image/; blank means the tile shows the icon.
+    image = models.ImageField(
+        upload_to="category_images/", validators=[validate_image_content_type, validate_image_size], null=True, blank=True,
+    )
+    # Resized WebP copies of `image` (listings.image_variants): {"src": <image name>, "thumb": path, ...}. Made when the picture is uploaded.
+    image_variants = models.JSONField(default=dict, blank=True)
 
     @property
     def is_department(self):
@@ -87,6 +94,11 @@ class WishlistItem(models.Model):
 
 class Zone(models.Model):
     name = models.CharField(max_length=50, unique=True)
+    # Optional picture for the zone (set by staff through POST/DELETE zones/<id>/image/); blank means none is shown.
+    image = models.ImageField(
+        upload_to="zone_images/", validators=[validate_image_content_type, validate_image_size], null=True, blank=True,
+    )
+    image_variants = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
         return self.name
