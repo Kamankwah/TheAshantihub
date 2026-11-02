@@ -7,7 +7,8 @@ import { BODY_FONT, HEADING_FONT, SECTION, SECTION_TITLE } from "./storefrontTyp
 // "Shop by category" (headed "Most visited categories" only when the feed reports `ranked: true`, so nothing claims
 // a ranking it lacks): one card per department from GET /api/storefront/home/ `most_visited`, laid out the way
 // Amazon's home does it — the department's name with a "See all" link, then up to four of its sub-categories as
-// picture tiles. Pictures are the ones Marketing, Operations and Super Admin upload; a category without one shows
+// picture tiles. A department with its own picture leads its card with it (a banner that opens the department).
+// Pictures are the ones Marketing, Operations and Super Admin upload; a category without one shows
 // its icon on a wash of its own colour, so a half-pictured catalogue still reads as complete. A department with no
 // open sub-category shows itself as one large tile. A click counts one visit (the beacon). Only departments with something live in them are sent, so no
 // card opens an empty page. Hidden when the feed is empty or failing.
@@ -52,6 +53,11 @@ export default function DepartmentShowcase({ onNavigate }) {
                   <h3 style={{ margin: 0, fontFamily: HEADING_FONT, fontWeight: 600, fontSize: 19, lineHeight: 1.2, letterSpacing: "-0.02em", color: C.ink }}>{row.label}</h3>
                   <button type="button" onClick={() => open(row)} aria-label={`See all ${row.label}`} style={{ border: "none", background: "none", padding: 0, color: C.ink, fontSize: 13, fontWeight: 700, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer", fontFamily: BODY_FONT, whiteSpace: "nowrap" }}>See all</button>
                 </div>
+                {tiles.length > 0 && row.image && (
+                  <button type="button" onClick={() => open(row)} aria-label={`Shop ${row.label}`} className="ah-dept-tile" style={{ display: "block", width: "100%", padding: 0, border: "none", background: tint(row.color || C.gold, "26"), borderRadius: 12, overflow: "hidden", cursor: "pointer", aspectRatio: "16 / 7" }}>
+                    <img {...pictureProps(row, "(max-width: 600px) 90vw, 400px")} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  </button>
+                )}
                 {tiles.length > 0 ? (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
                     {tiles.map((tile) => <Tile key={tile.id} node={{ ...tile, color: row.color }} onOpen={(node) => { sendCategoryVisit(row.id); onNavigate(categoryPath({ ...node, kind: "product" })); }} />)}
