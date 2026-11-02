@@ -39,10 +39,15 @@ const cart = {
   ],
 };
 
-function mockServer(opts: { opening?: object; checkout?: (body: Record<string, unknown>) => unknown; preview?: object; session?: () => object } = {}) {
+function mockServer(opts: { wallet?: object | Error; opening?: object; checkout?: (body: Record<string, unknown>) => unknown; preview?: object; session?: () => object } = {}) {
   apiMock.mockImplementation(async (path: string, init?: { body?: Record<string, unknown>; method?: string; query?: Record<string, unknown> }) => {
     if (path === "/api/cart/") return cart;
     if (path === "/api/cart/guard/") return { listing: { blocked: null } };
+    if (path === "/api/wallet/") {
+      if (opts.wallet instanceof Error) throw opts.wallet;
+      if (opts.wallet) return opts.wallet;
+      throw new ApiError(409, { code: "ledger_off" }, "ledger_off");
+    }
     if (path === "/api/storefront/opening/") return { server_now: new Date().toISOString(), gate_enabled: false, is_open: true, ...opts.opening };
     if (path === "/api/orders/delivery-preview/") return opts.preview ?? { delivery: null };
     if (path === "/api/orders/checkout/") {
@@ -128,6 +133,44 @@ describe("checkout", () => {
     expect(wallet.props.accessibilityState.disabled).toBe(true);
     expect(screen.getByText("Mobile Money")).toBeTruthy();
     expect(screen.queryByText(/card number|saved card|default payment/i)).toBeNull();
+  });
+
+  it("wallet_option_turns_on_only_when_the_server_wallet_covers_the_total", async () => {
+    mockServer({ wallet: { kind: "customer", balance: "1000.00" } });
+    await render(client(<CheckoutScreen />));
+    const wallet = await screen.findByLabelText("AshantiHub wallet, balance GH₵ 1,000.00");
+    expect(wallet.props.accessibilityState.disabled).toBe(false);
+    expect(screen.getByLabelText("Pay GH₵ 900.00 with Mobile Money")).toBeTruthy();
+    await fireEvent.press(wallet);
+    expect(await screen.findByLabelText("Pay GH₵ 900.00 from your wallet")).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText("Pay GH₵ 900.00 from your wallet"));
+    await waitFor(() => expect(router.replace).toHaveBeenCalled());
+    const sent = apiMock.mock.calls.find((c) => c[0] === "/api/orders/checkout/")![1].body;
+    expect(sent.payment_method).toBe("wallet");
+    expect(router.replace).toHaveBeenCalledWith({ pathname: "/order-confirmed", params: { id: "501" } });
+  });
+
+  it("wallet_option_says_balance_too_low_and_cannot_be_chosen", async () => {
+    mockServer({ wallet: { kind: "customer", balance: "100.00" } });
+    await render(client(<CheckoutScreen />));
+    const wallet = await screen.findByLabelText("AshantiHub wallet, balance too low (GH₵ 100.00)");
+    expect(wallet.props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(wallet);
+    await fireEvent.press(await screen.findByLabelText(/^Pay /));
+    await waitFor(() => expect(apiMock.mock.calls.some((c) => c[0] === "/api/orders/checkout/")).toBe(true));
+    expect(apiMock.mock.calls.find((c) => c[0] === "/api/orders/checkout/")![1].body.payment_method).toBe("momo");
+  });
+
+  it("a_wallet_payment_the_server_refuses_shows_its_words_and_places_no_order", async () => {
+    mockServer({
+      wallet: { kind: "customer", balance: "1000.00" },
+      checkout: () => new ApiError(409, { detail: "Your AshantiHub wallet doesn't hold enough for this order.", code: "insufficient_funds" }, "insufficient_funds"),
+    });
+    await render(client(<CheckoutScreen />));
+    await fireEvent.press(await screen.findByLabelText("AshantiHub wallet, balance GH₵ 1,000.00"));
+    await fireEvent.press(await screen.findByLabelText("Pay GH₵ 900.00 from your wallet"));
+    expect(await screen.findByText(/wallet doesn't hold enough/i)).toBeTruthy();
+    expect(router.replace).not.toHaveBeenCalled();
   });
 
   it("delivery_fee_line_says_worked_out_at_checkout_until_the_preview_returns_one", async () => {
