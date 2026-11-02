@@ -55,7 +55,17 @@ class HomeFeedTests(TestCase):
         self.listing("baby")
         slugs = [r["slug"] for r in self.client.get(URL).json()["most_visited"]]
         self.assertIn("baby", slugs)
-        self.assertLessEqual(len(slugs), 8)
+        self.assertLessEqual(len(slugs), 24)
+
+    def test_an_empty_department_with_a_picture_is_listed(self):
+        # Staff uploaded its picture, so it shows even before anything is live in it.
+        department = Category.objects.get(slug="toys-games")
+        self.assertNotIn("toys-games", [r["slug"] for r in self.client.get(URL).json()["most_visited"]])
+        department.image = "category_images/toys.jpg"
+        department.save(update_fields=["image"])
+        rows = self.client.get(URL).json()["most_visited"]
+        self.assertIn("toys-games", [r["slug"] for r in rows])
+        self.assertTrue(next(r for r in rows if r["slug"] == "toys-games")["image"])
 
     def test_ranked_true_when_ordered_by_visits(self):
         self.listing("books")

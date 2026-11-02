@@ -170,12 +170,14 @@ class SponsoredFeedView(APIView):
 
 
 CHILD_TILES = 4
+HOME_DEPARTMENTS = 24
 
 
 class HomeFeedView(APIView):
-    """Public feed for the marketplace home. `most_visited`: up to 8 product departments, most visited over the last
-    30 days first (listings.visits; seed order until there is enough data), keeping only departments a shopper can
-    open (something live in them or below them), so the home never shows an empty department. `ranked`: true only
+    """Public feed for the marketplace home. `most_visited`: up to HOME_DEPARTMENTS product departments, most visited
+    over the last 30 days first (listings.visits; seed order until there is enough data), keeping the departments a
+    shopper can open (something live in them or below them) and any department staff gave a picture, so an uploaded
+    picture always shows; an unpictured department with nothing live is left out. `ranked`: true only
     when the order really comes from visits; false when it fell back to the seed order, so the home does not call a
     seed-ordered list "most visited"."""
 
@@ -193,7 +195,7 @@ class HomeFeedView(APIView):
 
         open_ids = shopper_ids()
         ordered, ranked = most_visited_ranking(limit=1000)
-        departments = [c for c in ordered if c.pk in open_ids][:8]
+        departments = [c for c in ordered if c.pk in open_ids or c.image][:HOME_DEPARTMENTS]
         # Each department also carries up to CHILD_TILES of its open sub-categories (with their pictures) for the
         # home's department cards; a department with no open sub-category sends an empty list.
         children = {}
