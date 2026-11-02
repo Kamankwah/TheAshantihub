@@ -3,10 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { isActive, type Order } from "./status";
 
+/** What the buyer's tracking answers: the rider as a first name, a vehicle and a position, never a phone number. */
 export type Tracking = {
   stage: string;
   stops?: { total: number; done: number; skipped?: number };
-  rider?: { first_name?: string; vehicle_type?: string } | null;
+  rider?: { first_name?: string; vehicle_type?: string; lat?: number; lng?: number; age_s?: number; stale?: boolean } | null;
+  drop?: { lat: number; lng: number } | null;
+  leg?: { to: string; distance_km: number; duration_s?: number; basis?: string } | null;
+  /** [lat, lng] pairs of the road route; null when none could be drawn. */
+  route?: [number, number][] | null;
   rider_busy?: boolean;
 };
 

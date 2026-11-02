@@ -80,7 +80,7 @@ const ROUTES: Record<string, unknown> = {
   "/api/cart/guard/": { listing: { blocked: null } },
   "/api/orders/": [myOrder],
   "/api/orders/501/": myOrder,
-  "/api/orders/501/tracking/": { stage: "picked_up", rider: { first_name: "Kojo", vehicle_type: "motorbike" } },
+  "/api/orders/501/tracking/": { stage: "picked_up", rider: { first_name: "Kojo", vehicle_type: "motorbike", lat: 6.69, lng: -1.62, age_s: 10, stale: false }, drop: { lat: 6.7, lng: -1.63 }, leg: { to: "drop", distance_km: 2.4, duration_s: 400, basis: "road route" }, route: [[6.69, -1.62], [6.7, -1.63]] },
   "/api/orders/owner/": { results: [ownerOrder], next: null },
   "/api/messaging/conversations/": [convo],
   "/api/notifications/": { unread_count: 1, results: [{ id: 1, kind: "order", title: "Order update", body: "Moved on.", is_read: false, created_at: "x" }] },

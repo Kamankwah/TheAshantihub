@@ -6,6 +6,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useOrder, useTracking } from "../../../features/orders/queries";
+import { RiderMap } from "../../../features/orders/RiderMap";
 import { orderStatus, placedOn, STEPS } from "../../../features/orders/status";
 import { api } from "../../../lib/api";
 import { apiMessage } from "../../../lib/errors";
@@ -88,10 +89,7 @@ export default function OrderDetail() {
               );
             })}
             {t?.stops && t.stops.total > 1 ? <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>{`${t.stops.done} of ${t.stops.total} shops collected`}</Text> : null}
-            {t?.rider?.first_name ? (
-              <Text style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 15 }}>{`${t.rider.first_name} is bringing your order${t.rider.vehicle_type ? ` by ${t.rider.vehicle_type}` : ""}.`}</Text>
-            ) : null}
-            {t?.rider_busy ? <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>Your rider is finishing another delivery first.</Text> : null}
+            <RiderMap tracking={t} />
           </View>
         ) : null}
 
