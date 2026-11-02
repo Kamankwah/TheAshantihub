@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { StaffDashboard } from './App.jsx'
 import { server } from './mocks/server.js'
 
@@ -28,6 +28,15 @@ function makeAuth(overrides = {}) {
 }
 
 describe('StaffDashboard', () => {
+  // AdminCommandCenter is React.lazy in App.jsx (code splitting keeps the staff shell out of the
+  // public bundle). A lazy component resolves once and is then synchronous, so load it once here;
+  // every assertion below is unchanged and still sees the shell on the first render.
+  beforeAll(async () => {
+    const { unmount } = renderWithQueryClient(<StaffDashboard auth={makeAuth()} onExit={vi.fn()} />)
+    await screen.findByText(/Akwaaba, Akosua/, {}, { timeout: 15000 })
+    unmount()
+  }, 20000)
+
   it('shows Overview by default with a greeting', () => {
     renderWithQueryClient(<StaffDashboard auth={makeAuth()} onExit={vi.fn()} />)
     expect(screen.getByText(/Akwaaba, Akosua/)).toBeInTheDocument()

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { UserPanel } from './App.jsx'
 import { setStoredAuth } from './apiClient.js'
 import { server } from './mocks/server.js'
@@ -49,6 +49,14 @@ function renderPanel({ at = '/my-account', tab, ...props } = {}) {
 const SECTION = { orders: '/my-account/orders', security: '/my-account/security', lists: '/my-account/lists', messages: '/my-account/messages' }
 
 describe('UserPanel', () => {
+  // AccountHub is React.lazy in App.jsx (code splitting). A lazy component resolves once and is then
+  // synchronous, so load it once here; every assertion below is unchanged.
+  beforeAll(async () => {
+    const { unmount } = renderPanel()
+    await screen.findByRole('heading', { name: 'Your Orders' }, { timeout: 15000 })
+    unmount()
+  }, 20000)
+
   it('opens on the Your Account hub with its eight tiles and the overview beneath', () => {
     renderPanel()
     ;['Your Orders', 'Login & security', 'Your Addresses', 'Your Payments', 'Your Lists', 'Customer Service', 'Your Messages', 'Sell on AshantiHub'].forEach((label) => {
