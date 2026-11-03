@@ -5,6 +5,7 @@ import { useDevicePosition } from "../../../hooks/useDevicePosition.js";
 import { useProspects } from "../../../hooks/useProspects.js";
 import { useRegistrationOptions } from "../../../hooks/useRegistrationOptions.js";
 import CategoryChips from "../../CategoryChips.jsx";
+import { categoryPathLabeler } from "../../../lib/categoryOptions.jsx";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import BusinessHoursEditor from "../../BusinessHoursEditor.jsx";
 import LocationPicker from "../../LocationPicker.jsx";
@@ -283,7 +284,9 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
   const hasPin = form.lat !== "" && form.lng !== "";
   const tooRough = !form.location_is_manual && accuracy != null && accuracy > ROUGH_M;
   const picks = currentPicks(form.business_categories, options.categories);
-  const categoryNames = picks.map((id) => options.categories.find((c) => Number(c.id) === id)?.label).filter(Boolean).join(", ");
+  // Named by department path ("Clothing › Accessories"): sub-category labels repeat across departments.
+  const pathOf = categoryPathLabeler(options.allCategories?.length ? options.allCategories : options.categories);
+  const categoryNames = picks.map((id) => options.categories.find((c) => Number(c.id) === id)).filter(Boolean).map(pathOf).join(", ");
   const zoneName = options.zones.find((z) => String(z.id) === String(form.zone))?.name || "";
   const exact = check.result?.exact || [];
   const canSubmit = check.state === "done" && exact.length === 0 && !submitting && Boolean(photos.signboard_photo);
@@ -572,7 +575,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
               </select>
             </Field>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <CategoryChips label="Categories" categories={options.categories} value={picks} onChange={setCategories} disabled={!form.business_kind} />
+              <CategoryChips label="Categories" categories={options.categories} all={options.allCategories} value={picks} onChange={setCategories} disabled={!form.business_kind} />
               <div style={hintStyle}>Choose every category the business sells or does. The first one you pick is the main one.</div>
               {!form.business_kind ? <div style={hintStyle}>Choose the kind first.</div> : null}
               {categoryHint && <div style={hintStyle}>{categoryHint}</div>}

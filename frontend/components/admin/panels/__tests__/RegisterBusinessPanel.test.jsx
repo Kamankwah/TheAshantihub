@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../../../mocks/server.js'
@@ -273,6 +273,41 @@ describe('RegisterBusinessPanel — several categories', () => {
     takePhotos()
     await screen.findByText(/No exact match/)
     expect(screen.getByText('Offers services · Tailoring, Hotels')).toBeInTheDocument()
+  })
+})
+
+describe('RegisterBusinessPanel — product departments', () => {
+  // Sub-category labels repeat across departments: the chips sit under department headings and every readout names
+  // a pick by its path.
+  const TREE = [
+    { id: 100, slug: 'electronics', icon: '📱', label: 'Electronics', color: '#000080', kind: 'product', parent: null },
+    { id: 101, slug: 'electronics-accessories', icon: '', label: 'Accessories', color: '#000080', kind: 'product', parent: 100 },
+    { id: 200, slug: 'clothing', icon: '👗', label: 'Clothing', color: '#CC0000', kind: 'product', parent: null },
+    { id: 201, slug: 'clothing-accessories', icon: '', label: 'Accessories', color: '#CC0000', kind: 'product', parent: 200 },
+    { id: 1, slug: 'hotels', icon: '🏨', label: 'Hotels', color: '#000080', kind: 'service', parent: null },
+  ]
+  const sectionHeader = (dept) => screen.getAllByRole('button').find((b) => b.hasAttribute('aria-expanded') && b.textContent.includes(dept))
+
+  it('groups product categories by department and the review names each pick by its path', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json(TREE)))
+    mockRegistration()
+    renderPanel()
+    type("Owner's full name (as on Ghana Card)", 'Gifty Asantewaa')
+    type("Owner's phone", '020 123 4761')
+    type('Business name (as on the signboard)', 'Asafo Hair & Beauty')
+    type('Kind of business', 'product')
+    await screen.findByRole('button', { name: /Clothing/, expanded: false })
+    fireEvent.click(sectionHeader('Clothing'))
+    fireEvent.click(within(screen.getByRole('group', { name: /Clothing/ })).getByRole('button', { name: 'Accessories' }))
+    fireEvent.click(sectionHeader('Electronics'))
+    fireEvent.click(within(screen.getByRole('group', { name: /Electronics/ })).getByRole('button', { name: 'Accessories' }))
+    expect(screen.getByText(/^Selected:/)).toHaveTextContent('Selected: Clothing › Accessories (main) · Electronics › Accessories')
+    fillHours()
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
+    await fillLocation()
+    takePhotos()
+    await screen.findByText(/No exact match/)
+    expect(screen.getByText('Sells products · Clothing › Accessories, Electronics › Accessories')).toBeInTheDocument()
   })
 })
 
