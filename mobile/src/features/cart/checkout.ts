@@ -6,6 +6,8 @@ export type CheckoutForm = {
   phone: string;
   gps: string;
   landmark: string;
+  /** How it is paid; Mobile Money unless the person chose their wallet. */
+  payment?: "momo" | "wallet";
   lat?: number;
   lng?: number;
 };
@@ -17,9 +19,10 @@ export function canPay(f: CheckoutForm): boolean {
 }
 
 export function checkoutBody(f: CheckoutForm): Record<string, unknown> {
-  if (f.method === "store_pickup") return { payment_method: "momo", delivery_method: "store_pickup" };
+  const payment_method = f.payment ?? "momo";
+  if (f.method === "store_pickup") return { payment_method, delivery_method: "store_pickup" };
   return {
-    payment_method: "momo",
+    payment_method,
     delivery_method: "door_to_door",
     delivery_address: f.address.trim(),
     delivery_phone: f.phone.trim(),

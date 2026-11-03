@@ -2,6 +2,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 
+import { useHideSplash } from "../lib/useHideSplash";
 import { useSignOutRedirect } from "../lib/useSignOutRedirect";
 import { useAuth } from "../state/auth";
 import { usePrefs } from "../state/prefs";
@@ -18,9 +19,7 @@ export default function RootLayout() {
     void useAuth.getState().bootstrap();
     void usePrefs.getState().hydrate();
   }, []);
-  useEffect(() => {
-    if (ready) SplashScreen.hideAsync();
-  }, [ready]);
+  useHideSplash(ready);
   if (!ready) return null;
   return (
     <AppProviders>

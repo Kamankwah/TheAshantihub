@@ -115,6 +115,16 @@ describe("order detail and tracking", () => {
     expect(screen.queryByText(/whatsapp|call your rider|call the seller/i)).toBeNull();
   });
 
+  it("a_door_delivery_with_a_rider_position_shows_the_map_and_the_distance", async () => {
+    mockDetail(
+      order({ delivery_status: "out_for_delivery", delivery_assignment_status: "picked_up" }),
+      { stage: "picked_up", rider: { first_name: "Kojo", vehicle_type: "motorbike", lat: 6.69, lng: -1.62, age_s: 10, stale: false }, drop: { lat: 6.7, lng: -1.63 }, leg: { to: "drop", distance_km: 2.4, duration_s: 400, basis: "road route" }, route: [[6.69, -1.62], [6.7, -1.63]] },
+    );
+    await render(client(<OrderDetail />));
+    expect(await screen.findByLabelText("Map of your rider and delivery location")).toBeTruthy();
+    expect(screen.getByText("About 2.4 km away · road route")).toBeTruthy();
+  });
+
   it("delivery_code_is_shown_in_the_code_font", async () => {
     mockDetail(order({ delivery_assignment_status: "picked_up", delivery_code: "4821" }));
     await render(client(<OrderDetail />));

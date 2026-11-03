@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { api } from "../../lib/api";
 import type { Listing } from "../browse/types";
+import type { LedgerTerms } from "../bookings/terms";
 
 export type Seller = {
   id: number;
@@ -21,7 +22,7 @@ export type EventSummary = {
 
 export type EventDetail = EventSummary & {
   description?: string;
-  organizer?: { name?: string } | string | null;
+  organizer?: { name?: string; kind?: string } | string | null;
   media?: { id?: number; url?: string; image?: string }[];
   avg_rating?: number | null;
   review_count?: number | null;
@@ -30,31 +31,29 @@ export type EventDetail = EventSummary & {
 
 type Paged<T> = { results?: T[]; next?: string | null };
 
-async function allPages<T>(path: string, seller: string | number): Promise<T[]> {
-  const rows: T[] = [];
-  for (let page = 1; page <= 25; page += 1) {
-    const data = await api<Paged<T>>(path, { auth: false, query: { seller, page } });
-    rows.push(...(data.results ?? []));
-    if (!data.next) break;
-  }
-  return rows;
+/** One page of a seller's rows at a time (20), so a big seller never costs a long chain of requests. */
+function sellerPages<T>(key: string, path: string, seller: string | number, enabled: boolean) {
+  return useInfiniteQuery({
+    queryKey: [key, String(seller)],
+    enabled,
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => api<Paged<T>>(path, { auth: false, query: { seller, page: pageParam } }),
+    getNextPageParam: (last, pages) => (last.next ? pages.length + 1 : undefined),
+    select: (data) => ({ rows: data.pages.flatMap((p) => p.results ?? []), pages: data.pages.length }),
+  });
 }
 
 export const useSeller = (id: string) =>
   useQuery({ queryKey: ["seller", id], retry: false, queryFn: () => api<Seller>(`/api/listings/sellers/${id}/`, { auth: false }) });
 
 export const useSellerListings = (id: string, enabled: boolean) =>
-  useQuery({ queryKey: ["seller-listings", id], enabled, queryFn: () => allPages<Listing & { category?: { kind?: string; is_accommodation?: boolean } }>("/api/listings/", id) });
+  sellerPages<Listing & { category?: { kind?: string; is_accommodation?: boolean } }>("seller-listings", "/api/listings/", id, enabled);
 
-export const useSellerEvents = (id: string, enabled: boolean) =>
-  useQuery({ queryKey: ["seller-events", id], enabled, queryFn: () => allPages<EventSummary>("/api/events/", id) });
+export const useSellerEvents = (id: string, enabled: boolean) => sellerPages<EventSummary>("seller-events", "/api/events/", id, enabled);
 
 export const useEvent = (id: string) =>
   useQuery({ queryKey: ["event", id], queryFn: () => api<EventDetail>(`/api/events/${id}/`, { auth: false }) });
 
-export type BookingTerms = {
-  enabled: boolean;
-  policies?: Record<string, { label: string; text: string; tiers: [number, number][] }>;
-};
+export type BookingTerms = LedgerTerms;
 export const useBookingTerms = () =>
   useQuery({ queryKey: ["booking-terms"], staleTime: 5 * 60_000, queryFn: () => api<BookingTerms>("/api/ledger/booking-terms/", { auth: false }) });

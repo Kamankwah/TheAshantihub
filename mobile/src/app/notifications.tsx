@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
+import { useState } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -18,22 +19,23 @@ export default function NotificationsScreen() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["notifications"], queryFn: () => api<{ unread_count: number; results: Note[] }>("/api/notifications/") });
   const unread = q.data?.unread_count ?? 0;
+  const [problem, setProblem] = useState<string | null>(null);
 
-  async function readAll() {
+  // A failed update says so; it never escapes as an unhandled rejection.
+  async function mark(path: string) {
+    setProblem(null);
     try {
-      await api("/api/notifications/read-all/", { method: "POST" });
+      await api(path, { method: "POST" });
+    } catch {
+      setProblem("We couldn’t update your notifications. Check your connection and try again.");
     } finally {
-      await qc.invalidateQueries({ queryKey: ["notifications"] });
+      await qc.invalidateQueries({ queryKey: ["notifications"] }).catch(() => {});
     }
   }
-  async function readOne(n: Note) {
-    if (n.is_read) return;
-    try {
-      await api(`/api/notifications/${n.id}/read/`, { method: "POST" });
-    } finally {
-      await qc.invalidateQueries({ queryKey: ["notifications"] });
-    }
-  }
+  const readAll = () => mark("/api/notifications/read-all/");
+  const readOne = async (n: Note) => {
+    if (!n.is_read) await mark(`/api/notifications/${n.id}/read/`);
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.canvas }}>
@@ -50,6 +52,7 @@ export default function NotificationsScreen() {
               <Feather name="arrow-left" size={24} color={c.ink} />
             </Pressable>
             <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 30 }}>Notifications</Text>
+            {problem ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 14 }}>{problem}</Text> : null}
             {q.data && q.data.results.length > 0 ? (
               <>
                 <Text accessibilityLiveRegion="polite" style={{ color: c.dim, fontFamily: fonts.bodySemi, fontSize: 14 }}>{unread > 0 ? `${unread} unread` : "All caught up"}</Text>

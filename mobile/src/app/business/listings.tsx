@@ -7,6 +7,7 @@ import { FILTERS, listingStatus } from "../../features/business/listingStatus";
 import { useMyListings } from "../../features/business/queries";
 import { fonts } from "../../theme/fonts";
 import { useTheme } from "../../theme/useTheme";
+import { Button } from "../../ui/Button";
 import { EmptyState } from "../../ui/EmptyState";
 import { Pill } from "../../ui/Pill";
 import { Price } from "../../ui/Price";
@@ -30,6 +31,7 @@ export default function BusinessListings() {
         ListHeaderComponent={
           <View style={{ gap: 12 }}>
             <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 30 }}>Listings</Text>
+            <Button label="New listing" onPress={() => router.push("/manage/new-listing" as never)} />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }} style={{ height: 44, flexGrow: 0 }}>
               {FILTERS.map((f) => {
                 const on = f.key === filter;
@@ -54,7 +56,7 @@ export default function BusinessListings() {
           q.isPending ? <Skeleton height={100} /> : q.isError ? (
             <EmptyState title="We couldn’t load your listings" action={{ label: "Try again", onPress: () => void q.refetch() }} />
           ) : (
-            <EmptyState title="Nothing here" body={filter === "all" ? "Add your first listing on the AshantiHub website; you can manage it here." : "No listings with this status."} />
+            <EmptyState title="Nothing here" body={filter === "all" ? "Add your first listing with the New listing button." : "No listings with this status."} />
           )
         }
         renderItem={({ item: l }) => {

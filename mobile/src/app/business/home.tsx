@@ -2,6 +2,8 @@ import { router } from "expo-router";
 import { Linking, Pressable, Text, View } from "react-native";
 
 import { useHoursStatus, useMe, useStock } from "../../features/business/queries";
+import { buildSpendSeries, useSpend } from "../../features/business/spend";
+import { SpendChart } from "../../features/business/SpendChart";
 import { toPrepare, useOwnerOrders } from "../../features/business/orders";
 import { SUPPORT_WHATSAPP } from "../../lib/config";
 import { fonts } from "../../theme/fonts";
@@ -17,6 +19,7 @@ export default function BusinessHome() {
   const orders = useOwnerOrders();
   const stock = useStock();
   const hours = useHoursStatus();
+  const spend = useSpend();
   const waiting = (orders.data?.pages ?? []).flatMap((p) => p.results).filter(toPrepare).length;
   const more = !!orders.hasNextPage;
   const low = stock.data?.results.filter((r) => r.low) ?? [];
@@ -58,6 +61,8 @@ export default function BusinessHome() {
           ))}
         </View>
       ) : null}
+
+      {spend.data ? <SpendChart series={buildSpendSeries(spend.data)} /> : null}
 
       <View style={{ gap: 10 }}>
         <Button

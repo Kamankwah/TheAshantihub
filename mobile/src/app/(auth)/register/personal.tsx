@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Text } from "react-native";
 
 import { RegistrationHeader } from "../../../features/business/RegistrationHeader";
-import { messageFor } from "../../../lib/authApi";
+import { messageFor, challengeParams } from "../../../lib/authApi";
 import { ownerRegister, signInAndResume } from "../../../lib/registrationApi";
 import { fonts } from "../../../theme/fonts";
 import { useTheme } from "../../../theme/useTheme";
@@ -35,7 +35,7 @@ export default function Personal() {
       if (result.kind === "challenge") {
         router.push({
           pathname: "/otp",
-          params: { mfa_token: result.challenge.mfa_token, channels: result.challenge.channels.join(","), kind: "business_owner" },
+          params: challengeParams(result.challenge, "business_owner"),
         });
       } else {
         await signInAndResume(result);

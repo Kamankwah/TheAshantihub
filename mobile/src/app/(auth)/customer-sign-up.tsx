@@ -3,7 +3,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { customerRegister, messageFor } from "../../lib/authApi";
+import { customerRegister, messageFor, challengeParams } from "../../lib/authApi";
 import { useAuth } from "../../state/auth";
 import { fonts } from "../../theme/fonts";
 import { useTheme } from "../../theme/useTheme";
@@ -72,7 +72,7 @@ export default function CustomerSignUp() {
       if (result.kind === "challenge") {
         router.push({
           pathname: "/otp",
-          params: { mfa_token: result.challenge.mfa_token, channels: result.challenge.channels.join(",") },
+          params: challengeParams(result.challenge),
         });
       } else {
         await useAuth.getState().signIn(result.body);

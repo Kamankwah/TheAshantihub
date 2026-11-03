@@ -1,6 +1,5 @@
 import { Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
-import * as WebBrowser from "expo-web-browser";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
@@ -9,8 +8,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useCanBuy, useListing } from "../../features/listing/queries";
 import type { ListingDetail } from "../../features/listing/types";
 import { addDays, DateField, isoDay } from "../../features/seller/DateField";
+import { PayChoice } from "../../features/pay/PayChoice";
+import { postPayment } from "../../features/pay/settle";
+import { usePayChoice } from "../../features/pay/usePayChoice";
 import { useBookingTerms } from "../../features/seller/queries";
 import { api, ApiError } from "../../lib/api";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiMessage } from "../../lib/errors";
 import { useAuth } from "../../state/auth";
 import { fonts } from "../../theme/fonts";
@@ -53,20 +56,20 @@ function StayBooking({ listing }: { listing: ListingDetail }) {
     queryFn: () => api<Quote>("/api/bookings/availability/", { query: { listing: listing.id, check_in: isoDay(checkIn), check_out: isoDay(checkOut), units } }),
   });
   const q = quote.data;
-  const ready = canBuy && !!q?.available && q.total_price != null && units <= (q?.units_free ?? 0);
+  const choice = usePayChoice({ amount: q?.total_price ?? "0", enabled: !!q?.available && q.total_price != null });
+  const qc = useQueryClient();
+  const ready = canBuy && !!q?.available && q.total_price != null && units <= (q?.units_free ?? 0) && choice.ready;
 
   async function book() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api<{ mode?: string; checkout_url?: string }>("/api/bookings/", {
-        body: { listing: listing.id, check_in: isoDay(checkIn), check_out: isoDay(checkOut), units },
-      });
-      if (res?.mode === "redirect" && res.checkout_url) {
-        await WebBrowser.openBrowserAsync(res.checkout_url);
-        return;
-      }
-      setDone(true);
+      const res = await postPayment("/api/bookings/", { listing: listing.id, check_in: isoDay(checkIn), check_out: isoDay(checkOut), units, ...choice.body });
+      void qc.invalidateQueries({ queryKey: ["my-bookings"] });
+      void qc.invalidateQueries({ queryKey: ["wallet"] });
+      if (res.status === "immediate" || res.status === "paid") setDone(true);
+      else if (res.status === "failed") setError("The payment didn’t go through. Your booking was not made. Try again.");
+      else if (res.status === "timeout") setError("We’re still waiting for your payment. Check Bookings and requests in a few minutes before paying again.");
     } catch (e) {
       setError(e instanceof ApiError && e.status === 409 ? "Those dates aren’t available. Try different dates." : apiMessage(e, "We couldn’t book this stay. Try again."));
     } finally {
@@ -78,8 +81,9 @@ function StayBooking({ listing }: { listing: ListingDetail }) {
     return (
       <View style={{ gap: 12 }}>
         <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 24 }}>Booking confirmed</Text>
-        <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 15 }}>{`${listing.name}, ${isoDay(checkIn)} to ${isoDay(checkOut)}. You can manage this booking on the AshantiHub website, or ask Support.`}</Text>
-        <Button label="Contact Support" onPress={() => router.replace({ pathname: "/support/new", params: { about: listing.name, listing: String(listing.id) } } as never)} />
+        <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 15 }}>{`${listing.name}, ${isoDay(checkIn)} to ${isoDay(checkOut)}. You can see and manage it under Bookings and requests.`}</Text>
+        <Button label="View my bookings" onPress={() => router.push("/bookings" as never)} />
+        <Button variant="secondary" label="Contact Support" onPress={() => router.replace({ pathname: "/support/new", params: { about: listing.name, listing: String(listing.id) } } as never)} />
       </View>
     );
   }
@@ -105,6 +109,7 @@ function StayBooking({ listing }: { listing: ListingDetail }) {
       ) : null}
       {quote.isError ? <EmptyState title="We couldn’t check those dates" action={{ label: "Try again", onPress: () => void quote.refetch() }} /> : null}
       <Policy listing={listing} />
+      {q?.available && q.total_price != null ? <PayChoice choice={choice} /> : null}
       {!canBuy && message ? <Text style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 14 }}>{message}</Text> : null}
       {error ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 14 }}>{error}</Text> : null}
       <Button label="Book this stay" onPress={book} loading={busy} disabled={!ready} />
@@ -137,8 +142,9 @@ function ServiceRequest({ listing }: { listing: ListingDetail }) {
     return (
       <View style={{ gap: 12 }}>
         <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 24 }}>Request sent</Text>
-        <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 15 }}>AshantiHub will let you know when the business replies with a quote. You can accept and pay on the AshantiHub website, or ask Support.</Text>
-        <Button label="Contact Support" onPress={() => router.replace({ pathname: "/support/new", params: { about: listing.name, listing: String(listing.id) } } as never)} />
+        <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 15 }}>AshantiHub will let you know when the business replies with a quote. When it does, pay for it under Bookings and requests.</Text>
+        <Button label="View my requests" onPress={() => router.push("/bookings" as never)} />
+        <Button variant="secondary" label="Contact Support" onPress={() => router.replace({ pathname: "/support/new", params: { about: listing.name, listing: String(listing.id) } } as never)} />
       </View>
     );
   }

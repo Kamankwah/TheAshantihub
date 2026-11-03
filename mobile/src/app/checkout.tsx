@@ -9,6 +9,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { canPay, checkoutBody, fieldErrors, waitForPayment, type CheckoutForm } from "../features/cart/checkout";
 import { useCart, useDeliveryPreview } from "../features/cart/queries";
 import { useCanBuy } from "../features/listing/queries";
+import { useWallet, walletChoice } from "../features/wallet/api";
 import { api } from "../lib/api";
 import { apiMessage } from "../lib/errors";
 import { fonts } from "../theme/fonts";
@@ -57,6 +58,10 @@ export default function CheckoutScreen() {
   const fee = quote && quote.fee != null && quote.fee_status !== "out_of_area" ? Number(quote.fee) : null;
   const items = Number(cart.data?.total ?? 0);
   const total = items + (fee ?? 0);
+  const walletQuery = useWallet();
+  const wallet = walletChoice(walletQuery, total);
+  // A wallet that stops covering the total (a longer delivery fee, say) falls back to Mobile Money by itself.
+  const payment = form.payment === "wallet" && wallet.enabled ? "wallet" : "momo";
   const set = (patch: Partial<CheckoutForm>) => {
     setForm((f) => ({ ...f, ...patch }));
     setErrors({});
@@ -86,7 +91,7 @@ export default function CheckoutScreen() {
     setErrors({});
     stop.current = false;
     try {
-      const res = await api<{ id?: number; mode?: string; checkout_url?: string; reference?: string }>("/api/orders/checkout/", { body: checkoutBody(form) });
+      const res = await api<{ id?: number; mode?: string; checkout_url?: string; reference?: string }>("/api/orders/checkout/", { body: checkoutBody({ ...form, payment }) });
       if (res.mode === "redirect" && res.reference) {
         setWaiting(true);
         if (res.checkout_url) void WebBrowser.openBrowserAsync(res.checkout_url);
@@ -130,7 +135,8 @@ export default function CheckoutScreen() {
   }
 
   const feeUnknown = door && fee == null;
-  const payLabel = feeUnknown ? "Pay with Mobile Money (delivery fee added)" : `Pay ${formatCedis(total)} with Mobile Money`;
+  const how = payment === "wallet" ? "from your wallet" : "with Mobile Money";
+  const payLabel = feeUnknown ? `Pay ${how} (delivery fee added)` : `Pay ${formatCedis(total)} ${how}`;
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.canvas }}>
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 16 }}>
@@ -191,13 +197,13 @@ export default function CheckoutScreen() {
 
         <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, fontSize: 16 }}>Pay with</Text>
         <View accessibilityRole="radiogroup" style={{ gap: 12 }}>
-          <Choice label="Mobile Money" selected>
+          <Choice label="Mobile Money" selected={payment === "momo"} onPress={() => set({ payment: "momo" })}>
             <Text style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 15 }}>Mobile Money</Text>
             <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>You approve the payment on your phone.</Text>
           </Choice>
-          <Choice label="AshantiHub wallet, not available yet" disabled>
+          <Choice label={`AshantiHub wallet, ${wallet.note.charAt(0).toLowerCase()}${wallet.note.slice(1)}`} selected={payment === "wallet"} disabled={!wallet.enabled} onPress={() => set({ payment: "wallet" })}>
             <Text style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 15 }}>AshantiHub wallet</Text>
-            <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>Not available yet</Text>
+            <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>{wallet.note}</Text>
           </Choice>
         </View>
 

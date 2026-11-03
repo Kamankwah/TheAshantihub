@@ -92,4 +92,13 @@ describe("business registration", () => {
     expect(path).toBe("/api/accounts/business-owners/me/profile/");
     expect(init.method).toBe("PATCH");
   });
+
+  it("a_card_photo_picker_that_throws_is_caught_and_explained", async () => {
+    const picker = jest.requireMock("expo-image-picker");
+    picker.launchImageLibraryAsync.mockRejectedValueOnce(new Error("no gallery"));
+    await render(<BusinessScreen />);
+    await fireEvent.press(screen.getByLabelText("Card front"));
+    expect(await screen.findByText(/couldn.t open your photos/i)).toBeTruthy();
+    expect(screen.getByLabelText("Card front")).toBeTruthy();
+  });
 });

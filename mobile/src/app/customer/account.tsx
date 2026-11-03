@@ -20,6 +20,12 @@ export default function ScreenAccount() {
         <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>Customer account</Text>
       </View>
 
+      <SectionTitle>Your activity</SectionTitle>
+      <View style={{ gap: 8 }}>
+        <LinkRow label="Bookings and requests" onPress={() => router.push("/bookings" as never)} />
+        <LinkRow label="My tickets" onPress={() => router.push("/tickets" as never)} />
+      </View>
+
       <SectionTitle>Help</SectionTitle>
       <View style={{ gap: 8 }}>
         <LinkRow label="Messages" onPress={() => router.push("/inbox" as never)} />

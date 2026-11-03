@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../../lib/api";
+import { asArray } from "../../lib/asArray";
 
 export type Me = {
   id: number;
@@ -38,4 +39,25 @@ export const useMyListings = () =>
       const data = await api<OwnerListing[] | { results: OwnerListing[] }>("/api/listings/mine/");
       return Array.isArray(data) ? data : data.results;
     },
+  });
+
+import type { CategoryNode } from "./newListing";
+
+/** The full category tree a business picks from (events are left out by the form). */
+export const useCategoryTree = () =>
+  useQuery({ queryKey: ["category-tree", "full"], staleTime: 10 * 60_000, queryFn: async () => asArray<CategoryNode>(await api<unknown>("/api/listings/categories/tree/", { query: { full: 1 } })) });
+
+export const useZones = () =>
+  useQuery({
+    queryKey: ["zones"],
+    staleTime: 10 * 60_000,
+    queryFn: async () => asArray<{ id: number; name: string }>(await api<unknown>("/api/listings/zones/", { auth: false })),
+  });
+
+/** The kind of business ("product" or "service") this account registered as; null for older accounts (then both kinds are offered). */
+export const useBusinessKind = () =>
+  useQuery({
+    queryKey: ["owner-business-kind"],
+    staleTime: 10 * 60_000,
+    queryFn: async () => (await api<{ business_kind?: string | null }>("/api/accounts/business-owners/me/profile/")).business_kind ?? null,
   });
