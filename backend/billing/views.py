@@ -27,6 +27,7 @@ from .serializers import (
     TransactionMineCreateSerializer,
     TransactionReportSerializer,
     TransactionSerializer,
+    kind_step_categories,
 )
 
 
@@ -242,7 +243,7 @@ class SubscriptionStartTrialView(APIView):
 
 
 class BusinessKindView(APIView):
-    """POST /api/billing/business-kind/ {business_kind} — registration's replacement for "pick a plan" while
+    """POST /api/billing/business-kind/ {business_kind, categories} — registration's replacement for "pick a plan" while
     subscriptions are off: it records whether the business sells products or services, once."""
 
     permission_classes = [IsAuthenticated, IsBusinessOwner]
@@ -259,9 +260,8 @@ class BusinessKindView(APIView):
             return Response({"detail": "Fill in your business profile before choosing a business type."}, status=400)
         # The kind and the categories are chosen together: one transaction, so a refused category list leaves the kind
         # unset and the owner can retry. The conditional update still lets two concurrent requests set the kind once.
-        categories = request.data.get("categories")
-        if not isinstance(categories, list):
-            categories = []
+        # An absent `categories` key (an older client) sets the kind without categories; any value sent is validated.
+        categories = kind_step_categories(request.data)
         try:
             with transaction.atomic():
                 changed = BusinessOwnerProfile.objects.filter(pk=profile.pk).filter(
@@ -269,7 +269,8 @@ class BusinessKindView(APIView):
                 ).update(business_kind=kind)
                 if changed:
                     profile.business_kind = kind
-                    set_categories(profile, categories)
+                    if categories is not None:
+                        set_categories(profile, categories)
         except InvalidCategories as error:
             profile.business_kind = None  # the update was rolled back; keep the cached profile in step
             return Response({"categories": [error.message]}, status=400)

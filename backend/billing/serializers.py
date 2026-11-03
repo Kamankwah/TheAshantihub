@@ -17,6 +17,19 @@ from .models import Subscription, SubscriptionPlan, Transaction
 # dateutil.relativedelta(months=cycle_months).
 
 
+def kind_step_categories(data):
+    """The `categories` a client sent with the kind (start-trial, business-kind), read raw.
+
+    None when the key is absent: transitional, for clients built before categories (the mobile app, a cached older web
+    bundle), which then set the kind without categories. Otherwise a list for `set_categories`; a value that is not a
+    list becomes `[]`, so `null`, `"3"` or `{}` are refused like an empty list ("Choose at least one category.").
+    """
+    if not hasattr(data, "get") or "categories" not in data:
+        return None
+    categories = data.get("categories")
+    return categories if isinstance(categories, list) else []
+
+
 class SubscriptionPlanSerializer(serializers.ModelSerializer):
     """Public-facing plan shape — used by the public plan list
     (SubscriptionPlanListView, already filtered to status="active") and
@@ -155,8 +168,8 @@ class StartTrialSerializer(serializers.Serializer):
         queryset=SubscriptionPlan.objects.filter(status=SubscriptionPlan.ACTIVE_STATUS),
     )
     cycle_months = serializers.ChoiceField(choices=Subscription.CYCLE_CHOICES)
-    # Required (checked in save(), where the owner is known) only when this call sets the kind; ignored otherwise.
-    categories = serializers.ListField(child=serializers.IntegerField(), required=False)
+    # `categories` is not a field: save() reads it raw (kind_step_categories), only when this call sets the kind, so
+    # set_categories gives its own messages and any value is ignored once the kind is set (as in BusinessKindView).
 
     def validate(self, attrs):
         if attrs["plan"].kind != attrs["business_kind"]:
@@ -187,10 +200,12 @@ class StartTrialSerializer(serializers.Serializer):
             if not locked.business_kind:
                 locked.business_kind = business_kind
                 locked.save(update_fields=["business_kind"])
-                try:
-                    set_categories(locked, self.validated_data.get("categories", []))
-                except InvalidCategories as error:
-                    raise serializers.ValidationError({"categories": [error.message]})
+                categories = kind_step_categories(self.initial_data)
+                if categories is not None:  # absent: an older client sets the kind without categories
+                    try:
+                        set_categories(locked, categories)
+                    except InvalidCategories as error:
+                        raise serializers.ValidationError({"categories": [error.message]})
                 profile.business_kind = business_kind
                 profile.business_category = locked.business_category
 

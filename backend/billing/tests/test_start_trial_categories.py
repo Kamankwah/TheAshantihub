@@ -1,5 +1,8 @@
 """A self-registering owner chooses the kind and one or more categories together: the kind, the categories and (with
-subscriptions on) the trial are saved in one transaction, and a failure leaves the kind unset so the owner can retry."""
+subscriptions on) the trial are saved in one transaction, and a failure leaves the kind unset so the owner can retry.
+
+Transitional: a client that omits the `categories` key (the mobile app, a cached older web bundle) still sets the kind,
+without categories; any value it does send, even `[]` or `null`, is validated."""
 from unittest import mock
 
 from django.core.cache import cache
@@ -77,11 +80,30 @@ class StartTrialCategoriesTests(_Fixtures, TestCase):
         self.assertEqual(profile.business_category_id, self.shoes.pk)
         self.assertTrue(Subscription.objects.get(business_owner=self.owner).is_trial)
 
-    def test_missing_categories_400_and_kind_stays_unset(self):
-        for extra in ({}, {"categories": []}):
-            response = self.post(**extra)
-            self.assertEqual(response.status_code, 400, response.content)
+    def test_absent_categories_key_sets_kind_and_trial_without_categories(self):
+        # Transitional: an older client (the mobile app, a cached web bundle) never sends the key.
+        response = self.post()
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["registration_step"], "payment_info")
+        profile, ids = self.stored()
+        self.assertEqual(profile.business_kind, "product")
+        self.assertEqual(ids, [])
+        self.assertIsNone(profile.business_category_id)
+        self.assertTrue(Subscription.objects.get(business_owner=self.owner).is_trial)
+
+    def test_explicit_empty_null_or_wrong_type_categories_400_and_kind_stays_unset(self):
+        for value in ([], None, "3", 3, {"id": 3}):
+            response = self.post(categories=value)
+            self.assertEqual(response.status_code, 400, (value, response.content))
             self.assertEqual(response.json(), {"categories": ["Choose at least one category."]})
+            self.assert_nothing_saved()
+
+    def test_garbage_inside_the_list_answers_in_the_same_shape(self):
+        for value, message in (([True], "That category doesn't exist."), ([[1]], "That category doesn't exist."),
+                               (["abc"], "That category doesn't exist."), ([None], "That category doesn't exist.")):
+            response = self.post(categories=value)
+            self.assertEqual(response.status_code, 400, (value, response.content))
+            self.assertEqual(response.json(), {"categories": [message]})
             self.assert_nothing_saved()
 
     def test_eleven_duplicates_wrong_kind_unknown_400_and_kind_stays_unset(self):
@@ -143,6 +165,20 @@ class StartTrialCategoriesTests(_Fixtures, TestCase):
         self.assertEqual(BusinessOwnerCategory.objects.filter(profile=profile).count(), 0)
         self.assertIsNone(BusinessOwnerProfile.objects.get(pk=profile.pk).business_category_id)
 
+    def test_any_categories_value_is_ignored_when_the_kind_is_already_set(self):
+        for index, value in enumerate((None, "garbage", 3, {"id": 1}, [], [True], ["abc"])):
+            owner, profile = make_owner(
+                f"+23324555010{index}", kind="product", kyc_status=BusinessOwner.VERIFIED,
+                registration_channel=BusinessOwner.SCOUT,
+            )
+            response = client_for(owner).post(
+                START_TRIAL,
+                {"business_kind": "product", "plan": "product_basic", "cycle_months": 1, "categories": value},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 201, (value, response.content))
+            self.assertEqual(BusinessOwnerCategory.objects.filter(profile=profile).count(), 0)
+
 
 @override_settings(SUBSCRIPTIONS_ENABLED=False)
 class BusinessKindCategoriesTests(_Fixtures, TestCase):
@@ -158,11 +194,28 @@ class BusinessKindCategoriesTests(_Fixtures, TestCase):
         self.assertEqual(ids, [self.shoes.pk, self.fabrics.pk])
         self.assertEqual(profile.business_category_id, self.shoes.pk)
 
-    def test_missing_categories_400_and_kind_stays_unset(self):
-        for extra in ({}, {"categories": []}, {"categories": None}, {"categories": "1"}):
-            response = self.post(**extra)
-            self.assertEqual(response.status_code, 400, (extra, response.content))
+    def test_absent_categories_key_sets_kind_without_categories(self):
+        # Transitional: an older client (the mobile app, a cached web bundle) never sends the key.
+        response = self.post()
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json(), {"business_kind": "product", "registration_step": "payment_info"})
+        profile, ids = self.stored()
+        self.assertEqual(profile.business_kind, "product")
+        self.assertEqual(ids, [])
+        self.assertIsNone(profile.business_category_id)
+
+    def test_explicit_empty_null_or_wrong_type_categories_400_and_kind_stays_unset(self):
+        for value in ([], None, "3", 3, {"id": 3}):
+            response = self.post(categories=value)
+            self.assertEqual(response.status_code, 400, (value, response.content))
             self.assertEqual(response.json(), {"categories": ["Choose at least one category."]})
+            self.assert_nothing_saved()
+
+    def test_garbage_inside_the_list_answers_in_the_same_shape(self):
+        for value in ([True], [[1]], ["abc"], [None]):
+            response = self.post(categories=value)
+            self.assertEqual(response.status_code, 400, (value, response.content))
+            self.assertEqual(response.json(), {"categories": ["That category doesn't exist."]})
             self.assert_nothing_saved()
 
     def test_eleven_duplicates_wrong_kind_unknown_400_and_kind_stays_unset(self):
@@ -206,6 +259,15 @@ class BusinessKindCategoriesTests(_Fixtures, TestCase):
         response = client_for(owner).post(BUSINESS_KIND, {"business_kind": "service"}, format="json")
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json(), {"business_kind": "Your business type is already set."})
+        self.assertEqual(BusinessOwnerCategory.objects.filter(profile=profile).count(), 0)
+
+    def test_any_categories_value_is_ignored_when_the_kind_is_already_set(self):
+        owner, profile = make_owner("+233245550006", kind="product")
+        client = client_for(owner)
+        for value in (None, "garbage", [], [self.fabrics.pk], [True]):
+            response = client.post(BUSINESS_KIND, {"business_kind": "product", "categories": value}, format="json")
+            self.assertEqual(response.status_code, 400, (value, response.content))
+            self.assertEqual(response.json(), {"business_kind": "Your business type is already set."})
         self.assertEqual(BusinessOwnerCategory.objects.filter(profile=profile).count(), 0)
 
 

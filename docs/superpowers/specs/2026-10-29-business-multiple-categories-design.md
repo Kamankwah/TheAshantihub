@@ -122,7 +122,15 @@ Deviations from, and details beyond, the design above:
 - **Migration:** `accounts/0077_business_categories`, numbered after rebasing onto upstream (single leaf).
 - **Owner registration** decides whether the kind is already set by reading `GET business-owners/me/categories/`
   (`business_kind`), and sends `categories` only when it is not. `billing/start-trial` and `billing/business-kind` ignore
-  `categories` when the kind is already set, and require them only where the kind is first set.
+  `categories` entirely when the kind is already set (both read the key raw), and validate them only where the kind is
+  first set.
+- **Transitional fallback for older clients.** Where the kind is first set, a request that **omits** the `categories` key
+  sets the kind (and, on start-trial, the trial) with no categories, so clients built before categories still finish
+  registration: the mobile app (`mobile/src/lib/registrationApi.ts`, from `register/plan.tsx`) and a cached older web
+  bundle. Any value that is sent, including `[]` and `null`, is validated as before: 400 `{"categories": [message]}`
+  and the kind stays unset. The web flow always sends the key, except through its explicit "Continue without
+  categories" action when the category list failed to load. The mobile app has no category step yet (follow-up); such
+  a business adds its categories later from the dashboard Profile.
 - **Scout wire format:** `business_categories` is a JSON array string in the multipart body; the legacy single
   `business_category` is still accepted.
 - **`set_categories` input:** accepts ints and numeric strings; anything else is refused with "That category doesn't exist."
