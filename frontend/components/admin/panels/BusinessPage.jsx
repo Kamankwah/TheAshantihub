@@ -18,6 +18,7 @@ import StaffHoursSection from "./StaffHoursSection.jsx";
 import {
   FollowUpForm, HealthChip, ReassignForm, card, errorStyle, errorText, firstName, formatDateTime, formatDay,
   h2, h3, money, subscriptionText,
+  categoryLabel, categoryNames,
 } from "./portfolioParts.jsx";
 
 const KYC = { verified: ["KYC verified", D.green], pending: ["KYC waiting", D.blue], rejected: ["KYC rejected", D.red] };
@@ -143,9 +144,10 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
       )}
     </span>
   );
+  const categories = categoryNames(b.business_categories, b.business_category);
   const details = [
     ["Sign-in phone", signInPhone], ["Business phone", phoneCell(b.business_contact_phone)], ["Email", b.email || "Not given"],
-    ["Kind", b.business_kind === "service" ? "Service" : "Product"], ["Category", b.business_category?.name],
+    ["Kind", b.business_kind === "service" ? "Service" : "Product"], [categoryLabel(categories), categories.join(", ")],
     ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Map pin", pin],
     ["Description", b.business_description], ["Registered", registered], ["Account manager", b.account_manager?.full_name || "None"],
   ];

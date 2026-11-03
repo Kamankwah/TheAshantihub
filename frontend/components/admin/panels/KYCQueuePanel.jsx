@@ -13,7 +13,7 @@ import ModerationQueueTabs, {
   ReviewAgainButton,
 } from "../ModerationQueueTabs.jsx";
 import { callout, chip, dim, pill } from "./panelStyles.js";
-import { addressCorrectionText } from "./portfolioParts.jsx";
+import { addressCorrectionText, categoryLabel, categoryNames } from "./portfolioParts.jsx";
 import IdentityReviewPanel from "./IdentityReviewPanel.jsx";
 
 // A single labelled field in the detail view. Renders a "—" for empty values
@@ -237,7 +237,10 @@ function KYCRow({ owner, state, onDone, canSendScout }) {
               <div style={{ ...sectionHead, margin: "14px 0 10px" }}>Business and map pin</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0 20px" }}>
                 <DetailField label="Business name" value={detail.data.business_name} />
-                <DetailField label="Category" value={detail.data.business_category_name} />
+                {(() => {
+                  const names = categoryNames(detail.data.business_category_names, detail.data.business_category_name);
+                  return <DetailField label={categoryLabel(names)} value={names.join(", ")} />;
+                })()}
                 <DetailField label="Area" value={detail.data.zone_name} />
                 <DetailField label="Map pin" value={pinText(detail.data)} />
               </div>

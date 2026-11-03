@@ -81,6 +81,29 @@ describe('BusinessPage', () => {
     expect(await screen.findByText('Hours not set (old text: Mon–Sat 08:00–18:00)')).toBeInTheDocument()
   })
 
+  describe('categories', () => {
+    const cell = (label) => screen.getByText(label, { selector: 'dt' }).parentElement
+    it('business page lists all categories, main first', async () => {
+      serve(business({ business_category: { id: 2, name: 'Fabrics & clothing' }, business_categories: [{ id: 2, name: 'Fabrics & clothing' }, { id: 5, name: 'Kente & crafts' }] }))
+      renderPage()
+      await screen.findByRole('heading', { name: 'Adwoa Fabrics' })
+      expect(cell('Categories')).toHaveTextContent('Fabrics & clothing, Kente & crafts')
+      expect(screen.queryByText('Category', { selector: 'dt' })).not.toBeInTheDocument()
+    })
+    it('no categories shows the empty dash', async () => {
+      serve(business({ business_category: null, business_categories: [] }))
+      renderPage()
+      await screen.findByRole('heading', { name: 'Adwoa Fabrics' })
+      expect(cell('Category')).toHaveTextContent(/^Category—$/)
+    })
+    it('an older payload with only the main category still renders', async () => {
+      serve(business())
+      renderPage()
+      await screen.findByRole('heading', { name: 'Adwoa Fabrics' })
+      expect(cell('Category')).toHaveTextContent('Fabrics & clothing')
+    })
+  })
+
   it('shows health, the overdue clock and the no-cash rule', async () => {
     serve()
     renderPage()

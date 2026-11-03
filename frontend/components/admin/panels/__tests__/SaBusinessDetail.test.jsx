@@ -50,6 +50,31 @@ describe('SaBusinessDetail', () => {
     expect(await screen.findByText('Hours not set (old text: Mon-Sat 8-6)')).toBeInTheDocument()
   })
 
+  describe('categories', () => {
+    const cell = (label) => screen.getByText(label, { selector: 'dt' }).parentElement
+    it('Super Admin detail lists all categories in the details and the subtitle, main first', async () => {
+      setup({ business_categories: [{ id: 1, name: 'Kente & crafts' }, { id: 7, name: 'Fabrics & clothing' }] })
+      mount()
+      await screen.findByRole('heading', { name: 'Akosua Ntoma Kente' })
+      expect(cell('Categories')).toHaveTextContent('Kente & crafts, Fabrics & clothing')
+      expect(screen.getByText(/^Kente & crafts, Fabrics & clothing · Bonwire · owner Akosua Ntoma/)).toBeInTheDocument()
+    })
+    it('no categories shows the empty dash and leaves the subtitle without one', async () => {
+      setup({ business_category: null, business_categories: [] })
+      mount()
+      await screen.findByRole('heading', { name: 'Akosua Ntoma Kente' })
+      expect(cell('Category')).toHaveTextContent(/^Category—$/)
+      expect(screen.getByText(/^Bonwire · owner Akosua Ntoma/)).toBeInTheDocument()
+    })
+    it('an older payload with only the main category still renders', async () => {
+      setup()
+      mount()
+      await screen.findByRole('heading', { name: 'Akosua Ntoma Kente' })
+      expect(cell('Category')).toHaveTextContent('Kente & crafts')
+      expect(screen.getByText(/^Kente & crafts · Bonwire/)).toBeInTheDocument()
+    })
+  })
+
   it('shows the header, the real figures and no settlement or held-money tile', async () => {
     setup()
     mount()
