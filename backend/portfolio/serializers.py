@@ -7,7 +7,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import serializers
 
-from accounts.categories import MAX_CATEGORIES
+from accounts.categories import MAX_CATEGORIES, categories_of
 from accounts.gps import validate_ashanti_gps
 from accounts.kyc import address_correction
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
@@ -192,6 +192,13 @@ def _portfolio_named(obj, attribute="name"):
     return {"id": obj.pk, "name": getattr(obj, attribute)} if obj is not None else None
 
 
+def _portfolio_categories(profile):
+    """Every category the business has, the main one first: `[{id, name}]`, `[]` for a business with none."""
+    if profile is None:
+        return []
+    return [_portfolio_named(category, "label") for category in categories_of(profile)]
+
+
 def _portfolio_float(value):
     return float(value) if value is not None else None
 
@@ -305,6 +312,7 @@ def business_detail(row, request):
     data.update({
         "business_kind": getattr(profile, "business_kind", None),
         "business_category": _portfolio_named(getattr(profile, "business_category", None), "label"),
+        "business_categories": _portfolio_categories(profile),
         "gps_address": getattr(profile, "gps_address", None),
         "lat": _portfolio_float(getattr(profile, "lat", None)),
         "lng": _portfolio_float(getattr(profile, "lng", None)),
@@ -421,6 +429,7 @@ def business_review_sheet(owner, request):
             "business_name": owner.display_name,
             "business_kind": getattr(profile, "business_kind", None),
             "category": _portfolio_named(getattr(profile, "business_category", None), "label"),
+            "categories": _portfolio_categories(profile),
             "zone": _portfolio_named(getattr(profile, "zone", None)),
             "opening_hours": getattr(profile, "opening_hours", ""),  # the old free text; may be empty
             "hours": hours_payload(owner),
