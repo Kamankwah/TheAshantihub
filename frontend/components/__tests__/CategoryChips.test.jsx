@@ -241,6 +241,16 @@ describe('CategoryChips — department sections', () => {
     expect(screen.getByText(/^Selected:/)).toHaveTextContent('Selected: Jewelry › Watches (main)')
   })
 
+  it('Enter in the search box does not submit the form the chips sit in', () => {
+    let submitted = 0
+    render(<form onSubmit={(e) => { e.preventDefault(); submitted += 1 }}><Harness categories={BIG} all={BIG} /></form>)
+    const search = screen.getByRole('searchbox', { name: 'Search categories' })
+    fireEvent.change(search, { target: { value: 'watch' } })
+    const enter = fireEvent.keyDown(search, { key: 'Enter' })
+    expect(enter).toBe(false) // default prevented: no implicit submission
+    expect(submitted).toBe(0)
+  })
+
   it('a flat list keeps flat chips: no sections, no search box, no summary', () => {
     render(<Harness initial={[1]} />)
     expect(screen.queryAllByRole('button', { expanded: false })).toHaveLength(0)

@@ -158,6 +158,8 @@ export function CategoryChips({ categories = [], value = [], onChange, max = 10,
           placeholder="Search categories"
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpenedInSearch({}) }}
+          // The chips usually sit in a form: Enter in the search box must not submit it.
+          onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault() }}
           style={{
             width: '100%', boxSizing: 'border-box', minHeight: 44, padding: '8px 12px', borderRadius: 10,
             border: `1px solid ${C.line}`, background: C.surface, color: C.ink, fontFamily: 'inherit', fontSize: 16,
