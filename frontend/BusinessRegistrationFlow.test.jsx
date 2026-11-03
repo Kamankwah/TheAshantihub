@@ -678,6 +678,77 @@ describe('BusinessRegistrationFlow', () => {
       expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     })
 
+    it('never asks for the zones: only the categories are needed here', async () => {
+      noPlans()
+      let zonesAsked = 0
+      server.use(http.get('http://localhost:8000/api/listings/zones/', () => { zonesAsked += 1; return HttpResponse.json([]) }))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      expect(await screen.findByRole('button', { name: /^Electronics/ })).toBeInTheDocument()
+      expect(zonesAsked).toBe(0)
+    })
+
+    it('a failed category load offers Try again, which loads them', async () => {
+      noPlans()
+      let calls = 0
+      server.use(http.get('http://localhost:8000/api/listings/categories/', () => {
+        calls += 1
+        return calls === 1 ? HttpResponse.json({ detail: 'down' }, { status: 500 }) : HttpResponse.json(CATEGORIES)
+      }))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      expect(await screen.findByText(/Couldn.t load the categories/)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+      expect(await screen.findByRole('button', { name: /^Electronics/ })).toBeInTheDocument()
+      expect(screen.queryByText(/Couldn.t load the categories/)).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Continue without categories/ })).not.toBeInTheDocument()
+      expect(calls).toBe(2)
+    })
+
+    it('while the categories are loading, Continue stays disabled and there is no way round them', async () => {
+      noPlans()
+      server.use(http.get('http://localhost:8000/api/listings/categories/', () => new Promise(() => {})))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      expect(await screen.findByText('Loading categories…')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+      expect(screen.queryByRole('button', { name: /Continue without categories/ })).not.toBeInTheDocument()
+    })
+
+    it('when the categories cannot load, a separate action continues without them (business-kind)', async () => {
+      noPlans()
+      let posted = null
+      server.use(
+        http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json({ detail: 'down' }, { status: 500 })),
+        http.post('http://localhost:8000/api/billing/business-kind/', async ({ request }) => {
+          posted = await request.json()
+          return HttpResponse.json({ business_kind: 'product', registration_step: 'payment_info' })
+        }),
+      )
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      const skip = await screen.findByRole('button', { name: 'Continue without categories (add them later in Profile)' })
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+      fireEvent.click(skip)
+      expect(await screen.findByText(/How should we pay you/)).toBeInTheDocument()
+      expect(posted).toEqual({ business_kind: 'product' })
+    })
+
+    it('when the categories cannot load, the trial can start without them once a plan is chosen', async () => {
+      server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json({ detail: 'down' }, { status: 500 })))
+      const auth = makeAuth()
+      mount(auth)
+      fireEvent.click(screen.getByText(/I sell products/))
+      const skip = await screen.findByRole('button', { name: 'Continue without categories (add them later in Profile)' })
+      expect(skip).toBeDisabled()
+      fireEvent.click(await screen.findByText('Product Basic'))
+      expect(skip).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Start Free Trial' })).toBeDisabled()
+      fireEvent.click(skip)
+      await waitFor(() => expect(auth.submitPlanSelection).toHaveBeenCalledTimes(1))
+      expect(auth.submitPlanSelection.mock.calls[0][0]).toEqual({ business_kind: 'product', plan: 'product_basic', cycle_months: 1 })
+    })
+
     it('a scout-registered owner whose kind is already set is not asked for categories', async () => {
       server.use(http.get('http://localhost:8000/api/accounts/business-owners/me/categories/', () =>
         HttpResponse.json({ business_kind: 'product', min: 1, max: 10, categories: [] })))
