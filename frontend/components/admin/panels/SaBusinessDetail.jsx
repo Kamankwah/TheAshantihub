@@ -130,7 +130,7 @@ export default function SaBusinessDetail({ businessId, auth, onBack }) {
   const details = [
     ["Owner", b.owner_name],
     ["Sign-in phone", <span key="p">{fullPhone || b.login_phone}{!fullPhone && b.login_phone && <button type="button" onClick={revealPhone} style={{ ...button(D.panelBg, D.text), marginLeft: 8, padding: "2px 8px" }}>Show full number (recorded)</button>}</span>],
-    ["Email", b.email || "Not given"], ["Kind", b.business_kind === "service" ? "Service" : "Product"], [categoryLabel(categories), categories.join(", ")],
+    ["Email", b.email || "Not given"], ["Kind", b.business_kind === "service" ? "Service" : "Product"], [categoryLabel(categories), categories.join(", ") || "Not given"],
     ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Description", b.business_description],
     ["On AshantiHub since", formatDay(b.created_at)],
   ];

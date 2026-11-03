@@ -90,11 +90,11 @@ describe('BusinessPage', () => {
       expect(cell('Categories')).toHaveTextContent('Fabrics & clothing, Kente & crafts')
       expect(screen.queryByText('Category', { selector: 'dt' })).not.toBeInTheDocument()
     })
-    it('no categories shows the empty dash', async () => {
+    it('no categories says Not given', async () => {
       serve(business({ business_category: null, business_categories: [] }))
       renderPage()
       await screen.findByRole('heading', { name: 'Adwoa Fabrics' })
-      expect(cell('Category')).toHaveTextContent(/^Category—$/)
+      expect(cell('Category')).toHaveTextContent(/^CategoryNot given$/)
     })
     it('an older payload with only the main category still renders', async () => {
       serve(business())

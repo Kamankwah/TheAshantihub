@@ -59,11 +59,11 @@ describe('SaBusinessDetail', () => {
       expect(cell('Categories')).toHaveTextContent('Kente & crafts, Fabrics & clothing')
       expect(screen.getByText(/^Kente & crafts, Fabrics & clothing · Bonwire · owner Akosua Ntoma/)).toBeInTheDocument()
     })
-    it('no categories shows the empty dash and leaves the subtitle without one', async () => {
+    it('no categories says Not given and leaves the subtitle without one', async () => {
       setup({ business_category: null, business_categories: [] })
       mount()
       await screen.findByRole('heading', { name: 'Akosua Ntoma Kente' })
-      expect(cell('Category')).toHaveTextContent(/^Category—$/)
+      expect(cell('Category')).toHaveTextContent(/^CategoryNot given$/)
       expect(screen.getByText(/^Bonwire · owner Akosua Ntoma/)).toBeInTheDocument()
     })
     it('an older payload with only the main category still renders', async () => {

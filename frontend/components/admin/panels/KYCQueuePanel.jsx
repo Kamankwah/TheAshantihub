@@ -239,7 +239,7 @@ function KYCRow({ owner, state, onDone, canSendScout }) {
                 <DetailField label="Business name" value={detail.data.business_name} />
                 {(() => {
                   const names = categoryNames(detail.data.business_category_names, detail.data.business_category_name);
-                  return <DetailField label={categoryLabel(names)} value={names.join(", ")} />;
+                  return <DetailField label={categoryLabel(names)} value={names.join(", ")} empty="Not given" />;
                 })()}
                 <DetailField label="Area" value={detail.data.zone_name} />
                 <DetailField label="Map pin" value={pinText(detail.data)} />

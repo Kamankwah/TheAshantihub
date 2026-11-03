@@ -147,7 +147,7 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
   const categories = categoryNames(b.business_categories, b.business_category);
   const details = [
     ["Sign-in phone", signInPhone], ["Business phone", phoneCell(b.business_contact_phone)], ["Email", b.email || "Not given"],
-    ["Kind", b.business_kind === "service" ? "Service" : "Product"], [categoryLabel(categories), categories.join(", ")],
+    ["Kind", b.business_kind === "service" ? "Service" : "Product"], [categoryLabel(categories), categories.join(", ") || "Not given"],
     ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Map pin", pin],
     ["Description", b.business_description], ["Registered", registered], ["Account manager", b.account_manager?.full_name || "None"],
   ];

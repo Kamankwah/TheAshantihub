@@ -184,9 +184,9 @@ describe('KYCQueuePanel (staff phase 2A)', () => {
       expect(within(row).queryByText('Category')).not.toBeInTheDocument()
     })
 
-    it('no categories shows the empty dash', async () => {
+    it('no categories says Not given', async () => {
       const row = await openDetail({ business_category_name: null, business_category_names: [] })
-      expect(field(row, 'Category')).toHaveTextContent(/^Category—$/)
+      expect(field(row, 'Category')).toHaveTextContent(/^CategoryNot given$/)
     })
 
     it('an older payload with only the main category still renders', async () => {
