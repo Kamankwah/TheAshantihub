@@ -15,8 +15,8 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from accounts import hours
-from accounts.categories import InvalidCategories, set_categories
 from accounts import files as stored_files
+from accounts.categories import InvalidCategories, set_categories
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Role
 from accounts.serializers import _strict_bool
 from activity.services import record
@@ -76,7 +76,7 @@ def _week(data):
         raw = raw.strip()
         try:
             raw = json.loads(raw) if raw else None
-        except ValueError:
+        except (ValueError, RecursionError):  # deeply nested text recurses the parser
             raise RegistrationError("The opening hours couldn't be read.", code="hours_invalid") from None
     if raw is None or raw == []:
         raise RegistrationError(HOURS_REQUIRED_MESSAGE, code="hours_required")
@@ -107,7 +107,7 @@ def _with_category_list(values):
     if isinstance(raw, str):
         try:
             parsed = json.loads(raw.strip()) if raw.strip() else []
-        except ValueError:
+        except (ValueError, RecursionError):  # deeply nested text recurses the parser
             parsed = None
         if not isinstance(parsed, list):
             raise serializers.ValidationError({"business_categories": ["The categories couldn't be read."]})

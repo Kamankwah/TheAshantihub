@@ -12,6 +12,7 @@ from django.test import TestCase, override_settings
 from PIL import Image
 from rest_framework.test import APIClient
 
+from accounts.categories import InvalidCategories, categories_of
 from accounts.models import BusinessOwner, BusinessOwnerProfile
 from accounts.testing import make_staff, staff_token
 from activity.models import ActivityEvent
@@ -21,7 +22,7 @@ from fraud.models import FraudFlag
 from listings.models import Category, Zone
 from notifications.models import Notification
 from portfolio.models import AccountManagerAssignment
-from portfolio.registration import CARD_LOCKED_MESSAGE
+from portfolio.registration import CARD_LOCKED_MESSAGE, register_business
 
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
 REGISTER_URL = "/api/portfolio/register/"
@@ -615,8 +616,6 @@ class RegistrationCategoriesTests(RegistrationBase):
         )
 
     def categories_of(self, response):
-        from accounts.categories import categories_of
-
         profile = BusinessOwnerProfile.objects.get(business_owner_id=response.json()["id"])
         return profile, categories_of(profile)
 
@@ -630,15 +629,11 @@ class RegistrationCategoriesTests(RegistrationBase):
         self.assertEqual(profile.business_category, self.nails)
 
     def test_a_real_json_array_is_accepted_too(self):
-        from portfolio.registration import register_business
-
         data = self.form(business_categories=[self.nails.pk, self.tailor.pk], business_category=None)
         files = {key: data.pop(key) for key in ("signboard_photo", "ghana_card_front")}
         data["hours"] = WEEK
         result = register_business(self.scout, data, files)
         profile = BusinessOwnerProfile.objects.get(business_owner=result["business_owner"])
-        from accounts.categories import categories_of
-
         self.assertEqual(categories_of(profile), [self.nails, self.tailor])
         self.assertEqual(profile.business_category, self.nails)
 
@@ -702,8 +697,6 @@ class RegistrationCategoriesTests(RegistrationBase):
         self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
 
     def test_a_failed_registration_creates_no_owner(self):
-        from accounts.categories import InvalidCategories
-
         with mock.patch("portfolio.registration.set_categories", side_effect=InvalidCategories("Nope.")):
             response = self.register(business_categories=json.dumps([self.nails.pk]), business_category=None)
         self.assertEqual(response.status_code, 400, response.content)
@@ -717,3 +710,33 @@ class RegistrationCategoriesTests(RegistrationBase):
         response = self.register(business_categories=json.dumps([self.nails.pk]), business_category=None)
         self.assertEqual((response.status_code, response.json()), (400, {**DUPLICATE, "matched": ["phone"]}))
         self.assertEqual(BusinessOwner.objects.count(), 1)
+
+    def test_unreadable_categories_are_a_400_never_a_500(self):
+        unreadable = {"business_categories": ["The categories couldn't be read."]}
+        for text in ("[" * 100000, "{}", "null", "nails, tailor"):
+            with self.subTest(text=text[:20]):
+                response = self.register(business_categories=text, business_category=None)
+                self.assertEqual((response.status_code, response.json()), (400, unreadable))
+        for text, key in (('[1,"a"]', "business_categories"), ("[[1]]", "business_categories")):
+            with self.subTest(text=text):
+                response = self.register(business_categories=text, business_category=None)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(key, response.json())
+        self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
+
+    def test_both_keys_and_a_missing_legacy_id_are_400(self):
+        response = self.register(business_categories=json.dumps([self.nails.pk]))
+        self.assertEqual(
+            (response.status_code, response.json()),
+            (400, {"business_categories": ["Send business_categories, not both it and business_category."]}),
+        )
+        response = self.register(business_category="999999")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("business_category", response.json())
+        self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
+
+    def test_unreadable_hours_are_a_400_never_a_500(self):
+        response = self.register(hours="[" * 100000)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "hours_invalid")
+        self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
