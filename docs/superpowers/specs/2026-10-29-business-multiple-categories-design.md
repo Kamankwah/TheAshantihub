@@ -143,3 +143,15 @@ Deviations from, and details beyond, the design above:
 - **Staff payload names:** the portfolio carries `business_categories` and `categories`; the KYC payload carries
   `business_category_names`.
 - **Marketing audience** matches any category: an `Exists` over the category links OR the main-category match.
+- **Chips by department.** `CategoryChips` groups options that carry a `parent` (the ~270-row product tree, whose
+  sub-category labels repeat across departments) into collapsible department sections: collapsed unless they hold a
+  pick, each header counting its picks, short labels inside. Past 24 options a "Search categories" box matches the label
+  and the department path and opens the matching sections. Outside a section a pick is named by its path
+  (`categoryPathLabel`, "Clothing › Accessories"): the "Selected: …" line under the chips, the scout review row and the
+  Profile card's "Make … main" buttons. Short flat lists (service categories) stay one row of chips.
+- **Registration and a failed category list.** The owner's kind step reads only `GET listings/categories/`; if it fails
+  there is "Try again" and a separate "Continue without categories (add them later in Profile)" that omits the key.
+- **Profile card.** A stored category no longer of the business's kind is left out of the comparison (Save stays
+  disabled until a real change) and a note says it goes on the next save. A save seeds `['my-categories']` from the PUT
+  answer.
+- **Staff screens** say "Not given" for a business with no categories.
