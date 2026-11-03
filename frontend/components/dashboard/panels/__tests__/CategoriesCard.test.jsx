@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../../../mocks/server.js'
@@ -24,8 +24,7 @@ function serve(ids, { kind = 'product', options = OPTIONS } = {}) {
     http.get(PUBLIC, () => HttpResponse.json(options)),
   )
 }
-function renderCard() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function renderCard(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(<QueryClientProvider client={queryClient}><CategoriesCard /></QueryClientProvider>)
 }
 const chip = (name) => screen.getByRole('button', { name: new RegExp(`^${name}`) })
@@ -131,5 +130,114 @@ describe('CategoriesCard', () => {
     server.use(http.get(MINE, () => HttpResponse.json({ detail: 'x' }, { status: 500 })))
     renderCard()
     expect(await screen.findByText('Could not load your categories.')).toBeInTheDocument()
+  })
+
+  describe('a stored category that no longer fits the kind', () => {
+    // The server still holds Hotels (a service) for a product business: the card cannot offer it.
+    const serveWithStale = () => server.use(
+      http.get(MINE, () => HttpResponse.json({
+        business_kind: 'product', min: 1, max: 10,
+        categories: [{ id: 1, label: 'Electronics', kind: 'product' }, { id: 9, label: 'Hotels', kind: 'service' }],
+      })),
+      http.get(PUBLIC, () => HttpResponse.json(OPTIONS)),
+    )
+
+    it('does not look edited on load and says what will happen on save', async () => {
+      serveWithStale()
+      renderCard()
+      await waitFor(() => expect(chip('Electronics')).toHaveAttribute('aria-pressed', 'true'))
+      expect(save()).toBeDisabled()
+      expect(screen.getByText('1 category no longer applies to your business type and will be removed when you save.')).toBeInTheDocument()
+      expect(screen.queryByText('✓ Saved')).not.toBeInTheDocument()
+    })
+
+    it('saving after a real change sends only the categories that still apply', async () => {
+      serveWithStale()
+      let body = null
+      server.use(http.put(MINE, async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json(mine(body.categories))
+      }))
+      renderCard()
+      await waitFor(() => expect(chip('Electronics')).toHaveAttribute('aria-pressed', 'true'))
+      fireEvent.click(chip('Fashion'))
+      expect(save()).toBeEnabled()
+      fireEvent.click(save())
+      expect(await screen.findByText('✓ Saved')).toBeInTheDocument()
+      expect(body).toEqual({ categories: [1, 2] })
+      expect(screen.queryByText(/no longer appl/)).not.toBeInTheDocument()
+    })
+
+    it('counts several in the note', async () => {
+      server.use(
+        http.get(MINE, () => HttpResponse.json({
+          business_kind: 'service', min: 1, max: 10,
+          categories: [{ id: 9, label: 'Hotels', kind: 'service' }, { id: 1, label: 'Electronics', kind: 'product' }, { id: 2, label: 'Fashion', kind: 'product' }],
+        })),
+        http.get(PUBLIC, () => HttpResponse.json(OPTIONS)),
+      )
+      renderCard()
+      expect(await screen.findByText('2 categories no longer apply to your business type and will be removed when you save.')).toBeInTheDocument()
+      expect(save()).toBeDisabled()
+    })
+  })
+
+  it('without a kind it never asks for the public categories, so their failure cannot show an error', async () => {
+    let asked = 0
+    server.use(
+      http.get(MINE, () => HttpResponse.json(mine([], null))),
+      http.get(PUBLIC, () => { asked += 1; return HttpResponse.json({ detail: 'down' }, { status: 500 }) }),
+    )
+    renderCard()
+    expect(await screen.findByText('Choose products or services first.')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(asked).toBe(0)
+  })
+
+  it('a saved list shows from the PUT answer, and a failed refetch afterwards keeps it and the Saved mark', async () => {
+    serve([1])
+    let gets = 0
+    server.use(
+      http.get(MINE, () => {
+        gets += 1
+        return gets === 1 ? HttpResponse.json(mine([1])) : HttpResponse.json({ detail: 'down' }, { status: 500 })
+      }),
+      http.put(MINE, () => HttpResponse.json(mine([3, 1]))),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    renderCard(queryClient)
+    await waitFor(() => expect(chip('Electronics')).toHaveAttribute('aria-pressed', 'true'))
+    fireEvent.click(chip('Groceries'))
+    fireEvent.click(screen.getByRole('button', { name: 'Make Groceries main' }))
+    fireEvent.click(save())
+    expect(await screen.findByText('✓ Saved')).toBeInTheDocument()
+    expect(queryClient.getQueryData(['my-categories'])).toEqual(mine([3, 1]))
+    await act(async () => { await queryClient.refetchQueries({ queryKey: ['my-categories'] }) })
+    expect(gets).toBe(2)
+    expect(screen.getByText('✓ Saved')).toBeInTheDocument()
+    expect(screen.queryByText('Could not load your categories.')).not.toBeInTheDocument()
+    expect(within(chip('Groceries')).getByText('Main')).toBeInTheDocument()
+    expect(save()).toBeDisabled()
+  })
+
+  it('make-main buttons are 44px targets in a labelled group and name a department category by its path', async () => {
+    const tree = [
+      { id: 100, label: 'Electronics', icon: '📱', kind: 'product', parent: null },
+      { id: 101, label: 'Accessories', icon: '', kind: 'product', parent: 100 },
+      { id: 200, label: 'Clothing', icon: '👗', kind: 'product', parent: null },
+      { id: 201, label: 'Accessories', icon: '', kind: 'product', parent: 200 },
+    ]
+    server.use(
+      http.get(MINE, () => HttpResponse.json({
+        business_kind: 'product', min: 1, max: 10,
+        categories: [{ id: 101, label: 'Accessories', kind: 'product' }, { id: 201, label: 'Accessories', kind: 'product' }],
+      })),
+      http.get(PUBLIC, () => HttpResponse.json(tree)),
+    )
+    renderCard()
+    const make = await screen.findByRole('button', { name: 'Make Clothing › Accessories main' })
+    expect(make.style.minHeight).toBe('44px')
+    expect(screen.getByRole('group', { name: 'Change the main category' })).toContainElement(make)
+    expect(screen.getByText(/^Selected:/)).toHaveTextContent('Selected: Electronics › Accessories (main) · Clothing › Accessories')
   })
 })
