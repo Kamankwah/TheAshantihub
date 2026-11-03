@@ -150,6 +150,15 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   model. Show `BusinessOwner.display_name` (business name, else the owner's name). A scout-
   registered owner (`registration_channel = "scout"`) has an unusable password until they claim
   their login (`needs_claim`); `compute_registration_step()` treats that channel differently.
+- **A business keeps an ordered list of categories** (`accounts.BusinessOwnerCategory`, related_name `category_links`).
+  The first is the main one and `BusinessOwnerProfile.business_category` mirrors it. The only writers are
+  `accounts.categories.set_categories` (locks the profile row only, so the owner-then-profile order is unaffected) and
+  `resync_after_category_delete` (the `post_delete` handler that re-syncs after a `Category` is deleted); never write the
+  links or the mirror elsewhere. 1..10 categories, all of the profile's `business_kind`; required only where the kind is
+  first set (`billing/start-trial`, `billing/business-kind`; ignored when the kind is already set).
+  `compute_registration_step` is deliberately unchanged, so an already-registered owner is never sent back. Categories
+  describe a business, they never restrict listings (listings are limited by `business_kind` only). `categories_of`
+  honours a `category_links__category` prefetch: use it for lists. Insights keep using the main category.
 - **Phones are compared by their last 9 digits.** Write owner phones through
   `accounts.phones.normalize_gh_phone()` (`+233...`) and match stored phones only through
   `phone_key()` / `filter_by_phone()` (there is no `phone_match_q`), because older rows hold

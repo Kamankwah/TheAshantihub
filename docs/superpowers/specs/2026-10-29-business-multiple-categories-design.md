@@ -1,6 +1,6 @@
 # Businesses choose several categories — design
 
-Date: 2026-10-29. Status: draft for the owner's approval.
+Date: 2026-10-29. Status: Implemented on branch feat/business-multiple-categories (not yet deployed).
 
 ## Why
 
@@ -111,3 +111,27 @@ later without friction.
 ## Left to the builder
 Names of the link table, fields and endpoints; how the kind and categories are saved together on each
 billing path; the chip and editor layout; migration and test structure.
+
+## As built
+
+Deviations from, and details beyond, the design above:
+
+- **A department is allowed.** A top-level product category (a department) may be chosen like any other category of the
+  kind, because the scout dropdown has always listed every category of the kind. The design's line refusing a
+  "department parent" is dropped.
+- **Migration:** `accounts/0077_business_categories`, numbered after rebasing onto upstream (single leaf).
+- **Owner registration** decides whether the kind is already set by reading `GET business-owners/me/categories/`
+  (`business_kind`), and sends `categories` only when it is not. `billing/start-trial` and `billing/business-kind` ignore
+  `categories` when the kind is already set, and require them only where the kind is first set.
+- **Scout wire format:** `business_categories` is a JSON array string in the multipart body; the legacy single
+  `business_category` is still accepted.
+- **`set_categories` input:** accepts ints and numeric strings; anything else is refused with "That category doesn't exist."
+  (`InvalidCategories`, 1..10).
+- **`categories_of` honours prefetch** of `category_links__category`, so lists do not query per row.
+- **Deleting a linked `Category`** re-syncs the remaining positions and the main category (`resync_after_category_delete`,
+  a `post_delete` handler).
+- **PUT answer shape:** `GET`/`PUT business-owners/me/categories/` answer `{business_kind, min, max, categories: [{id, label, kind}]}`;
+  `PUT` takes `{"categories": [ids]}` and answers 400 `{"detail"}` when invalid.
+- **Staff payload names:** the portfolio carries `business_categories` and `categories`; the KYC payload carries
+  `business_category_names`.
+- **Marketing audience** matches any category: an `Exists` over the category links OR the main-category match.
