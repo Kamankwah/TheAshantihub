@@ -61,7 +61,8 @@ describe('ProfilePanel: request a change', () => {
     fireEvent.change(screen.getByLabelText('New value'), { target: { value: '0241112222' } })
     fireEvent.change(screen.getByLabelText('Why do you need this change?'), { target: { value: 'Lost my old SIM' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send request' }))
-    expect(await screen.findByRole('status')).toHaveTextContent('Your request to change the sign-in phone was sent. Nothing has changed yet.')
+    // (CategoryChips keeps its own empty live region on this page, so match by text, not by role alone.)
+    expect(await screen.findByText('Your request to change the sign-in phone was sent. Nothing has changed yet.')).toBeInTheDocument()
     expect(posted).toEqual({ field: 'login_phone', new_value: '0241112222', reason: 'Lost my old SIM' })
     expect(screen.getByLabelText('New value')).toHaveValue('')
   })
@@ -73,7 +74,7 @@ describe('ProfilePanel: request a change', () => {
     fireEvent.change(screen.getByLabelText('Why do you need this change?'), { target: { value: 'Spelling' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send request' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('A change to this detail is already in progress.')
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText(/was sent\. Nothing has changed yet/)).not.toBeInTheDocument()
   })
 
   it('explains a step-up requirement instead of failing silently', async () => {

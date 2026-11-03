@@ -8,6 +8,7 @@ import MarketingConsentCard from "../../MarketingConsentCard.jsx";
 import AccountSecurityCard from "../../security/AccountSecurityCard.jsx";
 import DetailChangeRequest from "../DetailChangeRequest.jsx";
 import IdentityPanel from "./IdentityPanel.jsx";
+import CategoriesCard from "./CategoriesCard.jsx";
 
 // "Profile & Settings" — reachable from the header's avatar dropdown. The business details are read-only
 // (the one self-serve action is IdentityPanel's "Get verified", the optional Ghana Card upload):
@@ -91,6 +92,8 @@ export default function ProfilePanel({ user }) {
           </div>
         </div>
       )}
+
+      <CategoriesCard />
 
       {!isLoading && !isError && (
         <div id="opening-hours" style={{ ...glassCard, padding: "20px 22px" }}>
