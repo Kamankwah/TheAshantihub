@@ -4,7 +4,7 @@ import { apiPost, apiPostForm } from "../../../apiClient.js";
 import { useDevicePosition } from "../../../hooks/useDevicePosition.js";
 import { useProspects } from "../../../hooks/useProspects.js";
 import { useRegistrationOptions } from "../../../hooks/useRegistrationOptions.js";
-import { CategoryOptions } from "../../../lib/categoryOptions.jsx";
+import CategoryChips from "../../CategoryChips.jsx";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import BusinessHoursEditor from "../../BusinessHoursEditor.jsx";
 import LocationPicker from "../../LocationPicker.jsx";
@@ -32,7 +32,7 @@ const STEPS = ["Owner & business", "Location", "Photos", "Review"];
 const ROUGH_M = 100; // a GPS fix worse than this is refused unless the pin is placed by hand
 const BLANK = {
   owner_full_name: "", owner_phone: "", owner_email: "",
-  business_name: "", business_kind: "", business_category: "",
+  business_name: "", business_kind: "", business_categories: [], // category ids in pick order; the first is the main one
   zone: "", gps_address: "",
   lat: "", lng: "", location_accuracy_m: "", location_is_manual: false, location_at: "",
   ghana_card_number: "", is_formal: false, maker_note: "",
@@ -51,6 +51,30 @@ const labelStyle = { fontSize: "0.76rem", fontWeight: 800, color: D.text };
 const hintStyle = { fontSize: "0.72rem", color: D.textDim, lineHeight: 1.45 };
 const input = { ...field, width: "100%", boxSizing: "border-box", minHeight: 44, fontSize: "1rem", resize: "none" };
 const DRAFT_PREFIX = "ashantihub.registerDraft.";
+
+// The picks that are still real options, once each, as numbers, in pick order. The chips only clean stale ids when
+// they emit, so everything that validates, shows or sends the picks goes through this.
+const currentPicks = (picks, categories) => {
+  const out = [];
+  for (const raw of Array.isArray(picks) ? picks : []) {
+    const id = Number(raw);
+    if (Number.isFinite(id) && !out.includes(id) && categories.some((c) => Number(c.id) === id)) out.push(id);
+  }
+  return out;
+};
+// A draft saved before categories became a list holds one string id in business_category; it loads as a list of one.
+// A draft with neither (or a damaged one) loads with no picks.
+const draftPicks = (form) => {
+  const list = Array.isArray(form.business_categories) && form.business_categories.length > 0
+    ? form.business_categories
+    : form.business_category ? [form.business_category] : [];
+  const ids = [];
+  for (const raw of list) {
+    const id = raw === "" || raw == null ? NaN : Number(raw);
+    if (Number.isFinite(id) && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+};
 const draftKeyFor = (staffId) => (staffId == null ? null : `${DRAFT_PREFIX}${staffId}`);
 
 // An explicit sign-out leaves no registration draft (owners' names and
@@ -174,6 +198,8 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
   const [restored] = useState(() => readDraft(draftKey));
   const [form, setForm] = useState(() => {
     const draft = { ...BLANK, ...(restored?.form || {}) };
+    draft.business_categories = draftPicks(draft);
+    delete draft.business_category;
     const week = draft.hours;
     // A draft from an older build (or a damaged one) may not hold a well-formed week: drop it rather than crash.
     if (!(Array.isArray(week) && week.length === 7 && week.every((d) => d && typeof d === "object" && Number.isInteger(Number(d.weekday))))) draft.hours = null;
@@ -256,7 +282,8 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
   const accuracy = form.location_accuracy_m === "" ? null : Number(form.location_accuracy_m);
   const hasPin = form.lat !== "" && form.lng !== "";
   const tooRough = !form.location_is_manual && accuracy != null && accuracy > ROUGH_M;
-  const categoryName = options.categories.find((c) => String(c.id) === String(form.business_category))?.label || "";
+  const picks = currentPicks(form.business_categories, options.categories);
+  const categoryNames = picks.map((id) => options.categories.find((c) => Number(c.id) === id)?.label).filter(Boolean).join(", ");
   const zoneName = options.zones.find((z) => String(z.id) === String(form.zone))?.name || "";
   const exact = check.result?.exact || [];
   const canSubmit = check.state === "done" && exact.length === 0 && !submitting && Boolean(photos.signboard_photo);
@@ -265,7 +292,12 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
     const value = e.target.value;
     dirty.current = true;
     setSavedForLater(false);
-    setForm((f) => ({ ...f, [key]: value, ...(key === "business_kind" && value !== f.business_kind ? { business_category: "" } : {}) }));
+    setForm((f) => ({ ...f, [key]: value, ...(key === "business_kind" && value !== f.business_kind ? { business_categories: [] } : {}) }));
+  };
+  const setCategories = (ids) => {
+    dirty.current = true;
+    setSavedForLater(false);
+    setForm((f) => ({ ...f, business_categories: ids }));
   };
   const toggleFormal = (e) => {
     const checked = e.target.checked;
@@ -324,7 +356,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
       if (!form.owner_phone.trim()) return "Add the owner's phone number.";
       if (!form.business_name.trim()) return "Add the business name.";
       if (!form.business_kind) return "Choose the kind of business.";
-      if (!form.business_category) return "Choose a category.";
+      if (picks.length === 0) return "Choose at least one category.";
       if (!form.hours) return "Enter the weekly opening hours and press Use these hours.";
     }
     if (n === 1) {
@@ -385,7 +417,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
     put("owner_email", form.owner_email.trim());
     put("business_name", form.business_name.trim());
     put("business_kind", form.business_kind);
-    put("business_category", form.business_category);
+    if (picks.length > 0) fd.append("business_categories", JSON.stringify(picks));
     put("zone", form.zone);
     put("gps_address", form.gps_address.trim());
     put("lat", form.lat);
@@ -539,12 +571,12 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
                 <option value="service">{KIND_LABELS.service}</option>
               </select>
             </Field>
-            <Field label="Category" hint={categoryHint}>
-              <select value={form.business_category} onChange={update("business_category")} disabled={!form.business_kind} style={input}>
-                <option value="">{form.business_kind ? "Choose a category" : "Choose the kind first"}</option>
-                <CategoryOptions categories={options.categories} />
-              </select>
-            </Field>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <CategoryChips label="Categories" categories={options.categories} value={picks} onChange={setCategories} disabled={!form.business_kind} />
+              <div style={hintStyle}>Choose every category the business sells or does. The first one you pick is the main one.</div>
+              {!form.business_kind ? <div style={hintStyle}>Choose the kind first.</div> : null}
+              {categoryHint && <div style={hintStyle}>{categoryHint}</div>}
+            </div>
             <div style={{ borderTop: `1px solid ${D.divider}`, paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={labelStyle}>Opening hours</div>
               {form.hours && !editingHours ? (
@@ -652,7 +684,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
             <div style={labelStyle}>Check before you submit</div>
             <ReviewGroup title="Owner & business" editLabel="Edit owner and business" onEdit={() => goTo(0)} rows={[
               ["Owner", form.owner_full_name], ["Phone", form.owner_phone], ["Email", form.owner_email],
-              ["Business", form.business_name], ["Kind", [KIND_LABELS[form.business_kind], categoryName].filter(Boolean).join(" · ")],
+              ["Business", form.business_name], ["Kind", [KIND_LABELS[form.business_kind], categoryNames].filter(Boolean).join(" · ")],
             ]} />
             <ReviewGroup title="Opening hours" editLabel="Edit opening hours" onEdit={() => goTo(0)} rows={[["Hours", hoursSummary(form.hours)]]} />
             <ReviewGroup title="Location" editLabel="Edit location" onEdit={() => goTo(1)} rows={[
