@@ -241,6 +241,12 @@ describe('CategoryChips — department sections', () => {
     expect(screen.getByText(/^Selected:/)).toHaveTextContent('Selected: Jewelry › Watches (main)')
   })
 
+  it('an empty `all` falls back to the options themselves for departments and paths', () => {
+    render(<Harness categories={TREE} all={[]} initial={[201]} />)
+    expect(screen.getAllByRole('button', { expanded: false }).map((b) => b.textContent)).toEqual(['▸📱 Electronics', '▸💍 Jewelry'])
+    expect(screen.getByText(/^Selected:/)).toHaveTextContent('Selected: Clothing › Accessories (main)')
+  })
+
   it('Enter in the search box does not submit the form the chips sit in', () => {
     let submitted = 0
     render(<form onSubmit={(e) => { e.preventDefault(); submitted += 1 }}><Harness categories={BIG} all={BIG} /></form>)

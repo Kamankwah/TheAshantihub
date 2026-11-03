@@ -28,7 +28,7 @@ export function CategoryChips({ categories = [], value = [], onChange, max = 10,
   const [openedInSearch, setOpenedInSearch] = useState({})
   const baseId = useId()
 
-  const lookup = all || categories
+  const lookup = Array.isArray(all) && all.length > 0 ? all : categories
   const pathOf = categoryPathLabeler(lookup)
   const byId = new Map(categories.map((c) => [c.id, c]))
   const grouped = categories.some((c) => c.parent != null)
