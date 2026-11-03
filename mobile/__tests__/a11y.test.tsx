@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react-native";
+import { render, screen, waitFor } from "@testing-library/react-native";
 import type { ComponentType } from "react";
 import { StyleSheet } from "react-native";
 
@@ -235,6 +235,8 @@ describe.each([320, 430])("every screen at %d dp wide", (width) => {
       </QueryClientProvider>,
     );
     await screen.findAllByText(/./, undefined, { timeout: 3000 }).catch(() => undefined);
+    // Let every request settle before sweeping: on a busy machine the first paint can be a loading state.
+    await waitFor(() => expect(qc.isFetching()).toBe(0), { timeout: 8000 }).catch(() => undefined);
     await new Promise((r) => setTimeout(r, 50));
     const offenders = sweep(route.name, !!route.customerFacing);
     expect(offenders).toEqual([]);
