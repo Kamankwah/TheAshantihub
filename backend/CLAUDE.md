@@ -154,11 +154,16 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   The first is the main one and `BusinessOwnerProfile.business_category` mirrors it. The only writers are
   `accounts.categories.set_categories` (locks the profile row only, so the owner-then-profile order is unaffected) and
   `resync_after_category_delete` (the `post_delete` handler that re-syncs after a `Category` is deleted); never write the
-  links or the mirror elsewhere. 1..10 categories, all of the profile's `business_kind`; required only where the kind is
-  first set (`billing/start-trial`, `billing/business-kind`; ignored when the kind is already set).
-  `compute_registration_step` is deliberately unchanged, so an already-registered owner is never sent back. Categories
-  describe a business, they never restrict listings (listings are limited by `business_kind` only). `categories_of`
-  honours a `category_links__category` prefetch: use it for lists. Insights keep using the main category.
+  links or the mirror elsewhere, and never save a profile loaded without the lock as a whole row (it writes a stale
+  mirror back; use `update_fields`, as `accounts/deletion.py` does). 1..10 categories, all of the profile's
+  `business_kind`; validated only where the kind is first set (`billing/start-trial`, `billing/business-kind`; ignored when
+  the kind is already set). Transitional: a request there that omits the `categories` key sets the kind with no
+  categories (the mobile app and cached older web bundles do not send it yet); any value that is sent, even `[]` or
+  `null`, is validated. `compute_registration_step` is deliberately unchanged, so an already-registered owner is never
+  sent back. Categories describe a business, they never restrict listings (listings are limited by `business_kind`
+  only). `categories_of` honours a `category_links__category` prefetch: use it for lists. Insights keep using the main
+  category. A data migration that deletes a `Category` through historical models (`apps.get_model`) does **not** fire
+  the `post_delete` receiver: it must call `resync_after_category_delete(profile_ids)` itself.
 - **Phones are compared by their last 9 digits.** Write owner phones through
   `accounts.phones.normalize_gh_phone()` (`+233...`) and match stored phones only through
   `phone_key()` / `filter_by_phone()` (there is no `phone_match_q`), because older rows hold

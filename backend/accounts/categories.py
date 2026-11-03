@@ -7,6 +7,13 @@ describe a business: listings are still limited by `business_kind` alone.
 
 Lock order: the profile row only (`of=("self",)`), never the owner row. The owner profile PATCH and the staff identity
 decisions lock owner and then profile, so taking the profile alone cannot deadlock with them.
+
+Deleting a Category takes the other order. Django's collector first updates the SET_NULL profile rows (those whose main
+it is), then deletes the links, and only then does the receiver resync under the profile lock: links before profile,
+where `set_categories` takes the profile and then its links. A concurrent `set_categories` on a business that has or
+names that category can therefore deadlock with the delete; Postgres aborts one side, and as each side is one
+transaction the data stays consistent. A data migration deleting a Category through historical models fires no
+receiver: call `resync_after_category_delete` from it.
 """
 import threading
 

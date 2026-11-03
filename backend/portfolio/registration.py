@@ -183,7 +183,7 @@ def _create_business(registrar, values, identity):
                 business_owner=owner,
                 business_name=values["business_name"],
                 business_kind=values["business_kind"],
-                business_category=values["business_category"],
+                # No business_category here: set_categories, next in the same transaction, writes it with the links.
                 zone=values["zone"],
                 gps_address=values["gps_address"],
                 business_contact_phone=phone,
