@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { UserPanel } from '../../App.jsx'
 import AccountHub from '../account/AccountHub.jsx'
 import { server } from '../../mocks/server.js'
@@ -201,6 +201,14 @@ describe('UserPanel gates and messages', () => {
       </QueryClientProvider>,
     )
   }
+
+  // UserPanel's AccountHub is React.lazy in App.jsx (code splitting); load it once so the
+  // synchronous assertions below are unchanged.
+  beforeAll(async () => {
+    const { unmount } = renderPanel({ fullName: 'Ama', accountType: 'customer', id: 1 })
+    await screen.findByRole('heading', { name: 'Your Orders' }, { timeout: 15000 })
+    unmount()
+  }, 20000)
 
   it('test_signed_out_and_business_owner_see_the_customer_gate', () => {
     const { unmount } = renderPanel(null)

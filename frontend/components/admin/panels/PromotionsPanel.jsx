@@ -117,7 +117,7 @@ function PromotionRow({ promotion, state, canManage, onDone }) {
         </div>
       )}
 
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
 
       {/* Cancelling is not a refund — don't let the button imply it is. */}
       {confirming && (

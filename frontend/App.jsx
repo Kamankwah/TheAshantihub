@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import FeedbackEcho from "./components/FeedbackEcho.jsx";
 import { useLocation, useNavigate, useMatch } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCategories } from "./hooks/useCategories.js";
@@ -39,18 +40,15 @@ import { C, optionStyle } from "./theme.js";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 import VerifiedMark from "./components/VerifiedMark.jsx";
 import Flag from "./components/Flag.jsx";
-import AccountHub from "./components/account/AccountHub.jsx";
 import { ACCOUNT_ROOT, isAccountPath } from "./components/account/accountNav.js";
 import Navbar from "./components/Navbar.jsx";
 import StorefrontHome from "./components/storefront/StorefrontHome.jsx";
 import StorefrontHeader from "./components/storefront/StorefrontHeader.jsx";
-import NotifyStopPage from "./components/storefront/NotifyStopPage.jsx";
 import HeroCarousel from "./components/HeroCarousel.jsx";
 import SiteBanner from "./components/SiteBanner.jsx";
 import FeaturedRow from "./components/FeaturedRow.jsx";
 import BrowseRail from "./components/storefront/BrowseRail.jsx";
 import { arrivalPatch } from "./components/storefront/browseRailSections.js";
-import ListingDetailPage from "./components/ListingDetailPage.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
 import ChatIntake from "./components/storefront/ChatIntake.jsx";
 import { Footer2 } from "./components/ui/footer-2.tsx";
@@ -59,33 +57,15 @@ import { EventsCtaBand } from "./components/ui/events-cta-band.tsx";
 import { AboutCtaBand } from "./components/ui/about-cta-band.tsx";
 import { ContactCtaBand } from "./components/ui/contact-cta-band.tsx";
 import { AccountProfileCard } from "./components/ui/account-profile-card.tsx";
-import { AboutPage } from "./components/ui/about-page.tsx";
 import { AboutTestimonialsSection } from "./components/ui/about-testimonials-section.tsx";
 import { AboutFaqSection } from "./components/ui/about-faq-section.tsx";
-import { ContactPage } from "./components/ui/contact-page.tsx";
-import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
-import BusinessClaimPage from "./components/BusinessClaimPage.jsx";
-import OwnerConfirmPage from "./components/OwnerConfirmPage.jsx";
-import ShareLocationPage from "./components/ShareLocationPage.jsx";
 import MarketingConsentCard from "./components/MarketingConsentCard.jsx";
 import AccountSecurityCard from "./components/security/AccountSecurityCard.jsx";
-import UnsubscribePage from "./components/UnsubscribePage.jsx";
-import TrackedLinkPage from "./components/TrackedLinkPage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
-import CartPage from "./components/shop/CartPage.jsx";
-import CheckoutPage from "./components/shop/CheckoutPage.jsx";
-import PaymentVerifyPage from "./components/shop/PaymentVerifyPage.jsx";
 import FlashPriceTag from "./components/FlashPriceTag.jsx";
 import PriceLine from "./components/PriceLine.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
 import EventCard, { formatEventDate } from "./components/EventCard.jsx";
-import EventDetailPage from "./components/EventDetailPage.jsx";
-import SellerPage from "./components/SellerPage.jsx";
-import EventSubmissionPanel from "./components/EventSubmissionPanel.jsx";
-import BusinessCommandCenter from "./components/dashboard/BusinessCommandCenter.jsx";
-import AdminCommandCenter from "./components/admin/AdminCommandCenter.jsx";
-import StaffInstallPage from "./components/admin/StaffInstallPage.jsx";
-import StaffTwoStepSignIn from "./components/admin/StaffTwoStepSignIn.jsx";
 import OtpSignIn from "./components/OtpSignIn.jsx";
 import { isOtpChallenge, otpCode } from "./lib/otp.js";
 import { D, glassCard, ghs, tint } from "./components/dashboard/theme.js";
@@ -96,15 +76,45 @@ import { subjectLine } from "./lib/conversationSubject.js";
 import { takeSignedOutMessage } from "./lib/signOutReason.js";
 import { readCookieConsent, saveCookieConsent } from "./lib/cookieConsent.js";
 import useBreakpoint from "./hooks/useBreakpoint.js";
-import SpendAreaChart from "./components/dashboard/charts/SpendAreaChart.jsx";
-import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
-import OrdersPanel from "./components/account/OrdersPanel.jsx";
 import TicketQr from "./components/TicketQr.jsx";
 import StaffGateNotice from "./components/StaffGateNotice.jsx";
 import StaffViewOnlyBar, { STAFF_VIEW_ONLY_BAR_HEIGHT } from "./components/StaffViewOnlyBar.jsx";
 import { isStaffSession } from "./lib/staffSession.js";
 import { useStaffGate } from "./hooks/useStaffGate.js";
 import { useFavourites } from "./hooks/useFavourites.js";
+
+
+// ─── Code splitting ───────────────────────────────────────────────────────────
+// Heavy, role- or route-specific screens load on demand so an anonymous shopper
+// on the home page does not download the dashboards, charts, checkout or
+// registration flows (the single bundle was ~3.6 MB / ~970 KB gzipped, over a
+// 200 ms+ link to the server). The default export below wraps the app in a
+// Suspense boundary; in-page screens add their own <Suspense> with InlineFallback.
+const BusinessCommandCenter = lazy(() => import("./components/dashboard/BusinessCommandCenter.jsx"));
+const AdminCommandCenter = lazy(() => import("./components/admin/AdminCommandCenter.jsx"));
+const StaffInstallPage = lazy(() => import("./components/admin/StaffInstallPage.jsx"));
+const StaffTwoStepSignIn = lazy(() => import("./components/admin/StaffTwoStepSignIn.jsx"));
+const BusinessRegistrationFlow = lazy(() => import("./components/BusinessRegistrationFlow.jsx"));
+const BusinessClaimPage = lazy(() => import("./components/BusinessClaimPage.jsx"));
+const OwnerConfirmPage = lazy(() => import("./components/OwnerConfirmPage.jsx"));
+const ShareLocationPage = lazy(() => import("./components/ShareLocationPage.jsx"));
+const UnsubscribePage = lazy(() => import("./components/UnsubscribePage.jsx"));
+const TrackedLinkPage = lazy(() => import("./components/TrackedLinkPage.jsx"));
+const CartPage = lazy(() => import("./components/shop/CartPage.jsx"));
+const CheckoutPage = lazy(() => import("./components/shop/CheckoutPage.jsx"));
+const PaymentVerifyPage = lazy(() => import("./components/shop/PaymentVerifyPage.jsx"));
+const EventDetailPage = lazy(() => import("./components/EventDetailPage.jsx"));
+const SellerPage = lazy(() => import("./components/SellerPage.jsx"));
+const EventSubmissionPanel = lazy(() => import("./components/EventSubmissionPanel.jsx"));
+const ListingDetailPage = lazy(() => import("./components/ListingDetailPage.jsx"));
+const NotifyStopPage = lazy(() => import("./components/storefront/NotifyStopPage.jsx"));
+const AccountHub = lazy(() => import("./components/account/AccountHub.jsx"));
+const OrdersPanel = lazy(() => import("./components/account/OrdersPanel.jsx"));
+const SpendAreaChart = lazy(() => import("./components/dashboard/charts/SpendAreaChart.jsx"));
+const ListingsDonut = lazy(() => import("./components/dashboard/charts/ListingsDonut.jsx"));
+const AboutPage = lazy(() => import("./components/ui/about-page.tsx").then(m => ({ default: m.AboutPage })));
+const ContactPage = lazy(() => import("./components/ui/contact-page.tsx").then(m => ({ default: m.ContactPage })));
+const InlineFallback = <div role="status" aria-label="Loading" style={{minHeight:"40vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.gold,fontSize:"0.9rem"}}>Loading…</div>;
 
 // ─── Payment System ───────────────────────────────────────────────────────────
 const MOMO_NETWORKS = [
@@ -1319,7 +1329,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
         {error && <div role="alert" style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
         {otp && <OtpSignIn challenge={otp.challenge} accountType={otp.accountType} purpose={otp.purpose} auth={auth} onSuccess={onSuccess} onCancel={cancelOtp}/>}
-        {mode==="login" && twoStep && <StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/>}
+        {mode==="login" && twoStep && <Suspense fallback={InlineFallback}><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/></Suspense>}
         {mode==="login" && !twoStep && !otp && twoStepNotice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{twoStepNotice}</div>}
         {mode==="login" && !twoStep && !otp && <form onSubmit={handleLogin}>
           {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:12}}>
@@ -1434,7 +1444,7 @@ function StaffActivatePage({auth,onSuccess}) {
         <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Activate Your Staff Account</div>
       </div>
       <div style={{padding:"20px 24px"}}>
-        {twoStep && <StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setConfirmPassword("");if(typeof message==="string"){setNotice(message);}else{setAccountActive(true);}}}/>}
+        {twoStep && <Suspense fallback={InlineFallback}><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setConfirmPassword("");if(typeof message==="string"){setNotice(message);}else{setAccountActive(true);}}}/></Suspense>}
         {!twoStep && accountActive && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",fontSize:"0.78rem"}}>Your account is active. Sign in at the <a href="/staff" style={{color:"inherit",fontWeight:700}}>staff sign-in</a> to finish setting up 2-step sign-in.</div>}
         {!twoStep && !accountActive && notice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{notice}</div>}
         {!twoStep && error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
@@ -1499,7 +1509,7 @@ function ResetPasswordPage({auth,setPage,setAuthModal}) {
           </>
         ) : (
           <>
-            {error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+            {error && <div role="alert" style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
             {!token && !error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No reset token found in this link. Please request a new one from the sign-in screen.</div>}
             <form onSubmit={handleSubmit}>
               <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="New password (min 8 characters)" required minLength={8} style={authInputStyle}/>
@@ -1716,7 +1726,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
   // App-owned pieces, handed to the hub as render functions (components/** never import App.jsx).
   const render = {
     overview: () => <OverviewPanel favourites={favourites} user={user}/>,
-    orders: () => <OrdersPanel user={user}/>,
+    orders: () => <Suspense fallback={InlineFallback}><OrdersPanel user={user}/></Suspense>,
     requests: () => <ServiceRequestsTab PaymentComponent={PaymentComponent} onContactSupport={contactSupport}/>,
     bookings: () => <MyBookingsTab onContactSupport={contactSupport}/>,
     messages: () => (
@@ -1772,7 +1782,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     </div>
 
     <div style={{padding:"22px 20px 60px",flex:1,width:"100%",maxWidth:1100,margin:"0 auto",boxSizing:"border-box"}}>
-      <AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport(null,{startNew:true})} onOpenPage={onOpenPage} onStartRegistration={onStartRegistration}/>
+      <Suspense fallback={InlineFallback}><AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport(null,{startNew:true})} onOpenPage={onOpenPage} onStartRegistration={onStartRegistration}/></Suspense>
     </div>
   </div>;
 }
@@ -1850,11 +1860,11 @@ function OverviewPanel({ user, favourites }) {
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:14}}>
         <ChartFrame title="Your spend over time" icon="💸">
-          <SpendAreaChart data={spendSeries}/>
+          <Suspense fallback={InlineFallback}><SpendAreaChart data={spendSeries}/></Suspense>
         </ChartFrame>
         <ChartFrame title="Orders by status" icon="📦">
           <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-            <ListingsDonut data={donutData} centerLabel="Orders" emptyMessage="You haven't placed any orders yet."/>
+            <Suspense fallback={InlineFallback}><ListingsDonut data={donutData} centerLabel="Orders" emptyMessage="You haven't placed any orders yet."/></Suspense>
             <div style={{display:"flex",flexWrap:"wrap",gap:"6px 14px",justifyContent:"center",marginTop:8}}>
               {donutData.filter(d=>d.value>0).map(d=>(
                 <span key={d.name} style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:"0.64rem",color:D.textDim}}>
@@ -1974,7 +1984,7 @@ function MyBookingsTab({ onContactSupport }) {
 // fixed-dark styling sits on the account shell, which follows the site
 // theme (in light mode it reads as a dark card on cream).
 function MyEventsTab({ user, categories, zones }) {
-  return <EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/>;
+  return <Suspense fallback={InlineFallback}><EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/></Suspense>;
 }
 
 // Full-width, D-styled ticket list — replaces the old MyTicketsDrawer overlay
@@ -2439,6 +2449,10 @@ const KNOWN_PATHS = new Set([...Object.keys(PATH_TO_PAGE), ...Object.keys(DASH_P
 const STAFF_STANDALONE_PAGES = new Set(["activate", "install"]);
 
 export default function AshantiHub() {
+  return <><Suspense fallback={<LoadingScreen/>}><AshantiHubApp/></Suspense><FeedbackEcho/></>;
+}
+
+function AshantiHubApp() {
   const location = useLocation();
   const navigate = useNavigate();
   // /business/:id and /events/:id are dynamic-segment paths — useMatch()
@@ -3047,7 +3061,7 @@ export default function AshantiHub() {
       {/* A staff session can't register a business — same notice the
           "Register Your Business" CTAs show, for a direct /register visit. */}
       {page==="cart"&&(
-        <CartPage user={user} currency={currency} onNavigate={navigate} authLoading={auth.isLoading} onSignIn={()=>setAuthModal("login")}/>
+        <Suspense fallback={InlineFallback}><CartPage user={user} currency={currency} onNavigate={navigate} authLoading={auth.isLoading} onSignIn={()=>setAuthModal("login")}/></Suspense>
       )}
 
       {page==="register"&&staffSession&&(
@@ -3124,7 +3138,7 @@ export default function AshantiHub() {
           </>)}
 
           {selectedListingId ? (
-            <ListingDetailPage
+            <Suspense fallback={InlineFallback}><ListingDetailPage
               id={selectedListingId}
               onBack={()=>setSelectedListingId(null)}
               user={user}
@@ -3142,7 +3156,7 @@ export default function AshantiHub() {
               onShowDirect={()=>{setFilters({directOnly:true});setSearchInput("");setMinPriceInput("");setMaxPriceInput("");setSelectedListingId(null);}}
               CardComponent={Card}
               PaymentComponent={MoMoPayment}
-            />
+            /></Suspense>
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>
           {/* The old top PRODUCTS/SERVICES category-tab strips were removed at
@@ -3335,13 +3349,13 @@ export default function AshantiHub() {
           {showEventSubmit&&(
             <div style={{background:C.void}}>
               <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px"}}>
-                <EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/>
+                <Suspense fallback={InlineFallback}><EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/></Suspense>
               </div>
             </div>
           )}
 
           {selectedEventId ? (
-            <EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)} user={user} PaymentComponent={MoMoPayment}/>
+            <Suspense fallback={InlineFallback}><EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)} user={user} PaymentComponent={MoMoPayment}/></Suspense>
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>
             {/* Event category strips removed — filtering lives in the BrowseRail
@@ -3403,7 +3417,7 @@ export default function AshantiHub() {
 
       {/* About page */}
       {page==="about"&&(<>
-        <AboutPage/>
+        <Suspense fallback={InlineFallback}><AboutPage/></Suspense>
         <AboutTestimonialsSection/>
         <AboutFaqSection/>
       </>)}
@@ -3414,7 +3428,7 @@ export default function AshantiHub() {
 
       {/* Contact page */}
       {page==="contact"&&(
-        <ContactPage user={user} onCreateAccount={()=>setAuthModal("signup")} WhatsAppButton={WABtn}/>
+        <Suspense fallback={InlineFallback}><ContactPage user={user} onCreateAccount={()=>setAuthModal("signup")} WhatsAppButton={WABtn}/></Suspense>
       )}
 
       {page==="contact"&&(

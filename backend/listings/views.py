@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import filters, generics, serializers
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -19,11 +20,12 @@ from accounts.direct import direct_q
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
 from activity.services import record as activity_record
 from accounts.permissions import HasRolePermission
+from accounts.validators import validate_image_content_type
 from accounts.views import IsBusinessOwner
 from billing.models import Transaction
 from notifications.services import notify_business_owner, notify_staff_role
 
-from . import lifecycle, revisions, variants
+from . import image_variants, lifecycle, revisions, variants
 from .moderation_checks import (
     CONTACT_DETAILS_MESSAGE,
     blocking_failures,
@@ -60,6 +62,7 @@ from .serializers import (
 )
 from . import pricing
 from .pricing import effective_price_expr
+from .validators import validate_image_size
 from .visibility import hidden_business_q, sold_out_q
 from .visits import record_visit
 
@@ -120,7 +123,7 @@ class CategoryTreeView(APIView):
         full = request.query_params.get("full") in ("1", "true")
         if full and not isinstance(request.user, (BusinessOwner, StaffUser)):
             return Response({"detail": "The full category tree is for businesses and staff."}, status=403)
-        return Response(build_tree(full=full))
+        return Response(build_tree(full=full, request=request))
 
 
 class CategoryVisitView(APIView):
@@ -174,6 +177,86 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
                 status=400,
             )
         return super().destroy(request, *args, **kwargs)
+
+
+class _PictureUpload(serializers.Serializer):
+    """One uploaded picture: the bytes are sniffed and the size capped by the same checks listing photos use."""
+
+    image = serializers.ImageField(validators=[validate_image_content_type, validate_image_size])
+
+
+class PictureView(APIView):
+    """POST (multipart `image`) sets and DELETE clears the picture of one row; the answer is the row's serializer.
+    Subclasses name the model, serializer, permission and the activity action prefix. Replacing or clearing removes the
+    old file from storage."""
+
+    model = None
+    serializer_class = None
+    permission_codename = None
+    action_prefix = None
+    parser_classes = [MultiPartParser]
+
+    def get_permissions(self):
+        return [HasRolePermission(self.permission_codename)]
+
+    def _label(self, obj):
+        return getattr(obj, "label", None) or obj.name
+
+    def _answer(self, obj, request):
+        return Response(self.serializer_class(obj, context={"request": request}).data)
+
+    def post(self, request, pk):
+        obj = generics.get_object_or_404(self.model, pk=pk)
+        upload = _PictureUpload(data=request.data)
+        upload.is_valid(raise_exception=True)
+        old = obj.image.name if obj.image else None
+        old_variants = obj.image_variants
+        obj.image = upload.validated_data["image"]
+        obj.save(update_fields=["image"])
+        # Resized copies for the storefront; never fails the upload (the page then serves the original).
+        image_variants.refresh(obj, "image", "image_variants")
+        if old and old != obj.image.name:
+            obj.image.storage.delete(old)
+            image_variants.discard(old_variants)
+        activity_record(
+            request.user, f"{self.action_prefix}.image_set", target=obj,
+            summary=f"Set the picture for {self._label(obj)}", method="POST", request=request,
+        )
+        return self._answer(obj, request)
+
+    def delete(self, request, pk):
+        obj = generics.get_object_or_404(self.model, pk=pk)
+        old = obj.image.name if obj.image else None
+        if old:
+            old_variants = obj.image_variants
+            obj.image = None
+            obj.image_variants = {}
+            obj.save(update_fields=["image", "image_variants"])
+            obj.image.storage.delete(old)
+            image_variants.discard(old_variants)
+            activity_record(
+                request.user, f"{self.action_prefix}.image_cleared", target=obj,
+                summary=f"Removed the picture for {self._label(obj)}", method="DELETE", request=request,
+            )
+        return self._answer(obj, request)
+
+
+class CategoryImageView(PictureView):
+    """/api/listings/categories/<id>/image/ (categories.manage)."""
+
+    model = Category
+    serializer_class = CategorySerializer
+    permission_codename = "categories.manage"
+    action_prefix = "category"
+
+
+class ZoneImageView(PictureView):
+    """/api/listings/zones/<id>/image/ (zones.manage)."""
+
+    model = Zone
+    serializer_class = ZoneSerializer
+    permission_codename = "zones.manage"
+    action_prefix = "zone"
 
 
 class ZoneListView(generics.ListCreateAPIView):
@@ -677,6 +760,43 @@ class ListingSponsoredView(APIView):
         listing.sponsored_by = request.user if flag else None
         listing.save(update_fields=["sponsored", "sponsored_by", "updated_at"])
         return Response({"id": listing.pk, "sponsored": listing.sponsored})
+
+
+class ListingCategoryMoveView(APIView):
+    """POST /api/listings/<id>/category/ {"category": <id>} - staff move a listing to another category at once, with
+    no approval round (`categories.manage`: marketing, operations, super admin). The new category must be the same
+    sort of listing (product, food, service, stay) so the answers already given still apply, must match the business's
+    registered kind, and must allow variants when the listing has any. The move is recorded in the activity log."""
+
+    def get_permissions(self):
+        return [HasRolePermission("categories.manage")]
+
+    def post(self, request, pk):
+        from cart import guard
+        from . import pricing
+
+        listing = generics.get_object_or_404(Listing.objects.select_related("category", "business_owner"), pk=pk)
+        try:
+            target = Category.objects.get(pk=int(request.data.get("category")))
+        except (TypeError, ValueError, Category.DoesNotExist):
+            return Response({"category": "Choose a category."}, status=400)
+        old = listing.category
+        if target.pk == old.pk:
+            return Response({"category": "It is already in that category."}, status=400)
+        if guard.kind_of_category(target) != guard.kind_of_category(old):
+            return Response({"category": "Choose a category of the same kind. Products, services and stays have different details."}, status=400)
+        profile = getattr(listing.business_owner, "profile", None)
+        if profile is not None and profile.business_kind and target.kind and target.kind != profile.business_kind:
+            return Response({"category": f"This business is registered for {profile.business_kind} listings only."}, status=400)
+        if not pricing.sale_allowed(target) and variants.has_variants(listing):
+            return Response({"category": "Only products and food can have variants. Remove the variants first."}, status=400)
+        listing.category = target
+        listing.save(update_fields=["category", "updated_at"])
+        activity_record(
+            request.user, "listing-category-move", target=listing, method="POST", request=request,
+            summary=f"Moved {listing.name} from {old.label} to {target.label}",
+        )
+        return Response({"id": listing.pk, "category": target.pk, "category_label": target.label})
 
 
 class SponsoredListView(APIView):

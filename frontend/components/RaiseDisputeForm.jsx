@@ -78,7 +78,7 @@ export default function RaiseDisputeForm({ orderId }) {
         rows={3}
         style={{ ...fieldStyle, resize: "vertical" }}
       />
-      {actionError && <div style={{ color: D.red, fontSize: "0.72rem", marginTop: 6 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginTop: 6 }}>{actionError}</div>}
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
         <button
           type="submit"

@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../../apiClient.js";
 import { useListingForReview, useListingHistory, useSaListingCounts, useSaListings } from "../../../hooks/useMarketplace.js";
 import { useCategories } from "../../../hooks/useCategories.js";
-import { categoryPathLabel } from "../../../lib/categoryOptions.jsx";
+import { CategoryOptions, categoryPathLabel } from "../../../lib/categoryOptions.jsx";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
 import { button, callout, dim, field } from "./panelStyles.js";
@@ -134,6 +134,48 @@ function TakeDown({ listing, onDone, onCancel }) {
   );
 }
 
+// Staff move a listing to another category of the same kind at once; no approval round. The owner is not asked.
+function MoveCategory({ listing, categories, onDone, onCancel }) {
+  const all = Array.isArray(categories) ? categories : [];
+  const current = all.find((c) => c.id === listing.category_id);
+  const options = current ? all.filter((c) => c.kind === current.kind && Boolean(c.is_accommodation) === Boolean(current.is_accommodation)) : [];
+  const [target, setTarget] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState(null);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!target || busy) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await apiPost(`/api/listings/${listing.id}/category/`, { category: Number(target) });
+      const label = all.find((c) => c.id === Number(target));
+      onDone(`Moved “${listing.name}” to ${label ? categoryPathLabel(label, all) : "the new category"}.`);
+    } catch (err) {
+      setActionError(apiErrorMessage(err, "Could not move it."));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form aria-label={`Move ${listing.name}`} onSubmit={submit} noValidate style={card}>
+      <h3 style={h3}>{`Move “${listing.name}”`}</h3>
+      <div style={dim}>{`Now in ${current ? categoryPathLabel(current, all) : listing.category}. The move shows on the site at once and is recorded. Only categories of the same kind are offered.`}</div>
+      <label style={labelStyle}>New category
+        <select value={target} onChange={(e) => setTarget(e.target.value)} style={field}>
+          <option value="">Choose a category</option>
+          <CategoryOptions categories={options.filter((c) => c.id !== listing.category_id)} all={all} />
+        </select>
+      </label>
+      {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
+        <button type="submit" disabled={!target || busy} style={button(D.gold, "#1a1205", !target || busy)}>Move</button>
+      </div>
+    </form>
+  );
+}
+
 function AllListingsView({ auth, onOpenBusiness }) {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({ type: "", status: "", added_by: "", category: "" });
@@ -141,6 +183,7 @@ function AllListingsView({ auth, onOpenBusiness }) {
   const [page, setPage] = useState(1);
   const [history, setHistory] = useState(null);
   const [takingDown, setTakingDown] = useState(null);
+  const [moving, setMoving] = useState(null);
   const [notice, setNotice] = useState(null);
   const [reviewing, setReviewing] = useState(null);
   const [approvingId, setApprovingId] = useState(null);
@@ -154,6 +197,7 @@ function AllListingsView({ auth, onOpenBusiness }) {
   const rows = list.data?.results || [];
   const canModerate = Boolean(auth?.hasPermission?.("listings.moderate"));
   const canSponsor = Boolean(auth?.hasPermission?.("deals.manage"));
+  const canMove = Boolean(auth?.hasPermission?.("categories.manage"));
 
   const approve = async (l) => {
     if (approvingId) return;
@@ -201,6 +245,7 @@ function AllListingsView({ auth, onOpenBusiness }) {
       {notice && <div role="status" style={callout(D.green)}>{notice}</div>}
       {approveError && <div role="alert" style={callout(D.red)}>{approveError}</div>}
       {takingDown && <TakeDown listing={takingDown} onCancel={() => setTakingDown(null)} onDone={(m) => { setTakingDown(null); setNotice(m); queryClient.invalidateQueries({ queryKey: ["sa-listings"] }); queryClient.invalidateQueries({ queryKey: ["moderation-queue"] }); }} />}
+      {moving && <MoveCategory listing={moving} categories={categories} onCancel={() => setMoving(null)} onDone={(m) => { setMoving(null); setNotice(m); queryClient.invalidateQueries({ queryKey: ["sa-listings"] }); }} />}
       {reviewing && <ReviewSheet listing={reviewing} canModerate={canModerate} approving={approvingId === reviewing.id} onApprove={approve} onClose={() => setReviewing(null)} />}
       {history && <History listing={history} onClose={() => setHistory(null)} />}
       <div style={card}>
@@ -231,6 +276,7 @@ function AllListingsView({ auth, onOpenBusiness }) {
                           <button type="button" aria-label={`History of ${l.name}`} onClick={() => setHistory(l)} style={button(D.panelBg, D.text)}>History</button>
                           {canModerate && l.status === "pending_review" && <button type="button" aria-label={`View or approve ${l.name}`} onClick={() => { setNotice(null); setApproveError(null); setReviewing(l); }} style={button(D.green, "#fff")}>View / Approve</button>}
                           {canSponsor && isProductListing(l) && l.status === "published" && <SponsoredToggle id={l.id} name={l.name} sponsored={Boolean(l.sponsored)} onChanged={() => queryClient.invalidateQueries({ queryKey: ["sa-listings"] })} />}
+                          {canMove && l.status !== "discontinued" && <button type="button" aria-label={`Move ${l.name} to another category`} onClick={() => { setNotice(null); setMoving(l); }} style={button(D.panelBg, D.text)}>Move category</button>}
                           {canModerate && l.status === "published" && <button type="button" aria-label={`Take down ${l.name}`} onClick={() => { setNotice(null); setTakingDown(l); }} style={button(D.panelBg, D.red)}>Take down</button>}
                         </div>
                       </td>

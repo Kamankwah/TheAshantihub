@@ -120,7 +120,7 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
         </div>
       </div>
 
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
 
       {/* Rejecting is final from this row's point of view — only a rejected
           dispute can be reopened, from the Rejected tab. */}

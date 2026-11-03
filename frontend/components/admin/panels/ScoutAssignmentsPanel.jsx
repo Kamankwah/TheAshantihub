@@ -39,7 +39,7 @@ export default function ScoutAssignmentsPanel() {
     <div>
       <div style={{ ...glassCard, padding: 18, marginBottom: 16 }}>
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 12 }}>Assign a scout</div>
-        {actionError && <div style={{ color: D.red, fontSize: "0.76rem", marginBottom: 10 }}>{actionError}</div>}
+        {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.76rem", marginBottom: 10 }}>{actionError}</div>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <select value={businessId} onChange={e => setBusinessId(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 160 }}>
             <option value="">Business…</option>

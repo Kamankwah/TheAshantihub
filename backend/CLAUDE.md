@@ -559,3 +559,19 @@ rating-annotation tests.
 Run through compose; the service is named **`web`**, not `backend`:
 `docker compose run --rm web python manage.py <cmd>`. On the server, target an environment via its
 compose project — see the `deploy` skill.
+
+## Category and zone pictures
+
+`Category.image` and `Zone.image` are set only through `POST`/`DELETE categories/<id>/image/` and `zones/<id>/image/`
+(`listings.views.PictureView`: multipart `image`, sniffed type, 5 MB cap, old file removed on replace or clear, activity
+logged); the serializers expose `image` read-only, and the category tree and `storefront/home/` carry it (the home feed
+also sends each department's first four open sub-categories as `children`). Marketing, Operations and Super Admin hold
+`categories.manage` and `zones.manage` (accounts 0076 gave Operations the former).
+
+## Moving a listing to another category
+
+Two doors. The owner's edit form saves `category` through a revision (staff approve it, the live listing is untouched until
+then). Staff holding `categories.manage` (Marketing, Operations, Super Admin) use `POST listings/<id>/category/`
+(`ListingCategoryMoveView`): it applies at once, with no approval, and only within the same `cart.guard.kind_of_category`
+(product, food, service, stay), the business's registered kind, and the variants rule. It is logged as
+`listing-category-move`. A pending revision that also carries `category` would move the listing again when approved.

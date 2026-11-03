@@ -31,7 +31,7 @@ export default function MarketingConsentCard() {
         Separate from order updates, which you always get. Tick only what you want; you can change your mind here at any time.
       </div>
       {isLoading && <div style={{ color: D.textFaint, fontSize: "0.76rem" }}>Loading…</div>}
-      {isError && <div style={{ color: D.red, fontSize: "0.76rem" }}>Could not load your choices.</div>}
+      {isError && <div role="alert" style={{ color: D.red, fontSize: "0.76rem" }}>Could not load your choices.</div>}
       {error && <div role="alert" style={{ color: D.red, fontSize: "0.76rem" }}>{error}</div>}
       {data && Object.entries(data.channels).map(([channel, c]) => (
         <label key={channel} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 0", borderTop: `1px solid ${D.divider}`, fontSize: "0.78rem", color: D.text, cursor: "pointer" }}>

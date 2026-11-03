@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiPatch, apiPost, apiPut } from "../../../apiClient.js";
 import { useListingRevision } from "../../../hooks/useListingRevision.js";
+import { useCategories } from "../../../hooks/useCategories.js";
+import { CategoryOptions } from "../../../lib/categoryOptions.jsx";
 import { useNeedsRestocking } from "../../../hooks/useCatalogueStock.js";
 import StockLineEditor from "../../catalogue/StockLineEditor.jsx";
 import GroupingCard from "../../catalogue/GroupingCard.jsx";
@@ -85,6 +87,13 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
   const [price, setPrice] = useState(listing.price_amount ?? "");
   const [form, setForm] = useState(() => Object.fromEntries(fields.map(f => [f, toForm(f, staged[f] !== undefined ? staged[f] : listing[f])])));
   const [specs, setSpecs] = useState((staged.specs !== undefined ? staged.specs : listing.specs) || []);
+  const [category, setCategory] = useState(String(staged.category !== undefined ? staged.category : listing.category ?? ""));
+  const { data: allCategories } = useCategories();
+  // Only categories of the same kind (and, for stays, the same sort) so the fields already filled in still apply.
+  const current = (allCategories || []).find(c => c.id === Number(listing.category));
+  const moveOptions = current
+    ? allCategories.filter(c => c.kind === current.kind && Boolean(c.is_accommodation) === Boolean(current.is_accommodation))
+    : [];
   const [error, setError] = useState(null);
   const [barcodeError, setBarcodeError] = useState(null);
   const update = (field, value) => setForm(f => ({ ...f, [field]: value }));
@@ -101,6 +110,7 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
         if (JSON.stringify(wanted) !== JSON.stringify(normalise(f, liveValue(f, listing)))) changes[f] = wanted;
       }
       if (JSON.stringify(cleanSpecs) !== JSON.stringify(listing.specs || [])) changes.specs = cleanSpecs;
+      if (category && Number(category) !== Number(listing.category)) changes.category = Number(category);
     }
     const priceChanged = !listing.has_variants && String(price) !== String(listing.price_amount ?? "");
     if (!priceChanged && Object.keys(changes).length === 0) { setError("You have not changed anything yet."); return; }
@@ -139,6 +149,14 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
       <input value={form.name} onChange={e => update("name", e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
       <label style={label}>Description</label>
       <textarea value={form.description} onChange={e => update("description", e.target.value)} style={{ ...inputStyle, width: "100%", minHeight: 64, marginBottom: 8, resize: "vertical" }} />
+      {moveOptions.length > 1 && (
+        <>
+          <label htmlFor={`category-${listing.id}`} style={label}>Category</label>
+          <select id={`category-${listing.id}`} value={category} onChange={e => setCategory(e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 8 }}>
+            <CategoryOptions categories={moveOptions} all={allCategories} />
+          </select>
+        </>
+      )}
       <label style={label}>Tag</label>
       <input value={form.tag} onChange={e => update("tag", e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
       <label style={label}>Contact phone</label>
@@ -158,7 +176,7 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
       <button type="button" onClick={() => setSpecs(prev => [...prev, { label: "", value: "" }])} style={{ ...quietBtn, marginBottom: 10 }}>+ Add spec</button>
       </>
       )}
-      {error && <div style={{ color: D.red, fontSize: "0.74rem", marginBottom: 6 }}>{error}</div>}
+      {error && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginBottom: 6 }}>{error}</div>}
       <div style={{ display: "flex", gap: 6 }}>
         <button type="button" onClick={save} style={{ ...btn, background: D.gold, color: "#1a1205" }}>Save changes</button>
         <button type="button" onClick={onCancel} style={quietBtn}>Cancel</button>
@@ -237,7 +255,7 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
         <MediaManager listing={listing} basePath={basePath} onChanged={onChanged} />
       )}
 
-      {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
       {soldOut && !restockOpen && <div style={{ color: D.red, fontSize: "0.7rem", marginTop: 6 }}>Sold out — restock to keep selling.</div>}
       {low && !restockOpen && <div style={{ color: D.amber, fontSize: "0.7rem", marginTop: 6 }}>Running low — restock soon.</div>}
 

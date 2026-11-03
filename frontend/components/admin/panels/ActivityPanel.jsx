@@ -19,7 +19,7 @@ export default function ActivityPanel() {
         </div>
       </div>
       {isLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>}
-      {isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load activity.</div>}
+      {isError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load activity.</div>}
       {!isLoading && !isError && events.length === 0 && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>No activity yet.</div>}
       {events.map((e) => (
         <div key={e.id} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "8px 0", borderTop: `1px solid ${D.divider}`, fontSize: "0.8rem", flexWrap: "wrap" }}>

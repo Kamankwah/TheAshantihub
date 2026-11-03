@@ -76,7 +76,7 @@ export default function LocationPicker({ lat, lng, onChange, onAddress, height =
         <ClickToSetPin onSet={setLocation} />
         {hasPin && <Marker position={[lat, lng]} />}
       </MapContainer>
-      {geoError && <div style={{ color: C.errInk, fontSize: "0.66rem", marginTop: 4 }}>{geoError}</div>}
+      {geoError && <div role="alert" style={{ color: C.errInk, fontSize: "0.66rem", marginTop: 4 }}>{geoError}</div>}
     </div>
   );
 }

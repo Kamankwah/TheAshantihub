@@ -6,6 +6,7 @@ import AccountMenu from "../AccountMenu.jsx";
 import { useCanBuy } from "../../hooks/useCanBuy.js";
 import { categoryPath, sendCategoryVisit, useCategoryTree } from "../../hooks/useCategoryTree.js";
 import { useMyCustomerProfile } from "../../hooks/useMyCustomerProfile.js";
+import DeliverTo from "./DeliverTo.jsx";
 import SearchBar from "./SearchBar.jsx";
 import { BODY_FONT, HEADING_FONT, TABULAR } from "./storefrontType.js";
 
@@ -17,8 +18,10 @@ import { BODY_FONT, HEADING_FONT, TABULAR } from "./storefrontType.js";
 // it a slightly lighter strip of departments from the shopper tree, which
 // scrolls sideways on a phone.
 //
-// - Deliver to: a signed-in customer's saved address (the `address` on their
-//   profile, GET /api/accounts/customers/me/profile/); otherwise "Ghana".
+// - Deliver to: `DeliverTo`, the shopper's confirmed place (a Ghana region such as
+//   "Accra", or a country), suggested from their location and confirmed with a tap.
+//   Until they choose it shows a signed-in customer's saved address (the `address` on
+//   their profile, GET /api/accounts/customers/me/profile/), else "Choose location".
 //   Nothing is guessed.
 // - Account: signed out, "Hello, sign in" opens the auth modal; signed in,
 //   the same AccountMenu as the Navbar.
@@ -104,13 +107,7 @@ export default function StorefrontHeader({
           <span className="ah-sf-wordmark" style={{ fontFamily: HEADING_FONT, fontWeight: 600, fontSize: 20, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>AshantiHub</span>
         </button>
 
-        <div className="ah-sf-deliver" style={{ gridArea: "deliver", display: "flex", alignItems: "center", gap: 6, minWidth: 0, maxWidth: 200 }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.lightGold} strokeWidth="2" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
-          <span style={{ display: "flex", flexDirection: "column", minWidth: 0, lineHeight: 1.2 }}>
-            <span style={{ fontSize: 12, color: C.lightGold, opacity: 0.85 }}>{isCustomer && firstName ? `Deliver to ${firstName}` : "Deliver to"}</span>
-            <span style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{savedAddress || "Ghana"}</span>
-          </span>
-        </div>
+        <DeliverTo firstName={isCustomer ? firstName : ""} savedAddress={savedAddress} />
 
         <div style={{ gridArea: "search", minWidth: 0 }}>
           <SearchBar onOpenResult={openResult} onSubmit={submitSearch} />

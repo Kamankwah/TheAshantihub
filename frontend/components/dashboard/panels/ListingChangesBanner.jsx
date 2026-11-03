@@ -44,7 +44,7 @@ export default function ListingChangesBanner({ listing, onChanged, onEdit, baseP
           <div style={{ color: D.textDim, marginTop: 3 }}>Nothing you changed here is public until our team approves it.</div>
         </>
       )}
-      {actionError && <div style={{ color: D.red, marginTop: 6 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, marginTop: 6 }}>{actionError}</div>}
       <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
         {revision.status === "draft" && (
           <>

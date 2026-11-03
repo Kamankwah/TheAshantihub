@@ -32,8 +32,20 @@ class HomeFeedTests(TestCase):
         rows = response.json()["most_visited"]
         self.assertEqual([r["slug"] for r in rows[:2]], ["electronics", "books"])
         for row in rows:
-            self.assertEqual(set(row), {"id", "slug", "label", "icon"})
+            self.assertEqual(set(row), {"id", "slug", "label", "icon", "color", "image", "image_variants", "children"})
         self.assertEqual(rows[0]["label"], Category.objects.get(slug="electronics").label)
+
+    def test_departments_carry_up_to_four_open_sub_categories_with_pictures(self):
+        subs = ["Headphones", "Home Audio", "Camera & Photo", "Television & Video", "Wearable Technology"]
+        for name in subs:
+            self.listing(sub_slug("electronics", name))
+        row = next(r for r in self.client.get(URL).json()["most_visited"] if r["slug"] == "electronics")
+        self.assertLessEqual(len(row["children"]), 4)
+        self.assertGreaterEqual(len(row["children"]), 1)
+        for child in row["children"]:
+            self.assertEqual(set(child), {"id", "slug", "label", "icon", "image", "image_variants"})
+            self.assertIsNone(child["image"])
+            self.assertIsNone(child["image_variants"])
 
     def test_home_feed_lists_only_departments_a_shopper_can_open(self):
         # Seed order alone would name eight empty departments; a shopper sees only those with something in them.
@@ -43,7 +55,17 @@ class HomeFeedTests(TestCase):
         self.listing("baby")
         slugs = [r["slug"] for r in self.client.get(URL).json()["most_visited"]]
         self.assertIn("baby", slugs)
-        self.assertLessEqual(len(slugs), 8)
+        self.assertLessEqual(len(slugs), 24)
+
+    def test_an_empty_department_with_a_picture_is_listed(self):
+        # Staff uploaded its picture, so it shows even before anything is live in it.
+        department = Category.objects.get(slug="toys-games")
+        self.assertNotIn("toys-games", [r["slug"] for r in self.client.get(URL).json()["most_visited"]])
+        department.image = "category_images/toys.jpg"
+        department.save(update_fields=["image"])
+        rows = self.client.get(URL).json()["most_visited"]
+        self.assertIn("toys-games", [r["slug"] for r in rows])
+        self.assertTrue(next(r for r in rows if r["slug"] == "toys-games")["image"])
 
     def test_ranked_true_when_ordered_by_visits(self):
         self.listing("books")

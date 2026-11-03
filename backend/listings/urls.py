@@ -56,9 +56,11 @@ urlpatterns = [
     path("categories/", views.CategoryListView.as_view(), name="category-list"),
     path("categories/tree/", views.CategoryTreeView.as_view(), name="category-tree"),
     path("categories/<int:pk>/visit/", views.CategoryVisitView.as_view(), name="category-visit"),
+    path("categories/<int:pk>/image/", views.CategoryImageView.as_view(), name="category-image"),
     path("categories/<int:pk>/", views.CategoryDetailView.as_view(), name="category-detail"),
     path("zones/", views.ZoneListView.as_view(), name="zone-list"),
     path("zones/summary/", views.ZoneSummaryView.as_view(), name="zone-summary"),
+    path("zones/<int:pk>/image/", views.ZoneImageView.as_view(), name="zone-image"),
     path("zones/<int:pk>/", views.ZoneDetailView.as_view(), name="zone-detail"),
     # Before the `<int:pk>/` patterns below, so "promotions" is never parsed
     # as a listing id.
@@ -86,6 +88,7 @@ urlpatterns = [
     path("<int:pk>/related/", views.RelatedListingsView.as_view(), name="listing-related"),
     path("<int:pk>/view/", views_viewed.ListingViewRecordView.as_view(), name="listing-view-record"),
     path("<int:pk>/also-viewed/", views_viewed.AlsoViewedView.as_view(), name="listing-also-viewed"),
+    path("<int:pk>/category/", views.ListingCategoryMoveView.as_view(), name="listing-category-move"),
     path("<int:pk>/sponsored/", views.ListingSponsoredView.as_view(), name="listing-sponsored"),
     path("<int:pk>/promote/", views.ListingPromoteView.as_view(), name="listing-promote"),
 ]

@@ -216,7 +216,7 @@ export default function OrdersPanel({ user }) {
                 <div style={{ marginTop: 10 }}>
                   <div style={{ color: D.textDim, fontSize: "0.72rem", marginBottom: 6 }}>Your courier marked this delivered. Please confirm you received it.</div>
                   <button onClick={() => confirmReceipt(o.id)} style={{ background: D.green, color: D.pageBg, border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.76rem", cursor: "pointer", fontFamily: "inherit" }}>✓ Confirm receipt</button>
-                  {confirmError && <div style={{ color: D.red, fontSize: "0.72rem", marginTop: 6 }}>{confirmError}</div>}
+                  {confirmError && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginTop: 6 }}>{confirmError}</div>}
                 </div>
               )}
               {o.delivery_assignment_status === "confirmed" && (

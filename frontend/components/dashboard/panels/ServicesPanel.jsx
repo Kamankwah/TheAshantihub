@@ -69,7 +69,7 @@ function RequestCard({ sr, onChanged }) {
 
       {releaseLine(sr) && <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 6 }}>{releaseLine(sr)}</div>}
 
-      {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
 
       <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
         {sr.status === "requested" && (

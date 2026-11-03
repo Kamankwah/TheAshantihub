@@ -69,7 +69,7 @@ function NewVariantForm({ onAdd, disabled, note }) {
         <button type="button" onClick={add} disabled={!ready} style={{ ...btn, background: ready ? D.green : D.panelBg2, color: ready ? "#fff" : D.textFaint, cursor: ready ? "pointer" : "default" }}>Add variant</button>
       </div>
       {note && <div style={{ ...noteStyle, marginTop: 4 }}>{note}</div>}
-      {error && <div style={{ color: D.red, fontSize: "0.72rem", marginTop: 4 }}>{error}</div>}
+      {error && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginTop: 4 }}>{error}</div>}
     </div>
   );
 }
@@ -120,7 +120,7 @@ function ExistingRow({ variant, mode, locked, staged, onLive, onRemove, onAttrib
         <button type="button" disabled={locked || staged === "remove"} onClick={() => guard(onRemove, "Could not remove that variant.")} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>Remove</button>
         {revisionMode && <Chip color={D.amber}>Removal needs approval</Chip>}
       </div>
-      {error && <div style={{ color: D.red, fontSize: "0.72rem", marginTop: 4 }}>{error}</div>}
+      {error && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginTop: 4 }}>{error}</div>}
     </div>
   );
 }
@@ -173,7 +173,7 @@ export default function VariantEditor({ listing = null, basePath = DEFAULT_LISTI
       </div>
       <div style={{ ...noteStyle, margin: "0 0 8px" }}>{STOCK_COUNT_HELP}</div>
       {waiting && <div style={{ color: D.amber, fontSize: "0.72rem", marginBottom: 6 }}>This edit is waiting for review.</div>}
-      {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginBottom: 6 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginBottom: 6 }}>{actionError}</div>}
 
       {local && rows.map((r, i) => (
         <div key={r.key || i} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "6px 10px", border: `1px solid ${D.divider}`, borderRadius: 10, marginBottom: 6, color: D.text, fontSize: "0.76rem" }}>

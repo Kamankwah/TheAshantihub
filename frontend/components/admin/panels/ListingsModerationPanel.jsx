@@ -152,7 +152,7 @@ export default function ListingsModerationPanel({ auth }) {
       {view === "changes" ? <ListingRevisionsPanel auth={auth} /> : (
         <>
           <div style={{ ...dim, marginBottom: 10 }}>Listings owners submit themselves. Listings a scout adds for a business come through your Approvals inbox — that approval is their moderation.</div>
-          {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
+          {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
           <ModerationQueueTabs
             tab={tab}
             onTab={setTab}

@@ -97,9 +97,9 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast, b
         <PaymentComponent amount={Number(selectedPlan.monthly_price) * cycleMonths} purpose={`AshantiHub ${selectedPlan.name} Plan`} businessName={user?.fullName || "Your Business"} onSuccess={recordSubscriptionPayment} onClose={() => setShowPayModal(false)} />
       )}
       <h2 style={{ margin: "0 0 14px", color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>💳 Subscription</h2>
-      {actionError && <div style={{ background: tint(D.red, "1f"), color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ background: tint(D.red, "1f"), color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
       {subLoading && <div style={{ color: D.textDim, fontSize: "0.8rem", marginBottom: 16 }}>Loading your subscription…</div>}
-      {subError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 16 }}>Could not load your subscription. Make sure you're signed in as a business owner.</div>}
+      {subError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginBottom: 16 }}>Could not load your subscription. Make sure you're signed in as a business owner.</div>}
       {!subLoading && !subError && (
         subscription?.id ? (
           <div style={{ ...glassCard, padding: "18px", marginBottom: 16, background: "linear-gradient(135deg, rgba(0,100,0,0.16), rgba(0,100,0,0.03))", border: `1px solid rgba(0,100,0,0.3)` }}>
@@ -136,7 +136,7 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast, b
         ))}
       </div>}
       {plansLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading plans…</div>}
-      {plansError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load subscription plans.</div>}
+      {plansError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load subscription plans.</div>}
       {!plansLoading && !plansError && !plansGone && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 12 }}>
           {visiblePlans.map(plan => (

@@ -4,6 +4,8 @@ import { useCategories } from "../../../hooks/useCategories.js";
 import { useZones } from "../../../hooks/useZones.js";
 import { D, glassCard } from "../theme.js";
 import CategoriesMarketing from "./marketing/CategoriesMarketing.jsx";
+import CategoryPictures from "./CategoryPictures.jsx";
+import PictureSlot from "./PictureSlot.jsx";
 
 // Category "kind" choices staff pick from. Accommodation is surfaced as its
 // own first-class option here even though it isn't a distinct backend `kind`
@@ -174,7 +176,8 @@ function CategoriesAndZones({ auth }) {
 
   return (
     <div>
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
+      <div style={{ marginBottom: 16 }}><CategoryPictures canEdit={canManageCategories} /></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 16 }}>
         <div style={{ ...glassCard, padding: 18 }}>
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 12 }}>Categories</div>
@@ -216,7 +219,10 @@ function CategoriesAndZones({ auth }) {
         <div style={{ ...glassCard, padding: 18 }}>
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 12 }}>Zones</div>
           {(zones.data || []).map(z => (
-            <div key={z.id} style={{ padding: "6px 0", color: D.text, fontSize: "0.8rem" }}>{z.name}</div>
+            <div key={z.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: `1px solid ${D.divider}`, color: D.text, fontSize: "0.8rem" }}>
+              <PictureSlot label={z.name} path={`/api/listings/zones/${z.id}/image/`} image={z.image_variants?.thumb || z.image} fallback="📍" size={48} canEdit={canManageZones} onChanged={zones.refetch} />
+              <span style={{ fontWeight: 700 }}>{z.name}</span>
+            </div>
           ))}
           {canManageZones && <div style={{ marginTop: 12, display: "flex", gap: 6, flexWrap: "wrap" }}>
             <input value={newZoneName} onChange={e => setNewZoneName(e.target.value)} placeholder="New zone name" style={{ ...inputStyle, flex: "1 1 140px", minWidth: 0 }} />
