@@ -161,6 +161,48 @@ describe('BusinessRegistrationFlow', () => {
       expect(screen.getByPlaceholderText(PHONE)).toBeRequired()
     })
 
+    it('accepts a Ghana Post code typed loosely and sends the canonical one', async () => {
+      const auth = makeAuth({ refreshUser: vi.fn().mockResolvedValue({ registration_step: 'plan_selection' }) })
+      mountBusinessInfo(auth)
+      fireEvent.change(screen.getByPlaceholderText(PHONE), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText(GPS), { target: { value: 'ak0395028' } })
+      submit()
+      await waitFor(() => expect(auth.submitBusinessInfo).toHaveBeenCalledWith(
+        expect.objectContaining({ gps_address: 'AK-039-5028' })
+      ))
+    })
+
+    it('shows the format message for a code that is too short, and sends nothing', async () => {
+      const auth = makeAuth()
+      mountBusinessInfo(auth)
+      fireEvent.change(screen.getByPlaceholderText(PHONE), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText(GPS), { target: { value: 'AK03950' } })
+      submit()
+      expect(await screen.findByText('Enter a valid Ghana Post GPS address, e.g. AK-039-5028.')).toBeInTheDocument()
+      expect(auth.submitBusinessInfo).not.toHaveBeenCalled()
+    })
+
+    it('keeps the business wording for a non-Ashanti code', async () => {
+      const auth = makeAuth()
+      mountBusinessInfo(auth)
+      fireEvent.change(screen.getByPlaceholderText(PHONE), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText(GPS), { target: { value: 'GA-039-5028' } })
+      submit()
+      expect(await screen.findByText(/AshantiHub only admits businesses in the Ashanti Region/)).toBeInTheDocument()
+      expect(auth.submitBusinessInfo).not.toHaveBeenCalled()
+    })
+
+    it('tidies the field to the canonical code when it is left', () => {
+      mountBusinessInfo(makeAuth())
+      const gps = screen.getByPlaceholderText(GPS)
+      fireEvent.change(gps, { target: { value: 'ao t010 3560' } })
+      fireEvent.blur(gps)
+      expect(gps).toHaveValue('AO-T010-3560')
+      fireEvent.change(gps, { target: { value: 'AK03950' } })
+      fireEvent.blur(gps)
+      expect(gps).toHaveValue('AK03950')
+    })
+
     it('shows the registered tick and optional certificate/TIN inputs only when ticked', () => {
       mountBusinessInfo(makeAuth())
       const tick = screen.getByLabelText(/This business is registered/i)

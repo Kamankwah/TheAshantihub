@@ -2,7 +2,7 @@
 // stays the authority (it re-validates every save); this only saves a round
 // trip. COPY of GPS_FORMAT, not an import: lib/ghanaPost.test.js reads gps.py
 // and fails if the two ever differ.
-export const GHANA_POST_PATTERN = '^[A-Z]{2}-\\d{3,4}-\\d{4}$'
+export const GHANA_POST_PATTERN = '^[A-Z]{2}-[A-Z0-9]{3,4}-[A-Z0-9]{4}$'
 const FORMAT = new RegExp(GHANA_POST_PATTERN)
 const ASHANTI_LETTER = 'A'
 
@@ -12,8 +12,21 @@ export const GHANA_POST_FORMAT = 'Enter a valid Ghana Post GPS address, e.g. AK-
 export const GHANA_POST_REGION =
   'We deliver only in the Ashanti Region for now. Your Ghana Post address must begin with “A”, e.g. AK-039-5028.'
 
+// Separators people type between the groups (the same set as backend normalize_gps): whitespace, hyphens (plain,
+// hyphen, en and em dash, minus), underscore, dot and slash.
+const SEPARATORS = /[\s\-\u2010\u2013\u2014\u2212_./]/g
+const LOOSE_CODE = /^([A-Z]{2})([A-Z0-9]{7,8})$/
+
+// The canonical code (AK-039-5028, AK-0395-0285, AO-T010-3560) when `raw` is a code typed loosely, else the trimmed
+// upper-case text so the format check rejects it. Only separators and case change: no character is ever replaced
+// (letters are legitimate in the number groups, so reading O as 0 would corrupt real codes).
 export function normalizeGhanaPost(raw) {
-  return String(raw ?? '').trim().toUpperCase()
+  const text = String(raw ?? '').trim().toUpperCase()
+  const match = LOOSE_CODE.exec(text.replace(SEPARATORS, ''))
+  if (!match) return text
+  const [, area, rest] = match
+  const cut = rest.length === 7 ? 3 : 4
+  return `${area}-${rest.slice(0, cut)}-${rest.slice(cut)}`
 }
 
 export function ghanaPostError(raw) {
@@ -24,20 +37,25 @@ export function ghanaPostError(raw) {
   return null
 }
 
-// Auto-hyphenates while typing: AK039 -> AK-039-, AK0395028 -> AK-039-5028,
-// and eight digits re-split as a four-digit district (AK-0395-0285).
+// Auto-hyphenates while typing: AK039 -> AK-039-, AK0395028 -> AK-039-5028, AOT0103560 -> AO-T010-3560.
+// Letters and digits are both kept after the two prefix letters (up to 8). Eight characters re-split as a
+// four-character district (AK-0395-0285). A four-character district is also kept when the shopper has typed its
+// hyphen (AK-0395-) or the four characters hold a letter (AOT010), so the hyphen put in is not undone by the next key.
 // `deleting` (the new text is shorter than the old) stops the trailing hyphen
 // from being put straight back, so Backspace works.
 export function formatGhanaPostInput(raw, { deleting = false } = {}) {
-  const clean = String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const upper = String(raw ?? '').trim().toUpperCase()
+  const clean = upper.replace(/[^A-Z0-9]/g, '')
   const letters = clean.slice(0, 2).replace(/[^A-Z]/g, '')
   if (letters.length < 2) return letters
-  const digits = clean.slice(2).replace(/[^0-9]/g, '').slice(0, 8)
-  if (!digits) return letters
-  const split = digits.length === 8 ? 4 : 3
-  const district = digits.slice(0, split)
-  const unique = digits.slice(split)
+  const rest = clean.slice(2, 10)
+  if (!rest) return letters
+  const fourDistrict =
+    rest.length === 8 || (rest.length === 4 && /[A-Z]/.test(rest)) || /^[A-Z]{2}\W?[A-Z0-9]{4}\W/.test(upper)
+  const split = fourDistrict ? 4 : 3
+  const district = rest.slice(0, split)
+  const unique = rest.slice(split)
   if (unique) return `${letters}-${district}-${unique}`
-  if (district.length === 3 && !deleting) return `${letters}-${district}-`
+  if (district.length === split && !deleting) return `${letters}-${district}-`
   return `${letters}-${district}`
 }
