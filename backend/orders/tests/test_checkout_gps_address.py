@@ -45,7 +45,7 @@ class CheckoutGpsAddressTests(FulfilmentSpineTestsBase):
         self.assertEqual(response.json()["delivery_gps_address"], ["A Ghana Post GPS address is required."])
 
     def test_malformed_code_is_refused(self):
-        for code in ("AK-39-5028", "AK0395028"):
+        for code in ("AK-39-5028", "AK-039-502"):
             with self.subTest(code=code):
                 response = self.checkout(delivery_gps_address=code)
                 self.assertRefused(response, "delivery_gps_address")
@@ -73,6 +73,11 @@ class CheckoutGpsAddressTests(FulfilmentSpineTestsBase):
         response = self.checkout(delivery_gps_address="GA-123-4567")
         self.assertRefused(response, "delivery_gps_address")
         self.assertIn("Ashanti Region", response.json()["delivery_gps_address"][0])
+
+    def test_a_loosely_typed_code_is_stored_in_canonical_form(self):
+        response = self.checkout(delivery_gps_address="ak 039 5028")
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(Order.objects.get(id=response.json()["id"]).delivery_gps_address, "AK-039-5028")
 
     def test_a_lower_case_code_is_stored_upper_case(self):
         response = self.checkout(delivery_gps_address="  ak-039-5028 ")
