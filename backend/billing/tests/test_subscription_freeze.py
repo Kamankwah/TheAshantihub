@@ -1,11 +1,15 @@
+from datetime import timedelta
+
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile
 from billing import clock, switch
 from billing.models import Subscription, SubscriptionPlan
-from listings.models import Category
+from listings.models import Category, HeroMediaSubmission, Listing, Promotion, Zone
+from listings.visibility import hidden_business_q
 
 
 class SwitchTests(TestCase):
@@ -94,6 +98,103 @@ class FrozenTests(TestCase):
         complete_business_info(self.owner.profile, kind="")
         owner = BusinessOwner.objects.get(pk=self.owner.pk)
         self.assertEqual(owner.compute_registration_step(), "plan_selection")
+
+    # --- gates (a), (c), (d): with the switch off nothing reads overdue, paused or unsubscribed ---
+
+    def _lapsed(self, *, paused=False):
+        now = timezone.now()
+        end = now - timedelta(days=30)
+        return Subscription.objects.create(
+            business_owner=self.owner, plan=SubscriptionPlan.objects.get(tier="product_basic"),
+            current_period_start=end - timedelta(days=30), current_period_end=end,
+            overdue_since=end, paused_at=(now - timedelta(days=2)) if paused else None,
+        )
+
+    def _published_listing(self):
+        return Listing.objects.create(
+            business_owner=self.owner, category=Category.objects.get(slug="shops"), zone=Zone.objects.get(name="Manhyia"),
+            name="Kofi stall", description="D.", contact_phone="+233207880999", price_amount="150.00",
+            status=Listing.PUBLISHED,
+        )
+
+    def test_an_overdue_row_reads_as_none_with_the_switch_off(self):
+        subscription = self._lapsed()
+        state = clock.subscription_state(subscription)
+        self.assertEqual(state["state"], clock.NONE)
+        self.assertEqual(state, clock.subscription_state(None))
+        self.assertIsNone(state["plan_name"])
+        self.assertIsNone(state["overdue_since"])
+        self.assertIsNone(state["overdue_day"])
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
+    def test_a_paused_row_reads_as_none_with_the_switch_off(self):
+        self.assertEqual(clock.subscription_state(self._lapsed(paused=True))["state"], clock.NONE)
+
+    def test_featured_blockers_have_no_subscription_overdue_with_the_switch_off(self):
+        from marketing import featured
+
+        self._lapsed()
+        codes = [b["code"] for b in featured.blockers(self._published_listing())]
+        self.assertNotIn("subscription_overdue", codes)
+
+    def test_staff_listing_card_has_no_subscription_overdue(self):
+        from listings.serializers import ModerationListingSerializer
+
+        self._lapsed()
+        self.assertIsNone(ModerationListingSerializer(self._published_listing()).data["subscription_overdue"])
+
+    def test_hero_and_promotion_checks_have_no_subscription_check(self):
+        from listings.moderation_checks import hero_checks, promotion_checks
+
+        listing = self._published_listing()
+        for lapsed in (False, True):  # no row at all, then an overdue row
+            if lapsed:
+                self._lapsed()
+                self.owner.refresh_from_db()
+            hero = hero_checks(HeroMediaSubmission(business_owner=self.owner, caption="Kente"))
+            promotion = promotion_checks(Promotion(listing=listing, kind=Promotion.FEATURED))
+            keys = [c["key"] for c in hero + promotion]
+            self.assertNotIn("subscription", keys)
+            self.assertIn("kyc", keys)  # the other checks are still there
+            self.assertIn("listing_live", keys)
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
+    def test_a_paused_row_stays_public_even_with_pause_enabled(self):
+        self._lapsed(paused=True)
+        listing = self._published_listing()
+        self.assertIn(listing, Listing.objects.exclude(hidden_business_q()))
+        self.assertFalse(BusinessOwner.objects.filter(pk=self.owner.pk).filter(hidden_business_q("")).exists())
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
+    def test_a_suspended_business_is_still_hidden_with_the_switch_off(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(is_suspended=True)
+        self.assertFalse(Listing.objects.exclude(hidden_business_q()).filter(pk=self._published_listing().pk).exists())
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
+    def test_staff_screens_show_no_overdue_or_paused_for_a_lapsed_row(self):
+        from messaging.context import _subscription
+        from portfolio import health
+        from portfolio.proposals import check_listing
+        from staff_tasks.serializers import _subscription_states
+        from support.people import business_status
+
+        subscription = self._lapsed(paused=True)
+        now = timezone.now()
+        owner = BusinessOwner.objects.get(pk=self.owner.pk)
+        # Support: the status chip is not "Subscription overdue".
+        self.assertNotIn("overdue", business_status(owner, False)["label"].lower())
+        # Portfolio health: no overdue/paused state or reason.
+        row = health.rate_all(BusinessOwner.objects.filter(pk=owner.pk), now)[0]
+        self.assertEqual(row.subscription["state"], clock.NONE)
+        self.assertNotIn(health.OVERDUE, row.reasons)
+        self.assertNotIn(health.PAUSED, row.reasons)
+        # Scout/manager proposals: a paused row does not stop a new listing.
+        _, errors = check_listing(owner, {}, require_kyc=False)
+        self.assertNotIn("subscription", errors)
+        # Messaging context and the staff task card.
+        self.assertEqual(_subscription(owner, now)["state"], clock.NONE)
+        self.assertIsNone(_subscription(owner, now)["plan_name"])
+        self.assertEqual(_subscription_states([subscription.pk])[subscription.pk]["state"], clock.NONE)
 
 
 class UnfrozenTests(TestCase):
