@@ -67,18 +67,18 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
   const reminders = [];
   const subEnd = subscription?.current_period_end;
   const subDays = daysUntil(subEnd);
-  if (subscription?.id && subDays != null && subDays <= 14) {
+  // Nothing can be renewed once no plan is offered, and an old plan row's
+  // end date means nothing then, so no renew or lapsed reminder at all.
+  if (!plansGone && subscription?.id && subDays != null && subDays <= 14) {
     reminders.push({
       icon: subDays < 0 ? "🔴" : "⏰", color: subDays < 0 ? D.red : D.amber,
       title: subDays < 0 ? "Your subscription has lapsed" : `Subscription renews in ${subDays} day${subDays === 1 ? "" : "s"}`,
       // With the subscription pause switched off (clock.pause_enabled false)
       // an unpaid plan hides nothing, so don't promise to keep listings live.
-      body: plansGone
-        ? "Subscriptions are not being offered right now, so it cannot be renewed."
-        : subscription.clock?.pause_enabled === false
-          ? "Renew from the plans below to keep your plan."
-          : "Renew from the plans below to keep your listings live.",
-      action: plansGone ? null : () => setPayTab("subscription"),
+      body: subscription.clock?.pause_enabled === false
+        ? "Renew from the plans below to keep your plan."
+        : "Renew from the plans below to keep your listings live.",
+      action: () => setPayTab("subscription"),
     });
   }
   (myEvents || []).filter(e => e.status === "approved" && !e.paid_at).forEach(e => {
@@ -229,7 +229,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
             {/* Subscription status */}
             <div style={{ ...glassCard, padding: "16px 18px", marginBottom: 18 }}>
               <div style={{ fontWeight: 800, color: D.text, fontSize: "0.85rem", marginBottom: 6 }}>Your subscription</div>
-              {subscription?.id ? (
+              {subscription?.id && !plansGone ? (
                 <div style={{ color: D.textDim, fontSize: "0.78rem" }}>
                   {/* subscription.plan is a nested object (SubscriptionPlanSerializer),
                       not a string — reading .name; rendering the object itself

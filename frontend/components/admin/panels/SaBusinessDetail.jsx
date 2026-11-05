@@ -11,7 +11,7 @@ import LogCallSheet from "./LogCallSheet.jsx";
 import SuspendSheet from "./SuspendSheet.jsx";
 import { button, callout, chip, dim, field } from "./panelStyles.js";
 import { Chip, KpiStrip, SimulatedBanner, col, dateTime, figures, tableStyle, td, th } from "./marketplaceParts.jsx";
-import { HealthChip, ReassignForm, card, categoryLabel, categoryNames, errorStyle, formatDay, h2, h3, labelStyle, money, subscriptionText } from "./portfolioParts.jsx";
+import { HealthChip, ReassignForm, card, categoryLabel, categoryNames, errorStyle, formatDay, h2, h3, labelStyle, money, subscriptionText, usePlansGone } from "./portfolioParts.jsx";
 import StaffHoursSection from "./StaffHoursSection.jsx";
 
 // Super Admin > Business detail (screen 17): one page for one business. KYC,
@@ -69,6 +69,7 @@ function FlagFraudForm({ business, onDone, onCancel }) {
 
 export default function SaBusinessDetail({ businessId, auth, onBack }) {
   const queryClient = useQueryClient();
+  const plansGone = usePlansGone();
   const { data: b, isLoading, isError, error, refetch } = usePortfolioBusiness(businessId);
   const oversight = useBusinessOversight(businessId);
   const activity = useActivity({ target_type: "accounts.businessowner", target_id: String(businessId) });
@@ -213,7 +214,7 @@ export default function SaBusinessDetail({ businessId, auth, onBack }) {
         {tab === "Subscription" && (
           <>
             <h3 style={h3}>Subscription</h3>
-            <div style={{ fontSize: "0.85rem", color: D.text, ...figures }}>{`${subscriptionText(sub, b.kyc_status)}${sub.monthly_price ? ` · ${money(sub.monthly_price)} a month` : ""}`}</div>
+            <div style={{ fontSize: "0.85rem", color: D.text, ...figures }}>{`${subscriptionText(sub, b.kyc_status, plansGone)}${sub.monthly_price ? ` · ${money(sub.monthly_price)} a month` : ""}`}</div>
             <h3 style={h3}>Payments</h3>
             {oversight.isLoading && <div style={dim}>Loading…</div>}
             {o && o.payments.length === 0 && <div style={dim}>No payments recorded yet.</div>}
