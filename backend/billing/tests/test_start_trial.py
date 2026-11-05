@@ -4,6 +4,7 @@ from rest_framework.test import APIClient
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
 from billing.models import Subscription, SubscriptionPlan
+from listings.models import Category
 
 
 class StartTrialTests(TestCase):
@@ -12,6 +13,11 @@ class StartTrialTests(TestCase):
     "plan_selection" step). Not exhaustive — see billing/tests/test_subscriptions.py
     for SubscriptionMeView's own (change-plan/renew) coverage.
     """
+
+    def setUp(self):
+        self.category = Category.objects.create(
+            slug="stt-fabrics", icon="🧵", label="Fabrics", color="#7c3aed", kind="product",
+        )
 
     def _make_owner_at_plan_selection(self, **profile_overrides):
         owner = BusinessOwner.objects.create(
@@ -42,7 +48,7 @@ class StartTrialTests(TestCase):
         client = self._client_for(owner)
         response = client.post(
             "/api/billing/subscriptions/start-trial/",
-            {"business_kind": "product", "plan": "product_basic", "cycle_months": 1},
+            {"business_kind": "product", "plan": "product_basic", "cycle_months": 1, "categories": [self.category.pk]},
             format="json",
         )
         self.assertEqual(response.status_code, 201, response.content)
@@ -53,6 +59,7 @@ class StartTrialTests(TestCase):
 
         owner.profile.refresh_from_db()
         self.assertEqual(owner.profile.business_kind, "product")
+        self.assertEqual(owner.profile.business_category, self.category)
         subscription = Subscription.objects.get(business_owner=owner)
         self.assertTrue(subscription.is_trial)
         self.assertEqual(subscription.plan, SubscriptionPlan.objects.get(tier="product_basic"))

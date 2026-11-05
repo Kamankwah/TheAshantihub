@@ -1,6 +1,6 @@
 # Businesses choose several categories — design
 
-Date: 2026-10-29. Status: draft for the owner's approval.
+Date: 2026-10-29. Status: Implemented on branch feat/business-multiple-categories (not yet deployed).
 
 ## Why
 
@@ -111,3 +111,47 @@ later without friction.
 ## Left to the builder
 Names of the link table, fields and endpoints; how the kind and categories are saved together on each
 billing path; the chip and editor layout; migration and test structure.
+
+## As built
+
+Deviations from, and details beyond, the design above:
+
+- **A department is allowed.** A top-level product category (a department) may be chosen like any other category of the
+  kind, because the scout dropdown has always listed every category of the kind. The design's line refusing a
+  "department parent" is dropped.
+- **Migration:** `accounts/0077_business_categories`, numbered after rebasing onto upstream (single leaf).
+- **Owner registration** decides whether the kind is already set by reading `GET business-owners/me/categories/`
+  (`business_kind`), and sends `categories` only when it is not. `billing/start-trial` and `billing/business-kind` ignore
+  `categories` entirely when the kind is already set (both read the key raw), and validate them only where the kind is
+  first set.
+- **Transitional fallback for older clients.** Where the kind is first set, a request that **omits** the `categories` key
+  sets the kind (and, on start-trial, the trial) with no categories, so clients built before categories still finish
+  registration: the mobile app (`mobile/src/lib/registrationApi.ts`, from `register/plan.tsx`) and a cached older web
+  bundle. Any value that is sent, including `[]` and `null`, is validated as before: 400 `{"categories": [message]}`
+  and the kind stays unset. The web flow always sends the key, except through its explicit "Continue without
+  categories" action when the category list failed to load. The mobile app has no category step yet (follow-up); such
+  a business adds its categories later from the dashboard Profile.
+- **Scout wire format:** `business_categories` is a JSON array string in the multipart body; the legacy single
+  `business_category` is still accepted.
+- **`set_categories` input:** accepts ints and numeric strings; anything else is refused with "That category doesn't exist."
+  (`InvalidCategories`, 1..10).
+- **`categories_of` honours prefetch** of `category_links__category`, so lists do not query per row.
+- **Deleting a linked `Category`** re-syncs the remaining positions and the main category (`resync_after_category_delete`,
+  a `post_delete` handler).
+- **PUT answer shape:** `GET`/`PUT business-owners/me/categories/` answer `{business_kind, min, max, categories: [{id, label, kind}]}`;
+  `PUT` takes `{"categories": [ids]}` and answers 400 `{"detail"}` when invalid.
+- **Staff payload names:** the portfolio carries `business_categories` and `categories`; the KYC payload carries
+  `business_category_names`.
+- **Marketing audience** matches any category: an `Exists` over the category links OR the main-category match.
+- **Chips by department.** `CategoryChips` groups options that carry a `parent` (the ~270-row product tree, whose
+  sub-category labels repeat across departments) into collapsible department sections: collapsed unless they hold a
+  pick, each header counting its picks, short labels inside. Past 24 options a "Search categories" box matches the label
+  and the department path and opens the matching sections. Outside a section a pick is named by its path
+  (`categoryPathLabel`, "Clothing › Accessories"): the "Selected: …" line under the chips, the scout review row and the
+  Profile card's "Make … main" buttons. Short flat lists (service categories) stay one row of chips.
+- **Registration and a failed category list.** The owner's kind step reads only `GET listings/categories/`; if it fails
+  there is "Try again" and a separate "Continue without categories (add them later in Profile)" that omits the key.
+- **Profile card.** A stored category no longer of the business's kind is left out of the comparison (Save stays
+  disabled until a real change) and a note says it goes on the next save. A save seeds `['my-categories']` from the PUT
+  answer.
+- **Staff screens** say "Not given" for a business with no categories.

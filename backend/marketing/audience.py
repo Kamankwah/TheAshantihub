@@ -7,7 +7,7 @@ from datetime import timedelta
 from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
-from accounts.models import BusinessOwner, Customer
+from accounts.models import BusinessOwner, BusinessOwnerCategory, Customer
 from bookings.models import Booking
 from listings.models import Category, Listing, Zone
 from orders.models import Order, OrderItem
@@ -86,7 +86,10 @@ def _business_matches(filters):
     if filters["zones"]:
         qs = qs.filter(profile__zone_id__in=filters["zones"])
     if filters["categories"]:
-        qs = qs.filter(profile__business_category_id__in=filters["categories"])
+        # Any of its categories matches; a business with no link rows yet falls back to its main category.
+        # Exists, not a join, so a business with several matching categories is one row.
+        links = BusinessOwnerCategory.objects.filter(profile__business_owner=OuterRef("pk"), category_id__in=filters["categories"])
+        qs = qs.filter(Exists(links) | Q(profile__business_category_id__in=filters["categories"]))
     if filters["activity"] == "live":
         qs = qs.filter(Exists(Listing.objects.filter(business_owner=OuterRef("pk"), status=Listing.PUBLISHED)))
     elif filters["activity"] == "signed_up":

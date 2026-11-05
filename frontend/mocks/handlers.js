@@ -671,6 +671,20 @@ export const handlers = [
     identity_status: 'pending', identity_rejection_reason: '', identity_submitted_at: '2026-10-29T10:00:00Z',
     is_formal: false, has_certificate: false, has_tin: false,
   }, { status: 201 })),
+  // The business's own categories (chips on the dashboard, registration and the scout form): none by default. The PUT
+  // echoes the posted ids back with labels from a small fixed list; override with server.use for a specific case.
+  http.get('http://localhost:8000/api/accounts/business-owners/me/categories/', () => HttpResponse.json({
+    business_kind: 'product', min: 1, max: 10, categories: [],
+  })),
+  http.put('http://localhost:8000/api/accounts/business-owners/me/categories/', async ({ request }) => {
+    const body = await request.json()
+    const known = { 1: 'Electronics', 2: 'Fashion', 3: 'Groceries', 4: 'Furniture' }
+    const ids = Array.isArray(body?.categories) ? body.categories : []
+    return HttpResponse.json({
+      business_kind: 'product', min: 1, max: 10,
+      categories: ids.map((id) => ({ id, label: known[id] || `Category ${id}`, kind: 'product' })),
+    })
+  }),
   // Wallets (Plan 3F): ledger ON and empty by default; a test needing the "off" state overrides with a 409 {code:'ledger_off'}.
   http.get('http://localhost:8000/api/wallet/', () => HttpResponse.json({ kind: 'customer', balance: '0.00' })),
   http.get('http://localhost:8000/api/wallet/vendor/', () => HttpResponse.json({

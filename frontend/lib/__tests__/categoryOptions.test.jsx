@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { CategoryOptions, categoryOptionGroups, categoryPathLabel } from '../categoryOptions.jsx'
+import { CategoryOptions, categoryOptionGroups, categoryPathLabel, categoryPathLabeler } from '../categoryOptions.jsx'
 
 // Ruling R34: the flat category list repeats sub-category labels across
 // departments; forms show departments as <optgroup>s instead.
@@ -47,5 +47,10 @@ describe('categoryOptionGroups', () => {
     expect(labels).toContain('Electronics › Accessories')
     expect(labels).toContain('Clothing › Accessories')
     expect(new Set(labels).size).toBe(labels.length)
+  })
+
+  it('a labeler gives the same path labels from one lookup', () => {
+    const label = categoryPathLabeler(FLAT)
+    expect(FLAT.map(label)).toEqual(FLAT.map((c) => categoryPathLabel(c, FLAT)))
   })
 })

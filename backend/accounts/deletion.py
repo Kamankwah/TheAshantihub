@@ -150,14 +150,17 @@ def delete_account(account, account_type):
                 if stale:
                     stale_files.append(stale.name)
             # NULL, never "": the card number column is unique, and two erased cards must not collide.
-            for field in (
+            erased = (
                 "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image", "business_reg_certificate",
                 "signboard_photo", "business_contact_phone", "tin", "payout_bank_name", "payout_bank_account_number",
                 "payout_bank_account_name", "payout_momo_network", "payout_momo_number", "payout_momo_name",
-            ):
+            )
+            for field in erased:
                 setattr(profile, field, None)
             profile.identity_status = profile.IDENTITY_NOT_SUBMITTED
-            profile.save()
+            # Only what is erased: this copy was loaded unlocked, and a whole-row save would write back stale values
+            # (the main category, which accounts.categories.set_categories keeps in step with the links).
+            profile.save(update_fields=[*erased, "identity_status"])
     _erase_traces(account, account_type)
     mobile_sessions.revoke_all(account_type, account.pk)
     files.delete_after_commit(stale_files)

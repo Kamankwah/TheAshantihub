@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../../../mocks/server.js'
@@ -59,8 +59,7 @@ async function fillOwnerAndBusiness({ email = '', hours = true } = {}) {
   if (email) type("Owner's email (optional)", email)
   type('Business name (as on the signboard)', 'Asafo Hair & Beauty')
   type('Kind of business', 'service')
-  await screen.findByRole('option', { name: 'Hotels' })
-  type('Category', '1')
+  fireEvent.click(await screen.findByRole('button', { name: 'Hotels' }))
   if (hours) fillHours()
   fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
 }
@@ -134,13 +133,14 @@ describe('RegisterBusinessPanel — the four steps', () => {
     const sent = Object.fromEntries(append.mock.calls.map(([key, value]) => [key, value]))
     expect(sent).toMatchObject({
       owner_full_name: 'Gifty Asantewaa', owner_phone: '020 123 4761', owner_email: 'gifty.a@example.com',
-      business_name: 'Asafo Hair & Beauty', business_kind: 'service', business_category: '1', zone: '1',
+      business_name: 'Asafo Hair & Beauty', business_kind: 'service', business_categories: '[1]', zone: '1',
       gps_address: 'AK-112-0384', lat: '6.688500', lng: '-1.624400', location_accuracy_m: '12', location_is_manual: 'false',
     })
     expect(sent.signboard_photo.name).toBe('sign.jpg')
     expect(sent.ghana_card_front.name).toBe('card.jpg')
     expect(sent).not.toHaveProperty('ghana_card_number')
     expect(sent.is_formal).toBe('false')
+    expect(sent).not.toHaveProperty('business_category')
     expect(localStorage.getItem(DRAFT_KEY)).toBeNull()
     expect(screen.getByText(/The draft has been cleared from this phone/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hand the phone to Gifty' })).toBeInTheDocument()
@@ -150,11 +150,11 @@ describe('RegisterBusinessPanel — the four steps', () => {
   it('offers only the categories of the chosen kind of business', async () => {
     renderPanel()
     type('Kind of business', 'product')
-    expect(await screen.findByRole('option', { name: 'Food' })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'Hotels' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Food' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Hotels' })).not.toBeInTheDocument()
     type('Kind of business', 'service')
-    expect(await screen.findByRole('option', { name: 'Hotels' })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'Food' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Hotels' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Food' })).not.toBeInTheDocument()
   })
 
   it('says what is missing before moving on', () => {
@@ -162,6 +162,152 @@ describe('RegisterBusinessPanel — the four steps', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
     expect(screen.getByText("Add the owner's full name.")).toBeInTheDocument()
     expect(screen.getByLabelText("Owner's full name (as on Ghana Card)")).toBeInTheDocument()
+  })
+})
+
+function serveServiceCategories() {
+  server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json([
+    { id: 1, slug: 'hotels', icon: '🏨', label: 'Hotels', color: '#000080', kind: 'service' },
+    { id: 4, slug: 'salons', icon: '💇', label: 'Salons', color: '#800000', kind: 'service' },
+    { id: 7, slug: 'tailoring', icon: '🧵', label: 'Tailoring', color: '#008000', kind: 'service' },
+    { id: 2, slug: 'food', icon: '🍲', label: 'Food', color: '#CC0000', kind: 'product' },
+  ])))
+}
+
+describe('RegisterBusinessPanel — several categories', () => {
+  it('scout can choose several categories and the first is the main one', async () => {
+    serveServiceCategories()
+    renderPanel()
+    type('Kind of business', 'service')
+    fireEvent.click(await screen.findByRole('button', { name: 'Tailoring' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salons' }))
+    expect(screen.getByRole('button', { name: /^Tailoring\s*Main$/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Salons' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Hotels' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByText('Choose every category the business sells or does. The first one you pick is the main one.')).toBeInTheDocument()
+  })
+
+  it('changing the kind clears the picks', async () => {
+    serveServiceCategories()
+    renderPanel()
+    type('Kind of business', 'service')
+    fireEvent.click(await screen.findByRole('button', { name: 'Salons' }))
+    type('Kind of business', 'product')
+    fireEvent.click(await screen.findByRole('button', { name: 'Food' }))
+    type('Kind of business', 'service')
+    expect(await screen.findByRole('button', { name: 'Salons' })).toHaveAttribute('aria-pressed', 'false')
+    type('Kind of business', 'product')
+    expect(await screen.findByRole('button', { name: 'Food' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('submit needs at least one category', async () => {
+    renderPanel()
+    type("Owner's full name (as on Ghana Card)", 'Gifty Asantewaa')
+    type("Owner's phone", '020 123 4761')
+    type('Business name (as on the signboard)', 'Asafo Hair & Beauty')
+    type('Kind of business', 'service')
+    await screen.findByRole('button', { name: 'Hotels' })
+    fillHours()
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
+    expect(screen.getByText('Choose at least one category.')).toBeInTheDocument()
+  })
+
+  it('FormData carries business_categories as a JSON array string in pick order', async () => {
+    serveServiceCategories()
+    mockRegistration()
+    renderPanel()
+    type("Owner's full name (as on Ghana Card)", 'Gifty Asantewaa')
+    type("Owner's phone", '020 123 4761')
+    type('Business name (as on the signboard)', 'Asafo Hair & Beauty')
+    type('Kind of business', 'service')
+    fireEvent.click(await screen.findByRole('button', { name: 'Tailoring' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Hotels' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salons' }))
+    fillHours()
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
+    await fillLocation()
+    takePhotos()
+    await screen.findByText(/No exact match/)
+    const append = vi.spyOn(FormData.prototype, 'append')
+    fireEvent.click(screen.getByRole('button', { name: 'Submit for KYC' }))
+    await screen.findByText('Sent to Ama Boateng for KYC')
+    const sent = Object.fromEntries(append.mock.calls.map(([key, value]) => [key, value]))
+    expect(sent.business_categories).toBe('[7,1,4]')
+    expect(sent).not.toHaveProperty('business_category')
+  })
+
+  it('an old draft with a single business_category loads as one pick', async () => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      v: 1, step: 0, saved_at: '2026-10-08T10:00:00Z',
+      form: { owner_full_name: 'Gifty Asantewaa', business_kind: 'service', business_category: '1' },
+    }))
+    renderPanel()
+    expect(await screen.findByRole('button', { name: /^Hotels\s*Main$/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('a draft with no category at all loads with no picks and does not crash', async () => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 1, step: 0, form: { business_kind: 'service' } }))
+    renderPanel()
+    expect(await screen.findByRole('button', { name: 'Hotels' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('drops draft picks that are no longer options of the kind', async () => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 1, step: 0, form: { business_kind: 'service', business_categories: [99, 1] } }))
+    renderPanel()
+    expect(await screen.findByRole('button', { name: /^Hotels\s*Main$/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('the summary lists every chosen category', async () => {
+    serveServiceCategories()
+    mockRegistration()
+    renderPanel()
+    type("Owner's full name (as on Ghana Card)", 'Gifty Asantewaa')
+    type("Owner's phone", '020 123 4761')
+    type('Business name (as on the signboard)', 'Asafo Hair & Beauty')
+    type('Kind of business', 'service')
+    fireEvent.click(await screen.findByRole('button', { name: 'Tailoring' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Hotels' }))
+    fillHours()
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
+    await fillLocation()
+    takePhotos()
+    await screen.findByText(/No exact match/)
+    expect(screen.getByText('Offers services · Tailoring, Hotels')).toBeInTheDocument()
+  })
+})
+
+describe('RegisterBusinessPanel — product departments', () => {
+  // Sub-category labels repeat across departments: the chips sit under department headings and every readout names
+  // a pick by its path.
+  const TREE = [
+    { id: 100, slug: 'electronics', icon: '📱', label: 'Electronics', color: '#000080', kind: 'product', parent: null },
+    { id: 101, slug: 'electronics-accessories', icon: '', label: 'Accessories', color: '#000080', kind: 'product', parent: 100 },
+    { id: 200, slug: 'clothing', icon: '👗', label: 'Clothing', color: '#CC0000', kind: 'product', parent: null },
+    { id: 201, slug: 'clothing-accessories', icon: '', label: 'Accessories', color: '#CC0000', kind: 'product', parent: 200 },
+    { id: 1, slug: 'hotels', icon: '🏨', label: 'Hotels', color: '#000080', kind: 'service', parent: null },
+  ]
+  const sectionHeader = (dept) => screen.getAllByRole('button').find((b) => b.hasAttribute('aria-expanded') && b.textContent.includes(dept))
+
+  it('groups product categories by department and the review names each pick by its path', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json(TREE)))
+    mockRegistration()
+    renderPanel()
+    type("Owner's full name (as on Ghana Card)", 'Gifty Asantewaa')
+    type("Owner's phone", '020 123 4761')
+    type('Business name (as on the signboard)', 'Asafo Hair & Beauty')
+    type('Kind of business', 'product')
+    await screen.findByRole('button', { name: /Clothing/, expanded: false })
+    fireEvent.click(sectionHeader('Clothing'))
+    fireEvent.click(within(screen.getByRole('group', { name: /Clothing/ })).getByRole('button', { name: 'Accessories' }))
+    fireEvent.click(sectionHeader('Electronics'))
+    fireEvent.click(within(screen.getByRole('group', { name: /Electronics/ })).getByRole('button', { name: 'Accessories' }))
+    expect(screen.getByText(/^Selected:/)).toHaveTextContent('Selected: Clothing › Accessories (main) · Electronics › Accessories')
+    fillHours()
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
+    await fillLocation()
+    takePhotos()
+    await screen.findByText(/No exact match/)
+    expect(screen.getByText('Sells products · Clothing › Accessories, Electronics › Accessories')).toBeInTheDocument()
   })
 })
 

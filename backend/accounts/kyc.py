@@ -253,7 +253,7 @@ def with_review_data(queryset):
         queryset.select_related(
             "reviewed_by", "registered_by__role", "profile__business_category", "profile__zone", "profile__address_verified_by",
         )
-        .prefetch_related(Prefetch(
+        .prefetch_related("profile__category_links__category", Prefetch(
             "fraud_flags",
             queryset=FraudFlag.objects.filter(status=FraudFlag.OPEN).order_by("created_at", "id"),
             to_attr="open_fraud_flags_list",

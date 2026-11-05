@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { C } from "../theme.js";
 import { apiFetch, apiPost, apiPut } from "../apiClient.js";
 import { apiErrorMessage } from "../lib/apiErrorMessage.js";
 import { noPlansOffered } from "../lib/plansOffered.js";
 import BusinessHoursEditor from "./BusinessHoursEditor.jsx";
 import { useSubscriptionPlans } from "../hooks/useSubscriptionPlans.js";
+import { useCategories } from "../hooks/useCategories.js";
+import { useMyCategories } from "../hooks/useMyCategories.js";
+import CategoryChips from "./CategoryChips.jsx";
 import { BUSINESS_TERMS_COPY } from "./businessTerms.js";
 import OtpSignIn from "./OtpSignIn.jsx";
 import { isOtpChallenge } from "../lib/otp.js";
@@ -31,6 +34,13 @@ import { isOtpChallenge } from "../lib/otp.js";
 // GET /api/billing/plans/ has answered [] it becomes "Your Business Type"
 // (POST /api/billing/business-kind/). While the plans are still loading, or
 // failed to load, the plan screen stays: only an answered empty list counts.
+//
+// Picking the kind (products or services) also picks the categories: the owner chooses one or more of that kind
+// (the first is the main one) and the server saves kind and categories together. A business whose kind is already
+// set (a scout registered it) is not asked: the screen reads that from GET business-owners/me/categories/.
+// Registration depends on the public category list: while it loads the step waits; if it fails there is "Try again"
+// and, so nobody is stuck, a separate "Continue without categories" that sends no `categories` key (the server then
+// sets the kind alone, its transitional rule; the owner adds categories later in Profile).
 
 const STEP_LABELS = {
   personal_info: "1 of 5: Personal Information",
@@ -48,6 +58,7 @@ const inputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",border
 const labelStyle={display:"block",fontSize:"0.72rem",fontWeight:700,color:C.ink,marginBottom:10};
 const hintStyle={color:C.inkDim,fontSize:"0.7rem",margin:"0 0 10px",lineHeight:1.4};
 const submitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"12px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",marginTop:4};
+const secondaryStyle={minHeight:44,background:C.surface,color:C.ink,border:`1.5px solid ${C.line}`,borderRadius:20,padding:"8px 16px",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"};
 
 export default function BusinessRegistrationFlow({ user, auth, initialStep, prefill, setPage, setShowBizDash }) {
   const [step, setStep] = useState(initialStep || "personal_info");
@@ -76,8 +87,32 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
   const [businessKind, setBusinessKind] = useState(null);
   const [selectedPlanTier, setSelectedPlanTier] = useState(null);
   const [cycleMonths, setCycleMonths] = useState(1);
+  const [categoryIds, setCategoryIds] = useState([]);
   const plansQuery = useSubscriptionPlans();
   const typeOnly = noPlansOffered(plansQuery);
+  const queryClient = useQueryClient();
+  // Only the categories are needed here (not the zones): the public list, filtered to the chosen kind.
+  const categoriesQuery = useCategories({ enabled: step === "plan_selection" });
+  const allCategories = Array.isArray(categoriesQuery.data) ? categoriesQuery.data : (categoriesQuery.data?.results ?? []);
+  const kindCategories = businessKind ? allCategories.filter((category) => category.kind === businessKind) : [];
+  const categoriesFailed = !categoriesQuery.data && categoriesQuery.isError;
+  const categoriesLoading = !categoriesQuery.data && !categoriesQuery.isError;
+  // Whether the server already holds a kind for this business (scout-registered). Until it says so, ask.
+  const myCategories = useMyCategories(step === "plan_selection");
+  const kindAlreadySet = Boolean(myCategories.data?.business_kind);
+  // Only ids still on offer are sent (a stale pick must never reach the server), in the order they were chosen.
+  const chosenCategoryIds = categoryIds.filter((id) => kindCategories.some((c) => c.id === id));
+  const categoriesReady = kindAlreadySet || chosenCategoryIds.length > 0;
+  // Skipping is offered only when the list failed to load, and leaves the key out altogether.
+  const canSkipCategories = Boolean(businessKind) && !kindAlreadySet && categoriesFailed;
+  const categoryPayloadFor = (skip) => (kindAlreadySet || skip ? {} : { categories: chosenCategoryIds });
+  const categoryHint = categoriesFailed
+    ? "Couldn't load the categories — check the connection and try again."
+    : categoriesLoading
+      ? "Loading categories…"
+      : kindCategories.length === 0
+        ? "No categories of this kind yet — ask Operations to add one."
+        : null;
 
   // Step 4 — Payment Account Information
   const [payoutMomoNumber, setPayoutMomoNumber] = useState("");
@@ -172,8 +207,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
     }
   };
 
-  const handlePlanSelectionSubmit = async (e) => {
-    e.preventDefault();
+  const submitPlanSelection = async (skipCategories) => {
     setError(null);
     setSubmitting(true);
     try {
@@ -181,7 +215,9 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
         business_kind: businessKind,
         plan: selectedPlanTier,
         cycle_months: cycleMonths,
+        ...categoryPayloadFor(skipCategories),
       });
+      queryClient.invalidateQueries({ queryKey: ["my-categories"] });
       const fresh = await auth.refreshUser();
       if (fresh.registration_step === "complete") {
         setShowBizDash(true);
@@ -191,18 +227,23 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
         setError("Something went wrong determining your next step. Please refresh the page and try again.");
       }
     } catch (err) {
-      setError("Could not save your plan selection. Please try again.");
+      // The server's own refusal (e.g. a category list it will not take) is shown as sent; the picks stay.
+      setError(apiErrorMessage(err, "Could not save your plan selection. Please try again."));
     } finally {
       setSubmitting(false);
     }
   };
-
-  const handleBusinessKindSubmit = async (e) => {
+  const handlePlanSelectionSubmit = (e) => {
     e.preventDefault();
+    submitPlanSelection(false);
+  };
+
+  const submitBusinessKind = async (skipCategories) => {
     setError(null);
     setSubmitting(true);
     try {
-      await apiPost("/api/billing/business-kind/", { business_kind: businessKind });
+      await apiPost("/api/billing/business-kind/", { business_kind: businessKind, ...categoryPayloadFor(skipCategories) });
+      queryClient.invalidateQueries({ queryKey: ["my-categories"] });
       const fresh = await auth.refreshUser();
       if (fresh.registration_step === "complete") {
         setShowBizDash(true);
@@ -222,6 +263,10 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
     } finally {
       setSubmitting(false);
     }
+  };
+  const handleBusinessKindSubmit = (e) => {
+    e.preventDefault();
+    submitBusinessKind(false);
   };
 
   const handlePaymentInfoSubmit = async (e) => {
@@ -270,13 +315,51 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
     }
   };
 
+  // A different kind has different categories, so the picks do not carry over.
+  const chooseKind = (kind) => {
+    if (kind !== businessKind) setCategoryIds([]);
+    setBusinessKind(kind);
+    setSelectedPlanTier(null);
+  };
+
+  const categoryBlock = businessKind && !kindAlreadySet ? (
+    <div style={{marginBottom:14}}>
+      <CategoryChips
+        label="What do you sell or do?"
+        categories={kindCategories}
+        all={allCategories}
+        value={categoryIds}
+        onChange={setCategoryIds}
+        disabled={submitting}
+      />
+      <div style={{...hintStyle,margin:"4px 0 0"}}>Choose all that apply. You can change this later from your profile.</div>
+      {categoryHint && (
+        <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:10,marginTop:6}}>
+          <div style={{fontSize:"0.74rem",color:categoriesFailed?C.errInk:C.inkDim,lineHeight:1.4}}>{categoryHint}</div>
+          {categoriesFailed && (
+            <button type="button" onClick={()=>categoriesQuery.refetch()} disabled={categoriesQuery.isFetching} style={secondaryStyle}>
+              {categoriesQuery.isFetching ? "Trying again…" : "Try again"}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  ) : null;
+
+  // Only when the category list failed to load: the same submit, without the `categories` key.
+  const skipCategoriesButton = (onSkip, ready) => (canSkipCategories ? (
+    <button type="button" onClick={onSkip} disabled={submitting || !ready} style={{...secondaryStyle,width:"100%",marginTop:10,opacity:submitting || !ready?0.55:1,cursor:submitting || !ready?"default":"pointer"}}>
+      Continue without categories (add them later in Profile)
+    </button>
+  ) : null);
+
   const kindButtons = (
     <>
             <label style={labelStyle}>What do you sell?</label>
             <div style={{display:"flex",gap:10,marginBottom:14}}>
               <button
                 type="button"
-                onClick={()=>{ setBusinessKind("product"); setSelectedPlanTier(null); }}
+                onClick={()=>chooseKind("product")}
                 style={{
                   flex:1,padding:"12px",borderRadius:12,cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:"0.8rem",
                   border:businessKind==="product"?`2px solid ${C.gold}`:`1.5px solid ${C.line}`,
@@ -286,7 +369,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
               >📦 I sell products</button>
               <button
                 type="button"
-                onClick={()=>{ setBusinessKind("service"); setSelectedPlanTier(null); }}
+                onClick={()=>chooseKind("service")}
                 style={{
                   flex:1,padding:"12px",borderRadius:12,cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:"0.8rem",
                   border:businessKind==="service"?`2px solid ${C.gold}`:`1.5px solid ${C.line}`,
@@ -295,6 +378,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
                 }}
               >🛠️ I offer services</button>
             </div>
+      {categoryBlock}
     </>
   );
 
@@ -372,7 +456,8 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
             <h2 style={{color:C.ink,fontSize:"1.05rem",margin:"0 0 14px"}}>What kind of business is this?</h2>
             {kindButtons}
             <div style={{fontSize:"0.74rem",color:C.inkDim,margin:"-2px 0 14px",lineHeight:1.5}}>This is set once and decides which tools your dashboard shows.</div>
-            <button type="submit" disabled={submitting || !businessKind} style={submitStyle}>{submitting?"Saving…":"Continue"}</button>
+            <button type="submit" disabled={submitting || !businessKind || !categoriesReady} style={submitStyle}>{submitting?"Saving…":"Continue"}</button>
+            {skipCategoriesButton(()=>submitBusinessKind(true), Boolean(businessKind))}
           </form>
         )}
 
@@ -450,7 +535,8 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
               </>
             )}
 
-            <button type="submit" disabled={submitting || !businessKind || !selectedPlanTier} style={submitStyle}>{submitting?"Saving…":"Start Free Trial"}</button>
+            <button type="submit" disabled={submitting || !businessKind || !selectedPlanTier || !categoriesReady} style={submitStyle}>{submitting?"Saving…":"Start Free Trial"}</button>
+            {skipCategoriesButton(()=>submitPlanSelection(true), Boolean(businessKind && selectedPlanTier))}
           </form>
         )}
 

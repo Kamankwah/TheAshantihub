@@ -7,7 +7,7 @@ import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
 import { button, callout, chip, dim } from "./panelStyles.js";
 import { alreadyBelongsText } from "./registrationCheckCopy.js";
-import { addressCorrectionText, errorStyle, eyebrow, formatDateTime, h3 } from "./portfolioParts.jsx";
+import { addressCorrectionText, categoryLabel, categoryNames, errorStyle, eyebrow, formatDateTime, h3 } from "./portfolioParts.jsx";
 import { staffHoursText } from "./hoursSummary.js";
 
 // The KYC review sheet inside a business.kyc approval (/staff/approvals/<id>),
@@ -203,7 +203,7 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
         <h3 style={h3}>Business</h3>
         <Facts rows={[
           ["Business name", business.business_name || "—"],
-          ["Kind and category", [KIND[business.business_kind], business.category?.name].filter(Boolean).join(" · ") || "—"],
+          [categoryLabel(categoryNames(business.categories, business.category), "Kind and category", "Kind and categories"), [KIND[business.business_kind], categoryNames(business.categories, business.category).join(", ")].filter(Boolean).join(" · ") || "—"],
           ["Area", business.zone?.name || "—"],
           ["Opening hours", staffHoursText(business)],
           ["Formally registered", `${business.is_formal ? "Yes" : "No"} (${business.tin_given ? "TIN given" : "no TIN given"})`],
