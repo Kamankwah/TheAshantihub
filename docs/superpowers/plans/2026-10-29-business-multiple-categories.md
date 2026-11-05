@@ -38,7 +38,7 @@
 
 **Files:**
 - Modify: `backend/accounts/models.py` (new `BusinessOwnerCategory`)
-- Create: `backend/accounts/categories.py`, `backend/accounts/migrations/0069_business_categories.py` (use the next free number)
+- Create: `backend/accounts/categories.py`, `backend/accounts/migrations/0077_business_categories.py` (renumbered from 0069 when rebased onto righteoushack, whose accounts migrations reached 0076)
 - Test: `backend/accounts/tests/test_business_categories.py`
 
 **Interfaces:**
@@ -47,7 +47,7 @@
 - Produces: migration function `backfill_categories(apps, schema_editor)`.
 - Messages (exact): "Choose at least one category.", "Choose at most 10 categories.", "Pick each category once.", "Choose products or services first.", "Choose categories for a {kind} business." (kind word `product`/`service`), "That category doesn't exist."
 
-- [ ] **Step 1: Write failing tests** in `test_business_categories.py`: `test_set_categories_saves_ordered_list_and_main`, `test_main_is_the_first_pick_after_reordering`, `test_removing_the_main_promotes_the_next`, `test_rejects_empty_list_and_eleven`, `test_rejects_duplicates`, `test_rejects_wrong_kind_and_event_categories`, `test_rejects_unknown_id`, `test_requires_a_business_kind`, `test_failed_call_changes_nothing` (list and main untouched), `test_deleting_a_linked_category_leaves_a_consistent_list` (after delete, `categories_of` has no hole and `business_category` is the first remaining link or NULL — resync in the writer or a `post_delete` handler), `test_backfill_gives_a_list_of_one_and_leaves_empty_for_none` (load `backfill_categories` via `importlib.import_module("accounts.migrations.0069_business_categories")`).
+- [ ] **Step 1: Write failing tests** in `test_business_categories.py`: `test_set_categories_saves_ordered_list_and_main`, `test_main_is_the_first_pick_after_reordering`, `test_removing_the_main_promotes_the_next`, `test_rejects_empty_list_and_eleven`, `test_rejects_duplicates`, `test_rejects_wrong_kind_and_event_categories`, `test_rejects_unknown_id`, `test_requires_a_business_kind`, `test_failed_call_changes_nothing` (list and main untouched), `test_deleting_a_linked_category_leaves_a_consistent_list` (after delete, `categories_of` has no hole and `business_category` is the first remaining link or NULL — resync in the writer or a `post_delete` handler), `test_backfill_gives_a_list_of_one_and_leaves_empty_for_none` (load `backfill_categories` via `importlib.import_module("accounts.migrations.0077_business_categories")`).
 - [ ] **Step 2: Run** `... test accounts.tests.test_business_categories` — expect FAIL.
 - [ ] **Step 3: Implement the model, `categories.py` and the schema + `RunPython(backfill_categories, noop)` migration** (backfill uses `apps.get_model`; one link per profile with a `business_category`, position 0). Generate the schema part with `makemigrations accounts -n business_categories`.
 - [ ] **Step 4: Run** the module and `makemigrations --check --dry-run` — expect PASS / no changes.

@@ -56,6 +56,15 @@ export function formatDateTime(value) {
   return date ? date.toLocaleString("en-GH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
 }
 
+// Every category a business has, main first, as plain names. `list` is the new list field (strings or {name});
+// an older payload without it falls back to the single main category. An empty list means none.
+export function categoryNames(list, main) {
+  const name = (c) => (typeof c === "string" ? c : c?.name);
+  const items = Array.isArray(list) ? list : [main];
+  return items.map(name).filter(Boolean);
+}
+// "Category" for one or none, "Categories" for several; a row can keep its own wording ("Kind and category").
+export const categoryLabel = (names, one = "Category", many = "Categories") => (names.length > 1 ? many : one);
 export const money = (value) => `GH₵ ${Number(value || 0).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const firstName = (name) => (name || "").trim().split(/\s+/)[0] || "The owner";

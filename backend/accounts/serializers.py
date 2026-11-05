@@ -484,6 +484,7 @@ class BusinessOwnerKYCDetailSerializer(BusinessOwnerKYCSerializer):
     # None for each (a missing reverse one-to-one resolves to the default).
     business_name = serializers.CharField(source="profile.business_name", read_only=True, default=None)
     business_category_name = serializers.CharField(source="profile.business_category.label", read_only=True, default=None)
+    business_category_names = serializers.SerializerMethodField()
     zone_name = serializers.CharField(source="profile.zone.name", read_only=True, default=None)
     lat = serializers.DecimalField(source="profile.lat", max_digits=9, decimal_places=6, read_only=True, default=None)
     lng = serializers.DecimalField(source="profile.lng", max_digits=9, decimal_places=6, read_only=True, default=None)
@@ -498,10 +499,17 @@ class BusinessOwnerKYCDetailSerializer(BusinessOwnerKYCSerializer):
             "id", "full_name", "login_phone", "email", "kyc_status", "kyc_rejection_reason",
             "created_at", "reviewed_by_name", "reviewed_at", "profile",
             "registration_channel", "registered_by_name", "registered_by_role", "open_fraud_flags", "pending_approval_id",
-            "business_name", "business_category_name", "zone_name", "lat", "lng",
+            "business_name", "business_category_name", "business_category_names", "zone_name", "lat", "lng",
             "location_accuracy_m", "location_is_manual", "signboard_photo", "address_correction",
             "identity_status",
         ]
+
+    def get_business_category_names(self, obj):
+        """Every category label, the main one first; `[]` for a business with none (or no profile yet)."""
+        from .categories import categories_of
+
+        profile = getattr(obj, "profile", None)
+        return [category.label for category in categories_of(profile)] if profile is not None else []
 
     def get_address_correction(self, obj):
         from .kyc import address_correction

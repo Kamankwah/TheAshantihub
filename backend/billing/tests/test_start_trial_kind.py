@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile
 from billing.models import Subscription
+from listings.models import Category
 
 START_TRIAL = "/api/billing/subscriptions/start-trial/"
 
@@ -66,8 +67,13 @@ class StartTrialKindTests(TestCase):
             ghana_card_back_image="back.jpg",
         )
         self.assertEqual(owner.compute_registration_step(), "plan_selection")
+        category = Category.objects.create(
+            slug="stk-tailoring", icon="🧵", label="Tailoring", color="#7c3aed", kind="service",
+        )
         response = _client_for(owner).post(
-            START_TRIAL, {"business_kind": "service", "plan": "service", "cycle_months": 1}, format="json",
+            START_TRIAL,
+            {"business_kind": "service", "plan": "service", "cycle_months": 1, "categories": [category.pk]},
+            format="json",
         )
         self.assertEqual(response.status_code, 201, response.content)
         self.assertEqual(BusinessOwnerProfile.objects.get(business_owner=owner).business_kind, "service")

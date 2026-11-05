@@ -111,6 +111,11 @@ urlpatterns = [
         name="business-owner-profile-update",
     ),
     path(
+        "business-owners/me/categories/",
+        views.BusinessOwnerCategoriesView.as_view(),
+        name="business-owner-categories",
+    ),
+    path(
         "business-owners/me/identity/",
         views.IdentitySubmissionView.as_view(),
         name="business-owner-identity",

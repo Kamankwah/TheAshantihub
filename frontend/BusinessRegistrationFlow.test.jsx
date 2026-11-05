@@ -18,11 +18,24 @@ const PLANS = [
   { id: 3, tier: 'service', name: 'Service', kind: 'service', monthly_price: '150.00', features: [], is_recommended: false, max_active_listings: null, hero_days: 14, boost_credits_per_month: 2 },
 ]
 
+// The public category list (GET /api/listings/categories/), both kinds: the flow shows only the chosen kind's.
+const CATEGORIES = [
+  { id: 11, slug: 'electronics', icon: '', label: 'Electronics', color: '#000080', kind: 'product' },
+  { id: 12, slug: 'fashion', icon: '', label: 'Fashion', color: '#CC0000', kind: 'product' },
+  { id: 13, slug: 'groceries', icon: '', label: 'Groceries', color: '#006400', kind: 'product' },
+  { id: 21, slug: 'hotels', icon: '', label: 'Hotels', color: '#000080', kind: 'service' },
+  { id: 22, slug: 'repairs', icon: '', label: 'Repairs', color: '#CC0000', kind: 'service' },
+]
+
 const WEEK = Array.from({ length: 7 }, (_, weekday) => ({ weekday, closed: false, opens: '09:00', closes: '17:00' }))
 
 beforeEach(() => {
   server.use(
     http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json(PLANS)),
+    http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json(CATEGORIES)),
+    // By default the owner has not chosen a kind yet (a self-registered owner); a scout-registered one has.
+    http.get('http://localhost:8000/api/accounts/business-owners/me/categories/', () =>
+      HttpResponse.json({ business_kind: null, min: 1, max: 10, categories: [] })),
     // By default the owner already has hours; the opening-hours tests below override this.
     http.get('http://localhost:8000/api/accounts/business/hours/', () => HttpResponse.json({ days: WEEK, has_hours: true })),
   )
@@ -47,6 +60,10 @@ function makeAuth(overrides = {}) {
     ...overrides,
   }
 }
+
+// The chips are buttons with aria-pressed; pick them by their label.
+const chip = (name) => screen.getByRole('button', { name: new RegExp(`^${name}`) })
+const pickCategories = (...names) => names.forEach((name) => fireEvent.click(chip(name)))
 
 function uploadFile(labelText) {
   const file = new File(['(binary)'], 'card.jpg', { type: 'image/jpeg' })
@@ -241,7 +258,7 @@ describe('BusinessRegistrationFlow', () => {
       expect(screen.queryByText(/Simulate Pay/i)).not.toBeInTheDocument()
     })
 
-    it('disables the submit button until a kind and a plan are both chosen', async () => {
+    it('disables the submit button until a kind, a plan and a category are all chosen', async () => {
       renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={makeAuth()} initialStep="plan_selection" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
 
       expect(screen.getByRole('button', { name: 'Start Free Trial' })).toBeDisabled()
@@ -251,6 +268,9 @@ describe('BusinessRegistrationFlow', () => {
 
       await waitFor(() => expect(screen.getByText('Product Basic')).toBeInTheDocument())
       fireEvent.click(screen.getByText('Product Basic'))
+      expect(screen.getByRole('button', { name: 'Start Free Trial' })).toBeDisabled()
+
+      pickCategories('Electronics')
       expect(screen.getByRole('button', { name: 'Start Free Trial' })).not.toBeDisabled()
     })
 
@@ -261,6 +281,7 @@ describe('BusinessRegistrationFlow', () => {
       fireEvent.click(screen.getByText(/I sell products/))
       await waitFor(() => expect(screen.getByText('Product Basic')).toBeInTheDocument())
       fireEvent.click(screen.getByText('Product Basic'))
+      pickCategories('Fashion', 'Electronics')
 
       await waitFor(() => expect(screen.getByText('6 mo')).toBeInTheDocument())
       fireEvent.click(screen.getByText('6 mo'))
@@ -268,7 +289,7 @@ describe('BusinessRegistrationFlow', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Start Free Trial' }))
 
       await waitFor(() => expect(auth.submitPlanSelection).toHaveBeenCalledWith({
-        business_kind: 'product', plan: 'product_basic', cycle_months: 6,
+        business_kind: 'product', plan: 'product_basic', cycle_months: 6, categories: [12, 11],
       }))
       await waitFor(() => expect(screen.getByText(/How should we pay you/)).toBeInTheDocument())
     })
@@ -280,6 +301,7 @@ describe('BusinessRegistrationFlow', () => {
       fireEvent.click(screen.getByText(/I sell products/))
       await waitFor(() => expect(screen.getByText('Product Basic')).toBeInTheDocument())
       fireEvent.click(screen.getByText('Product Basic'))
+      pickCategories('Electronics')
       fireEvent.click(screen.getByRole('button', { name: 'Start Free Trial' }))
 
       await waitFor(() => expect(screen.getByText(/Could not save your plan selection/)).toBeInTheDocument())
@@ -448,6 +470,8 @@ describe('BusinessRegistrationFlow', () => {
       expect(screen.getByText('This is set once and decides which tools your dashboard shows.')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
       fireEvent.click(screen.getByText(/I offer services/))
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+      pickCategories('Hotels')
       expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
     })
 
@@ -468,9 +492,10 @@ describe('BusinessRegistrationFlow', () => {
       const auth = makeAuth()
       renderTypeStep(auth)
       fireEvent.click(await screen.findByText(/I sell products/))
+      pickCategories('Electronics')
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
       expect(await screen.findByText(/How should we pay you/)).toBeInTheDocument()
-      expect(posted).toEqual({ business_kind: 'product' })
+      expect(posted).toEqual({ business_kind: 'product', categories: [11] })
       expect(auth.refreshUser).toHaveBeenCalled()
       expect(auth.submitPlanSelection).not.toHaveBeenCalled()
     })
@@ -493,6 +518,7 @@ describe('BusinessRegistrationFlow', () => {
       )
       renderTypeStep()
       fireEvent.click(await screen.findByText(/I sell products/))
+      pickCategories('Electronics')
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
       expect(await screen.findByText('Choose a plan to continue.')).toBeInTheDocument()
       await waitFor(() => expect(planLoads).toBe(2))
@@ -505,6 +531,7 @@ describe('BusinessRegistrationFlow', () => {
         HttpResponse.json({ business_kind: 'Your business type is already set.' }, { status: 400 })))
       renderTypeStep()
       fireEvent.click(await screen.findByText(/I sell products/))
+      pickCategories('Electronics')
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
       expect(await screen.findByText('Your business type is already set.')).toBeInTheDocument()
     })
@@ -515,6 +542,227 @@ describe('BusinessRegistrationFlow', () => {
       expect(screen.getByText(/3 of 5: Choose Your Plan/)).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Start Free Trial' })).toBeInTheDocument()
       expect(screen.queryByText('What kind of business is this?')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('categories chosen with the kind', () => {
+    const noPlans = () => server.use(http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])))
+    const mount = (auth = makeAuth()) => renderFlow(
+      <BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="plan_selection" setPage={vi.fn()} setShowBizDash={vi.fn()} />,
+    )
+    const pressed = (name) => chip(name).getAttribute('aria-pressed') === 'true'
+
+    it('choosing a kind shows category chips for that kind only', async () => {
+      mount()
+      expect(screen.queryByText('What do you sell or do?')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByText(/I sell products/))
+      expect(await screen.findByText('What do you sell or do?')).toBeInTheDocument()
+      expect(screen.getByText('Choose all that apply. You can change this later from your profile.')).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: /^Electronics/ })).toBeInTheDocument()
+      expect(chip('Fashion')).toBeInTheDocument()
+      expect(chip('Groceries')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /^Hotels/ })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByText(/I offer services/))
+      expect(await screen.findByRole('button', { name: /^Hotels/ })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /^Electronics/ })).not.toBeInTheDocument()
+    })
+
+    it('shows the chips in the kind-only form too', async () => {
+      noPlans()
+      mount()
+      fireEvent.click(await screen.findByText(/I offer services/))
+      expect(await screen.findByText('What do you sell or do?')).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: /^Repairs/ })).toBeInTheDocument()
+    })
+
+    it('changing the kind clears the picks', async () => {
+      mount()
+      fireEvent.click(screen.getByText(/I sell products/))
+      await screen.findByRole('button', { name: /^Electronics/ })
+      pickCategories('Electronics', 'Fashion')
+      expect(pressed('Electronics')).toBe(true)
+      fireEvent.click(screen.getByText(/I offer services/))
+      await screen.findByRole('button', { name: /^Hotels/ })
+      expect(pressed('Hotels')).toBe(false)
+      fireEvent.click(screen.getByText(/I sell products/))
+      await screen.findByRole('button', { name: /^Electronics/ })
+      expect(pressed('Electronics')).toBe(false)
+      expect(pressed('Fashion')).toBe(false)
+    })
+
+    it('continue is disabled until at least one category is chosen', async () => {
+      noPlans()
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      await screen.findByRole('button', { name: /^Electronics/ })
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+      pickCategories('Groceries')
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
+      pickCategories('Groceries')
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    })
+
+    it('start-trial posts business_kind plan cycle_months and categories in order', async () => {
+      const auth = makeAuth()
+      mount(auth)
+      fireEvent.click(screen.getByText(/I offer services/))
+      fireEvent.click(await screen.findByText('Service'))
+      pickCategories('Repairs', 'Hotels')
+      fireEvent.click(await screen.findByText('3 mo'))
+      fireEvent.click(screen.getByRole('button', { name: 'Start Free Trial' }))
+      await waitFor(() => expect(auth.submitPlanSelection).toHaveBeenCalledTimes(1))
+      expect(auth.submitPlanSelection.mock.calls[0][0]).toEqual({
+        business_kind: 'service', plan: 'service', cycle_months: 3, categories: [22, 21],
+      })
+    })
+
+    it('business-kind posts business_kind and categories', async () => {
+      noPlans()
+      let posted = null
+      server.use(http.post('http://localhost:8000/api/billing/business-kind/', async ({ request }) => {
+        posted = await request.json()
+        return HttpResponse.json({ business_kind: 'service', registration_step: 'payment_info' })
+      }))
+      mount()
+      fireEvent.click(await screen.findByText(/I offer services/))
+      await screen.findByRole('button', { name: /^Hotels/ })
+      pickCategories('Hotels', 'Repairs')
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      expect(await screen.findByText(/How should we pay you/)).toBeInTheDocument()
+      expect(posted).toEqual({ business_kind: 'service', categories: [21, 22] })
+    })
+
+    it('a 400 from the server shows its message and keeps the picks', async () => {
+      noPlans()
+      server.use(http.post('http://localhost:8000/api/billing/business-kind/', () =>
+        HttpResponse.json({ categories: ['Choose at least one category.'] }, { status: 400 })))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      await screen.findByRole('button', { name: /^Electronics/ })
+      pickCategories('Fashion', 'Groceries')
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      expect(await screen.findByText('Choose at least one category.')).toBeInTheDocument()
+      expect(pressed('Fashion')).toBe(true)
+      expect(pressed('Groceries')).toBe(true)
+      expect(pressed('Electronics')).toBe(false)
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
+    })
+
+    it('a 400 from start-trial shows its message and keeps the picks', async () => {
+      const err = Object.assign(new Error('400'), { status: 400, body: { categories: ['One of these categories is not a product category.'] } })
+      const auth = makeAuth({ submitPlanSelection: vi.fn().mockRejectedValue(err) })
+      mount(auth)
+      fireEvent.click(screen.getByText(/I sell products/))
+      fireEvent.click(await screen.findByText('Product Basic'))
+      pickCategories('Electronics')
+      fireEvent.click(screen.getByRole('button', { name: 'Start Free Trial' }))
+      expect(await screen.findByText('One of these categories is not a product category.')).toBeInTheDocument()
+      expect(pressed('Electronics')).toBe(true)
+    })
+
+    it('says so when the category list is empty or failed to load', async () => {
+      noPlans()
+      server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json([])))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      expect(await screen.findByText('No categories of this kind yet — ask Operations to add one.')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    })
+
+    it('says so when the categories could not be loaded', async () => {
+      noPlans()
+      server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json({ detail: 'down' }, { status: 500 })))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      expect(await screen.findByText(/Couldn.t load the categories/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    })
+
+    it('never asks for the zones: only the categories are needed here', async () => {
+      noPlans()
+      let zonesAsked = 0
+      server.use(http.get('http://localhost:8000/api/listings/zones/', () => { zonesAsked += 1; return HttpResponse.json([]) }))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      expect(await screen.findByRole('button', { name: /^Electronics/ })).toBeInTheDocument()
+      expect(zonesAsked).toBe(0)
+    })
+
+    it('a failed category load offers Try again, which loads them', async () => {
+      noPlans()
+      let calls = 0
+      server.use(http.get('http://localhost:8000/api/listings/categories/', () => {
+        calls += 1
+        return calls === 1 ? HttpResponse.json({ detail: 'down' }, { status: 500 }) : HttpResponse.json(CATEGORIES)
+      }))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      expect(await screen.findByText(/Couldn.t load the categories/)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+      expect(await screen.findByRole('button', { name: /^Electronics/ })).toBeInTheDocument()
+      expect(screen.queryByText(/Couldn.t load the categories/)).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Continue without categories/ })).not.toBeInTheDocument()
+      expect(calls).toBe(2)
+    })
+
+    it('while the categories are loading, Continue stays disabled and there is no way round them', async () => {
+      noPlans()
+      server.use(http.get('http://localhost:8000/api/listings/categories/', () => new Promise(() => {})))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      expect(await screen.findByText('Loading categories…')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+      expect(screen.queryByRole('button', { name: /Continue without categories/ })).not.toBeInTheDocument()
+    })
+
+    it('when the categories cannot load, a separate action continues without them (business-kind)', async () => {
+      noPlans()
+      let posted = null
+      server.use(
+        http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json({ detail: 'down' }, { status: 500 })),
+        http.post('http://localhost:8000/api/billing/business-kind/', async ({ request }) => {
+          posted = await request.json()
+          return HttpResponse.json({ business_kind: 'product', registration_step: 'payment_info' })
+        }),
+      )
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      const skip = await screen.findByRole('button', { name: 'Continue without categories (add them later in Profile)' })
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+      fireEvent.click(skip)
+      expect(await screen.findByText(/How should we pay you/)).toBeInTheDocument()
+      expect(posted).toEqual({ business_kind: 'product' })
+    })
+
+    it('when the categories cannot load, the trial can start without them once a plan is chosen', async () => {
+      server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json({ detail: 'down' }, { status: 500 })))
+      const auth = makeAuth()
+      mount(auth)
+      fireEvent.click(screen.getByText(/I sell products/))
+      const skip = await screen.findByRole('button', { name: 'Continue without categories (add them later in Profile)' })
+      expect(skip).toBeDisabled()
+      fireEvent.click(await screen.findByText('Product Basic'))
+      expect(skip).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Start Free Trial' })).toBeDisabled()
+      fireEvent.click(skip)
+      await waitFor(() => expect(auth.submitPlanSelection).toHaveBeenCalledTimes(1))
+      expect(auth.submitPlanSelection.mock.calls[0][0]).toEqual({ business_kind: 'product', plan: 'product_basic', cycle_months: 1 })
+    })
+
+    it('a scout-registered owner whose kind is already set is not asked for categories', async () => {
+      server.use(http.get('http://localhost:8000/api/accounts/business-owners/me/categories/', () =>
+        HttpResponse.json({ business_kind: 'product', min: 1, max: 10, categories: [] })))
+      const auth = makeAuth()
+      mount(auth)
+      fireEvent.click(screen.getByText(/I sell products/))
+      fireEvent.click(await screen.findByText('Product Basic'))
+      await waitFor(() => expect(screen.queryByText('What do you sell or do?')).not.toBeInTheDocument())
+      expect(screen.queryByRole('button', { name: /^Electronics/ })).not.toBeInTheDocument()
+      const start = screen.getByRole('button', { name: 'Start Free Trial' })
+      await waitFor(() => expect(start).toBeEnabled())
+      fireEvent.click(start)
+      await waitFor(() => expect(auth.submitPlanSelection).toHaveBeenCalledTimes(1))
+      expect(auth.submitPlanSelection.mock.calls[0][0]).not.toHaveProperty('categories')
     })
   })
 

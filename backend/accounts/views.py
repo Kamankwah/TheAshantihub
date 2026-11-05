@@ -27,7 +27,7 @@ from otp import step_up
 from staffsecurity import signin as signin_log
 from staffsecurity.models import StaffSignInRecord
 
-from . import claims, files, hours, kyc, mobile_sessions, sessions, two_factor
+from . import categories, claims, files, hours, kyc, mobile_sessions, sessions, two_factor
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
 from .models import (
@@ -1592,6 +1592,47 @@ class PayoutDetailUpdateView(generics.UpdateAPIView):
         with transaction.atomic():
             step_up.require(request, step_up.PAYOUT_DESTINATION, force=escrow.enabled())
             return super().update(request, *args, **kwargs)
+
+
+class BusinessOwnerCategoriesView(APIView):
+    """GET/PUT business-owners/me/categories/: the categories that describe the business, in order (the first is the
+    main one). PUT {"categories": [ids]} replaces the list; 400 {"detail"} when it is not valid. Categories only
+    describe a business, so this never touches KYC, identity, the subscription or listings. Locks the profile row
+    only (inside set_categories), never the owner row."""
+
+    permission_classes = [IsBusinessOwner]
+
+    def _answer(self, profile):
+        return Response({
+            "business_kind": profile.business_kind or None,
+            "min": categories.MIN_CATEGORIES,
+            "max": categories.MAX_CATEGORIES,
+            "categories": [
+                {"id": c.pk, "label": c.label, "kind": c.kind} for c in categories.categories_of(profile)
+            ],
+        })
+
+    def _profile(self, request):
+        return BusinessOwnerProfile.objects.filter(business_owner=request.user).first()
+
+    def get(self, request):
+        profile = self._profile(request)
+        if profile is None:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        return self._answer(profile)
+
+    def put(self, request):
+        profile = self._profile(request)
+        if profile is None:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        ids = request.data.get("categories") if isinstance(request.data, dict) else None
+        if not isinstance(ids, list):
+            return Response({"detail": "Choose at least one category."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            categories.set_categories(profile, ids)
+        except categories.InvalidCategories as exc:
+            return Response({"detail": exc.message}, status=status.HTTP_400_BAD_REQUEST)
+        return self._answer(BusinessOwnerProfile.objects.get(pk=profile.pk))
 
 
 def _detail_change_refused(exc):

@@ -60,6 +60,27 @@ describe('BusinessKycReview', () => {
     expect(await screen.findByText('Hours not set (old text: Mon–Sat, 7:00–20:00)')).toBeInTheDocument()
   })
 
+  describe('categories', () => {
+    it('lists every category after the kind, main first, and says Categories', async () => {
+      serve(sheet({ business: { ...sheet().business, categories: [{ id: 4, name: 'Food & drink' }, { id: 9, name: 'Catering' }] } }))
+      renderReview()
+      expect(await screen.findByText('Services · Food & drink, Catering')).toBeInTheDocument()
+      expect(screen.getByText('Kind and categories')).toBeInTheDocument()
+    })
+    it('no categories shows the kind alone', async () => {
+      serve(sheet({ business: { ...sheet().business, category: null, categories: [] } }))
+      renderReview()
+      expect(await screen.findByText('Services')).toBeInTheDocument()
+      expect(screen.getByText('Kind and category')).toBeInTheDocument()
+    })
+    it('an older payload with only the main category still renders', async () => {
+      serve(sheet())
+      renderReview()
+      expect(await screen.findByText('Services · Food & drink')).toBeInTheDocument()
+      expect(screen.getByText('Kind and category')).toBeInTheDocument()
+    })
+  })
+
   it('shows the owner, business, photos, location, checks and consent record', async () => {
     serve(sheet())
     renderReview()

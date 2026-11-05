@@ -166,6 +166,35 @@ describe('KYCQueuePanel (staff phase 2A)', () => {
     expect(within(kofiRow).queryByRole('img', { name: 'Signboard' })).not.toBeInTheDocument()
   })
 
+  describe('categories', () => {
+    async function openDetail(extra) {
+      const o = owner()
+      mockQueue([o], { 41: detailOf(o, extra) })
+      renderPanel()
+      const row = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
+      fireEvent.click(within(row).getByText('👁️ View Details'))
+      await within(row).findByText("Nana's Chop Bar")
+      return row
+    }
+    const field = (row, label) => within(row).getByText(label).parentElement
+
+    it('KYC detail shows every category, main first', async () => {
+      const row = await openDetail({ business_category_name: 'Food & drink', business_category_names: ['Food & drink', 'Kente & crafts', 'Catering'] })
+      expect(field(row, 'Categories')).toHaveTextContent('Food & drink, Kente & crafts, Catering')
+      expect(within(row).queryByText('Category')).not.toBeInTheDocument()
+    })
+
+    it('no categories says Not given', async () => {
+      const row = await openDetail({ business_category_name: null, business_category_names: [] })
+      expect(field(row, 'Category')).toHaveTextContent(/^CategoryNot given$/)
+    })
+
+    it('an older payload with only the main category still renders', async () => {
+      const row = await openDetail({ business_category_name: 'Food & drink' })
+      expect(field(row, 'Category')).toHaveTextContent('Food & drink')
+    })
+  })
+
   it('address approve button does not depend on documents', async () => {
     const o = owner()
     let posted = 0
