@@ -4,7 +4,7 @@ from django.db import IntegrityError, transaction
 from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework.test import APIClient
 
-from accounts.models import Role
+from accounts.models import BusinessOwnerProfile, Role
 from catalogue import identity
 from catalogue.models import CatalogueProduct, product_row
 from catalogue.tests.helpers import BARCODE, STORE_CODE, as_account, business, product
@@ -151,6 +151,8 @@ class ListingBarcodeTests(TestCase):
 
     @override_settings(SUBSCRIPTIONS_ENABLED=False)
     def test_a_new_listing_can_carry_a_barcode(self):
+        # With subscriptions off the first listing needs the business type (gate e).
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(business_kind="product")
         response = self.client.post("/api/listings/mine/", {
             "category": Category.objects.get(slug="grocery").pk, "zone": Zone.objects.get(name="Manhyia").pk,
             "name": "Milo 400g", "description": "A tin.", "price_amount": "25.00", "contact_phone": "+233209999999",

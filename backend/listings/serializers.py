@@ -574,6 +574,9 @@ PRODUCT_ANSWER_MESSAGES = {
 }
 
 
+BUSINESS_KIND_REQUIRED_MESSAGE = "Choose your business type first."
+
+
 def subscriptions_on():
     from billing.switch import subscriptions_enabled
 
@@ -641,6 +644,11 @@ def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None,
         and (adds_variants or (instance is not None and variants.has_variants(instance)))
     ):
         raise serializers.ValidationError({"category": "Only products and food can have variants. Remove the variants first."})
+
+    # Gate (e): with subscriptions off the plan step is gone, so the first listing is where a business must say what
+    # kind it is (the category-kind rule above and the fee/payout rules read it). Direct sells across kinds.
+    if instance is None and not company and not subscriptions_on() and not (profile is not None and profile.business_kind):
+        raise serializers.ValidationError({"business_kind": BUSINESS_KIND_REQUIRED_MESSAGE})
 
     if instance is None and not company and subscriptions_on():
         subscription = getattr(owner, "subscription", None)

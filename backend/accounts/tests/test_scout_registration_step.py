@@ -5,7 +5,7 @@ the business. Self-registered owners are pinned unchanged here too."""
 from datetime import timedelta
 
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -86,6 +86,24 @@ class ScoutRegisteredStepTests(TestCase):
         self.assertEqual(_step(owner), "plan_selection")
         _subscribe(owner)
         self.assertEqual(_step(owner), "payment_info")
+
+
+@override_settings(SUBSCRIPTIONS_ENABLED=False)
+class ScoutStepWithSubscriptionsOffTests(TestCase):
+    def test_scout_business_without_a_type_is_asked_for_one_when_off(self):
+        details = {k: v for k, v in SCOUT_CAPTURE.items() if k != "business_kind"}
+        owner = _owner(BusinessOwner.SCOUT, kyc_status=BusinessOwner.VERIFIED, **details, **MOMO)
+        self.assertEqual(_step(owner), "plan_selection")
+
+    def test_scout_business_with_a_type_goes_to_payout_when_off(self):
+        owner = _owner(BusinessOwner.SCOUT, kyc_status=BusinessOwner.VERIFIED, **SCOUT_CAPTURE)
+        self.assertEqual(_step(owner), "payment_info")
+        BusinessOwnerProfile.objects.filter(business_owner=owner).update(**MOMO)
+        self.assertEqual(_step(owner), "complete")
+
+    def test_a_pending_scout_business_without_a_type_is_still_complete(self):
+        details = {k: v for k, v in SCOUT_CAPTURE.items() if k != "business_kind"}
+        self.assertEqual(_step(_owner(BusinessOwner.SCOUT, **details)), "complete")
 
 
 class SelfRegisteredStepUnchangedTests(TestCase):

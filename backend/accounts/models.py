@@ -419,9 +419,14 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
         payout details" — and only once KYC has verified the business."""
         if self.kyc_status != self.VERIFIED:
             return "complete"
-        if subscriptions_enabled() and getattr(self, "subscription", None) is None:
-            return "plan_selection"
         profile = getattr(self, "profile", None)
+        # "plan_selection" is also the business-type step: with subscriptions off it asks only for the type, which the
+        # first listing needs (gate e). With them on the plan choice carries the type, so that rule is unchanged.
+        if subscriptions_enabled():
+            if getattr(self, "subscription", None) is None:
+                return "plan_selection"
+        elif not (profile and profile.business_kind):
+            return "plan_selection"
         if profile is None or not profile.has_payout_details():
             return "payment_info"
         return "complete"
