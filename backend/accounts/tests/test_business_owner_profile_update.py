@@ -91,6 +91,30 @@ class BusinessOwnerProfileUpdateTests(TestCase):
         self.assertEqual(response.status_code, 400, response.content)
         self.assertIn("gps_address", response.json())
 
+    def test_a_loosely_typed_address_is_stored_in_its_canonical_form(self):
+        # Only PATCH is routed (PUT answers 405), so the stored value is checked for PATCH.
+        for typed, stored in (("ak 039 5028", "AK-039-5028"), ("AOT0103560", "AO-T010-3560"), ("ao t010 3560", "AO-T010-3560")):
+            with self.subTest(typed=typed):
+                BusinessOwnerProfile.objects.all().delete()
+                BusinessOwner.objects.all().delete()
+                owner = self._make_owner(BusinessOwner.PENDING)
+                client = APIClient()
+                client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
+                response = client.patch("/api/accounts/business-owners/me/profile/", {"gps_address": typed}, format="json")
+                self.assertEqual(response.status_code, 200, response.content)
+                self.assertEqual(response.json()["gps_address"], stored)
+                owner.profile.refresh_from_db()
+                self.assertEqual(owner.profile.gps_address, stored)
+
+    def test_a_partial_edit_without_the_address_leaves_it_alone(self):
+        owner = self._make_owner(BusinessOwner.PENDING)
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
+        response = client.patch("/api/accounts/business-owners/me/profile/", {"is_formal": False}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        owner.profile.refresh_from_db()
+        self.assertEqual(owner.profile.gps_address, "AK-039-5050")
+
     def _client(self, owner):
         client = APIClient()
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
