@@ -6,6 +6,35 @@ import { GHANA_POST_PATTERN, formatGhanaPostInput, ghanaPostError, normalizeGhan
 
 const FORMAT = 'Enter a valid Ghana Post GPS address, e.g. AK-039-5028.'
 
+// One table, copied verbatim into backend/accounts/tests/test_gps_normalize.py and mobile/__tests__/ghanaPost.test.ts:
+// the three normalisers must answer identically. [typed, normalised]; a text that stays as typed (upper-cased and
+// trimmed) is refused with the format message.
+const NORMALISE_CASES = [
+  ['AK-039-5028', 'AK-039-5028'],
+  ['AK-0395-0285', 'AK-0395-0285'],
+  ['AO-T010-3560', 'AO-T010-3560'],
+  ['ak 039 5028', 'AK-039-5028'],
+  ['AK0395028', 'AK-039-5028'],
+  ['ak03950285', 'AK-0395-0285'],
+  ['AOT0103560', 'AO-T010-3560'],
+  ['ao t010 3560', 'AO-T010-3560'],
+  ['AK\u2013039\u20135028', 'AK-039-5028'],
+  ['ak_039.5028', 'AK-039-5028'],
+  ['ak/039/5028', 'AK-039-5028'],
+  ['  ak-039-5028 ', 'AK-039-5028'],
+  ['ak -- 039 .. 5028', 'AK-039-5028'],
+  ['AKK0395028', 'AK-K039-5028'],
+  ['AK 0395028', 'AK-039-5028'],
+  ['AK 039 50 28', 'AK-039-5028'],
+  ['AK-039-50288', 'AK-039-50288'],
+  ['AK-0395-028', 'AK-0395-028'],
+  ['AKK-039-5028', 'AKK-039-5028'],
+  ['AK-03-50288', 'AK-03-50288'],
+  ['A1K0395028', 'A1K0395028'],
+  ['  not a code ', 'NOT A CODE'],
+  ['', ''],
+]
+
 describe('ghanaPost', () => {
   it('test_accepts_AK_039_5028_and_four_digit_district_codes', () => {
     expect(ghanaPostError('AK-039-5028')).toBeNull()
@@ -31,9 +60,19 @@ describe('ghanaPost', () => {
     expect(normalizeGhanaPost('ak03950285')).toBe('AK-0395-0285')
   })
 
-  it('reads separators only: a stray extra character in a group re-splits, it is not refused', () => {
-    expect(normalizeGhanaPost('AK-039-50288')).toBe('AK-0395-0288')
-    expect(normalizeGhanaPost('AKK-039-5028')).toBe('AK-K039-5028')
+  it('the shared table of cases', () => {
+    for (const [typed, expected] of NORMALISE_CASES) {
+      expect(normalizeGhanaPost(typed), typed).toBe(expected)
+    }
+  })
+
+  it('never re-groups what was typed: a typo is refused, not saved as a different code', () => {
+    for (const typo of ['AK-039-50288', 'AK-0395-028', 'AKK-039-5028', 'ak 039 50288', 'AK-03-50288']) {
+      expect(ghanaPostError(typo), typo).toBe(FORMAT)
+    }
+    for (const ok of ['AK-039-5028', 'AK-0395-0285', 'AO-T010-3560']) {
+      expect(ghanaPostError(ok), ok).toBeNull()
+    }
   })
 
   it('never rewrites a character: AKK0395028 is a well-formed code, not a typo of AK0395028', () => {

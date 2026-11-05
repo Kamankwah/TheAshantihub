@@ -7,6 +7,35 @@ FORMAT_MESSAGE = "Enter a valid Ghana Post GPS address, e.g. AK-039-5028."
 REGION_MESSAGE_START = "AshantiHub currently only admits businesses in the Ashanti Region"
 REQUIRED_MESSAGE = "A Ghana Post GPS address is required."
 
+# One table, copied verbatim into frontend/lib/ghanaPost.test.js and mobile/__tests__/ghanaPost.test.ts: the three
+# normalisers must answer identically. (typed, normalised). A text that stays as typed (upper-cased and trimmed) is
+# refused with the format message.
+NORMALISE_CASES = [
+    ("AK-039-5028", "AK-039-5028"),
+    ("AK-0395-0285", "AK-0395-0285"),
+    ("AO-T010-3560", "AO-T010-3560"),
+    ("ak 039 5028", "AK-039-5028"),
+    ("AK0395028", "AK-039-5028"),
+    ("ak03950285", "AK-0395-0285"),
+    ("AOT0103560", "AO-T010-3560"),
+    ("ao t010 3560", "AO-T010-3560"),
+    ("AK\u2013039\u20135028", "AK-039-5028"),
+    ("ak_039.5028", "AK-039-5028"),
+    ("ak/039/5028", "AK-039-5028"),
+    ("  ak-039-5028 ", "AK-039-5028"),
+    ("ak -- 039 .. 5028", "AK-039-5028"),
+    ("AKK0395028", "AK-K039-5028"),
+    ("AK 0395028", "AK-039-5028"),
+    ("AK 039 50 28", "AK-039-5028"),
+    ("AK-039-50288", "AK-039-50288"),
+    ("AK-0395-028", "AK-0395-028"),
+    ("AKK-039-5028", "AKK-039-5028"),
+    ("AK-03-50288", "AK-03-50288"),
+    ("A1K0395028", "A1K0395028"),
+    ("  not a code ", "NOT A CODE"),
+    ("", ""),
+]
+
 
 class GpsNormalizeTests(SimpleTestCase):
     def assertRefused(self, raw, message=FORMAT_MESSAGE):
@@ -39,6 +68,22 @@ class GpsNormalizeTests(SimpleTestCase):
     def test_a_third_letter_is_a_district_letter_like_the_real_code(self):
         # AKK0395028 is AK + K0395028: the same shape as the real AO-T010-3560, so it is kept, not refused.
         self.assertEqual(validate_ashanti_gps("AKK0395028"), "AK-K039-5028")
+
+    def test_the_shared_table_of_cases(self):
+        for typed, expected in NORMALISE_CASES:
+            with self.subTest(typed=typed):
+                self.assertEqual(normalize_gps(typed), expected)
+
+    def test_a_typed_grouping_is_never_re_grouped(self):
+        # A typo must not become a different plausible code: three typed groups must already be 2, 3-4 and 4 characters.
+        for typed in ("AK-039-50288", "AK-0395-028", "AKK-039-5028", "ak 039 50288", "AK-03-50288"):
+            with self.subTest(typed=typed):
+                self.assertRefused(typed)
+
+    def test_a_well_grouped_code_is_accepted_as_typed(self):
+        for typed, expected in (("AK-039-5028", "AK-039-5028"), ("AK-0395-0285", "AK-0395-0285"), ("AO-T010-3560", "AO-T010-3560")):
+            with self.subTest(typed=typed):
+                self.assertEqual(validate_ashanti_gps(typed), expected)
 
     def test_eight_characters_split_four_four(self):
         self.assertEqual(validate_ashanti_gps("ak03950285"), "AK-0395-0285")

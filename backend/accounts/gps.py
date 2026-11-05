@@ -13,7 +13,8 @@ with ``A`` (no other region uses an A-prefix), so that letter is how we enforce
 "Ashanti Region only".
 
 People type the code loosely (``ak 039 5028``, ``AK0395028``, ``ak_039.5028``),
-so ``normalize_gps`` drops separators and case before reformatting. It never
+so ``normalize_gps`` drops separators and case before reformatting. A grouping the
+person typed (three groups) is kept as typed or refused, never re-cut. It never
 replaces one character with another (no reading ``O`` as ``0``): letters are
 legitimate in the number groups, so converting would corrupt real codes. A code
 is never invented or looked up.
@@ -36,7 +37,11 @@ GPS_FORMAT = re.compile(r"^[A-Z]{2}-[A-Z0-9]{3,4}-[A-Z0-9]{4}$")
 # Separators people type between the groups: whitespace, hyphens (plain, hyphen, en and em dash, minus), underscore,
 # dot and slash.
 _SEPARATORS = re.compile(r"[\s\-\u2010\u2013\u2014\u2212_./]")
+_SEPARATOR_RUN = re.compile(r"[\s\-\u2010\u2013\u2014\u2212_./]+")
 _LOOSE_CODE = re.compile(r"^([A-Z]{2})([A-Z0-9]{7,8})$")
+_AREA = re.compile(r"^[A-Z]{2}$")
+_DISTRICT = re.compile(r"^[A-Z0-9]{3,4}$")
+_UNIQUE = re.compile(r"^[A-Z0-9]{4}$")
 ASHANTI_REGION_LETTER = "A"
 # The Ashanti Region as a generous box (a shop near the border must not be refused; a fix from Accra, Tamale or
 # a desktop's IP location must). Used by every location-capture path.
@@ -48,8 +53,19 @@ GHANA_API_VALIDATE_URL = "https://api.ghana-api.dev/api/v1/addresses/validate/{c
 def normalize_gps(raw):
     """Return the canonical code (``AK-039-5028`` or ``AK-0395-0285``) when ``raw`` is a code typed loosely, else the
     trimmed upper-case text so the format check rejects it. Only separators and case change; no character is replaced.
+
+    A typed grouping is never re-grouped: when the text splits on separator runs into exactly three groups, they must
+    already be 2 letters, 3-4 letters-or-digits and 4 letters-or-digits, or the text is returned as typed (so the format
+    message shows) -- ``AK-039-50288`` is a typo, not ``AK-0395-0288``. Text with no separators, or with another number
+    of groups, has its separators dropped and is re-split by length (7 -> 3-4, 8 -> 4-4).
     """
     text = str(raw or "").strip().upper()
+    groups = [group for group in _SEPARATOR_RUN.split(text) if group]
+    if len(groups) == 3:
+        area, district, unique = groups
+        if _AREA.match(area) and _DISTRICT.match(district) and _UNIQUE.match(unique):
+            return f"{area}-{district}-{unique}"
+        return text
     match = _LOOSE_CODE.match(_SEPARATORS.sub("", text))
     if not match:
         return text
