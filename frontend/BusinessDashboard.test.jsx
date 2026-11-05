@@ -737,7 +737,10 @@ function mockAnalyticsData() {
     http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json({
       ghana_card_number: 'GHA-1', gps_address: 'Adum, Kumasi', business_contact_phone: '+233200000000', is_formal: true,
     })),
-    http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+    // Plans are on offer here: the Overview shows the Subscription tile and Plan usage only then.
+    http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([
+      { id: 1, tier: 'growth', name: 'Growth', monthly_price: '30.00', kind: 'product', features: [], is_recommended: false },
+    ])),
     http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({
       id: 5, plan: { name: 'Growth', tier: 'growth', max_active_listings: 10, hero_days: 14, boost_credits_per_month: 5 },
       billing_cycle: 'monthly', status: 'active', current_period_end: '2099-01-01T00:00:00Z',
