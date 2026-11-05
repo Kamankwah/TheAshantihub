@@ -395,6 +395,14 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     def compute_registration_step(self):
         if self.registration_channel == self.SCOUT:
             return self._scout_registration_step()
+        if self.kyc_status == self.VERIFIED and not self.is_company and not subscriptions_enabled():
+            # With subscriptions off the first listing needs a business type (gate e) and this step is the only door
+            # that sets it, so a verified owner who never chose one (KYC approved at this step, or verified and never
+            # subscribed) is sent to it, as the scout branch does. A rejected owner and an owner with no profile are
+            # unchanged, and so is everything with the switch on.
+            profile = getattr(self, "profile", None)
+            if profile is not None and not profile.business_kind:
+                return "plan_selection"
         if self.kyc_status in (self.VERIFIED, self.REJECTED):
             return "complete"
         try:

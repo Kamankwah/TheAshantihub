@@ -99,6 +99,62 @@ class FrozenTests(TestCase):
         owner = BusinessOwner.objects.get(pk=self.owner.pk)
         self.assertEqual(owner.compute_registration_step(), "plan_selection")
 
+    # --- a verified owner with no business type (KYC approved at the type step, or never subscribed) ---
+
+    def _owner_with_kyc(self, status, kind=""):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(kyc_status=status)
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(business_kind=kind or None)
+        return BusinessOwner.objects.get(pk=self.owner.pk)
+
+    def test_a_verified_owner_with_no_kind_is_sent_to_the_type_step(self):
+        owner = self._owner_with_kyc(BusinessOwner.VERIFIED)
+        self.assertEqual(owner.compute_registration_step(), "plan_selection")
+
+    def test_a_verified_owner_with_a_kind_is_complete(self):
+        owner = self._owner_with_kyc(BusinessOwner.VERIFIED, kind="product")
+        self.assertEqual(owner.compute_registration_step(), "complete")
+
+    def test_a_rejected_owner_with_no_kind_stays_complete(self):
+        owner = self._owner_with_kyc(BusinessOwner.REJECTED)
+        self.assertEqual(owner.compute_registration_step(), "complete")
+
+    def test_a_verified_owner_with_no_profile_keeps_the_old_answer(self):
+        bare = BusinessOwner.objects.create(
+            full_name="Ama", login_phone="+233207880003", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
+        )
+        self.assertEqual(bare.compute_registration_step(), "complete")
+
+    def test_the_company_shop_is_never_sent_to_the_type_step(self):
+        owner = self._owner_with_kyc(BusinessOwner.VERIFIED)
+        owner.is_company = True
+        self.assertEqual(owner.compute_registration_step(), "complete")
+
+    @override_settings(SUBSCRIPTIONS_ENABLED=True)
+    def test_with_the_switch_on_a_verified_owner_with_no_kind_is_unchanged(self):
+        owner = self._owner_with_kyc(BusinessOwner.VERIFIED)
+        self.assertEqual(owner.compute_registration_step(), "complete")
+
+    def test_a_verified_owner_can_set_the_kind_then_create_a_listing(self):
+        self._owner_with_kyc(BusinessOwner.VERIFIED)
+        me = self.client.get("/api/accounts/me/")
+        self.assertEqual(me.json()["registration_step"], "plan_selection")
+        response = self.client.post(
+            "/api/billing/business-kind/", {"business_kind": "product", "categories": [self.category.pk]}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["registration_step"], "complete")
+        self.assertEqual(self.client.get("/api/accounts/me/").json()["registration_step"], "complete")
+        created = self.client.post(
+            "/api/listings/mine/",
+            {
+                "category": self.category.pk, "zone": Zone.objects.get(name="Manhyia").pk, "name": "Kente cloth",
+                "description": "Hand woven.", "contact_phone": "+233207880001", "price_amount": "150.00",
+                "has_warranty": False, "has_expiry": False, "return_policy": "Unopened, within 7 days.",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201, created.content)
+
     # --- gates (a), (c), (d): with the switch off nothing reads overdue, paused or unsubscribed ---
 
     def _lapsed(self, *, paused=False):
