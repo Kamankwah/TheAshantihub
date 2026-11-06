@@ -570,6 +570,13 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {"socket_connect_timeout": 1, "socket_timeout"
 CELERY_TASK_PUBLISH_RETRY_POLICY = {"max_retries": 1, "interval_start": 0, "interval_step": 0.5, "interval_max": 0.5}
 # Each job's owning app adds its own entry; core/tests/test_background_jobs.py
 # fails if an entry names a task that doesn't exist. Times are Africa/Accra.
+# Staff roles that must use 2-step sign-in until a Super Admin saves a policy in Security settings (review BE-16): the
+# ones that move money (accountant, general manager, cosigner), approve work (operations) or read customer data
+# (support). Super Admin is always required. Set DJANGO_STAFF_2FA_DEFAULT_ROLES= (empty) to opt a server out.
+STAFF_TWO_FACTOR_DEFAULT_ROLES = [] if TESTING else env.list(
+    "DJANGO_STAFF_2FA_DEFAULT_ROLES", default=["accountant", "general_manager", "cosigner", "operations", "support"],
+)
+
 # A Hubtel checkout nobody paid is closed after this long and its stock/coupon reservation released (review BE-07).
 CHECKOUT_PENDING_TTL_MINUTES = env.int("CHECKOUT_PENDING_TTL_MINUTES", default=120)
 
