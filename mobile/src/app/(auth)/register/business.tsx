@@ -5,15 +5,13 @@ import { Pressable, Text, View } from "react-native";
 
 import { RegistrationHeader } from "../../../features/business/RegistrationHeader";
 import { messageFor } from "../../../lib/authApi";
+import { ghanaPostError, normalizeGhanaPost } from "../../../lib/ghanaPost";
 import { resumeRegistration, saveBusinessInfo, type Picked } from "../../../lib/registrationApi";
 import { fonts } from "../../../theme/fonts";
 import { useTheme } from "../../../theme/useTheme";
 import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
 import { Screen } from "../../../ui/Screen";
-
-const ASHANTI_ONLY = "AshantiHub only admits businesses in the Ashanti Region. Your address must begin with “A”.";
-const BAD_FORMAT = "Enter a valid Ghana Post GPS address, like AK-039-5028.";
 
 async function pickPhoto(name: string): Promise<Picked | undefined> {
   const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7 });
@@ -74,9 +72,9 @@ export default function BusinessInfo() {
   const [photoError, setPhotoError] = useState<string | null>(null);
 
   async function submit() {
-    const address = gps.trim().toUpperCase();
-    if (!/^[A-Z]{2}-\d{3,4}-\d{4}$/.test(address)) return setErrors({ gps: BAD_FORMAT });
-    if (address[0] !== "A") return setErrors({ gps: ASHANTI_ONLY });
+    const problem = ghanaPostError(gps);
+    if (problem) return setErrors({ gps: problem });
+    const address = normalizeGhanaPost(gps);
     setBusy(true);
     setErrors({});
     try {

@@ -64,12 +64,12 @@ async function fillOwnerAndBusiness({ email = '', hours = true } = {}) {
   fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
 }
 
-async function fillLocation() {
+async function fillLocation({ gps = 'AK-112-0384' } = {}) {
   fireEvent.click(await screen.findByRole('button', { name: 'Use my location' }))
   expect(await screen.findByText('Accuracy ±12 m')).toBeInTheDocument()
   await screen.findByRole('option', { name: 'Manhyia' })
   type('Area', '1')
-  type('Ghana Post address', 'AK-112-0384')
+  type('Ghana Post address', gps)
   fireEvent.click(screen.getByRole('button', { name: 'Next: Photos' }))
 }
 
@@ -145,6 +145,22 @@ describe('RegisterBusinessPanel — the four steps', () => {
     expect(screen.getByText(/The draft has been cleared from this phone/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hand the phone to Gifty' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Owner not here? Send a link' })).toBeInTheDocument()
+  })
+
+  it('sends the Ghana Post address in its canonical form, in the duplicate check and in the registration', async () => {
+    const seen = mockRegistration()
+    renderPanel()
+    await fillOwnerAndBusiness()
+    await fillLocation({ gps: 'ak 112 0384' })
+    takePhotos()
+    expect(await screen.findByText(/No exact match/)).toBeInTheDocument()
+    expect(seen.check.gps_address).toBe('AK-112-0384')
+
+    const append = vi.spyOn(FormData.prototype, 'append')
+    fireEvent.click(screen.getByRole('button', { name: 'Submit for KYC' }))
+    expect(await screen.findByText('Sent to Ama Boateng for KYC')).toBeInTheDocument()
+    const sent = Object.fromEntries(append.mock.calls.map(([key, value]) => [key, value]))
+    expect(sent.gps_address).toBe('AK-112-0384')
   })
 
   it('offers only the categories of the chosen kind of business', async () => {

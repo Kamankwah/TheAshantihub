@@ -90,6 +90,14 @@ def _subscription_check(owner):
     return _check("subscription", "Subscription paid", FAIL, "No subscription.")
 
 
+def _subscription_checks(owner):
+    """The "Subscription paid" check, as a list: empty while the subscription
+    switch is off (no screen may call a business unpaid or unsubscribed then)."""
+    from billing.switch import subscriptions_enabled
+
+    return [_subscription_check(owner)] if subscriptions_enabled() else []
+
+
 def hero_checks(submission):
     """The canvas 14 checklist for one submission. `blocking` marks a failed
     check that HeroApproveView refuses on."""
@@ -104,7 +112,7 @@ def hero_checks(submission):
     checks = [_kyc_check(owner)]
     if not dated:  # dated slides are free: no photo-match, subscription or slot checks
         checks.insert(0, _photo_check(submission))
-        checks.append(_subscription_check(owner))
+        checks.extend(_subscription_checks(owner))
 
     length = len(caption)
     checks.append(_check(
@@ -151,7 +159,7 @@ def promotion_checks(promotion):
     live = listing.status == Listing.PUBLISHED and not owner.is_suspended
     return [
         _kyc_check(owner),
-        _subscription_check(owner),
+        *_subscription_checks(owner),
         _check(
             "listing_live", "Listing live",
             PASS if live else FAIL,

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { useMyTeam } from "../../../hooks/useMyTeam.js";
+import { useSubscriptionPlans } from "../../../hooks/useSubscriptionPlans.js";
+import { noPlansOffered } from "../../../lib/plansOffered.js";
 import { useReassignableScouts } from "../../../hooks/usePortfolio.js";
 import { D, glassCard } from "../theme.js";
 import { button, callout, chip, dim, field } from "./panelStyles.js";
@@ -69,9 +71,19 @@ export const money = (value) => `GH₵ ${Number(value || 0).toLocaleString("en-G
 
 export const firstName = (name) => (name || "").trim().split(/\s+/)[0] || "The owner";
 
+// True once GET /api/billing/plans/ has answered []: no plan is on offer, so no
+// screen may say a business renews, is unsubscribed or has no plan. (With the
+// switch off the clock itself is the empty NONE state, which on its own reads
+// the same as "no subscription yet", so the plans list is what tells them apart.)
+export function usePlansGone() {
+  return noPlansOffered(useSubscriptionPlans());
+}
+
 // One line for a billing.clock.subscription_state() dict. With the pause
 // switched off (pause_enabled false) there is no 14-day countdown to show.
-export function subscriptionText(sub, kycStatus) {
+// plansGone: nothing to renew or to be without, so "Active" carries no renew
+// date and an empty state is a dash rather than "No plan yet".
+export function subscriptionText(sub, kycStatus, plansGone = false) {
   const s = sub || {};
   switch (s.state) {
     case "overdue":
@@ -79,8 +91,9 @@ export function subscriptionText(sub, kycStatus) {
       return s.overdue_day != null ? `Overdue · day ${s.overdue_day} of 14` : "Overdue";
     case "paused": return "Paused — listings hidden";
     case "trial": return "Active · trial";
-    case "active": return s.current_period_end ? `Active · renews ${formatDay(s.current_period_end)}` : "Active";
-    default: return kycStatus && kycStatus !== "verified" ? "Starts after KYC" : "No plan yet";
+    case "active": return s.current_period_end && !plansGone ? `Active · renews ${formatDay(s.current_period_end)}` : "Active";
+    default: if (plansGone) return "—";
+      return kycStatus && kycStatus !== "verified" ? "Starts after KYC" : "No plan yet";
   }
 }
 

@@ -8,7 +8,7 @@ import { button, callout, chip, dim } from "./panelStyles.js";
 import SaBusinessDetail from "./SaBusinessDetail.jsx";
 import SuspendSheet from "./SuspendSheet.jsx";
 import { Chip, ExportButton, FilterBar, KpiStrip, LoadState, Pager, ScreenHeader, col, dateOnly, showing, tableStyle, td, th } from "./marketplaceParts.jsx";
-import { HealthChip, card, flagCount, h3, listingsLiveText, subscriptionText, useDebounced } from "./portfolioParts.jsx";
+import { HealthChip, card, flagCount, h3, listingsLiveText, subscriptionText, useDebounced, usePlansGone } from "./portfolioParts.jsx";
 
 // Super Admin > Businesses (screen 16): every business, with the counts that
 // matter on top, filters, a CSV of the list, and suspend / lift (reason, then
@@ -43,6 +43,7 @@ function flagsOf(b) {
 
 export default function SaBusinessesPanel({ auth, detailId, onOpenDetail }) {
   const queryClient = useQueryClient();
+  const plansGone = usePlansGone();
   const [filters, setFilters] = useState(EMPTY);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -123,7 +124,7 @@ export default function SaBusinessesPanel({ auth, detailId, onOpenDetail }) {
                         <div style={dim}>{[b.zone?.name, listingsLiveText(b) + " live"].filter(Boolean).join(" · ")}</div>
                       </td>
                       <td style={td}>{kycChip(b)}{b.is_suspended && b.suspension_reason && <div style={dim}>{b.suspension_reason}</div>}</td>
-                      <td style={td}>{subscriptionText(b.subscription, b.kyc_status)}{b.subscription?.plan_name && <div style={dim}>{b.subscription.plan_name}</div>}</td>
+                      <td style={td}>{subscriptionText(b.subscription, b.kyc_status, plansGone)}{b.subscription?.plan_name && <div style={dim}>{b.subscription.plan_name}</div>}</td>
                       <td style={td}>{b.account_manager?.full_name || <span style={{ color: D.amber, fontWeight: 800 }}>{b.registration_channel === "self" ? "None · self-registered" : "None"}</span>}</td>
                       <td style={td}><HealthChip rating={b.health?.rating} /><div style={dim}>{b.health?.reasons?.[0] || ""}</div></td>
                       <td style={td}>{flags.length ? flags.map((f) => <div key={f} style={{ ...chip(D.red), display: "inline-block", marginBottom: 2 }}>{f}</div>) : "—"}</td>

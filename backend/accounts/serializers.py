@@ -691,12 +691,15 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
         # Ashanti Region. The Ghana Card, certificate and TIN are optional:
         # KYC rests on the address. Checked against the effective
         # (post-update) value so a partial edit of an already-complete
-        # profile still passes.
+        # profile still passes. A code sent now is stored in its canonical form (AK-039-5028), never as typed, so the
+        # staff screens and the duplicate check see one shape.
         gps = data.get("gps_address", self.instance.gps_address)
         try:
-            validate_ashanti_gps(gps)
+            canonical = validate_ashanti_gps(gps)
         except serializers.ValidationError as exc:
             raise serializers.ValidationError({"gps_address": exc.detail})
+        if "gps_address" in data:
+            data["gps_address"] = canonical
 
         return data
 

@@ -109,12 +109,37 @@ describe('PaymentsPanel when no plans are offered', () => {
     expect(screen.queryByText(/choose a plan below/i)).not.toBeInTheDocument()
     expect(screen.queryByText('⭐ Plans')).not.toBeInTheDocument()
     expect(screen.queryByText('💰 Pay with MoMo')).not.toBeInTheDocument()
+  })
+
+  // Backend (SUBSCRIPTIONS_ENABLED off): the owner's old row still comes back,
+  // but its clock is the empty NONE state and /plans/ is [].
+  const LEGACY_CLOCK = { state: 'none', overdue_day: null, current_period_end: null, pause_enabled: false }
+  const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString()
+
+  it('says nothing about renewing or lapsing for a legacy plan row (lapsed)', async () => {
+    renderPanel({ ...lapsed(LEGACY_CLOCK) }, [])
+    fireEvent.click(screen.getByRole('button', { name: /My Transactions & Subscription/ }))
+    expect(await screen.findByText('Subscriptions are not being offered right now.')).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/renew|lapsed|Growth|No active subscription|choose a plan/i)
 
     cleanup()
-    renderPanel(lapsed({ pause_enabled: true }), [])
+    renderPanel({ ...lapsed(LEGACY_CLOCK) }, [])
     fireEvent.click(screen.getByRole('button', { name: /Reminders/ }))
-    expect(await screen.findByText('Subscriptions are not being offered right now, so it cannot be renewed.')).toBeInTheDocument()
-    expect(screen.queryByText(/Renew from the plans below/)).not.toBeInTheDocument()
+    await screen.findByText(/all caught up/i)
+    expect(document.body.textContent).not.toMatch(/renew|lapsed/i)
+  })
+
+  it('says nothing about renewing for a legacy plan row that has days left', async () => {
+    renderPanel({ ...lapsed(LEGACY_CLOCK), current_period_end: inDays(5) }, [])
+    fireEvent.click(screen.getByRole('button', { name: /My Transactions & Subscription/ }))
+    expect(await screen.findByText('Subscriptions are not being offered right now.')).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/renew|lapsed|Growth/i)
+
+    cleanup()
+    renderPanel({ ...lapsed(LEGACY_CLOCK), current_period_end: inDays(5) }, [])
+    fireEvent.click(screen.getByRole('button', { name: /Reminders/ }))
+    await screen.findByText(/all caught up/i)
+    expect(document.body.textContent).not.toMatch(/renew|lapsed/i)
   })
 
   it('keeps the plan grid while the plans exist', async () => {

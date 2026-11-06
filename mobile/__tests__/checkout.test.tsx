@@ -204,6 +204,24 @@ describe("checkout", () => {
     });
   });
 
+  async function sentGps(typed: string) {
+    mockServer();
+    await render(client(<CheckoutScreen />));
+    await chooseDoorToDoor();
+    await fillAddress({ gps: typed });
+    await fireEvent.press(screen.getByLabelText(/^Pay /));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith({ pathname: "/order-confirmed", params: { id: "501" } }));
+    return apiMock.mock.calls.find((c) => c[0] === "/api/orders/checkout/")[1].body.delivery_gps_address;
+  }
+
+  it("sends_a_loosely_typed_ghanapost_code_in_canonical_form", async () => {
+    expect(await sentGps(" ak 039 5028 ")).toBe("AK-039-5028");
+  });
+
+  it("sends_a_letter_bearing_ghanapost_code_in_canonical_form", async () => {
+    expect(await sentGps("aot0103560")).toBe("AO-T010-3560");
+  });
+
   it("server_field_errors_show_under_the_field", async () => {
     mockServer({ checkout: () => new ApiError(400, { delivery_gps_address: ["That is not an Ashanti Region digital address."] }) });
     await render(client(<CheckoutScreen />));

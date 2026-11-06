@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { C } from "../theme.js";
 import { apiFetch, apiPost, apiPut } from "../apiClient.js";
 import { apiErrorMessage } from "../lib/apiErrorMessage.js";
+import { GHANA_POST_REGION, ghanaPostError, normalizeGhanaPost } from "../lib/ghanaPost.js";
 import { noPlansOffered } from "../lib/plansOffered.js";
 import BusinessHoursEditor from "./BusinessHoursEditor.jsx";
 import { useSubscriptionPlans } from "../hooks/useSubscriptionPlans.js";
@@ -172,13 +173,13 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
     setError(null);
     // Only a valid Ashanti Region Ghana Post address (and a contact phone) is required. The Ghana Card,
     // certificate and TIN are optional here; they are only needed later for the verified check mark.
-    const gps = gpsAddress.trim().toUpperCase();
-    if (!/^[A-Z]{2}-\d{3,4}-\d{4}$/.test(gps)) {
-      setError("Enter a valid Ghana Post GPS address, e.g. AK-039-5028."); return;
-    }
-    if (gps[0] !== "A") {
+    const gpsProblem = ghanaPostError(gpsAddress);
+    if (gpsProblem === GHANA_POST_REGION) {
+      // The shared check words the region rule for a shopper's delivery; a business is told it is about admission.
       setError("AshantiHub only admits businesses in the Ashanti Region — your Ghana Post address must be an Ashanti Region address (it begins with “A”, e.g. AK-039-5028)."); return;
     }
+    if (gpsProblem) { setError(gpsProblem); return; }
+    const gps = normalizeGhanaPost(gpsAddress);
     setSubmitting(true);
     try {
       // Send only what the owner actually filled in: no empty strings, no null files.
@@ -433,7 +434,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
             <label style={labelStyle}>Ghana Card — back
               <input type="file" accept="image/*" onChange={e=>setGhanaCardBack(e.target.files[0] || null)} style={inputStyle}/>
             </label>
-            <input value={gpsAddress} onChange={e=>setGpsAddress(e.target.value)} placeholder="Ghana Post GPS address (e.g. AK-039-5028)" required style={inputStyle}/>
+            <input value={gpsAddress} onChange={e=>setGpsAddress(e.target.value)} onBlur={()=>{ if (!ghanaPostError(gpsAddress)) setGpsAddress(normalizeGhanaPost(gpsAddress)); }} placeholder="Ghana Post GPS address (e.g. AK-039-5028)" required style={inputStyle}/>
             <div style={{color:C.warnInk,fontSize:"0.68rem",margin:"-6px 0 10px",lineHeight:1.4}}>📍 Ashanti Region only — your Ghana Post address must be an Ashanti Region address (it begins with “A”).</div>
             <input value={businessContactPhone} onChange={e=>setBusinessContactPhone(e.target.value)} placeholder="Business contact phone (AshantiHub support only, not shown to shoppers)" required style={inputStyle}/>
             <label style={{...labelStyle,display:"flex",alignItems:"center",gap:8}}>
