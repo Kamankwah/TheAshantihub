@@ -348,7 +348,14 @@ HUBTEL_CLIENT_SECRET = env("HUBTEL_CLIENT_SECRET", default="")
 HUBTEL_MERCHANT_ACCOUNT = env("HUBTEL_MERCHANT_ACCOUNT", default="")
 HUBTEL_WEBHOOK_SECRET = env("HUBTEL_WEBHOOK_SECRET", default="")
 HUBTEL_CALLBACK_URL = env("HUBTEL_CALLBACK_URL", default="")
-PAYMENTS_PROVIDER = "hubtel" if HUBTEL_CLIENT_ID else "simulated"
+# Set PAYMENTS_PROVIDER explicitly ("simulated" or "hubtel") in every deployed environment. When it is absent the old
+# derivation applies (Hubtel only if HUBTEL_CLIENT_ID is set), which FAILS OPEN: a blank id after a restore or a typo
+# silently turns every order into a free "success". An explicit "hubtel" with a blank id fails the payments.E002 system
+# check at deploy time instead, and a payment attempt errors rather than succeeding. PAYMENTS_ALLOW_SIMULATED is the
+# deliberate opt-in for a staging server that runs the ledger with simulated money (payments.E003).
+PAYMENTS_PROVIDER_EXPLICIT = env("PAYMENTS_PROVIDER", default="").strip().lower()
+PAYMENTS_PROVIDER = PAYMENTS_PROVIDER_EXPLICIT or ("hubtel" if HUBTEL_CLIENT_ID else "simulated")
+PAYMENTS_ALLOW_SIMULATED = env.bool("PAYMENTS_ALLOW_SIMULATED", default=False)
 
 # Payment provider knobs (payments/providers.py, wallets plan 3a). The simulated provider moves no money. Its charges
 # default to 0 because no real rate is known (the UI must not show a made-up number); staging or tests may set them
