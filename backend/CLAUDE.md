@@ -265,8 +265,11 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   force=escrow.enabled())` runs in the same atomic block as the save (403 `step_up_required`), and an ACTUAL change (not the same
   address typed again) does what the staff-checked route does: payout cooling restarts, trusted devices and every phone
   `MobileSession` end (the access token is stateless and carries no session id, so the phone's refresh dies too and the app signs in
-  again at the next refresh; web is unaffected), the old email (else the sign-in phone) is told after commit, and
-  `business.email_changed` is recorded last with masked values. It trims and lower-cases, refuses another business's email, a staff
+  again at the next refresh; web is unaffected), the sign-in phone is ALWAYS texted and the old email (if any) told as well (both after commit, send errors swallowed), a
+  payout-cooling in-app notice is added only when a destination was actually pushed back, and `business.email_changed` is recorded
+  last with masked values. The password is trimmed before it is checked. A business owner may receive and verify `contact_change`
+  step-up codes (`otp.views_step_up._codes_off`, ledger on); no other owner action opened up. The 200 body is `{email, sent,
+  side_effects: {signed_out_phone, payout_cooling}}`, both false for a same-address resend, so clients can say honestly what happened. It trims and lower-cases, refuses another business's email, a staff
   email and a customer's verified recovery email with one wording (`email_confirmation.address_taken`), revokes the older live links and
   mails a fresh one (`email_confirmation.set_email` then `send`; a daily-limit 429 still leaves the new address saved and the old
   links revoked). Answers 200 `{"email", "sent": true}`; never a token.

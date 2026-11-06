@@ -243,8 +243,9 @@ Closed since (follow-up A, backend): legacy phone-only owners can now add an ema
 unconfirmed one, with `POST /api/accounts/business-owners/me/email/` (only while no email is on file or the current one is not
 confirmed; a confirmed email still goes through the staff-verified change path; 5 an hour per owner; it needs the owner's current
 password and, while the ledger is on, a step-up code, because the email is a password-reset destination and a sign-in code channel; an
-actual change restarts payout cooling, ends trusted devices and phone sessions, warns the old contact and is recorded masked, as the
-staff-checked route does; it saves the normalised address, revokes older live links and mails a fresh one). Hold reasons are stored: `Listing.hold_reasons` is a list of `{code, message}` set at
+actual change restarts payout cooling, ends trusted devices and phone sessions, warns the sign-in phone (always) and the old email, and is recorded masked, as the
+staff-checked route does (owners can therefore receive `contact_change` step-up codes; the 200 carries
+`side_effects: {signed_out_phone, payout_cooling}` for honest client wording); it saves the normalised address, revokes older live links and mails a fresh one). Hold reasons are stored: `Listing.hold_reasons` is a list of `{code, message}` set at
 submit, cleared on publish, approve, reject, re-review and the next submit; staff see them in the moderation queue, the owner sees only
 a generic "We need to check this listing." for a hold (`hold_notice`) and the fix sentences for a fix (`fix_reasons`). The photo check
 now separates opening the file from decoding it: a missing file or a decode failure is the owner's to fix, and any other failure

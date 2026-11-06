@@ -40,7 +40,7 @@ class OwnerEmailView(APIView):
     """POST {email}: the signed-in owner adds or corrects their own email, then is mailed a confirmation link.
 
     Only while no email is on file or the one on file is NOT confirmed; a confirmed email is changed through the
-    staff-verified path (403 `email_confirmed`). 200 {"email": <the normalised address just typed>, "sent": true}; the
+    staff-verified path (403 `email_confirmed`). 200 {"email": <the normalised address just typed>, "sent": true, "side_effects": {"signed_out_phone", "payout_cooling"}}; the
     link itself goes only to the inbox. Refusals: 400 {"email": [...]} for an invalid or taken address, 429 `too_many_links`
     when five links went out today (the address is saved either way, and the older links are already revoked).
 
@@ -61,7 +61,8 @@ class OwnerEmailView(APIView):
         # point the account's password reset and sign-in codes at its own address. A wrong and a missing password
         # answer alike, and every attempt counts toward the endpoint's throttle.
         password = body.get("password")
-        if not isinstance(password, str) or not password or not check_password(password, owner.password_hash or ""):
+        password = password.strip() if isinstance(password, str) else ""  # sign-in and the claim trim it too
+        if not password or not check_password(password, owner.password_hash or ""):
             return Response(
                 {"detail": WRONG_PASSWORD, "password": [WRONG_PASSWORD], "code": "wrong_password"}, status=400,
             )
@@ -74,7 +75,9 @@ class OwnerEmailView(APIView):
                 # leaves it usable for the retry. Always asked while the ledger is on.
                 step_up.require(request, step_up.CONTACT_CHANGE, force=escrow.enabled())
                 serializer.is_valid(raise_exception=True)
-                owner = email_confirmation.set_email(owner, serializer.validated_data["email"], request=request)
+                owner, side_effects = email_confirmation.set_email(
+                    owner, serializer.validated_data["email"], request=request,
+                )
         except IntegrityError:  # another owner took it between the check and the save
             return Response({"email": [EMAIL_TAKEN]}, status=400)
         except ClaimError as exc:
@@ -85,7 +88,7 @@ class OwnerEmailView(APIView):
             email_confirmation.send(owner)
         except ClaimError as exc:
             return _refusal(exc)
-        return Response({"email": owner.email, "sent": True})
+        return Response({"email": owner.email, "sent": True, "side_effects": side_effects})
 
 
 class ConfirmEmailView(_PublicLinkView):

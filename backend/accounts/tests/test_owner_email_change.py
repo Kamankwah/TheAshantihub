@@ -18,6 +18,7 @@ from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer, EmailConfirmationToken, MobileSession
 from accounts.testing import make_staff, staff_token
 from activity.models import ActivityEvent
+from notifications.models import Notification
 from otp import step_up
 from otp.models import EMAIL, TrustedDevice, VerifiedContact
 from wallets.models import PayoutDestination
@@ -63,7 +64,8 @@ class OwnerEmailChangeTests(TestCase):
         owner = self.owner()
         response = self.post(owner, "  Ama@Example.COM ")
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.json(), {"email": "ama@example.com", "sent": True})
+        self.assertEqual(response.json()["email"], "ama@example.com")
+        self.assertIs(response.json()["sent"], True)
         owner.refresh_from_db()
         self.assertEqual(owner.email, "ama@example.com")
         self.assertEqual(len(mail.outbox), 1)
@@ -316,11 +318,20 @@ class OwnerEmailChangeTests(TestCase):
         self.assertGreater(destination.usable_from, timezone.now())
         self.assertFalse(TrustedDevice.objects.filter(revoked_at__isnull=True).exists())
         self.assertFalse(MobileSession.objects.filter(revoked_at__isnull=True).exists())
-        # The old email is told; the new one gets the confirmation link.
-        told = [call.args for call in deliver.call_args_list]
-        self.assertEqual([(args[0], args[1]) for args in told], [("email", "old@example.com")])
-        self.assertIn("changed", told[0][3])
+        # The sign-in phone is ALWAYS told (the old email was never proven to reach the owner), and so is the old email;
+        # the new one gets the confirmation link.
+        told = {(call.args[0], call.args[1]): call.args[3] for call in deliver.call_args_list}
+        self.assertEqual(set(told), {("sms", owner.login_phone), ("email", "old@example.com")})
+        self.assertTrue(all("changed" in text for text in told.values()))
         self.assertEqual([m.to for m in mail.outbox], [["new@example.com"]])
+
+    def test_a_failing_notice_never_undoes_the_change(self):
+        owner = self.owner("old@example.com")
+        with mock.patch("otp.notices.senders.deliver", side_effect=RuntimeError("down")), \
+                self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.post(owner, "new@example.com").status_code, 200)
+        owner.refresh_from_db()
+        self.assertEqual(owner.email, "new@example.com")
 
     def test_adding_a_first_email_tells_the_sign_in_phone(self):
         owner = self.owner()
@@ -381,3 +392,65 @@ class OwnerEmailChangeTests(TestCase):
             secondary_email_verified=False,
         )
         self.assertEqual(self.post(self.owner(), "maybe@example.com").status_code, 200)
+
+    # ---- password is trimmed like sign-in ------------------------------------------------------------------
+    def test_the_password_is_trimmed_before_it_is_checked(self):
+        owner = self.owner()
+        self.assertEqual(self.post(owner, "new@example.com", password=PASSWORD + " ").status_code, 200)
+        cache.clear()
+        self.assertEqual(self.post(owner, "newer@example.com", password="  " + PASSWORD).status_code, 200)
+        cache.clear()
+        self.assertEqual(self.post(owner, "x@example.com", password="   ").status_code, 400)
+
+    # ---- the response tells the client what happened -----------------------------------------------------------
+    def test_the_response_reports_the_side_effects_honestly(self):
+        owner = self.owner("old@example.com")
+        self.with_assets(owner)
+        body = self.post(owner, "new@example.com").json()
+        self.assertEqual(body, {
+            "email": "new@example.com", "sent": True,
+            "side_effects": {"signed_out_phone": True, "payout_cooling": True},
+        })
+
+    def test_no_phone_session_and_no_payout_destination_means_false_and_no_cooling_notice(self):
+        owner = self.owner()  # a legacy phone-only owner with no payout details
+        body = self.post(owner, "new@example.com").json()
+        self.assertEqual(body["side_effects"], {"signed_out_phone": False, "payout_cooling": False})
+        self.assertFalse(Notification.objects.filter(business_owner=owner).exists())
+
+    def test_a_same_address_resend_reports_false_for_both(self):
+        owner = self.owner("same@example.com")
+        self.with_assets(owner)
+        body = self.post(owner, "same@example.com").json()
+        self.assertEqual(body["side_effects"], {"signed_out_phone": False, "payout_cooling": False})
+
+    def test_the_owner_is_told_in_the_app_when_payout_cooling_restarts(self):
+        owner = self.owner("old@example.com")
+        self.with_assets(owner)
+        self.post(owner, "new@example.com")
+        note = Notification.objects.get(business_owner=owner)
+        self.assertIn("wait the cooling period again", note.body)
+        self.assertNotIn("new@example.com", note.title + note.body)
+
+    # ---- the real step-up flow, ledger on, every OTP switch off ---------------------------------------------------
+    @override_settings(LEDGER_ENABLED=True, OTP_STEP_UP_ENFORCED=False, OTP_SIGNIN_ENFORCED=False)
+    def test_the_whole_step_up_flow_works_through_the_real_endpoints(self):
+        from otp.tests.helpers import last_sms_code
+
+        owner = self.owner()
+        token = issue_token(owner, "business_owner")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        body = {"email": "ama@example.com", "password": PASSWORD}
+        first = self.client.post(URL, body, format="json")
+        self.assertEqual((first.status_code, first.json()["code"]), (403, "step_up_required"))
+        sent = self.client.post("/api/otp/step-up/send/", {"action": "contact_change", "channel": "sms"}, format="json")
+        self.assertEqual(sent.status_code, 200, sent.content)
+        verified = self.client.post(
+            "/api/otp/step-up/verify/", {"action": "contact_change", "code": last_sms_code()}, format="json",
+        )
+        self.assertEqual(verified.status_code, 200, verified.content)
+        done = self.client.post(URL, body, format="json", HTTP_X_STEP_UP_TOKEN=verified.json()["step_up_token"])
+        self.assertEqual(done.status_code, 200, done.content)
+        self.assertEqual(done.json()["email"], "ama@example.com")
+        owner.refresh_from_db()
+        self.assertEqual(owner.email, "ama@example.com")
