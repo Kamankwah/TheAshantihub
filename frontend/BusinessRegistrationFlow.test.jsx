@@ -149,16 +149,27 @@ describe('BusinessRegistrationFlow', () => {
       expect(screen.queryByText(/Ghana Card number is required/)).not.toBeInTheDocument()
     })
 
-    it('still requires the Ghana Post address', async () => {
+    it('does not require the Ghana Post address, says it is optional, and sends none when left empty', async () => {
+      const auth = makeAuth({ refreshUser: vi.fn().mockResolvedValue({ registration_step: 'shop_location' }) })
+      mountBusinessInfo(auth)
+      expect(screen.getByPlaceholderText(GPS)).not.toBeRequired()
+      expect(screen.getByText('Optional. We use your shop pin.')).toBeInTheDocument()
+      expect(screen.queryByText(/Ashanti Region only/)).not.toBeInTheDocument()
+      fireEvent.change(screen.getByPlaceholderText(PHONE), { target: { value: '+233201112233' } })
+      submit()
+      await waitFor(() => expect(auth.submitBusinessInfo).toHaveBeenCalledTimes(1))
+      expect(auth.submitBusinessInfo.mock.calls[0][0]).toEqual({ business_contact_phone: '+233201112233', is_formal: false })
+      expect(screen.getByPlaceholderText(PHONE)).toBeRequired()
+    })
+
+    it('still refuses a Ghana Post address that is typed but not valid', async () => {
       const auth = makeAuth()
       mountBusinessInfo(auth)
-      expect(screen.getByPlaceholderText(GPS)).toBeRequired()
       fireEvent.change(screen.getByPlaceholderText(PHONE), { target: { value: '+233201112233' } })
       fireEvent.change(screen.getByPlaceholderText(GPS), { target: { value: 'not an address' } })
       submit()
       expect(await screen.findByText(/valid Ghana Post GPS address/)).toBeInTheDocument()
       expect(auth.submitBusinessInfo).not.toHaveBeenCalled()
-      expect(screen.getByPlaceholderText(PHONE)).toBeRequired()
     })
 
     it('accepts a Ghana Post code typed loosely and sends the canonical one', async () => {
@@ -263,6 +274,34 @@ describe('BusinessRegistrationFlow', () => {
       expect(sent.business_reg_certificate).toBeInstanceOf(File)
       expect(sent.tin).toBe('C0012345678')
       expect(sent.is_formal).toBe(true)
+    })
+  })
+
+  describe('shop_location step', () => {
+    it('goes business_info -> shop_location -> plan_selection, never through payment_info', async () => {
+      const refreshUser = vi.fn()
+        .mockResolvedValueOnce({ registration_step: 'shop_location' })
+        .mockResolvedValueOnce({ registration_step: 'plan_selection' })
+      const auth = makeAuth({ refreshUser })
+      server.use(http.post('http://localhost:8000/api/accounts/me/location/', () => HttpResponse.json({ plus_code: '6FM4+PV Kumasi', landmark: '', tier: 'manual', tier_label: 'Placed by hand', is_manual: true })))
+      renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="business_info" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+
+      fireEvent.change(screen.getByPlaceholderText('Business contact phone (AshantiHub support only, not shown to shoppers)'), { target: { value: '+233201112233' } })
+      fireEvent.submit(screen.getByRole('button', { name: 'Continue' }).closest('form'))
+
+      expect(await screen.findByRole('heading', { name: 'Where is your shop?' })).toBeInTheDocument()
+      expect(screen.getByText(/STEP 3 of 5: Your shop location/)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'drop-pin' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Save my shop location' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Continue' }))
+
+      expect(await screen.findByText(/Choose your plan/)).toBeInTheDocument()
+      expect(screen.queryByText(/How should we pay you/)).not.toBeInTheDocument()
+    })
+
+    it('resumes at shop_location when the server says that is the next step', () => {
+      renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={makeAuth()} initialStep="shop_location" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+      expect(screen.getByRole('heading', { name: 'Where is your shop?' })).toBeInTheDocument()
     })
   })
 
@@ -520,7 +559,7 @@ describe('BusinessRegistrationFlow', () => {
     it('the step label reads Your Business Type', async () => {
       noPlans()
       renderTypeStep()
-      expect(await screen.findByText(/3 of 5: Your Business Type/)).toBeInTheDocument()
+      expect(await screen.findByText(/4 of 5: Your Business Type/)).toBeInTheDocument()
       expect(screen.queryByText(/Choose Your Plan/)).not.toBeInTheDocument()
     })
 
@@ -581,7 +620,7 @@ describe('BusinessRegistrationFlow', () => {
     it('while plans are loading the plan screen is shown, not the type step', async () => {
       server.use(http.get('http://localhost:8000/api/billing/plans/', () => new Promise(() => {})))
       renderTypeStep()
-      expect(screen.getByText(/3 of 5: Choose Your Plan/)).toBeInTheDocument()
+      expect(screen.getByText(/4 of 5: Choose Your Plan/)).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Start Free Trial' })).toBeInTheDocument()
       expect(screen.queryByText('What kind of business is this?')).not.toBeInTheDocument()
     })
