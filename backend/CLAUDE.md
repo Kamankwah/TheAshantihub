@@ -639,7 +639,7 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   success reported on a closed session is logged `PAID LATE`. The webhook checks the signature **before** storing a payload.
 - **Tokens.** Customers and business owners carry a `tv` claim = `token_version`; a password reset, deletion or
   `POST accounts/sign-out-everywhere/` bumps it and every older token is refused. A suspended customer/owner is refused at
-  authentication with 403 `{code: "suspended"}` (`accounts.authentication.AccountSuspended`, exempt from the 403-to-401
+  authentication with 403 `{code: "account_suspended"}` (`accounts.authentication.AccountSuspended`, exempt from the 403-to-401
   rewrite). Reset tokens are stored as SHA-256 (`accounts/reset_tokens.py`, the only issuer), links use a `#fragment`, only the
   newest link works. New passwords go through `accounts.passwords.validate_new_password`. Not done: a shorter access token with a
   refresh flow (needs the web and mobile clients).

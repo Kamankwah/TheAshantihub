@@ -130,7 +130,7 @@ class TokenRevocationTests(TestCase):
         token = self.token()
         Customer.objects.filter(pk=self.customer.pk).update(is_suspended=True)
         refused = self.me(token)
-        self.assertEqual((refused.status_code, refused.json()["code"]), (403, "suspended"))
+        self.assertEqual((refused.status_code, refused.json()["code"]), (403, "account_suspended"))
 
     def test_a_bumped_version_refuses_an_older_token(self):
         token = self.token()

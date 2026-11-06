@@ -234,7 +234,7 @@ class DestinationTests(DestinationBase):
     def test_a_suspended_account_cannot_add_one(self):
         Customer.objects.filter(pk=self.customer.pk).update(is_suspended=True)
         response = self.add()
-        self.assertEqual((response.status_code, response.json()["code"]), (403, "suspended"))
+        self.assertEqual((response.status_code, response.json()["code"]), (403, "account_suspended"))
 
 
 @override_settings(LEDGER_ENABLED=True)

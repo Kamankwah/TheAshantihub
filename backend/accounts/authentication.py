@@ -30,12 +30,12 @@ def issue_token(account, account_type, *, request=None, two_factor=False):
 
 
 class AccountSuspended(exceptions.APIException):
-    """A live token of a suspended customer or business owner. 403 with ``code: "suspended"`` - the answer the wallet and
-    marketing views already gave - so the client can show the reason instead of treating it as a bad token (review BE-09)."""
+    """A live token of a suspended customer or business owner. 403 with ``code: "account_suspended"`` (the code the catalogue clients read; the wallet and
+    marketing views also refuse with 403), so the client shows the reason instead of treating it as a bad token (review BE-09)."""
 
     status_code = status.HTTP_403_FORBIDDEN
-    default_detail = {"detail": "This account is suspended.", "code": "suspended"}
-    default_code = "suspended"
+    default_detail = {"detail": "This account is suspended.", "code": "account_suspended"}
+    default_code = "account_suspended"
 
 
 class MultiAccountJWTAuthentication(authentication.BaseAuthentication):
