@@ -26,12 +26,21 @@ _REFERENCE_KEYS = ["ClientReference", "clientReference", "reference", "Reference
 _STATUS_KEYS = ["Status", "status", "PaymentStatus", "paymentStatus"]
 _AMOUNT_KEYS = ["Amount", "amount", "AmountPaid", "amountPaid", "TotalAmountCharged"]
 
-# Loose substring classification — Hubtel's exact status vocabulary is
-# unconfirmed, so this matches case-insensitively on common substrings
-# rather than an exact enum comparison.
-_SUCCESS_MARKERS = ("success", "paid", "approved")
-_FAILED_MARKERS = ("fail", "cancel", "declin", "reject")
-_EXPIRED_MARKERS = ("expire", "timeout")
+# Status classification is EXACT-MATCH on a normalised value, never substring: "Unpaid" contains "paid", "Unsuccessful"
+# contains "success" and "Not Approved" contains "approved", so a substring match marks a refused payment as paid
+# (review BE-04). Hubtel's real vocabulary is still unconfirmed (see hubtel_client.py), so the sets below are the
+# unambiguous spellings; anything else is "no action" and the session stays pending for manual reconciliation. Extend
+# the sets only from Hubtel's documentation or a sandbox response, with a test for the new spelling.
+_SUCCESS_STATUSES = frozenset({"success", "successful", "paid", "completed", "approved"})
+_FAILED_STATUSES = frozenset({
+    "failed", "failure", "unsuccessful", "unpaid", "not paid", "declined", "rejected", "not approved", "cancelled",
+    "canceled", "error",
+})
+_EXPIRED_STATUSES = frozenset({"expired", "timeout", "timed out", "timedout"})
+
+
+def _normalise_status(raw_status):
+    return " ".join(str(raw_status).lower().replace("_", " ").replace("-", " ").split())
 
 
 def _dig(payload, keys):
@@ -55,12 +64,12 @@ def _dig(payload, keys):
 def _classify_status(raw_status):
     if not raw_status:
         return None
-    lowered = str(raw_status).lower()
-    if any(marker in lowered for marker in _SUCCESS_MARKERS):
+    status = _normalise_status(raw_status)
+    if status in _SUCCESS_STATUSES:
         return CheckoutSession.SUCCESS
-    if any(marker in lowered for marker in _FAILED_MARKERS):
+    if status in _FAILED_STATUSES:
         return CheckoutSession.FAILED
-    if any(marker in lowered for marker in _EXPIRED_MARKERS):
+    if status in _EXPIRED_STATUSES:
         return CheckoutSession.EXPIRED
     return None
 
@@ -169,10 +178,21 @@ class HubtelWebhookView(APIView):
                 except Exception:  # pragma: no cover — malformed amount field
                     webhook_event.processing_note = f"Unparseable amount in payload for {reference}."
                     webhook_event.save(update_fields=["processing_note"])
+                    logger.error("Hubtel callback for %s had an unparseable amount; left pending", reference)
                     return Response({"detail": "Unparseable amount."}, status=200)
 
             reported_status_raw = _dig(payload, _STATUS_KEYS)
             mapped_status = _classify_status(reported_status_raw)
+
+            if mapped_status == CheckoutSession.SUCCESS and reported_amount is None:
+                # A "paid" report that names no amount cannot be checked against what we asked for, so it is never
+                # trusted (review BE-04). Left pending and flagged for reconciliation against Hubtel's own records.
+                webhook_event.processing_note = (
+                    f"Success reported for {reference} with no amount - not finalized, reconcile manually."
+                )
+                webhook_event.save(update_fields=["processing_note"])
+                logger.error("Hubtel success callback for %s carried no amount; left pending", reference)
+                return Response({"detail": "Amount missing, not processed."}, status=200)
 
             if mapped_status == CheckoutSession.SUCCESS:
                 txn_kwargs = {
