@@ -34,6 +34,9 @@ const config: ExpoConfig = {
     "expo-secure-store",
     "expo-local-authentication",
     "expo-font",
+    // Expo turns on R8 shrinking for release builds; it removed the WorkManager database class and the app
+    // crashed on launch on Android (SM-A225F, 2026-11-05). Leave shrinking off for the first release.
+    ["expo-build-properties", { android: { enableMinifyInReleaseBuilds: false, enableShrinkResourcesInReleaseBuilds: false } }],
     [
       "expo-splash-screen",
       { backgroundColor: "#FDF6E3", image: "./assets/images/splash-icon.png", imageWidth: 76 },
