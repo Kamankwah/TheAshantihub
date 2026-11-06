@@ -426,7 +426,9 @@ class PortfolioBusinessDetailView(APIView):
         now = timezone.now()
         owner = get_managed_business(request, pk)
         row = health.rate_all(
-            BusinessOwner.objects.filter(pk=owner.pk).select_related("profile__business_category", "registered_by"),
+            BusinessOwner.objects.filter(pk=owner.pk)
+            .select_related("profile__business_category", "registered_by")
+            .prefetch_related("profile__category_links__category"),
             now,
         )[0]
         return Response(business_detail(row, request))
@@ -525,7 +527,7 @@ class BusinessReviewView(APIView):
         owner = generics.get_object_or_404(
             BusinessOwner.objects.select_related(
                 "profile__zone", "profile__business_category", "profile__address_verified_by", "registered_by",
-            ),
+            ).prefetch_related("profile__category_links__category"),
             pk=pk,
         )
         return Response(business_review_sheet(owner, request))

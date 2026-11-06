@@ -203,6 +203,8 @@ EMAIL_PORT = env.int("EMAIL_PORT", default=587)
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+# A hung mail server must not stall the request that sends a link (registration sends one on commit).
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@theashantihub.com")
 
 # ── Error reporting ─────────────────────────────────────────────────────────
@@ -432,6 +434,12 @@ REST_FRAMEWORK = {
         "location_link": "15/min",
         # The signed-in owner sharing the shop's location from the dashboard (accounts.views_location.MyLocationView POST).
         "owner_location": "10/min",
+        # Email confirmation (accounts.views_email_confirmation): the signed-in owner asking for a link, and the public
+        # page the mailed link opens.
+        "email_confirmation_send": "10/min",
+        "email_confirmation_confirm": "20/min",
+        # The signed-in owner adding or correcting their own unconfirmed email (OwnerEmailView): 5 an hour per owner.
+        "owner_email_change": "5/hour",
         # A staff member emailing owners claim links (portfolio.views.ClaimLinkView).
         "claim_link": "5/hour",
         # A business asking to change its name, sign-in phone or email (portfolio.detail_changes).
@@ -734,6 +742,15 @@ ASHANTI_DIRECT_EMAIL = env("ASHANTI_DIRECT_EMAIL", default="")
 # and nothing is blocked. Turn on once the opening time is confirmed.
 MARKETPLACE_GATE_ENABLED = env.bool("MARKETPLACE_GATE_ENABLED", default=False)
 
+# Minimal auto-publish at submit (listings.autopublish, self-serve onboarding spec section 6). While off, every submitted
+# listing goes to the moderation queue exactly as before. On, a live business's clean listing is published at once, a
+# fixable one is sent back with reasons, and one that trips a prohibited word or the daily limit goes to staff.
+# LISTING_PROHIBITED_TERMS is a comma-separated list of words; UNVERIFIED_DAILY_LISTING_LIMIT applies only to a business
+# whose location staff have not verified.
+LISTING_AUTO_PUBLISH_ENABLED = env.bool("LISTING_AUTO_PUBLISH_ENABLED", default=False)
+LISTING_PROHIBITED_TERMS = env.list("LISTING_PROHIBITED_TERMS", default=[])
+UNVERIFIED_DAILY_LISTING_LIMIT = env.int("UNVERIFIED_DAILY_LISTING_LIMIT", default=20)
+
 # One-time codes and 2-step sign-in for everyone (otp app; spec §9, plan docs/superpowers/plans/2026-10-16-otp-security.md).
 # All three default OFF: with them off, sign-in, sign-up and every sensitive endpoint behave exactly as before. Turn
 # them on only after the frontend screens (Plan 2F) ship, and the sign-in ones only once OTP_SMS_PROVIDER=hubtel
@@ -745,3 +762,11 @@ OTP_SIGNUP_VERIFICATION_ENFORCED = env.bool("OTP_SIGNUP_VERIFICATION_ENFORCED", 
 # "hubtel" sends through Hubtel SMS with the HUBTEL_SMS_* keys above and an Approved Sender ID. Under
 # `manage.py test` it is always "locmem", which keeps texts in otp.senders.sms_outbox (like Django's mail.outbox).
 OTP_SMS_PROVIDER = "locmem" if TESTING else env("OTP_SMS_PROVIDER", default="simulated")
+
+# A business whose location staff marked wrong (accounts address decision: address_verified False with
+# address_verified_at set) stays public for WRONG_LOCATION_HIDE_DAYS after the decision, then drops out of public browse
+# and carts (listings.visibility.hidden_business_q) until the owner shares a new pin, which clears the decision. Off by
+# default: turn it on only after `manage.py list_wrong_location_businesses` has been read, since every business already
+# marked wrong more than 7 days ago would be hidden on the next request.
+WRONG_LOCATION_HIDE_ENABLED = env.bool("WRONG_LOCATION_HIDE_ENABLED", default=False)
+WRONG_LOCATION_HIDE_DAYS = max(1, env.int("WRONG_LOCATION_HIDE_DAYS", default=7))  # never 0: that hides a business at once

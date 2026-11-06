@@ -17,7 +17,8 @@ import ProposeChangeForm from "./ProposeChangeForm.jsx";
 import StaffHoursSection from "./StaffHoursSection.jsx";
 import {
   FollowUpForm, HealthChip, ReassignForm, card, errorStyle, errorText, firstName, formatDateTime, formatDay,
-  h2, h3, money, subscriptionText,
+  h2, h3, money, subscriptionText, usePlansGone,
+  categoryLabel, categoryNames,
 } from "./portfolioParts.jsx";
 
 const KYC = { verified: ["KYC verified", D.green], pending: ["KYC waiting", D.blue], rejected: ["KYC rejected", D.red] };
@@ -143,9 +144,10 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
       )}
     </span>
   );
+  const categories = categoryNames(b.business_categories, b.business_category);
   const details = [
     ["Sign-in phone", signInPhone], ["Business phone", phoneCell(b.business_contact_phone)], ["Email", b.email || "Not given"],
-    ["Kind", b.business_kind === "service" ? "Service" : "Product"], ["Category", b.business_category?.name],
+    ["Kind", b.business_kind === "service" ? "Service" : "Product"], [categoryLabel(categories), categories.join(", ") || "Not given"],
     ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Map pin", pin],
     ["Description", b.business_description], ["Registered", registered], ["Account manager", b.account_manager?.full_name || "None"],
   ];
@@ -363,7 +365,10 @@ function waitLine(r, leadName, owner) {
 // With the pause switched off (pause_enabled false) an overdue business is
 // never hidden, so there is no hide date and no grace bar.
 function SubscriptionStrip({ sub, kycStatus, owner }) {
+  const plansGone = usePlansGone();
   const s = sub || {};
+  // No plan is on offer, so a business without one is not "missing" a plan: nothing to show.
+  if (plansGone && (!s.state || s.state === "none")) return null;
   const pauseOff = s.pause_enabled === false;
   const price = s.monthly_price ? ` · ${money(s.monthly_price)} / month` : "";
   let note = null;
@@ -374,7 +379,7 @@ function SubscriptionStrip({ sub, kycStatus, owner }) {
   const color = s.state === "paused" ? D.red : s.state === "overdue" ? D.amber : s.state === "active" || s.state === "trial" ? D.green : D.blue;
   return (
     <div style={{ ...callout(color), fontWeight: 400, display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ fontWeight: 800, ...figures }}>{`Subscription · ${subscriptionText(s, kycStatus)}${price}`}</div>
+      <div style={{ fontWeight: 800, ...figures }}>{`Subscription · ${subscriptionText(s, kycStatus, plansGone)}${price}`}</div>
       {s.state === "overdue" && !pauseOff && s.overdue_day != null && (
         <div role="progressbar" aria-label="Grace days used" aria-valuemin={0} aria-valuemax={14} aria-valuenow={s.overdue_day}
           style={{ height: 6, background: D.panelBg2, borderRadius: 6, overflow: "hidden" }}>

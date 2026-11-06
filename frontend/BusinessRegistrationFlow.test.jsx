@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
+import { apiPatchForm } from './apiClient.js'
 import BusinessRegistrationFlow from './components/BusinessRegistrationFlow.jsx'
 
 // BusinessRegistrationFlow's plan_selection step reads useSubscriptionPlans()
@@ -18,11 +19,24 @@ const PLANS = [
   { id: 3, tier: 'service', name: 'Service', kind: 'service', monthly_price: '150.00', features: [], is_recommended: false, max_active_listings: null, hero_days: 14, boost_credits_per_month: 2 },
 ]
 
+// The public category list (GET /api/listings/categories/), both kinds: the flow shows only the chosen kind's.
+const CATEGORIES = [
+  { id: 11, slug: 'electronics', icon: '', label: 'Electronics', color: '#000080', kind: 'product' },
+  { id: 12, slug: 'fashion', icon: '', label: 'Fashion', color: '#CC0000', kind: 'product' },
+  { id: 13, slug: 'groceries', icon: '', label: 'Groceries', color: '#006400', kind: 'product' },
+  { id: 21, slug: 'hotels', icon: '', label: 'Hotels', color: '#000080', kind: 'service' },
+  { id: 22, slug: 'repairs', icon: '', label: 'Repairs', color: '#CC0000', kind: 'service' },
+]
+
 const WEEK = Array.from({ length: 7 }, (_, weekday) => ({ weekday, closed: false, opens: '09:00', closes: '17:00' }))
 
 beforeEach(() => {
   server.use(
     http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json(PLANS)),
+    http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json(CATEGORIES)),
+    // By default the owner has not chosen a kind yet (a self-registered owner); a scout-registered one has.
+    http.get('http://localhost:8000/api/accounts/business-owners/me/categories/', () =>
+      HttpResponse.json({ business_kind: null, min: 1, max: 10, categories: [] })),
     // By default the owner already has hours; the opening-hours tests below override this.
     http.get('http://localhost:8000/api/accounts/business/hours/', () => HttpResponse.json({ days: WEEK, has_hours: true })),
   )
@@ -48,6 +62,10 @@ function makeAuth(overrides = {}) {
   }
 }
 
+// The chips are buttons with aria-pressed; pick them by their label.
+const chip = (name) => screen.getByRole('button', { name: new RegExp(`^${name}`) })
+const pickCategories = (...names) => names.forEach((name) => fireEvent.click(chip(name)))
+
 function uploadFile(labelText) {
   const file = new File(['(binary)'], 'card.jpg', { type: 'image/jpeg' })
   fireEvent.change(screen.getByLabelText(labelText), { target: { files: [file] } })
@@ -60,13 +78,42 @@ describe('BusinessRegistrationFlow', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })
     fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'abena@example.com' } })
     fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     await waitFor(() => expect(auth.registerBusinessOwner).toHaveBeenCalledWith(
-      expect.objectContaining({ full_name: 'Abena Owusu', login_phone: '+233201112233', password: 'secretpass' })
+      expect.objectContaining({ full_name: 'Abena Owusu', login_phone: '+233201112233', email: 'abena@example.com', password: 'secretpass' })
     ))
     await waitFor(() => expect(screen.getByText(/Tell us about your business/)).toBeInTheDocument())
+  })
+
+  describe('email on the account form', () => {
+    const fill = (email) => {
+      fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })
+      fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+      if (email !== undefined) fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: email } })
+      fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    }
+
+    it.each([['blank', undefined], ['spaces only', '   '], ['not an email', 'abena'], ['no domain dot', 'abena@example']])(
+      'blocks a %s email with the plain message and sends nothing', async (_name, value) => {
+        const auth = makeAuth()
+        renderFlow(<BusinessRegistrationFlow user={null} auth={auth} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+        fill(value)
+        expect(await screen.findByRole('alert')).toHaveTextContent('Enter your email so we can send you a confirmation link.')
+        expect(auth.registerBusinessOwner).not.toHaveBeenCalled()
+      })
+
+    it('sends the trimmed email', async () => {
+      const auth = makeAuth()
+      renderFlow(<BusinessRegistrationFlow user={null} auth={auth} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+      fill('  abena@example.com ')
+      await waitFor(() => expect(auth.registerBusinessOwner).toHaveBeenCalledWith(
+        expect.objectContaining({ email: 'abena@example.com' })
+      ))
+    })
   })
 
   it('starts directly at a resumed step when initialStep is provided', () => {
@@ -132,16 +179,69 @@ describe('BusinessRegistrationFlow', () => {
       expect(screen.queryByText(/Ghana Card number is required/)).not.toBeInTheDocument()
     })
 
-    it('still requires the Ghana Post address', async () => {
+    it('does not require the Ghana Post address, says it is optional, and sends none when left empty', async () => {
+      const auth = makeAuth({ refreshUser: vi.fn().mockResolvedValue({ registration_step: 'shop_location' }) })
+      mountBusinessInfo(auth)
+      expect(screen.getByPlaceholderText(GPS)).not.toBeRequired()
+      expect(screen.getByText('Optional. We use your shop pin.')).toBeInTheDocument()
+      expect(screen.queryByText(/Ashanti Region only/)).not.toBeInTheDocument()
+      fireEvent.change(screen.getByPlaceholderText(PHONE), { target: { value: '+233201112233' } })
+      submit()
+      await waitFor(() => expect(auth.submitBusinessInfo).toHaveBeenCalledTimes(1))
+      expect(auth.submitBusinessInfo.mock.calls[0][0]).toEqual({ business_contact_phone: '+233201112233', is_formal: false })
+      expect(screen.getByPlaceholderText(PHONE)).toBeRequired()
+    })
+
+    it('still refuses a Ghana Post address that is typed but not valid', async () => {
       const auth = makeAuth()
       mountBusinessInfo(auth)
-      expect(screen.getByPlaceholderText(GPS)).toBeRequired()
       fireEvent.change(screen.getByPlaceholderText(PHONE), { target: { value: '+233201112233' } })
       fireEvent.change(screen.getByPlaceholderText(GPS), { target: { value: 'not an address' } })
       submit()
       expect(await screen.findByText(/valid Ghana Post GPS address/)).toBeInTheDocument()
       expect(auth.submitBusinessInfo).not.toHaveBeenCalled()
-      expect(screen.getByPlaceholderText(PHONE)).toBeRequired()
+    })
+
+    it('accepts a Ghana Post code typed loosely and sends the canonical one', async () => {
+      const auth = makeAuth({ refreshUser: vi.fn().mockResolvedValue({ registration_step: 'plan_selection' }) })
+      mountBusinessInfo(auth)
+      fireEvent.change(screen.getByPlaceholderText(PHONE), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText(GPS), { target: { value: 'ak0395028' } })
+      submit()
+      await waitFor(() => expect(auth.submitBusinessInfo).toHaveBeenCalledWith(
+        expect.objectContaining({ gps_address: 'AK-039-5028' })
+      ))
+    })
+
+    it('shows the format message for a code that is too short, and sends nothing', async () => {
+      const auth = makeAuth()
+      mountBusinessInfo(auth)
+      fireEvent.change(screen.getByPlaceholderText(PHONE), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText(GPS), { target: { value: 'AK03950' } })
+      submit()
+      expect(await screen.findByText('Enter a valid Ghana Post GPS address, e.g. AK-039-5028.')).toBeInTheDocument()
+      expect(auth.submitBusinessInfo).not.toHaveBeenCalled()
+    })
+
+    it('keeps the business wording for a non-Ashanti code', async () => {
+      const auth = makeAuth()
+      mountBusinessInfo(auth)
+      fireEvent.change(screen.getByPlaceholderText(PHONE), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText(GPS), { target: { value: 'GA-039-5028' } })
+      submit()
+      expect(await screen.findByText(/AshantiHub only admits businesses in the Ashanti Region/)).toBeInTheDocument()
+      expect(auth.submitBusinessInfo).not.toHaveBeenCalled()
+    })
+
+    it('tidies the field to the canonical code when it is left', () => {
+      mountBusinessInfo(makeAuth())
+      const gps = screen.getByPlaceholderText(GPS)
+      fireEvent.change(gps, { target: { value: 'ao t010 3560' } })
+      fireEvent.blur(gps)
+      expect(gps).toHaveValue('AO-T010-3560')
+      fireEvent.change(gps, { target: { value: 'AK03950' } })
+      fireEvent.blur(gps)
+      expect(gps).toHaveValue('AK03950')
     })
 
     it('shows the registered tick and optional certificate/TIN inputs only when ticked', () => {
@@ -207,6 +307,77 @@ describe('BusinessRegistrationFlow', () => {
     })
   })
 
+  describe('shop_location step', () => {
+    it('goes business_info -> shop_location -> plan_selection, never through payment_info', async () => {
+      const refreshUser = vi.fn()
+        .mockResolvedValueOnce({ registration_step: 'shop_location' })
+        .mockResolvedValueOnce({ registration_step: 'plan_selection' })
+      const auth = makeAuth({ refreshUser })
+      server.use(http.post('http://localhost:8000/api/accounts/me/location/', () => HttpResponse.json({ plus_code: '6CRWM9QG+C6', landmark: '', tier: 'located', tier_label: 'Location shared by the owner', is_manual: true })))
+      renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="business_info" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+
+      fireEvent.change(screen.getByPlaceholderText('Business contact phone (AshantiHub support only, not shown to shoppers)'), { target: { value: '+233201112233' } })
+      fireEvent.submit(screen.getByRole('button', { name: 'Continue' }).closest('form'))
+
+      expect(await screen.findByRole('heading', { name: 'Where is your shop?' })).toBeInTheDocument()
+      expect(screen.getByText(/STEP 3 of 5: Your shop location/)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'drop-pin' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Save my shop location' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Continue' }))
+
+      expect(await screen.findByText(/Choose your plan/)).toBeInTheDocument()
+      expect(screen.queryByText(/How should we pay you/)).not.toBeInTheDocument()
+    })
+
+    it('reaches the shop location step through the real profile PATCH with no Ghana Post address', async () => {
+      let sentGps = 'unset'
+      server.use(http.patch('http://localhost:8000/api/accounts/business-owners/me/profile/', async ({ request }) => {
+        sentGps = (await request.formData()).get('gps_address')
+        return HttpResponse.json({ registration_step: 'shop_location' })
+      }))
+      const auth = makeAuth({
+        submitBusinessInfo: (fields) => {
+          const formData = new FormData()
+          Object.entries(fields).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') formData.append(k, v) })
+          return apiPatchForm('/api/accounts/business-owners/me/profile/', formData)
+        },
+        refreshUser: vi.fn().mockResolvedValue({ registration_step: 'shop_location' }),
+      })
+      renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="business_info" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+      fireEvent.change(screen.getByPlaceholderText('Business contact phone (AshantiHub support only, not shown to shoppers)'), { target: { value: '+233201112233' } })
+      fireEvent.submit(screen.getByRole('button', { name: 'Continue' }).closest('form'))
+      expect(await screen.findByRole('heading', { name: 'Where is your shop?' })).toBeInTheDocument()
+      expect(sentGps).toBeNull()
+    })
+
+    it('shows the server message when the business-info PATCH refuses the Ghana Post address (400)', async () => {
+      server.use(http.patch('http://localhost:8000/api/accounts/business-owners/me/profile/', () =>
+        HttpResponse.json({ gps_address: ['Enter a valid Ghana Post GPS address, e.g. AK-039-5028.'] }, { status: 400 })
+      ))
+      const refreshUser = vi.fn()
+      const auth = makeAuth({
+        submitBusinessInfo: (fields) => {
+          const formData = new FormData()
+          Object.entries(fields).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') formData.append(k, v) })
+          return apiPatchForm('/api/accounts/business-owners/me/profile/', formData)
+        },
+        refreshUser,
+      })
+      renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="business_info" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+      fireEvent.change(screen.getByPlaceholderText('Business contact phone (AshantiHub support only, not shown to shoppers)'), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText('Ghana Post GPS address (e.g. AK-039-5028)'), { target: { value: 'AK-039-5028' } })
+      fireEvent.submit(screen.getByRole('button', { name: 'Continue' }).closest('form'))
+      expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid Ghana Post GPS address, e.g. AK-039-5028.')
+      expect(refreshUser).not.toHaveBeenCalled()
+      expect(screen.queryByRole('heading', { name: 'Where is your shop?' })).not.toBeInTheDocument()
+    })
+
+    it('resumes at shop_location when the server says that is the next step', () => {
+      renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={makeAuth()} initialStep="shop_location" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+      expect(screen.getByRole('heading', { name: 'Where is your shop?' })).toBeInTheDocument()
+    })
+  })
+
   describe('plan_selection step', () => {
     it('shows the business-kind choice first, then plan cards once a kind is chosen', async () => {
       renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={makeAuth()} initialStep="plan_selection" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
@@ -241,7 +412,7 @@ describe('BusinessRegistrationFlow', () => {
       expect(screen.queryByText(/Simulate Pay/i)).not.toBeInTheDocument()
     })
 
-    it('disables the submit button until a kind and a plan are both chosen', async () => {
+    it('disables the submit button until a kind, a plan and a category are all chosen', async () => {
       renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={makeAuth()} initialStep="plan_selection" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
 
       expect(screen.getByRole('button', { name: 'Start Free Trial' })).toBeDisabled()
@@ -251,6 +422,9 @@ describe('BusinessRegistrationFlow', () => {
 
       await waitFor(() => expect(screen.getByText('Product Basic')).toBeInTheDocument())
       fireEvent.click(screen.getByText('Product Basic'))
+      expect(screen.getByRole('button', { name: 'Start Free Trial' })).toBeDisabled()
+
+      pickCategories('Electronics')
       expect(screen.getByRole('button', { name: 'Start Free Trial' })).not.toBeDisabled()
     })
 
@@ -261,6 +435,7 @@ describe('BusinessRegistrationFlow', () => {
       fireEvent.click(screen.getByText(/I sell products/))
       await waitFor(() => expect(screen.getByText('Product Basic')).toBeInTheDocument())
       fireEvent.click(screen.getByText('Product Basic'))
+      pickCategories('Fashion', 'Electronics')
 
       await waitFor(() => expect(screen.getByText('6 mo')).toBeInTheDocument())
       fireEvent.click(screen.getByText('6 mo'))
@@ -268,7 +443,7 @@ describe('BusinessRegistrationFlow', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Start Free Trial' }))
 
       await waitFor(() => expect(auth.submitPlanSelection).toHaveBeenCalledWith({
-        business_kind: 'product', plan: 'product_basic', cycle_months: 6,
+        business_kind: 'product', plan: 'product_basic', cycle_months: 6, categories: [12, 11],
       }))
       await waitFor(() => expect(screen.getByText(/How should we pay you/)).toBeInTheDocument())
     })
@@ -280,6 +455,7 @@ describe('BusinessRegistrationFlow', () => {
       fireEvent.click(screen.getByText(/I sell products/))
       await waitFor(() => expect(screen.getByText('Product Basic')).toBeInTheDocument())
       fireEvent.click(screen.getByText('Product Basic'))
+      pickCategories('Electronics')
       fireEvent.click(screen.getByRole('button', { name: 'Start Free Trial' }))
 
       await waitFor(() => expect(screen.getByText(/Could not save your plan selection/)).toBeInTheDocument())
@@ -327,6 +503,7 @@ describe('BusinessRegistrationFlow', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })
     fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'abena@example.com' } })
     fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
@@ -407,6 +584,7 @@ describe('BusinessRegistrationFlow', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })
     fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'abena@example.com' } })
     fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
@@ -426,6 +604,7 @@ describe('BusinessRegistrationFlow', () => {
     renderFlow(<BusinessRegistrationFlow user={null} auth={auth} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
     fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })
     fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'abena@example.com' } })
     fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Start again' }))
@@ -448,13 +627,15 @@ describe('BusinessRegistrationFlow', () => {
       expect(screen.getByText('This is set once and decides which tools your dashboard shows.')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
       fireEvent.click(screen.getByText(/I offer services/))
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+      pickCategories('Hotels')
       expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
     })
 
     it('the step label reads Your Business Type', async () => {
       noPlans()
       renderTypeStep()
-      expect(await screen.findByText(/3 of 5: Your Business Type/)).toBeInTheDocument()
+      expect(await screen.findByText(/4 of 5: Your Business Type/)).toBeInTheDocument()
       expect(screen.queryByText(/Choose Your Plan/)).not.toBeInTheDocument()
     })
 
@@ -468,9 +649,10 @@ describe('BusinessRegistrationFlow', () => {
       const auth = makeAuth()
       renderTypeStep(auth)
       fireEvent.click(await screen.findByText(/I sell products/))
+      pickCategories('Electronics')
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
       expect(await screen.findByText(/How should we pay you/)).toBeInTheDocument()
-      expect(posted).toEqual({ business_kind: 'product' })
+      expect(posted).toEqual({ business_kind: 'product', categories: [11] })
       expect(auth.refreshUser).toHaveBeenCalled()
       expect(auth.submitPlanSelection).not.toHaveBeenCalled()
     })
@@ -493,6 +675,7 @@ describe('BusinessRegistrationFlow', () => {
       )
       renderTypeStep()
       fireEvent.click(await screen.findByText(/I sell products/))
+      pickCategories('Electronics')
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
       expect(await screen.findByText('Choose a plan to continue.')).toBeInTheDocument()
       await waitFor(() => expect(planLoads).toBe(2))
@@ -505,6 +688,7 @@ describe('BusinessRegistrationFlow', () => {
         HttpResponse.json({ business_kind: 'Your business type is already set.' }, { status: 400 })))
       renderTypeStep()
       fireEvent.click(await screen.findByText(/I sell products/))
+      pickCategories('Electronics')
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
       expect(await screen.findByText('Your business type is already set.')).toBeInTheDocument()
     })
@@ -512,9 +696,230 @@ describe('BusinessRegistrationFlow', () => {
     it('while plans are loading the plan screen is shown, not the type step', async () => {
       server.use(http.get('http://localhost:8000/api/billing/plans/', () => new Promise(() => {})))
       renderTypeStep()
-      expect(screen.getByText(/3 of 5: Choose Your Plan/)).toBeInTheDocument()
+      expect(screen.getByText(/4 of 5: Choose Your Plan/)).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Start Free Trial' })).toBeInTheDocument()
       expect(screen.queryByText('What kind of business is this?')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('categories chosen with the kind', () => {
+    const noPlans = () => server.use(http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])))
+    const mount = (auth = makeAuth()) => renderFlow(
+      <BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="plan_selection" setPage={vi.fn()} setShowBizDash={vi.fn()} />,
+    )
+    const pressed = (name) => chip(name).getAttribute('aria-pressed') === 'true'
+
+    it('choosing a kind shows category chips for that kind only', async () => {
+      mount()
+      expect(screen.queryByText('What do you sell or do?')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByText(/I sell products/))
+      expect(await screen.findByText('What do you sell or do?')).toBeInTheDocument()
+      expect(screen.getByText('Choose all that apply. You can change this later from your profile.')).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: /^Electronics/ })).toBeInTheDocument()
+      expect(chip('Fashion')).toBeInTheDocument()
+      expect(chip('Groceries')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /^Hotels/ })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByText(/I offer services/))
+      expect(await screen.findByRole('button', { name: /^Hotels/ })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /^Electronics/ })).not.toBeInTheDocument()
+    })
+
+    it('shows the chips in the kind-only form too', async () => {
+      noPlans()
+      mount()
+      fireEvent.click(await screen.findByText(/I offer services/))
+      expect(await screen.findByText('What do you sell or do?')).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: /^Repairs/ })).toBeInTheDocument()
+    })
+
+    it('changing the kind clears the picks', async () => {
+      mount()
+      fireEvent.click(screen.getByText(/I sell products/))
+      await screen.findByRole('button', { name: /^Electronics/ })
+      pickCategories('Electronics', 'Fashion')
+      expect(pressed('Electronics')).toBe(true)
+      fireEvent.click(screen.getByText(/I offer services/))
+      await screen.findByRole('button', { name: /^Hotels/ })
+      expect(pressed('Hotels')).toBe(false)
+      fireEvent.click(screen.getByText(/I sell products/))
+      await screen.findByRole('button', { name: /^Electronics/ })
+      expect(pressed('Electronics')).toBe(false)
+      expect(pressed('Fashion')).toBe(false)
+    })
+
+    it('continue is disabled until at least one category is chosen', async () => {
+      noPlans()
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      await screen.findByRole('button', { name: /^Electronics/ })
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+      pickCategories('Groceries')
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
+      pickCategories('Groceries')
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    })
+
+    it('start-trial posts business_kind plan cycle_months and categories in order', async () => {
+      const auth = makeAuth()
+      mount(auth)
+      fireEvent.click(screen.getByText(/I offer services/))
+      fireEvent.click(await screen.findByText('Service'))
+      pickCategories('Repairs', 'Hotels')
+      fireEvent.click(await screen.findByText('3 mo'))
+      fireEvent.click(screen.getByRole('button', { name: 'Start Free Trial' }))
+      await waitFor(() => expect(auth.submitPlanSelection).toHaveBeenCalledTimes(1))
+      expect(auth.submitPlanSelection.mock.calls[0][0]).toEqual({
+        business_kind: 'service', plan: 'service', cycle_months: 3, categories: [22, 21],
+      })
+    })
+
+    it('business-kind posts business_kind and categories', async () => {
+      noPlans()
+      let posted = null
+      server.use(http.post('http://localhost:8000/api/billing/business-kind/', async ({ request }) => {
+        posted = await request.json()
+        return HttpResponse.json({ business_kind: 'service', registration_step: 'payment_info' })
+      }))
+      mount()
+      fireEvent.click(await screen.findByText(/I offer services/))
+      await screen.findByRole('button', { name: /^Hotels/ })
+      pickCategories('Hotels', 'Repairs')
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      expect(await screen.findByText(/How should we pay you/)).toBeInTheDocument()
+      expect(posted).toEqual({ business_kind: 'service', categories: [21, 22] })
+    })
+
+    it('a 400 from the server shows its message and keeps the picks', async () => {
+      noPlans()
+      server.use(http.post('http://localhost:8000/api/billing/business-kind/', () =>
+        HttpResponse.json({ categories: ['Choose at least one category.'] }, { status: 400 })))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      await screen.findByRole('button', { name: /^Electronics/ })
+      pickCategories('Fashion', 'Groceries')
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      expect(await screen.findByText('Choose at least one category.')).toBeInTheDocument()
+      expect(pressed('Fashion')).toBe(true)
+      expect(pressed('Groceries')).toBe(true)
+      expect(pressed('Electronics')).toBe(false)
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
+    })
+
+    it('a 400 from start-trial shows its message and keeps the picks', async () => {
+      const err = Object.assign(new Error('400'), { status: 400, body: { categories: ['One of these categories is not a product category.'] } })
+      const auth = makeAuth({ submitPlanSelection: vi.fn().mockRejectedValue(err) })
+      mount(auth)
+      fireEvent.click(screen.getByText(/I sell products/))
+      fireEvent.click(await screen.findByText('Product Basic'))
+      pickCategories('Electronics')
+      fireEvent.click(screen.getByRole('button', { name: 'Start Free Trial' }))
+      expect(await screen.findByText('One of these categories is not a product category.')).toBeInTheDocument()
+      expect(pressed('Electronics')).toBe(true)
+    })
+
+    it('says so when the category list is empty or failed to load', async () => {
+      noPlans()
+      server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json([])))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      expect(await screen.findByText('No categories of this kind yet — ask Operations to add one.')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    })
+
+    it('says so when the categories could not be loaded', async () => {
+      noPlans()
+      server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json({ detail: 'down' }, { status: 500 })))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      expect(await screen.findByText(/Couldn.t load the categories/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    })
+
+    it('never asks for the zones: only the categories are needed here', async () => {
+      noPlans()
+      let zonesAsked = 0
+      server.use(http.get('http://localhost:8000/api/listings/zones/', () => { zonesAsked += 1; return HttpResponse.json([]) }))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      expect(await screen.findByRole('button', { name: /^Electronics/ })).toBeInTheDocument()
+      expect(zonesAsked).toBe(0)
+    })
+
+    it('a failed category load offers Try again, which loads them', async () => {
+      noPlans()
+      let calls = 0
+      server.use(http.get('http://localhost:8000/api/listings/categories/', () => {
+        calls += 1
+        return calls === 1 ? HttpResponse.json({ detail: 'down' }, { status: 500 }) : HttpResponse.json(CATEGORIES)
+      }))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      expect(await screen.findByText(/Couldn.t load the categories/)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+      expect(await screen.findByRole('button', { name: /^Electronics/ })).toBeInTheDocument()
+      expect(screen.queryByText(/Couldn.t load the categories/)).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Continue without categories/ })).not.toBeInTheDocument()
+      expect(calls).toBe(2)
+    })
+
+    it('while the categories are loading, Continue stays disabled and there is no way round them', async () => {
+      noPlans()
+      server.use(http.get('http://localhost:8000/api/listings/categories/', () => new Promise(() => {})))
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      expect(await screen.findByText('Loading categories…')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+      expect(screen.queryByRole('button', { name: /Continue without categories/ })).not.toBeInTheDocument()
+    })
+
+    it('when the categories cannot load, a separate action continues without them (business-kind)', async () => {
+      noPlans()
+      let posted = null
+      server.use(
+        http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json({ detail: 'down' }, { status: 500 })),
+        http.post('http://localhost:8000/api/billing/business-kind/', async ({ request }) => {
+          posted = await request.json()
+          return HttpResponse.json({ business_kind: 'product', registration_step: 'payment_info' })
+        }),
+      )
+      mount()
+      fireEvent.click(await screen.findByText(/I sell products/))
+      const skip = await screen.findByRole('button', { name: 'Continue without categories (add them later in Profile)' })
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+      fireEvent.click(skip)
+      expect(await screen.findByText(/How should we pay you/)).toBeInTheDocument()
+      expect(posted).toEqual({ business_kind: 'product' })
+    })
+
+    it('when the categories cannot load, the trial can start without them once a plan is chosen', async () => {
+      server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json({ detail: 'down' }, { status: 500 })))
+      const auth = makeAuth()
+      mount(auth)
+      fireEvent.click(screen.getByText(/I sell products/))
+      const skip = await screen.findByRole('button', { name: 'Continue without categories (add them later in Profile)' })
+      expect(skip).toBeDisabled()
+      fireEvent.click(await screen.findByText('Product Basic'))
+      expect(skip).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Start Free Trial' })).toBeDisabled()
+      fireEvent.click(skip)
+      await waitFor(() => expect(auth.submitPlanSelection).toHaveBeenCalledTimes(1))
+      expect(auth.submitPlanSelection.mock.calls[0][0]).toEqual({ business_kind: 'product', plan: 'product_basic', cycle_months: 1 })
+    })
+
+    it('a scout-registered owner whose kind is already set is not asked for categories', async () => {
+      server.use(http.get('http://localhost:8000/api/accounts/business-owners/me/categories/', () =>
+        HttpResponse.json({ business_kind: 'product', min: 1, max: 10, categories: [] })))
+      const auth = makeAuth()
+      mount(auth)
+      fireEvent.click(screen.getByText(/I sell products/))
+      fireEvent.click(await screen.findByText('Product Basic'))
+      await waitFor(() => expect(screen.queryByText('What do you sell or do?')).not.toBeInTheDocument())
+      expect(screen.queryByRole('button', { name: /^Electronics/ })).not.toBeInTheDocument()
+      const start = screen.getByRole('button', { name: 'Start Free Trial' })
+      await waitFor(() => expect(start).toBeEnabled())
+      fireEvent.click(start)
+      await waitFor(() => expect(auth.submitPlanSelection).toHaveBeenCalledTimes(1))
+      expect(auth.submitPlanSelection.mock.calls[0][0]).not.toHaveProperty('categories')
     })
   })
 
@@ -542,6 +947,7 @@ describe('BusinessRegistrationFlow', () => {
       renderFlow(<BusinessRegistrationFlow user={null} auth={auth} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
       fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Kofi' } })
       fireEvent.change(screen.getByPlaceholderText(/Phone/), { target: { value: '0200000000' } })
+      fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'kofi@example.com' } })
       fireEvent.change(screen.getByPlaceholderText(/Password/), { target: { value: 'longenough1' } })
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
       expect(await screen.findByText('Could not create your account. Please check your details.')).toBeInTheDocument()

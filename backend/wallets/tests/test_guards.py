@@ -71,16 +71,33 @@ class WalletStepUpTests(TestCase):
         return self.client.post("/api/otp/step-up/send/", {"action": action, "channel": "sms"}, format="json")
 
     @override_settings(LEDGER_ENABLED=True, OTP_STEP_UP_ENFORCED=False, OTP_SIGNIN_ENFORCED=False)
-    def test_a_business_owner_cannot_ask_for_a_contact_change_code(self):
+    def test_a_business_owner_can_ask_for_a_contact_change_code_but_not_a_staff_only_one(self):
+        # Flipped on purpose (self-serve follow-up): this used to pin 409 otp_off because a business owner had no endpoint
+        # that asked for a contact_change code. POST business-owners/me/email/ now forces one while the ledger is on, so
+        # the owner must be able to receive and verify it or they would be stuck. Only that action opens up for owners.
         from accounts.models import BusinessOwner
         owner = BusinessOwner.objects.create(full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x")
         client = APIClient()
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(owner, 'business_owner')}")
         response = client.post("/api/otp/step-up/send/", {"action": "contact_change", "channel": "sms"}, format="json")
-        self.assertEqual((response.status_code, response.json()["code"]), (409, "otp_off"))
-        self.assertEqual(senders.sms_outbox, [])
+        self.assertEqual(response.status_code, 200, response.content)
+        verified = client.post("/api/otp/step-up/verify/", {"action": "contact_change", "code": last_sms_code()}, format="json")
+        self.assertEqual((verified.status_code, verified.json()["action"]), (200, "contact_change"))
         withdrawal = client.post("/api/otp/step-up/send/", {"action": "withdrawal", "channel": "sms"}, format="json")
         self.assertEqual(withdrawal.status_code, 200)                                          # their wallet actions still work
+        # Every other refusal stays: an action nothing asks an owner for is still off with every switch off.
+        other = client.post("/api/otp/step-up/send/", {"action": "account_delete", "channel": "sms"}, format="json")
+        self.assertEqual((other.status_code, other.json()["code"]), (409, "otp_off"))
+
+    @override_settings(LEDGER_ENABLED=False, OTP_STEP_UP_ENFORCED=False, OTP_SIGNIN_ENFORCED=False)
+    def test_with_the_ledger_off_an_owner_gets_no_contact_change_code(self):
+        from accounts.models import BusinessOwner
+        owner = BusinessOwner.objects.create(full_name="Kwame Mensah", login_phone="+233201112234", password_hash="x")
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(owner, 'business_owner')}")
+        response = client.post("/api/otp/step-up/send/", {"action": "contact_change", "channel": "sms"}, format="json")
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "otp_off"))
+        self.assertEqual(senders.sms_outbox, [])
 
     @override_settings(LEDGER_ENABLED=True, OTP_STEP_UP_ENFORCED=False, OTP_SIGNIN_ENFORCED=False)
     def test_with_the_ledger_on_wallet_actions_get_a_code_whatever_the_otp_switches_say(self):

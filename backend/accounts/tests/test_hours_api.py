@@ -92,6 +92,7 @@ class RegistrationHoursTests(TestCase):
             ghana_card_number="GHA-222333444-5", gps_address="AK-039-6000", business_contact_phone="+233206665599",
             ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg",
             default_payout_method="momo", payout_momo_number="+233206665599", business_kind="product",
+            lat="6.690000", lng="-1.620000",
         )
         plan = SubscriptionPlan.objects.create(
             tier="hours_plan", name="P", kind="product", monthly_price=10, status=SubscriptionPlan.ACTIVE_STATUS,

@@ -266,3 +266,27 @@ class AccountDeletionTests(TestCase):
     def test_list_body_is_400_not_500(self):
         self._auth(self.customer, "customer")
         self.assertEqual(self.client.post(URL, [1, 2], format="json").status_code, 400)
+
+    def test_owner_deletion_saves_only_what_it_erases_so_a_newer_category_change_survives(self):
+        """Deletion erases from a profile loaded earlier; a category change committed in between must not be undone."""
+        from accounts import deletion
+        from accounts.categories import categories_of, set_categories
+
+        first, second = Category.objects.filter(kind="product").order_by("pk")[:2]
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(
+            business_kind="product", ghana_card_number="GHA-333333333-3",
+        )
+        set_categories(BusinessOwnerProfile.objects.get(business_owner=self.owner), [first.pk])
+        account = BusinessOwner.objects.select_related("profile").get(pk=self.owner.pk)
+        self.assertEqual(account.profile.business_category_id, first.pk)  # the copy deletion will save from
+        # Committed after that copy was loaded, as a concurrent owner PUT would be.
+        set_categories(BusinessOwnerProfile.objects.get(business_owner=self.owner), [second.pk, first.pk])
+
+        deletion.delete_account(account, "business_owner")
+
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
+        self.assertEqual(profile.business_category_id, second.pk)
+        self.assertEqual([c.pk for c in categories_of(profile)], [second.pk, first.pk])
+        self.assertIsNone(profile.ghana_card_number)
+        self.assertIsNone(profile.payout_momo_number)
+        self.assertEqual(profile.identity_status, BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED)

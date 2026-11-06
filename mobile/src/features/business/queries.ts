@@ -11,7 +11,10 @@ export type Me = {
   identity_status?: string;
   identity_rejection_reason?: string | null;
   registration_step?: string;
+  /** Whether the shop can publish, and what still stops it. Only business owners get it. */
+  go_live?: GoLive;
 };
+export type GoLive = { live: boolean; blockers: { code: string; message: string }[] };
 export const useMe = () => useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/api/accounts/me/") });
 
 export type StockRow = { listing_id: number; name: string; stock: number | null; days_of_cover: string | null; line: number | null; low: boolean; sold_out: boolean };
@@ -29,6 +32,10 @@ export type OwnerListing = {
   status: string;
   stock_quantity: number | null;
   rejection_reason?: string;
+  /** "We need to check this listing." while a pending listing is held; null otherwise. */
+  hold_notice?: string | null;
+  /** Plain sentences for a draft or rejected listing the last submit sent back. */
+  fix_reasons?: string[];
   photos?: { id: number }[];
   main_photo?: string | null;
 };

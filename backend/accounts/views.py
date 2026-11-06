@@ -27,7 +27,7 @@ from otp import step_up
 from staffsecurity import signin as signin_log
 from staffsecurity.models import StaffSignInRecord
 
-from . import claims, files, hours, kyc, mobile_sessions, sessions, two_factor
+from . import categories, claims, email_confirmation, files, golive, hours, kyc, mobile_sessions, sessions, two_factor
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
 from .models import (
@@ -123,6 +123,7 @@ def me(request):
         data["kyc_status"] = request.user.kyc_status
         data["kyc_rejection_reason"] = request.user.kyc_rejection_reason
         data["registration_step"] = request.user.compute_registration_step()
+        data["go_live"] = golive.payload(request.user)
         profile = getattr(request.user, "profile", None)
         data["identity_status"] = profile.identity_status if profile else BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED
         data["identity_rejection_reason"] = profile.identity_rejection_reason if profile else None
@@ -198,6 +199,8 @@ class BusinessOwnerRegisterView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
         owner = BusinessOwner.objects.get(pk=response.data["id"])
+        if owner.email:  # the first confirmation email; a send failure never fails registration
+            transaction.on_commit(lambda: email_confirmation.send(owner), robust=True)
         if otp_flags.sign_up_enforced():
             response.data.update(otp_signin.code_challenge(owner, otp_signin.SIGN_UP))
             return response
@@ -1594,6 +1597,47 @@ class PayoutDetailUpdateView(generics.UpdateAPIView):
             return super().update(request, *args, **kwargs)
 
 
+class BusinessOwnerCategoriesView(APIView):
+    """GET/PUT business-owners/me/categories/: the categories that describe the business, in order (the first is the
+    main one). PUT {"categories": [ids]} replaces the list; 400 {"detail"} when it is not valid. Categories only
+    describe a business, so this never touches KYC, identity, the subscription or listings. Locks the profile row
+    only (inside set_categories), never the owner row."""
+
+    permission_classes = [IsBusinessOwner]
+
+    def _answer(self, profile):
+        return Response({
+            "business_kind": profile.business_kind or None,
+            "min": categories.MIN_CATEGORIES,
+            "max": categories.MAX_CATEGORIES,
+            "categories": [
+                {"id": c.pk, "label": c.label, "kind": c.kind} for c in categories.categories_of(profile)
+            ],
+        })
+
+    def _profile(self, request):
+        return BusinessOwnerProfile.objects.filter(business_owner=request.user).first()
+
+    def get(self, request):
+        profile = self._profile(request)
+        if profile is None:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        return self._answer(profile)
+
+    def put(self, request):
+        profile = self._profile(request)
+        if profile is None:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        ids = request.data.get("categories") if isinstance(request.data, dict) else None
+        if not isinstance(ids, list):
+            return Response({"detail": "Choose at least one category."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            categories.set_categories(profile, ids)
+        except categories.InvalidCategories as exc:
+            return Response({"detail": exc.message}, status=status.HTTP_400_BAD_REQUEST)
+        return self._answer(BusinessOwnerProfile.objects.get(pk=profile.pk))
+
+
 def _detail_change_refused(exc):
     return Response({"detail": exc.message, "code": exc.code}, status=exc.status_code)
 
@@ -1868,7 +1912,7 @@ class TermsAcceptView(APIView):
         owner = request.user
         if owner.compute_registration_step() != "terms":
             return Response(
-                {"registration_step": "Business and payment information must be complete before accepting terms."},
+                {"registration_step": "Finish the earlier registration steps before accepting terms."},
                 status=400,
             )
         if not hours.has_hours(owner):

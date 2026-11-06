@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../../../mocks/server.js'
@@ -81,6 +81,29 @@ describe('BusinessPage', () => {
     expect(await screen.findByText('Hours not set (old text: Mon–Sat 08:00–18:00)')).toBeInTheDocument()
   })
 
+  describe('categories', () => {
+    const cell = (label) => screen.getByText(label, { selector: 'dt' }).parentElement
+    it('business page lists all categories, main first', async () => {
+      serve(business({ business_category: { id: 2, name: 'Fabrics & clothing' }, business_categories: [{ id: 2, name: 'Fabrics & clothing' }, { id: 5, name: 'Kente & crafts' }] }))
+      renderPage()
+      await screen.findByRole('heading', { name: 'Adwoa Fabrics' })
+      expect(cell('Categories')).toHaveTextContent('Fabrics & clothing, Kente & crafts')
+      expect(screen.queryByText('Category', { selector: 'dt' })).not.toBeInTheDocument()
+    })
+    it('no categories says Not given', async () => {
+      serve(business({ business_category: null, business_categories: [] }))
+      renderPage()
+      await screen.findByRole('heading', { name: 'Adwoa Fabrics' })
+      expect(cell('Category')).toHaveTextContent(/^CategoryNot given$/)
+    })
+    it('an older payload with only the main category still renders', async () => {
+      serve(business())
+      renderPage()
+      await screen.findByRole('heading', { name: 'Adwoa Fabrics' })
+      expect(cell('Category')).toHaveTextContent('Fabrics & clothing')
+    })
+  })
+
   it('shows health, the overdue clock and the no-cash rule', async () => {
     serve()
     renderPage()
@@ -105,6 +128,20 @@ describe('BusinessPage', () => {
     expect(within(health).getByText('Adwoa pays in the app — scouts never collect cash.')).toBeInTheDocument()
     expect(within(health).queryByText(/hidden|of 14/)).not.toBeInTheDocument()
     expect(within(health).queryByRole('progressbar')).not.toBeInTheDocument()
+  })
+
+  it('has no unsubscribed note once no plan is offered, and keeps it while plans are offered', async () => {
+    serve(business({ subscription: { state: 'none', pause_enabled: false } }))
+    renderPage()
+    await screen.findByRole('heading', { name: 'Adwoa Fabrics' })
+    // The test server answers GET /api/billing/plans/ with [] (none offered).
+    await waitFor(() => expect(screen.queryByText(/hasn't picked a plan yet/)).not.toBeInTheDocument())
+    expect(screen.queryByText(/Subscription · /)).not.toBeInTheDocument()
+
+    cleanup()
+    server.use(http.get(`${API}/api/billing/plans/`, () => HttpResponse.json([{ id: 1, tier: 'growth', name: 'Growth', monthly_price: '30.00', kind: 'product', features: [], is_recommended: false }])))
+    renderPage()
+    expect(await screen.findByText(/Adwoa hasn't picked a plan yet/)).toBeInTheDocument()
   })
 
   it('keeps the grace bar and the hide date when the pause is on', async () => {

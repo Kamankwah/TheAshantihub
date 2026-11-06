@@ -1,10 +1,15 @@
+from datetime import timedelta
+
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile
 from billing import clock, switch
 from billing.models import Subscription, SubscriptionPlan
+from listings.models import Category, HeroMediaSubmission, Listing, Promotion, Zone
+from listings.visibility import hidden_business_q
 
 
 class SwitchTests(TestCase):
@@ -20,6 +25,9 @@ class FrozenTests(TestCase):
         self.client = APIClient()
         self.owner = BusinessOwner.objects.create(full_name="Kofi", login_phone="+233207880001", password_hash="x")
         BusinessOwnerProfile.objects.create(business_owner=self.owner, business_name="Kofi Shop")
+        self.category = Category.objects.create(
+            slug="frz-fabrics", icon="🧵", label="Fabrics", color="#7c3aed", kind="product",
+        )
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.owner, 'business_owner')}")
 
     def test_the_public_plan_list_is_empty(self):
@@ -42,7 +50,9 @@ class FrozenTests(TestCase):
         self.assertEqual(refused.status_code, 409)
 
     def test_business_kind_endpoint_sets_the_kind_once(self):
-        response = self.client.post("/api/billing/business-kind/", {"business_kind": "product"}, format="json")
+        response = self.client.post(
+            "/api/billing/business-kind/", {"business_kind": "product", "categories": [self.category.pk]}, format="json",
+        )
         self.assertEqual(response.status_code, 200, response.content)
         self.owner.profile.refresh_from_db()
         self.assertEqual(self.owner.profile.business_kind, "product")
@@ -82,12 +92,165 @@ class FrozenTests(TestCase):
     def test_registration_asks_for_a_kind_not_a_plan(self):
         complete_business_info(self.owner.profile)
         owner = BusinessOwner.objects.get(pk=self.owner.pk)
-        self.assertEqual(owner.compute_registration_step(), "payment_info")      # kind set, no subscription needed
+        self.assertEqual(owner.compute_registration_step(), "terms")      # kind set, no subscription needed
 
     def test_registration_still_asks_for_a_kind_when_none_is_set(self):
         complete_business_info(self.owner.profile, kind="")
         owner = BusinessOwner.objects.get(pk=self.owner.pk)
         self.assertEqual(owner.compute_registration_step(), "plan_selection")
+
+    # --- a verified owner with no business type (KYC approved at the type step, or never subscribed) ---
+
+    def _owner_with_kyc(self, status, kind=""):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(kyc_status=status)
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(business_kind=kind or None)
+        return BusinessOwner.objects.get(pk=self.owner.pk)
+
+    def test_a_verified_owner_with_no_kind_is_sent_to_the_type_step(self):
+        owner = self._owner_with_kyc(BusinessOwner.VERIFIED)
+        self.assertEqual(owner.compute_registration_step(), "plan_selection")
+
+    def test_a_verified_owner_with_a_kind_is_complete(self):
+        owner = self._owner_with_kyc(BusinessOwner.VERIFIED, kind="product")
+        self.assertEqual(owner.compute_registration_step(), "complete")
+
+    def test_a_rejected_owner_with_no_kind_stays_complete(self):
+        owner = self._owner_with_kyc(BusinessOwner.REJECTED)
+        self.assertEqual(owner.compute_registration_step(), "complete")
+
+    def test_a_verified_owner_with_no_profile_keeps_the_old_answer(self):
+        bare = BusinessOwner.objects.create(
+            full_name="Ama", login_phone="+233207880003", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
+        )
+        self.assertEqual(bare.compute_registration_step(), "complete")
+
+    def test_the_company_shop_is_never_sent_to_the_type_step(self):
+        owner = self._owner_with_kyc(BusinessOwner.VERIFIED)
+        owner.is_company = True
+        self.assertEqual(owner.compute_registration_step(), "complete")
+
+    @override_settings(SUBSCRIPTIONS_ENABLED=True)
+    def test_with_the_switch_on_a_verified_owner_with_no_kind_is_unchanged(self):
+        owner = self._owner_with_kyc(BusinessOwner.VERIFIED)
+        self.assertEqual(owner.compute_registration_step(), "complete")
+
+    def test_a_verified_owner_can_set_the_kind_then_create_a_listing(self):
+        self._owner_with_kyc(BusinessOwner.VERIFIED)
+        me = self.client.get("/api/accounts/me/")
+        self.assertEqual(me.json()["registration_step"], "plan_selection")
+        response = self.client.post(
+            "/api/billing/business-kind/", {"business_kind": "product", "categories": [self.category.pk]}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["registration_step"], "complete")
+        self.assertEqual(self.client.get("/api/accounts/me/").json()["registration_step"], "complete")
+        created = self.client.post(
+            "/api/listings/mine/",
+            {
+                "category": self.category.pk, "zone": Zone.objects.get(name="Manhyia").pk, "name": "Kente cloth",
+                "description": "Hand woven.", "contact_phone": "+233207880001", "price_amount": "150.00",
+                "has_warranty": False, "has_expiry": False, "return_policy": "Unopened, within 7 days.",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201, created.content)
+
+    # --- gates (a), (c), (d): with the switch off nothing reads overdue, paused or unsubscribed ---
+
+    def _lapsed(self, *, paused=False):
+        now = timezone.now()
+        end = now - timedelta(days=30)
+        return Subscription.objects.create(
+            business_owner=self.owner, plan=SubscriptionPlan.objects.get(tier="product_basic"),
+            current_period_start=end - timedelta(days=30), current_period_end=end,
+            overdue_since=end, paused_at=(now - timedelta(days=2)) if paused else None,
+        )
+
+    def _published_listing(self):
+        return Listing.objects.create(
+            business_owner=self.owner, category=Category.objects.get(slug="shops"), zone=Zone.objects.get(name="Manhyia"),
+            name="Kofi stall", description="D.", contact_phone="+233207880999", price_amount="150.00",
+            status=Listing.PUBLISHED,
+        )
+
+    def test_an_overdue_row_reads_as_none_with_the_switch_off(self):
+        subscription = self._lapsed()
+        state = clock.subscription_state(subscription)
+        self.assertEqual(state["state"], clock.NONE)
+        self.assertEqual(state, clock.subscription_state(None))
+        self.assertIsNone(state["plan_name"])
+        self.assertIsNone(state["overdue_since"])
+        self.assertIsNone(state["overdue_day"])
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
+    def test_a_paused_row_reads_as_none_with_the_switch_off(self):
+        self.assertEqual(clock.subscription_state(self._lapsed(paused=True))["state"], clock.NONE)
+
+    def test_featured_blockers_have_no_subscription_overdue_with_the_switch_off(self):
+        from marketing import featured
+
+        self._lapsed()
+        codes = [b["code"] for b in featured.blockers(self._published_listing())]
+        self.assertNotIn("subscription_overdue", codes)
+
+    def test_staff_listing_card_has_no_subscription_overdue(self):
+        from listings.serializers import ModerationListingSerializer
+
+        self._lapsed()
+        self.assertIsNone(ModerationListingSerializer(self._published_listing()).data["subscription_overdue"])
+
+    def test_hero_and_promotion_checks_have_no_subscription_check(self):
+        from listings.moderation_checks import hero_checks, promotion_checks
+
+        listing = self._published_listing()
+        for lapsed in (False, True):  # no row at all, then an overdue row
+            if lapsed:
+                self._lapsed()
+                self.owner.refresh_from_db()
+            hero = hero_checks(HeroMediaSubmission(business_owner=self.owner, caption="Kente"))
+            promotion = promotion_checks(Promotion(listing=listing, kind=Promotion.FEATURED))
+            keys = [c["key"] for c in hero + promotion]
+            self.assertNotIn("subscription", keys)
+            self.assertIn("kyc", keys)  # the other checks are still there
+            self.assertIn("listing_live", keys)
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
+    def test_a_paused_row_stays_public_even_with_pause_enabled(self):
+        self._lapsed(paused=True)
+        listing = self._published_listing()
+        self.assertIn(listing, Listing.objects.exclude(hidden_business_q()))
+        self.assertFalse(BusinessOwner.objects.filter(pk=self.owner.pk).filter(hidden_business_q("")).exists())
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
+    def test_a_suspended_business_is_still_hidden_with_the_switch_off(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(is_suspended=True)
+        self.assertFalse(Listing.objects.exclude(hidden_business_q()).filter(pk=self._published_listing().pk).exists())
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
+    def test_staff_screens_show_no_overdue_or_paused_for_a_lapsed_row(self):
+        from messaging.context import _subscription
+        from portfolio import health
+        from portfolio.proposals import check_listing
+        from staff_tasks.serializers import _subscription_states
+        from support.people import business_status
+
+        subscription = self._lapsed(paused=True)
+        now = timezone.now()
+        owner = BusinessOwner.objects.get(pk=self.owner.pk)
+        # Support: the status chip is not "Subscription overdue".
+        self.assertNotIn("overdue", business_status(owner, False)["label"].lower())
+        # Portfolio health: no overdue/paused state or reason.
+        row = health.rate_all(BusinessOwner.objects.filter(pk=owner.pk), now)[0]
+        self.assertEqual(row.subscription["state"], clock.NONE)
+        self.assertNotIn(health.OVERDUE, row.reasons)
+        self.assertNotIn(health.PAUSED, row.reasons)
+        # Scout/manager proposals: a paused row does not stop a new listing.
+        _, errors = check_listing(owner, {}, require_kyc=False)
+        self.assertNotIn("subscription", errors)
+        # Messaging context and the staff task card.
+        self.assertEqual(_subscription(owner, now)["state"], clock.NONE)
+        self.assertIsNone(_subscription(owner, now)["plan_name"])
+        self.assertEqual(_subscription_states([subscription.pk])[subscription.pk]["state"], clock.NONE)
 
 
 class UnfrozenTests(TestCase):
@@ -106,4 +269,5 @@ def complete_business_info(profile, kind="product"):
     profile.ghana_card_front_image = "front.jpg"
     profile.ghana_card_back_image = "back.jpg"
     profile.business_kind = kind
+    profile.lat, profile.lng = "6.690000", "-1.620000"  # the shop pin step comes before the business type
     profile.save()

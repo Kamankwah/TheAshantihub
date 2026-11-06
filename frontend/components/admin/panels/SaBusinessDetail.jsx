@@ -11,7 +11,7 @@ import LogCallSheet from "./LogCallSheet.jsx";
 import SuspendSheet from "./SuspendSheet.jsx";
 import { button, callout, chip, dim, field } from "./panelStyles.js";
 import { Chip, KpiStrip, SimulatedBanner, col, dateTime, figures, tableStyle, td, th } from "./marketplaceParts.jsx";
-import { HealthChip, ReassignForm, card, errorStyle, formatDay, h2, h3, labelStyle, money, subscriptionText } from "./portfolioParts.jsx";
+import { HealthChip, ReassignForm, card, categoryLabel, categoryNames, errorStyle, formatDay, h2, h3, labelStyle, money, subscriptionText, usePlansGone } from "./portfolioParts.jsx";
 import StaffHoursSection from "./StaffHoursSection.jsx";
 
 // Super Admin > Business detail (screen 17): one page for one business. KYC,
@@ -69,6 +69,7 @@ function FlagFraudForm({ business, onDone, onCancel }) {
 
 export default function SaBusinessDetail({ businessId, auth, onBack }) {
   const queryClient = useQueryClient();
+  const plansGone = usePlansGone();
   const { data: b, isLoading, isError, error, refetch } = usePortfolioBusiness(businessId);
   const oversight = useBusinessOversight(businessId);
   const activity = useActivity({ target_type: "accounts.businessowner", target_id: String(businessId) });
@@ -126,10 +127,11 @@ export default function SaBusinessDetail({ businessId, auth, onBack }) {
     { label: "Last order", value: b.last_order_at ? formatDay(b.last_order_at) : "None yet" },
   ];
 
+  const categories = categoryNames(b.business_categories, b.business_category);
   const details = [
     ["Owner", b.owner_name],
     ["Sign-in phone", <span key="p">{fullPhone || b.login_phone}{!fullPhone && b.login_phone && <button type="button" onClick={revealPhone} style={{ ...button(D.panelBg, D.text), marginLeft: 8, padding: "2px 8px" }}>Show full number (recorded)</button>}</span>],
-    ["Email", b.email || "Not given"], ["Kind", b.business_kind === "service" ? "Service" : "Product"], ["Category", b.business_category?.name],
+    ["Email", b.email || "Not given"], ["Kind", b.business_kind === "service" ? "Service" : "Product"], [categoryLabel(categories), categories.join(", ") || "Not given"],
     ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Description", b.business_description],
     ["On AshantiHub since", formatDay(b.created_at)],
   ];
@@ -148,7 +150,7 @@ export default function SaBusinessDetail({ businessId, auth, onBack }) {
               {b.needs_claim && <Chip color={D.amber}>Owner hasn't set a login yet</Chip>}
               {(b.open_flags || []).map((f) => <span key={f.id} style={chip(D.red)}>{`🚩 ${f.kind_label}`}</span>)}
             </div>
-            <div style={dim}>{[b.business_category?.name, b.zone?.name, `owner ${b.owner_name}`, `on AshantiHub since ${formatDay(b.created_at)}`].filter(Boolean).join(" · ")}</div>
+            <div style={dim}>{[categories.join(", "), b.zone?.name, `owner ${b.owner_name}`, `on AshantiHub since ${formatDay(b.created_at)}`].filter(Boolean).join(" · ")}</div>
             <div style={{ fontSize: "0.8rem", color: D.text, marginTop: 4 }}>
               {manager ? <>Account manager <strong>{manager.full_name}</strong> (Scout){sameAsRegistrar ? ", who also registered it" : ""}</> : <strong style={{ color: D.amber }}>No account manager</strong>}
               {" · customers reach it only through AshantiHub Support"}
@@ -212,7 +214,7 @@ export default function SaBusinessDetail({ businessId, auth, onBack }) {
         {tab === "Subscription" && (
           <>
             <h3 style={h3}>Subscription</h3>
-            <div style={{ fontSize: "0.85rem", color: D.text, ...figures }}>{`${subscriptionText(sub, b.kyc_status)}${sub.monthly_price ? ` · ${money(sub.monthly_price)} a month` : ""}`}</div>
+            <div style={{ fontSize: "0.85rem", color: D.text, ...figures }}>{`${subscriptionText(sub, b.kyc_status, plansGone)}${sub.monthly_price ? ` · ${money(sub.monthly_price)} a month` : ""}`}</div>
             <h3 style={h3}>Payments</h3>
             {oversight.isLoading && <div style={dim}>Loading…</div>}
             {o && o.payments.length === 0 && <div style={dim}>No payments recorded yet.</div>}

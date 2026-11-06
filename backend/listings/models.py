@@ -161,6 +161,10 @@ class Listing(models.Model):
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+    # Why the submit door's auto-publish check held this listing for staff, or sent it back to the owner to fix: a list
+    # of {"code", "message"} (listings/autopublish.py). Set at submit, cleared on publish, approve, reject, re-review and
+    # the next submit, so it is never stale. Staff see all of it; the owner sees only the fix sentences (never a hold's).
+    hold_reasons = models.JSONField(default=list, blank=True)
     dropped_at = models.DateTimeField(null=True, blank=True)
     discontinued_at = models.DateTimeField(null=True, blank=True)
 

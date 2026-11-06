@@ -12,8 +12,11 @@ coordinates on `BusinessOwnerProfile` are the truth; a `LocationCapture` row rec
   locks the row and checks it again, so a replay and a new link cannot deadlock.
 * The text goes after the transaction through `otp.senders` (the one door for texts), never inside one, to the owner's
   login number, and never to a number that belongs to a staff account.
-* Every path applies the same fix rules (`FixSerializer`): finite numbers, a device fix of 100 m or better (no hand
-  placement here), inside the Ashanti Region box.
+* Every path applies the same fix rules (`FixSerializer`): finite numbers, a device fix of 100 m or better, inside the
+  Ashanti Region box. Only the owner's own `POST me/location/` may place the pin by hand (`OwnerFixSerializer`: `manual`,
+  no accuracy figure, and an optional `landmark`); the staff link uses the base serializer, which has no such fields, so
+  a link capture can never be manual.
+* After any capture, another business pinned within 25 m raises a staff notice (never a refusal): shops share buildings.
 """
 import logging
 import math
@@ -27,10 +30,14 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from activity.services import record
+from fraud.models import FraudFlag
+from fraud.services import raise_flag
 from otp import senders
 from otp.models import SMS
+from portfolio.checks import METRES_PER_DEGREE_LAT, distance_m
 from portfolio.serializers import FiniteFloatField
 
+from . import location_tier, pluscode
 from .claims import ClaimError, hash_token
 from .gps import ASHANTI_LAT, ASHANTI_LNG
 from .models import BusinessOwner, BusinessOwnerProfile, LocationCapture, StaffUser
@@ -41,6 +48,10 @@ logger = logging.getLogger(__name__)
 LINK_TTL = timedelta(hours=48)
 DAILY_LINKS = 5  # links per business per Accra day
 MAX_ACCURACY_M = 100
+NEAR_PIN_M = 25  # another business pinned this close is flagged for staff
+NEAR_PIN_FLAGS = 3  # at most this many new cases from one capture (a market building), nearest first
+SAME_PIN_M = 1  # a re-share this close to the pin already held changes nothing and is not checked again
+LANDMARK_MAX = 200
 
 INVALID = "This link isn't valid. Check you opened the whole link, or ask AshantiHub for a new one."
 USED = "This link has already been used. Ask AshantiHub for a new one if you still need to share your location."
@@ -74,17 +85,26 @@ def link_url(raw):
 # --- the fix rules every path shares ------------------------------------------------------------------------------
 
 class FixSerializer(serializers.Serializer):
+    """A device fix: lat, lng and the phone's accuracy. The base the staff link uses: it has no `manual` or `landmark`
+    field, so those keys in a link body are ignored and a fix without an accuracy is refused."""
+
     lat = FiniteFloatField(min_value=-90, max_value=90)
     lng = FiniteFloatField(min_value=-180, max_value=180)
     accuracy_m = FiniteFloatField(min_value=0)  # no ceiling: a 400 km IP-based "fix" must read as too coarse
+
+    def accuracy_of(self, attrs, errors):
+        """The accuracy to store (whole metres, rounded up), or None for a hand-placed pin. Adds to `errors` when the fix is
+        too coarse."""
+        accuracy = math.ceil(attrs["accuracy_m"])
+        if accuracy > MAX_ACCURACY_M:
+            errors["accuracy_m"] = [too_coarse(accuracy)]
+        return accuracy
 
     def validate(self, attrs):
         errors = {}
         if not (ASHANTI_LAT[0] <= attrs["lat"] <= ASHANTI_LAT[1] and ASHANTI_LNG[0] <= attrs["lng"] <= ASHANTI_LNG[1]):
             errors["lat"] = [OUTSIDE_ASHANTI]
-        accuracy = math.ceil(attrs["accuracy_m"])
-        if accuracy > MAX_ACCURACY_M:
-            errors["accuracy_m"] = [too_coarse(accuracy)]
+        accuracy = self.accuracy_of(attrs, errors)
         if errors:
             raise serializers.ValidationError(errors)
         six = Decimal("0.000001")
@@ -95,9 +115,35 @@ class FixSerializer(serializers.Serializer):
         }
 
 
-def validated_fix(data):
-    """The cleaned fix {lat, lng, accuracy_m} or a DRF ValidationError keyed by field."""
-    serializer = FixSerializer(data=data if hasattr(data, "get") else {})
+class OwnerFixSerializer(FixSerializer):
+    """What the owner's own `POST me/location/` accepts: a device fix, or a pin placed by hand (`manual`: no accuracy
+    ceiling and none stored, but still inside the Ashanti box), and an optional landmark."""
+
+    accuracy_m = FiniteFloatField(min_value=0, required=False)
+    manual = serializers.BooleanField(required=False, default=False)
+    landmark = serializers.CharField(required=False, allow_blank=True, max_length=LANDMARK_MAX)
+
+    def accuracy_of(self, attrs, errors):
+        if attrs["manual"]:
+            return None
+        if "accuracy_m" not in attrs:
+            errors["accuracy_m"] = ["Share your phone's location, or place the pin by hand."]
+            return None
+        return super().accuracy_of(attrs, errors)
+
+    def validate(self, attrs):
+        fix = super().validate(attrs)
+        fix["manual"] = attrs["manual"]
+        if "landmark" in attrs:
+            fix["landmark"] = attrs["landmark"]  # trimmed by the field; empty clears it
+        return fix
+
+
+def validated_fix(data, *, allow_manual=False):
+    """The cleaned fix {lat, lng, accuracy_m} (plus manual and landmark for the owner) or a DRF ValidationError keyed by
+    field. `allow_manual` is for the owner's own capture only."""
+    serializer_class = OwnerFixSerializer if allow_manual else FixSerializer
+    serializer = serializer_class(data=data if hasattr(data, "get") else {})
     serializer.is_valid(raise_exception=True)
     return serializer.validated_data
 
@@ -116,9 +162,13 @@ def _apply_fix(owner, fix, source, now, row=None, request=None):
     profile = BusinessOwnerProfile.objects.select_for_update().filter(business_owner=owner).first()
     if profile is None:
         profile = BusinessOwnerProfile(business_owner=owner)
-    profile.lat, profile.lng, profile.location_accuracy_m = fix["lat"], fix["lng"], fix["accuracy_m"]
+    manual = fix.get("manual", False)
+    previous = (profile.lat, profile.lng) if has_pin(profile) else None
+    profile.lat, profile.lng, profile.location_accuracy_m = fix["lat"], fix["lng"], fix["accuracy_m"]  # None when by hand
     profile.location_set_by, profile.location_set_at = BusinessOwnerProfile.LOCATION_BY_OWNER, now
-    profile.location_is_manual, profile.location_set_by_staff = False, None
+    profile.location_is_manual, profile.location_set_by_staff = manual, None
+    if "landmark" in fix:
+        profile.landmark = fix["landmark"]
     if profile.address_verified_at is not None:
         clear_address_decision(profile)
     profile.save()
@@ -127,11 +177,63 @@ def _apply_fix(owner, fix, source, now, row=None, request=None):
     row.lat, row.lng, row.accuracy_m = fix["lat"], fix["lng"], fix["accuracy_m"]
     row.captured_at = row.used_at = now  # a link is used up by its capture; an owner_app row is done at once
     row.save()
+    if previous is None or distance_m(previous[0], previous[1], profile.lat, profile.lng) > SAME_PIN_M:
+        flag_close_pins(owner, profile)  # only a pin that moved; a re-share of the same spot is not news. Before record().
     record(
         owner, "address-location-captured", target=owner, summary="The owner shared the shop's location",
-        after={"accuracy_m": fix["accuracy_m"], "source": source}, request=request,
+        after={"accuracy_m": fix["accuracy_m"], "source": source, **({"manual": True} if manual else {})},
+        request=request,
     )
     return row
+
+
+def _close_pins(owner, profile):
+    """(distance in metres, profile) for every other business pinned within `NEAR_PIN_M`, nearest first."""
+    lat, lng = float(profile.lat), float(profile.lng)
+    d_lat = NEAR_PIN_M / METRES_PER_DEGREE_LAT
+    d_lng = NEAR_PIN_M / (METRES_PER_DEGREE_LAT * max(math.cos(math.radians(lat)), 0.01))
+    six = Decimal("0.000001")
+    box = BusinessOwnerProfile.objects.filter(
+        lat__gte=Decimal(lat - d_lat).quantize(six), lat__lte=Decimal(lat + d_lat).quantize(six),
+        lng__gte=Decimal(lng - d_lng).quantize(six), lng__lte=Decimal(lng + d_lng).quantize(six),
+    ).exclude(business_owner_id=owner.pk).select_related("business_owner")
+    found = [(distance_m(lat, lng, other.lat, other.lng), other) for other in box]
+    found = [pair for pair in found if pair[0] <= NEAR_PIN_M]
+    found.sort(key=lambda pair: (pair[0], pair[1].business_owner_id))
+    return found
+
+
+def flag_close_pins(owner, profile):
+    """Open a staff notice for up to `NEAR_PIN_FLAGS` other businesses pinned within `NEAR_PIN_M` of this one, nearest first.
+    A bounding box (a range on the two columns) narrows the rows first, then the exact great-circle distance decides: no
+    scan of every business. It is a co-location notice (kind `other`: confirming it reverses no commission and suspends
+    nobody), so a pair is raised once ever: a case in ANY status under the pair's key (open, confirmed or dismissed) means
+    staff have seen it. Never raises: the capture has already succeeded and a notice is only a note for staff."""
+    try:
+        with transaction.atomic():  # a savepoint: a failure here must not poison the capture's own transaction
+            pairs = []
+            for distance, other in _close_pins(owner, profile):
+                low, high = sorted([owner.pk, other.business_owner_id])
+                pairs.append((f"pin-near-{low}-{high}", distance, other))
+            seen = set(FraudFlag.objects.filter(dedupe_key__in=[key for key, _, _ in pairs]).values_list("dedupe_key", flat=True))
+            mine = owner.display_name
+            for key, distance, other in [pair for pair in pairs if pair[0] not in seen][:NEAR_PIN_FLAGS]:
+                theirs, metres = other.business_owner.display_name, round(distance)
+                raise_flag(
+                    FraudFlag.OTHER,
+                    title=f"Shops pinned {metres} m apart: {mine} and {theirs}"[:200],
+                    detail=(
+                        f"Co-location notice, not an accusation. {mine} shared a shop location {metres} m from {theirs}. "
+                        "Shops in one building or market often share a spot, so this is normal. Look only if the two "
+                        "businesses seem to be the same shop."
+                    ),
+                    evidence=[f"{metres} m apart", "Pin placed by hand" if profile.location_is_manual else "Pin from the phone"],
+                    business_owner=owner,
+                    related_business_owner=other.business_owner,
+                    dedupe_key=key,
+                )
+    except Exception:  # noqa: BLE001 - the capture already succeeded
+        logger.exception("Close-pin check failed for business owner %s", owner.pk)
 
 
 # --- staff send a link ----------------------------------------------------------------------------------------------
@@ -268,6 +370,11 @@ def own_state(owner):
     note = profile.address_verification_note if status == "wrong" else ""
     return {
         "pin": pin,
+        "plus_code": pluscode.encode(profile.lat, profile.lng) if pin else None,
+        "landmark": profile.landmark if profile is not None else "",
+        "tier": location_tier.tier(profile),
+        "tier_label": location_tier.label(profile),
+        "is_manual": bool(pin and profile.location_is_manual),
         "address_status": status,
         "wrong_reason": note or None,
         "can_capture": not owner_locked(profile) and owner.kyc_status != BusinessOwner.REJECTED,
@@ -284,7 +391,7 @@ def capture_for_owner(owner, data, request=None):
             raise ClaimError(VERIFIED, code="address_verified", status_code=409)
         if locked.kyc_status == BusinessOwner.REJECTED:
             raise ClaimError(KYC_REJECTED_OWN, code="kyc_rejected", status_code=409)
-        fix = validated_fix(data)
+        fix = validated_fix(data, allow_manual=True)
         _apply_fix(locked, fix, LocationCapture.OWNER_APP, timezone.now(), request=request)
     return own_state(owner)
 

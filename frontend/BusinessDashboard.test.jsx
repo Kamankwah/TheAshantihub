@@ -61,24 +61,33 @@ describe('BusinessDashboard approval gating', () => {
     expect(screen.getByRole('button', { name: /Listings & Prices/ })).not.toBeDisabled()
   })
 
-  it('shows a pending-review status card with disabled tabs when pending', async () => {
+  it('shows the go-live checklist with disabled tabs while a pending owner has blockers', async () => {
     mockDashboardData()
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'pending' }} />)
-    expect(screen.getByText(/under review/i)).toBeInTheDocument()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'pending', goLive: { live: false, blockers: [{ code: 'no_pin', message: 'Share your shop location.' }] } }} />)
+    expect(screen.getByText('To start listing, finish these:')).toBeInTheDocument()
+    expect(screen.getByText('Share your shop location.')).toBeInTheDocument()
+    expect(screen.queryByText(/under review/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Listings & Prices/ })).toBeDisabled()
     expect(screen.queryByText(/Akwaaba, Abena/)).not.toBeInTheDocument()
   })
 
-  it('points a pending owner at Get verified for the check mark while they wait', async () => {
+  it('opens the tabs of a pending owner the server calls live', async () => {
     mockDashboardData()
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'pending' }} />)
-    expect(screen.getByText('While you wait, you can add your Ghana Card for the verified check mark under Profile & Settings → Get verified.')).toBeInTheDocument()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'pending', goLive: { live: true, blockers: [] } }} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Listings & Prices/ })).not.toBeDisabled())
+    expect(screen.queryByText('To start listing, finish these:')).not.toBeInTheDocument()
+  })
+
+  it('points a pending owner at Get verified for the check mark', async () => {
+    mockDashboardData()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'pending', goLive: { live: false, blockers: [{ code: 'no_pin', message: 'Share your shop location.' }] } }} />)
+    expect(screen.getByText('You can also add your Ghana Card for the verified check mark under Profile & Settings → Get verified.')).toBeInTheDocument()
   })
 
   it('does not show the Get verified pointer to a rejected owner', async () => {
     mockDashboardData()
     renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'rejected', kycRejectionReason: 'Blurry' }} />)
-    expect(screen.queryByText(/While you wait, you can add your Ghana Card/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/You can also add your Ghana Card/)).not.toBeInTheDocument()
   })
 
   it('shows the rejection reason and a resubmit button when rejected', async () => {
@@ -737,7 +746,10 @@ function mockAnalyticsData() {
     http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json({
       ghana_card_number: 'GHA-1', gps_address: 'Adum, Kumasi', business_contact_phone: '+233200000000', is_formal: true,
     })),
-    http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+    // Plans are on offer here: the Overview shows the Subscription tile and Plan usage only then.
+    http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([
+      { id: 1, tier: 'growth', name: 'Growth', monthly_price: '30.00', kind: 'product', features: [], is_recommended: false },
+    ])),
     http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({
       id: 5, plan: { name: 'Growth', tier: 'growth', max_active_listings: 10, hero_days: 14, boost_credits_per_month: 5 },
       billing_cycle: 'monthly', status: 'active', current_period_end: '2099-01-01T00:00:00Z',

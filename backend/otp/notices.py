@@ -46,6 +46,10 @@ CONTACT_CHANGED_TEXT = {
     EMAIL: "The sign-in email of your AshantiHub business account was changed to another address. "
            "If you did not ask for this, contact AshantiHub Support.",
 }
+EMAIL_ADDED_TEXT = (
+    "An email address was added to your AshantiHub business account. It can now be used to reset your password and to "
+    "receive sign-in codes. If you did not ask for this, contact AshantiHub Support."
+)
 LOCKED_NOTE = "notice: locked"
 CONTACT_CHANGED_NOTE = "notice: contact changed"
 STAFF_CHANGED_NOTE = "notice: contact changed by staff"
@@ -111,14 +115,14 @@ def staff_changed_contact(account, channel, old_destination, text, *, now=None):
         logger.warning("Staff-changed-contact notice not sent: %s", type(exc).__name__)
 
 
-def contact_changed(account, channel, old_destination, *, now=None):
+def contact_changed(account, channel, old_destination, *, now=None, text=None):
     """Tell the OLD phone (channel SMS) or email (EMAIL) of an account that it is no longer the sign-in contact. The
     raw contact is used only to deliver and in the OTP audit row, as for every other send; nothing is logged."""
     try:
         destination = _phone(old_destination) if channel == SMS else _email(old_destination)
         if destination and channel in CONTACT_CHANGED_TEXT:
             _send_one(
-                account, channel, destination, text=CONTACT_CHANGED_TEXT[channel], note=CONTACT_CHANGED_NOTE,
+                account, channel, destination, text=text or CONTACT_CHANGED_TEXT[channel], note=CONTACT_CHANGED_NOTE,
                 purpose=SIGN_IN, now=now or timezone.now(),
             )
     except Exception as exc:  # noqa: BLE001 - a notice never changes the approved change

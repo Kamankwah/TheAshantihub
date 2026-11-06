@@ -54,14 +54,83 @@ describe('AuthModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Business Owner' }))
     fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Ama Owusu' } })
     fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'ama@example.com' } })
     fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create Business Account' }))
 
     await waitFor(() => expect(auth.registerBusinessOwner).toHaveBeenCalledWith(
-      expect.objectContaining({ full_name: 'Ama Owusu', login_phone: '+233201112233', password: 'secretpass' })
+      expect.objectContaining({ full_name: 'Ama Owusu', login_phone: '+233201112233', email: 'ama@example.com', password: 'secretpass' })
     ))
     expect(auth.registerCustomer).not.toHaveBeenCalled()
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
+  })
+
+  describe('business sign-up requires an email', () => {
+    function fillOwner(email) {
+      fireEvent.click(screen.getByRole('button', { name: 'Business Owner' }))
+      fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Ama Owusu' } })
+      fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+      if (email !== undefined) fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: email } })
+      fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Create Business Account' }))
+    }
+
+    it.each([[undefined], ['   '], ['ama'], ['ama@example']])('blocks %j with the confirmation-link message and no request', async (email) => {
+      const auth = makeAuth()
+      render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
+      fillOwner(email)
+      expect(await screen.findByText('Enter your email so we can send you a confirmation link.')).toBeInTheDocument()
+      expect(auth.registerBusinessOwner).not.toHaveBeenCalled()
+    })
+
+    it('sends the trimmed email', async () => {
+      const auth = makeAuth()
+      render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
+      fillOwner('  ama@example.com  ')
+      await waitFor(() => expect(auth.registerBusinessOwner).toHaveBeenCalledWith(expect.objectContaining({ email: 'ama@example.com' })))
+    })
+
+    it('a customer may still sign up with a phone and no email', async () => {
+      const auth = makeAuth()
+      render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
+      fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Kofi' } })
+      fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Create Free Account' }))
+      await waitFor(() => expect(auth.registerCustomer).toHaveBeenCalled())
+    })
+  })
+
+  describe('sign-up refusals', () => {
+    function fillCustomer() {
+      fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Kofi Mensah' } })
+      fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Create Free Account' }))
+    }
+    const refused = (status, body) => Object.assign(new Error(`failed with status ${status}`), { status, body })
+
+    it('shows the server field message when sign-up is refused (400)', async () => {
+      const auth = makeAuth({ registerCustomer: vi.fn().mockRejectedValue(refused(400, { phone: ['A customer with this phone already exists.'] })) })
+      render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
+      fillCustomer()
+      expect(await screen.findByText('A customer with this phone already exists.')).toBeInTheDocument()
+      expect(screen.queryByText(/Could not create your account/)).not.toBeInTheDocument()
+    })
+
+    it('shows the server detail when there is one', async () => {
+      const auth = makeAuth({ registerCustomer: vi.fn().mockRejectedValue(refused(400, { detail: 'Choose a stronger password.' })) })
+      render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
+      fillCustomer()
+      expect(await screen.findByText('Choose a stronger password.')).toBeInTheDocument()
+    })
+
+    it('keeps the generic sentence when the failure carries no server message', async () => {
+      const auth = makeAuth({ registerCustomer: vi.fn().mockRejectedValue(new Error('network')) })
+      render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
+      fillCustomer()
+      expect(await screen.findByText('Could not create your account. Please check your details.')).toBeInTheDocument()
+    })
   })
 
   it('shows an error message and does not call onSuccess when login fails', async () => {
@@ -345,6 +414,7 @@ describe('AuthModal — signed-out notice', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Business Owner' }))
       fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Ama Owusu' } })
       fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'ama@example.com' } })
       fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
       fireEvent.click(screen.getByRole('button', { name: 'Create Business Account' }))
       fireEvent.click(await screen.findByText('Text a code to 024 *** 1234'))

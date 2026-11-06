@@ -12,6 +12,7 @@ from django.test import TestCase, override_settings
 from PIL import Image
 from rest_framework.test import APIClient
 
+from accounts.categories import InvalidCategories, categories_of
 from accounts.models import BusinessOwner, BusinessOwnerProfile
 from accounts.testing import make_staff, staff_token
 from activity.models import ActivityEvent
@@ -21,7 +22,7 @@ from fraud.models import FraudFlag
 from listings.models import Category, Zone
 from notifications.models import Notification
 from portfolio.models import AccountManagerAssignment
-from portfolio.registration import CARD_LOCKED_MESSAGE
+from portfolio.registration import CARD_LOCKED_MESSAGE, register_business
 
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
 REGISTER_URL = "/api/portfolio/register/"
@@ -599,3 +600,143 @@ class KycResubmitTests(RegistrationBase):
         self.assertEqual(self.client.post(self.url, {}, format="multipart").status_code, 404)
         self.as_(make_staff("support", "esi@example.com"))
         self.assertEqual(self.client.post(self.url, {}, format="multipart").status_code, 403)
+
+
+class RegistrationCategoriesTests(RegistrationBase):
+    def setUp(self):
+        super().setUp()
+        self.nails = Category.objects.create(
+            slug="test-nails", icon="💅", label="Nails", color="#D4A017", kind="service",
+        )
+        self.tailor = Category.objects.create(
+            slug="test-tailoring", icon="🧵", label="Tailoring", color="#D4A017", kind="service",
+        )
+        self.shoes = Category.objects.create(
+            slug="test-shoes", icon="👟", label="Shoes", color="#D4A017", kind="product",
+        )
+
+    def categories_of(self, response):
+        profile = BusinessOwnerProfile.objects.get(business_owner_id=response.json()["id"])
+        return profile, categories_of(profile)
+
+    def test_scout_registers_with_several_categories_main_is_first(self):
+        ids = [self.nails.pk, self.category.pk, self.tailor.pk]
+        # As multipart, the list is a JSON string.
+        response = self.register(business_categories=json.dumps(ids), business_category=None)
+        self.assertEqual(response.status_code, 201, response.content)
+        profile, categories = self.categories_of(response)
+        self.assertEqual(categories, [self.nails, self.category, self.tailor])
+        self.assertEqual(profile.business_category, self.nails)
+
+    def test_a_real_json_array_is_accepted_too(self):
+        data = self.form(business_categories=[self.nails.pk, self.tailor.pk], business_category=None)
+        files = {key: data.pop(key) for key in ("signboard_photo", "ghana_card_front")}
+        data["hours"] = WEEK
+        result = register_business(self.scout, data, files)
+        profile = BusinessOwnerProfile.objects.get(business_owner=result["business_owner"])
+        self.assertEqual(categories_of(profile), [self.nails, self.tailor])
+        self.assertEqual(profile.business_category, self.nails)
+
+    def test_single_business_category_still_works(self):
+        response = self.register()
+        self.assertEqual(response.status_code, 201, response.content)
+        profile, categories = self.categories_of(response)
+        self.assertEqual(categories, [self.category])
+        self.assertEqual(profile.business_category, self.category)
+        self.assertEqual(profile.category_links.count(), 1)
+
+    def test_multipart_json_string_list_is_parsed(self):
+        response = self.register(business_categories=f"[{self.tailor.pk}, {self.nails.pk}]", business_category=None)
+        self.assertEqual(response.status_code, 201, response.content)
+        profile, categories = self.categories_of(response)
+        self.assertEqual(categories, [self.tailor, self.nails])
+        self.assertEqual(profile.business_category, self.tailor)
+        # A string that is not JSON is a field error, not a crash.
+        response = self.register(business_categories="nails, tailor", business_category=None)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("business_categories", response.json())
+
+    def test_no_category_is_400(self):
+        response = self.register(business_category=None)
+        self.assertEqual(
+            (response.status_code, response.json()), (400, {"business_categories": ["Choose at least one category."]}),
+        )
+        response = self.register(business_category=None, business_categories="[]")
+        self.assertEqual(
+            (response.status_code, response.json()), (400, {"business_categories": ["Choose at least one category."]}),
+        )
+        response = self.register(business_categories=json.dumps([self.nails.pk]))  # both sent
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("business_categories", response.json())
+        self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
+
+    def test_eleven_duplicate_and_wrong_kind_are_400(self):
+        extra = [
+            Category.objects.create(slug=f"test-extra-{n}", icon="x", label=f"Extra {n}", color="#D4A017", kind="service")
+            for n in range(10)
+        ]
+        cases = [
+            ([c.pk for c in extra] + [self.category.pk], {"business_categories": ["Choose at most 10 categories."]}),
+            ([self.nails.pk, self.nails.pk], {"business_categories": ["Pick each category once."]}),
+            (
+                [self.nails.pk, self.shoes.pk],
+                {"business_categories": ["Choose a category for this kind of business."]},
+            ),
+            ([self.nails.pk, 999999], {"business_categories": ["That category doesn't exist."]}),
+        ]
+        for ids, errors in cases:
+            with self.subTest(ids=ids):
+                response = self.register(business_categories=json.dumps(ids), business_category=None)
+                self.assertEqual((response.status_code, response.json()), (400, errors))
+        # The old single field keeps its own key.
+        response = self.register(business_category=str(self.shoes.pk))
+        self.assertEqual(
+            (response.status_code, response.json()),
+            (400, {"business_category": ["Choose a category for this kind of business."]}),
+        )
+        self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
+
+    def test_a_failed_registration_creates_no_owner(self):
+        with mock.patch("portfolio.registration.set_categories", side_effect=InvalidCategories("Nope.")):
+            response = self.register(business_categories=json.dumps([self.nails.pk]), business_category=None)
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
+        self.assertFalse(BusinessOwnerProfile.objects.filter(business_name="Asafo Hair & Beauty").exists())
+        self.assertFalse(ApprovalRequest.objects.exists())
+        self.assertFalse(ActivityEvent.objects.filter(verb="business.registered").exists())
+
+    def test_duplicate_business_check_unaffected(self):
+        existing_business("Adwoa Fabrics", phone="0241234567", gps="AK-039-5028")
+        response = self.register(business_categories=json.dumps([self.nails.pk]), business_category=None)
+        self.assertEqual((response.status_code, response.json()), (400, {**DUPLICATE, "matched": ["phone"]}))
+        self.assertEqual(BusinessOwner.objects.count(), 1)
+
+    def test_unreadable_categories_are_a_400_never_a_500(self):
+        unreadable = {"business_categories": ["The categories couldn't be read."]}
+        for text in ("[" * 100000, "{}", "null", "nails, tailor"):
+            with self.subTest(text=text[:20]):
+                response = self.register(business_categories=text, business_category=None)
+                self.assertEqual((response.status_code, response.json()), (400, unreadable))
+        for text, key in (('[1,"a"]', "business_categories"), ("[[1]]", "business_categories")):
+            with self.subTest(text=text):
+                response = self.register(business_categories=text, business_category=None)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(key, response.json())
+        self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
+
+    def test_both_keys_and_a_missing_legacy_id_are_400(self):
+        response = self.register(business_categories=json.dumps([self.nails.pk]))
+        self.assertEqual(
+            (response.status_code, response.json()),
+            (400, {"business_categories": ["Send business_categories, not both it and business_category."]}),
+        )
+        response = self.register(business_category="999999")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("business_category", response.json())
+        self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
+
+    def test_unreadable_hours_are_a_400_never_a_500(self):
+        response = self.register(hours="[" * 100000)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "hours_invalid")
+        self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())

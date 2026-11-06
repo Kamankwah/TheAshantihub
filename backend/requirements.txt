@@ -32,3 +32,4 @@ cryptography==50.0.2
 # Report exports (F6): Excel and PDF. WeasyPrint needs Pango (see Dockerfiles).
 XlsxWriter==3.2.9
 weasyprint==70.0
+openlocationcode==1.0.1

@@ -4,7 +4,7 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
 
-from accounts import direct
+from accounts import direct, location_tier
 from accounts.models import BusinessOwner
 from billing.models import Subscription
 
@@ -187,13 +187,19 @@ class BusinessOwnerMiniSerializer(serializers.ModelSerializer):
     # kyc_status stays for older clients. Querysets feeding this select_related("business_owner__profile"), and
     # no Ghana Card detail is ever serialized here.
     identity_verified = serializers.BooleanField(read_only=True)
+    # How far the shop's location can be trusted (a label, not a gate), read from the same selected profile.
+    location_tier = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessOwner
-        fields = ["id", "full_name", "name", "kyc_status", "identity_verified", "is_ashanti_direct"]
+        fields = ["id", "full_name", "name", "kyc_status", "identity_verified", "is_ashanti_direct", "location_tier"]
 
     def get_is_ashanti_direct(self, obj):
         return direct.is_direct(obj)
+
+    def get_location_tier(self, obj):
+        tier = location_tier.tier(getattr(obj, "profile", None))
+        return {"tier": tier, "label": location_tier.LABELS[tier]}
 
 
 def live_sale_ends_at(obj):
@@ -574,6 +580,9 @@ PRODUCT_ANSWER_MESSAGES = {
 }
 
 
+BUSINESS_KIND_REQUIRED_MESSAGE = "Choose your business type first."
+
+
 def subscriptions_on():
     from billing.switch import subscriptions_enabled
 
@@ -641,6 +650,11 @@ def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None,
         and (adds_variants or (instance is not None and variants.has_variants(instance)))
     ):
         raise serializers.ValidationError({"category": "Only products and food can have variants. Remove the variants first."})
+
+    # Gate (e): with subscriptions off the plan step is gone, so the first listing is where a business must say what
+    # kind it is (the category-kind rule above and the fee/payout rules read it). Direct sells across kinds.
+    if instance is None and not company and not subscriptions_on() and not (profile is not None and profile.business_kind):
+        raise serializers.ValidationError({"business_kind": BUSINESS_KIND_REQUIRED_MESSAGE})
 
     if instance is None and not company and subscriptions_on():
         subscription = getattr(owner, "subscription", None)
@@ -710,6 +724,11 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     has_variants = serializers.SerializerMethodField()
     sale_ends_at = serializers.SerializerMethodField()
     pending_revision = serializers.SerializerMethodField()
+    # What the auto-publish check said (listings/autopublish.py), in the owner's words: the fix sentences for a draft or
+    # rejected listing that was sent back, one generic line for a listing held for staff. A hold's specifics (which
+    # word, which limit) are staff-only and never appear here.
+    hold_notice = serializers.SerializerMethodField()
+    fix_reasons = serializers.SerializerMethodField()
 
     # The product's barcode (catalogue plan 6): typed with spaces or hyphens, kept as its 14-digit GTIN.
     barcode = serializers.CharField(required=False, allow_blank=True, max_length=40)
@@ -717,7 +736,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Listing
         fields = [
-            "id", "variants", "has_variants", "pending_revision", "category", "zone", "name", "description", "price_amount", "sale_price", "sale_ends_at", "price_unit",
+            "id", "variants", "has_variants", "pending_revision", "hold_notice", "fix_reasons", "category", "zone", "name", "description", "price_amount", "sale_price", "sale_ends_at", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "videos", "specs",
             "service_duration", "units_total", *LISTING_DECISION_FIELDS, "barcode", "cancellation_policy",
             "status", "rejection_reason", "dropped_at", "discontinued_at", "created_at", "updated_at",
@@ -730,6 +749,24 @@ class OwnerListingSerializer(serializers.ModelSerializer):
 
     def get_sale_ends_at(self, obj):
         return live_sale_ends_at(obj)
+
+    def get_hold_notice(self, obj):
+        from . import autopublish
+
+        held = obj.status == Listing.PENDING_REVIEW and any(
+            item.get("code") in autopublish.HOLD_CODES for item in obj.hold_reasons or []
+        )
+        return autopublish.OWNER_HOLD_NOTICE if held else None
+
+    def get_fix_reasons(self, obj):
+        from . import autopublish
+
+        if obj.status not in (Listing.DRAFT, Listing.REJECTED):
+            return []
+        return [
+            item["message"] for item in obj.hold_reasons or []
+            if item.get("code") in autopublish.FIX_CODES and item.get("message")
+        ]
 
     def to_representation(self, obj):
         data = super().to_representation(obj)
@@ -773,6 +810,10 @@ class OwnerListingSerializer(serializers.ModelSerializer):
         )
 
     def update(self, instance, validated_data):
+        if instance.hold_reasons and instance.status in (Listing.DRAFT, Listing.REJECTED):
+            # The owner is fixing it: the stored "to fix" list described the old content, so it is dropped now and the
+            # next submit works it out again.
+            validated_data = {**validated_data, "hold_reasons": []}
         return save_sent_fields(instance, validated_data)
 
     def create(self, validated_data):
@@ -798,11 +839,13 @@ class ModerationListingSerializer(serializers.ModelSerializer):
     # subscription that is overdue (day N). Both from the records, never guessed.
     open_fraud_cases = serializers.SerializerMethodField()
     subscription_overdue = serializers.SerializerMethodField()
+    # Why the auto-publish check held this listing: [{code, message}], staff-only wording; [] unless it is waiting for review.
+    hold_reasons = serializers.SerializerMethodField()
 
     class Meta:
         model = Listing
         fields = [
-            "id", "business_owner", "business_owner_name", "name", "description", "category",
+            "id", "business_owner", "business_owner_name", "hold_reasons", "name", "description", "category",
             "zone", "price_amount", "price_unit", "tag", "contact_phone", "lat", "lng",
             "main_photo", "photos", "videos", "variants", "specs", "service_duration", *LISTING_DECISION_FIELDS,
             "status", "rejection_reason", "created_at",
@@ -813,6 +856,9 @@ class ModerationListingSerializer(serializers.ModelSerializer):
 
     def get_photos(self, obj):
         return live_photos(obj, self.context)
+
+    def get_hold_reasons(self, obj):
+        return list(obj.hold_reasons or []) if obj.status == Listing.PENDING_REVIEW else []
 
     def get_open_fraud_cases(self, obj):
         from fraud.models import FraudFlag

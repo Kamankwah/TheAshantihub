@@ -671,6 +671,20 @@ export const handlers = [
     identity_status: 'pending', identity_rejection_reason: '', identity_submitted_at: '2026-10-29T10:00:00Z',
     is_formal: false, has_certificate: false, has_tin: false,
   }, { status: 201 })),
+  // The business's own categories (chips on the dashboard, registration and the scout form): none by default. The PUT
+  // echoes the posted ids back with labels from a small fixed list; override with server.use for a specific case.
+  http.get('http://localhost:8000/api/accounts/business-owners/me/categories/', () => HttpResponse.json({
+    business_kind: 'product', min: 1, max: 10, categories: [],
+  })),
+  http.put('http://localhost:8000/api/accounts/business-owners/me/categories/', async ({ request }) => {
+    const body = await request.json()
+    const known = { 1: 'Electronics', 2: 'Fashion', 3: 'Groceries', 4: 'Furniture' }
+    const ids = Array.isArray(body?.categories) ? body.categories : []
+    return HttpResponse.json({
+      business_kind: 'product', min: 1, max: 10,
+      categories: ids.map((id) => ({ id, label: known[id] || `Category ${id}`, kind: 'product' })),
+    })
+  }),
   // Wallets (Plan 3F): ledger ON and empty by default; a test needing the "off" state overrides with a 409 {code:'ledger_off'}.
   http.get('http://localhost:8000/api/wallet/', () => HttpResponse.json({ kind: 'customer', balance: '0.00' })),
   http.get('http://localhost:8000/api/wallet/vendor/', () => HttpResponse.json({
@@ -869,6 +883,16 @@ export const handlers = [
   http.get('http://localhost:8000/api/accounts/me/location/', () => HttpResponse.json({
     pin: null, address_status: 'not_verified', wrong_reason: null, can_capture: true,
   })),
+  // Saving the owner's own shop pin (registration step and dashboard): the server's own-state answer.
+  http.post('http://localhost:8000/api/accounts/me/location/', () => HttpResponse.json({
+    pin: { lat: 6.6885, lng: -1.6244, accuracy_m: 20, set_by: 'owner', set_at: '2026-11-06T10:00:00Z', is_manual: false },
+    plus_code: '6CRWM9QG+C6', landmark: '', tier: 'located', tier_label: 'Location shared by the owner', is_manual: false,
+    address_status: 'not_verified', wrong_reason: null, can_capture: true,
+  })),
+  // Email confirmation (go-live rule): the owner asks for a link (204, nothing in the body), and the emailed page confirms it.
+  http.post('http://localhost:8000/api/accounts/business-owners/me/email-confirmation/', () => new HttpResponse(null, { status: 204 })),
+  http.post('http://localhost:8000/api/accounts/business-owners/me/email/', async ({ request }) => HttpResponse.json({ email: String((await request.json()).email || '').trim().toLowerCase(), sent: true })),
+  http.post('http://localhost:8000/api/accounts/email-confirmation/confirm/', () => HttpResponse.json({ email_confirmed: true })),
   // What an account manager changed for the owner — nothing by default.
   http.get('http://localhost:8000/api/portfolio/owner/changes/', () => HttpResponse.json([])),
   http.post('http://localhost:8000/api/portfolio/owner/changes/:id/undo/', ({ params }) => HttpResponse.json({

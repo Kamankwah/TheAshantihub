@@ -7,6 +7,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
 from . import sessions
 from .authentication import ACCOUNT_MODELS
@@ -91,6 +92,9 @@ def _capture_marketing_consent(subject, choices, context):
 
 
 NO_CODE_CONTACT = "Enter a Ghana mobile number or an email so we can send you a code."
+
+
+EMAIL_REQUIRED = "Enter your email so we can send you a confirmation link."
 
 
 def _require_usable_contact(unsaved_account, field):
@@ -337,8 +341,36 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         return self.account
 
 
+EMAIL_REQUIRED_ERRORS = {"required": EMAIL_REQUIRED, "blank": EMAIL_REQUIRED, "null": EMAIL_REQUIRED}
+EMAIL_TAKEN = "A business owner with this email already exists."
+
+
+class OwnerEmailSerializer(serializers.Serializer):
+    """The signed-in owner adding or correcting their own email (`business-owners/me/email/`): the registration form's
+    email rules (valid, 254 characters at most, not another business owner's, a staff member's or a customer's verified
+    recovery email) with the address trimmed and lower-cased first, and
+    the duplicate check case-insensitive."""
+
+    email = serializers.EmailField(max_length=254, error_messages=EMAIL_REQUIRED_ERRORS)
+
+    def validate_email(self, value):
+        from . import email_confirmation  # lazy: it imports this module
+
+        value = value.strip().lower()
+        if email_confirmation.address_taken(self.context["owner"], value):
+            raise serializers.ValidationError(EMAIL_TAKEN)
+        return value
+
+
 class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
+    # Required: the go-live rule needs a confirmed email, and the confirmation link goes out at sign-up. The model
+    # field is unique, so the unique validator is kept (as the model field would add it).
+    email = serializers.EmailField(
+        max_length=254,
+        error_messages=EMAIL_REQUIRED_ERRORS,
+        validators=[UniqueValidator(queryset=BusinessOwner.objects.all(), message=EMAIL_TAKEN)],
+    )
     kyc_status = serializers.CharField(read_only=True)
     marketing_consent = serializers.JSONField(write_only=True, required=False)
 
@@ -484,6 +516,7 @@ class BusinessOwnerKYCDetailSerializer(BusinessOwnerKYCSerializer):
     # None for each (a missing reverse one-to-one resolves to the default).
     business_name = serializers.CharField(source="profile.business_name", read_only=True, default=None)
     business_category_name = serializers.CharField(source="profile.business_category.label", read_only=True, default=None)
+    business_category_names = serializers.SerializerMethodField()
     zone_name = serializers.CharField(source="profile.zone.name", read_only=True, default=None)
     lat = serializers.DecimalField(source="profile.lat", max_digits=9, decimal_places=6, read_only=True, default=None)
     lng = serializers.DecimalField(source="profile.lng", max_digits=9, decimal_places=6, read_only=True, default=None)
@@ -498,10 +531,17 @@ class BusinessOwnerKYCDetailSerializer(BusinessOwnerKYCSerializer):
             "id", "full_name", "login_phone", "email", "kyc_status", "kyc_rejection_reason",
             "created_at", "reviewed_by_name", "reviewed_at", "profile",
             "registration_channel", "registered_by_name", "registered_by_role", "open_fraud_flags", "pending_approval_id",
-            "business_name", "business_category_name", "zone_name", "lat", "lng",
+            "business_name", "business_category_name", "business_category_names", "zone_name", "lat", "lng",
             "location_accuracy_m", "location_is_manual", "signboard_photo", "address_correction",
             "identity_status",
         ]
+
+    def get_business_category_names(self, obj):
+        """Every category label, the main one first; `[]` for a business with none (or no profile yet)."""
+        from .categories import categories_of
+
+        profile = getattr(obj, "profile", None)
+        return [category.label for category in categories_of(profile)] if profile is not None else []
 
     def get_address_correction(self, obj):
         from .kyc import address_correction
@@ -679,16 +719,22 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
             if errors:
                 raise serializers.ValidationError(errors)
 
-        # Only the Ghana Post GPS address is mandatory, and it must be in the
-        # Ashanti Region. The Ghana Card, certificate and TIN are optional:
-        # KYC rests on the address. Checked against the effective
-        # (post-update) value so a partial edit of an already-complete
-        # profile still passes.
+        # The Ghana Post GPS address is optional: the shop pin is the address. A code that is typed must be in the
+        # Ashanti Region (and well formed); it is checked against the effective (post-update) value so a partial edit
+        # of an already-complete profile still passes. A code sent now is stored in its canonical form (AK-039-5028),
+        # never as typed, so the staff screens and the duplicate check see one shape. Blank is stored as None.
         gps = data.get("gps_address", self.instance.gps_address)
-        try:
-            validate_ashanti_gps(gps)
-        except serializers.ValidationError as exc:
-            raise serializers.ValidationError({"gps_address": exc.detail})
+        if isinstance(gps, str) and not gps.strip():
+            gps = None
+        if gps is not None:
+            try:
+                canonical = validate_ashanti_gps(gps)
+            except serializers.ValidationError as exc:
+                raise serializers.ValidationError({"gps_address": exc.detail})
+            if "gps_address" in data:
+                data["gps_address"] = canonical
+        elif "gps_address" in data:
+            data["gps_address"] = None
 
         return data
 

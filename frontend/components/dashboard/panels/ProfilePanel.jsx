@@ -8,6 +8,7 @@ import MarketingConsentCard from "../../MarketingConsentCard.jsx";
 import AccountSecurityCard from "../../security/AccountSecurityCard.jsx";
 import DetailChangeRequest from "../DetailChangeRequest.jsx";
 import IdentityPanel from "./IdentityPanel.jsx";
+import CategoriesCard from "./CategoriesCard.jsx";
 
 // "Profile & Settings" — reachable from the header's avatar dropdown. The business details are read-only
 // (the one self-serve action is IdentityPanel's "Get verified", the optional Ghana Card upload):
@@ -24,6 +25,15 @@ const KYC_CHIPS = {
   pending: { label: "Waiting for approval", color: D.amber },
   rejected: { label: "Needs attention", color: D.red },
 };
+// The server's go-live rule decides whether a business can list; kyc_status is only the staff review. So a
+// pending owner the server calls live reads "Live", and one with blockers is finishing setup rather than waiting.
+function chipFor(user) {
+  const kyc = user?.kycStatus;
+  if (kyc === "pending" && user?.goLive) {
+    return user.goLive.live ? { label: "Live", color: D.green } : { label: "Finish setup", color: D.amber };
+  }
+  return KYC_CHIPS[kyc];
+}
 const row = { label: D.textDim, value: D.text };
 
 function maskTail(value, keep = 4) {
@@ -35,6 +45,7 @@ function maskTail(value, keep = 4) {
 export default function ProfilePanel({ user }) {
   const { data: profile, isLoading, isError } = useBusinessProfile();
   const queryClient = useQueryClient();
+  const chip = chipFor(user);
   const [hoursSaving, setHoursSaving] = useState(false);
   const [hoursError, setHoursError] = useState(null);
   const [hoursSavedAt, setHoursSavedAt] = useState(0);
@@ -61,8 +72,8 @@ export default function ProfilePanel({ user }) {
         </div>
         <div>
           <div style={{ fontWeight: 900, fontSize: "1.05rem", color: D.text }}>{user?.fullName || "Your Business"}</div>
-          {KYC_CHIPS[user?.kycStatus] && (
-            <span style={{ background: tint(KYC_CHIPS[user.kycStatus].color, "20"), color: KYC_CHIPS[user.kycStatus].color, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>{KYC_CHIPS[user.kycStatus].label}</span>
+          {chip && (
+            <span style={{ background: tint(chip.color, "20"), color: chip.color, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>{chip.label}</span>
           )}
         </div>
       </div>
@@ -91,6 +102,8 @@ export default function ProfilePanel({ user }) {
           </div>
         </div>
       )}
+
+      <CategoriesCard />
 
       {!isLoading && !isError && (
         <div id="opening-hours" style={{ ...glassCard, padding: "20px 22px" }}>

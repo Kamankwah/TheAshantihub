@@ -131,6 +131,12 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   (`after` = accuracy and source only). The owner's own `me/location/` capture is refused once the address is verified
   **and has a pin** (409 `address_verified`; a pinless "verified" does not lock, and a capture clears it); a staff-sent link
   still works, which is how a verified address is reopened. `MyLocationView` POST is throttled (`owner_location`, 10/min).
+  Only the owner's own `POST me/location/` (`OwnerFixSerializer`) may send `manual` (hand-placed: no accuracy ceiling, none
+  stored, still inside the box, `location_is_manual`; never device evidence for an address decision) and `landmark`; the staff
+  link uses the base `FixSerializer`, which has neither field. Another business within 25 m raises a co-location notice (kind
+  `other`, so confirming it reverses no commission and suspends nobody; key `pin-near-<low>-<high>`, raised once per pair ever,
+  at most 3 a capture, skipped when the pin did not move), never a refusal. The Plus Code is computed (`accounts/pluscode.py`), never stored; the tier
+  (`accounts/location_tier.py`) is a label, not a gate.
 - **Background jobs and live updates run in-process under `manage.py test`** (eager Celery,
   in-memory channel layer, local-memory `realtime` cache). On-commit work needs
   `captureOnCommitCallbacks(execute=True)` in a `TestCase`; consumer tests that read the database
@@ -150,6 +156,20 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   model. Show `BusinessOwner.display_name` (business name, else the owner's name). A scout-
   registered owner (`registration_channel = "scout"`) has an unusable password until they claim
   their login (`needs_claim`); `compute_registration_step()` treats that channel differently.
+- **A business keeps an ordered list of categories** (`accounts.BusinessOwnerCategory`, related_name `category_links`).
+  The first is the main one and `BusinessOwnerProfile.business_category` mirrors it. The only writers are
+  `accounts.categories.set_categories` (locks the profile row only, so the owner-then-profile order is unaffected) and
+  `resync_after_category_delete` (the `post_delete` handler that re-syncs after a `Category` is deleted); never write the
+  links or the mirror elsewhere, and never save a profile loaded without the lock as a whole row (it writes a stale
+  mirror back; use `update_fields`, as `accounts/deletion.py` does). 1..10 categories, all of the profile's
+  `business_kind`; validated only where the kind is first set (`billing/start-trial`, `billing/business-kind`; ignored when
+  the kind is already set). Transitional: a request there that omits the `categories` key sets the kind with no
+  categories (the mobile app and cached older web bundles do not send it yet); any value that is sent, even `[]` or
+  `null`, is validated. `compute_registration_step` is deliberately unchanged, so an already-registered owner is never
+  sent back. Categories describe a business, they never restrict listings (listings are limited by `business_kind`
+  only). `categories_of` honours a `category_links__category` prefetch: use it for lists. Insights keep using the main
+  category. A data migration that deletes a `Category` through historical models (`apps.get_model`) does **not** fire
+  the `post_delete` receiver: it must call `resync_after_category_delete(profile_ids)` itself.
 - **Phones are compared by their last 9 digits.** Write owner phones through
   `accounts.phones.normalize_gh_phone()` (`+233...`) and match stored phones only through
   `phone_key()` / `filter_by_phone()` (there is no `phone_match_q`), because older rows hold
@@ -158,6 +178,13 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   whose subscription is paused - is hidden from public browse by
   `listings.visibility.hidden_business_q()`. Every public listing or event queryset, and adding to
   a cart, must use it.
+- **A wrong location hides a business after 7 days, behind `WRONG_LOCATION_HIDE_ENABLED` (default off).** Inside
+  `hidden_business_q` (`listings.visibility.wrong_location_q`): `address_verified_at` set, `address_verified` false and at
+  least `WRONG_LOCATION_HIDE_DAYS` (7) old. A new owner pin clears the decision (`clear_address_decision`), which un-hides it;
+  nothing is unpublished and open orders are untouched. The owner is told at the decision (the `address_wrong` notice, which
+  adds the 7-day warning only while the switch is on). Before switching on, read
+  `manage.py list_wrong_location_businesses` (read-only dry run): every business already marked wrong longer ago than the
+  window is hidden on the next request.
 - **The subscription clock** (`billing.clock`, hourly) marks overdue, reminds on days 7 and 13 and,
   only with `settings.SUBSCRIPTION_PAUSE_ENABLED` on, pauses at day 15. The setting (env, default
   **off**) stays off until real payments (the planned in-app wallet) can renew automatically.
@@ -209,6 +236,59 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   profile row, `record()` last (`identity-*` verbs refresh `kyc-queue`); notices reuse the `kyc_approved` /
   `kyc_rejected` kinds. KYC approval never touches `identity_status` and identity decisions never touch `kyc_status`.
   Migration `accounts/0068` backfilled every already KYC-verified business to identity `verified`, so no mark vanished.
+- **Going live is `accounts/golive.py`, not `kyc_status`.** `blockers(owner)` lists what still stops a business submitting
+  listings, in the order to fix them: `email_missing`/`email_unconfirmed`, `no_pin`, `no_business_kind`, `terms_missing`; no
+  staff decision is read. A KYC-verified business and the company owner are grandfathered live with no checks. The submit
+  door (403 `not_live`) and the staff approve (400 `not_live`) read it; `me` carries `go_live`. The `kyc_status` readers that
+  are not the listing doors (promo waivers, flash sales, offers, staff-made drafts, insights, the hero/promotion check lists)
+  were deliberately left alone, and `identity_status` still gates payouts; do not move them onto `golive`.
+  `blockers` also includes `kyc_rejected` (last): a rejected owner is never live until they edit the profile and it goes back to
+  pending, while a verified or company owner is live regardless. The business-owner register serializer requires an email
+  (the go-live rule needs one and the confirmation link goes out at sign-up), and its duplicate-email refusal says "A business
+  owner with this email already exists." The Ghana Post code is optional on the server (blank is stored null). A staff approve
+  refused for `not_live` returns staff wording (`golive.staff_message`, which falls back to the owner sentence or the bare code
+  for a blocker with no staff phrase) plus `blockers`. The auto-publish photo check tells opening the file from decoding it: a missing file or a Pillow decode failure
+  (unidentifiable, truncated, decompression bomb, a ValueError while decoding) is the owner's fix; any other failure (a ValueError
+  on open, from a misconfigured storage, included), including a ConnectionError/TimeoutError
+  or botocore-style error raised by a storage read, holds the listing for staff with a logged warning (never a 500).
+  **Hold and fix reasons are stored:** `Listing.hold_reasons` is a list of `{code, message}` set by the submit door (a `fix` or a
+  `hold`) and cleared on publish, approve, reject, re-review, an undone scout listing and the next submit. Staff see it as
+  `hold_reasons` on the moderation queue (only while the listing is waiting for review, with the specific word or limit); the
+  owner's own listing carries `hold_notice` (one generic line for a hold, never the specifics) and `fix_reasons` (the plain
+  sentences for a draft or rejected listing sent back; an ALLOW-LIST of `autopublish.FIX_CODES`, so a hold code added later can
+  never reach an owner). An owner's edit (PATCH) of a draft or rejected listing clears the stored list.
+  **Self-serve add or correct email:** `POST business-owners/me/email/` {email, password} (owner only, `owner_email_change`
+  5/hour counting wrong passwords too, `activity_exempt`) is allowed ONLY while the owner has no email or the current one is not
+  confirmed; a confirmed email gets 403 `email_confirmed` pointing at Profile & Settings -> Request a change (the staff-verified
+  path). The email is a password-reset destination and a sign-in code channel, so: the CURRENT PASSWORD is checked first (400
+  `wrong_password`, one answer for wrong or missing, before any address check), `step_up.require(CONTACT_CHANGE,
+  force=escrow.enabled())` runs in the same atomic block as the save (403 `step_up_required`), and an ACTUAL change (not the same
+  address typed again) does what the staff-checked route does: payout cooling restarts, trusted devices and every phone
+  `MobileSession` end (the access token is stateless and carries no session id, so the phone's refresh dies too and the app signs in
+  again at the next refresh; web is unaffected), the sign-in phone is ALWAYS texted and the old email (if any) told as well (both after commit, send errors swallowed), a
+  payout-cooling in-app notice is added only when a destination was actually pushed back, and `business.email_changed` is recorded
+  last with masked values. The password is trimmed before it is checked. A business owner may receive and verify `contact_change`
+  step-up codes (`otp.views_step_up._codes_off`, ledger on); no other owner action opened up. The 200 body is `{email, sent,
+  side_effects: {signed_out_phone, payout_cooling}}`, both false for a same-address resend, so clients can say honestly what happened. It trims and lower-cases, refuses another business's email, a staff
+  email and a customer's verified recovery email with one wording (`email_confirmation.address_taken`), revokes the older live links and
+  mails a fresh one (`email_confirmation.set_email` then `send`; a daily-limit 429 still leaves the new address saved and the old
+  links revoked; that 429 carries `side_effects` too). **Known gap before the ledger or the OTP switches go on:** `otp.identity.contacts()` offers an UNCONFIRMED email as a
+  code channel for an owner, so an address set through this door becomes a step-up/sign-in code channel before it is proven. Decide how existing
+  owners with an unconfirmed email get confirmed (they were never sent a link), then exclude unconfirmed emails from `contacts()`. Never a token in a response.
+  The self-registered step chain is `business_info` -> `shop_location` -> plan/type -> `terms`; `payment_info` is no longer in it
+  (the scout chain still has it).
+- **Email confirmation (`accounts/email_confirmation.py`)** is a bearer link made like the shop-location one: only the SHA-256 hash
+  is stored, single use, 48 h, 5 links per business per Accra day (429), a newer link revokes older live ones. The token
+  rides in the URL **fragment** (`/confirm-email#token=`), so it stays out of the frontend host's logs; the public confirm view
+  answers `no-store` + `no-referrer` and is `activity_exempt`. Confirming writes an `otp.VerifiedContact` for the address,
+  so a confirmed email would also satisfy OTP sign-up verification if `OTP_SIGNUP_VERIFICATION_ENFORCED` is ever turned on;
+  settle that intent first. A changed email is unconfirmed until a new link is opened.
+- **Phase 2 switches, all in `settings.py`:** `LISTING_AUTO_PUBLISH_ENABLED` (default off: every submit goes to the queue; on,
+  `listings/autopublish.py` publishes a clean listing of a live owner, returns 400 `needs_fixes` with reasons, or holds one
+  that trips a prohibited word or the daily limit), `LISTING_PROHIBITED_TERMS` (comma list, whole words only, default empty),
+  `UNVERIFIED_DAILY_LISTING_LIMIT` (20, only for a business whose location is not staff-verified; "submitted today" counts
+  `updated_at`, so it errs towards holding), `WRONG_LOCATION_HIDE_ENABLED` (off) and `WRONG_LOCATION_HIDE_DAYS` (7). Run
+  `manage.py list_wrong_location_businesses` before enabling the hide.
 - **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
   `PortfolioConfig.ready()`); only the business's account manager may submit them; each applied
   change writes a `portfolio.AppliedChange` the owner can undo for 7 days

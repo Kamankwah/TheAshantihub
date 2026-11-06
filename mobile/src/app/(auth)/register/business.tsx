@@ -5,15 +5,13 @@ import { Pressable, Text, View } from "react-native";
 
 import { RegistrationHeader } from "../../../features/business/RegistrationHeader";
 import { messageFor } from "../../../lib/authApi";
+import { ghanaPostError, normalizeGhanaPost } from "../../../lib/ghanaPost";
 import { resumeRegistration, saveBusinessInfo, type Picked } from "../../../lib/registrationApi";
 import { fonts } from "../../../theme/fonts";
 import { useTheme } from "../../../theme/useTheme";
 import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
 import { Screen } from "../../../ui/Screen";
-
-const ASHANTI_ONLY = "AshantiHub only admits businesses in the Ashanti Region. Your address must begin with “A”.";
-const BAD_FORMAT = "Enter a valid Ghana Post GPS address, like AK-039-5028.";
 
 async function pickPhoto(name: string): Promise<Picked | undefined> {
   const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7 });
@@ -74,14 +72,15 @@ export default function BusinessInfo() {
   const [photoError, setPhotoError] = useState<string | null>(null);
 
   async function submit() {
-    const address = gps.trim().toUpperCase();
-    if (!/^[A-Z]{2}-\d{3,4}-\d{4}$/.test(address)) return setErrors({ gps: BAD_FORMAT });
-    if (address[0] !== "A") return setErrors({ gps: ASHANTI_ONLY });
+    // Optional: the shop pin on the next step places the business. A code that is typed must still be a valid one.
+    const typed = gps.trim();
+    const problem = typed ? ghanaPostError(gps) : null;
+    if (problem) return setErrors({ gps: problem });
     setBusy(true);
     setErrors({});
     try {
       await saveBusinessInfo({
-        gps_address: address,
+        ...(typed ? { gps_address: normalizeGhanaPost(gps) } : {}),
         business_contact_phone: phone.trim(),
         is_formal: formal,
         ...(card.trim() ? { ghana_card_number: card.trim() } : {}),
@@ -111,10 +110,10 @@ export default function BusinessInfo() {
         <Upload label="Card back" value={back} onPick={setBack} onError={setPhotoError} />
       </View>
       {photoError ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 13 }}>{photoError}</Text> : null}
-      <Field label="Ghana Post GPS address" value={gps} onChangeText={setGps} autoCapitalize="characters" placeholder="AK-039-5028" helper="Example: AK-039-5028" error={errors.gps} />
+      <Field label="Ghana Post GPS address" value={gps} onChangeText={setGps} autoCapitalize="characters" placeholder="AK-039-5028" helper="Optional. We use your shop pin." error={errors.gps} />
       <Field label="Business contact phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" />
       {errors.form ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 13 }}>{errors.form}</Text> : null}
-      <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>Our team verifies every business before it goes live.</Text>
+      <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>Confirm your email and share your shop pin to start listing. Verification later earns you the Verified mark.</Text>
       <Button label="Continue" onPress={submit} loading={busy} />
     </Screen>
   );

@@ -11,13 +11,14 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework.test import APIClient
 
+from accounts.categories import set_categories
 from accounts.models import BusinessOwner, OwnerConsent
 from accounts.testing import make_staff, staff_token
 from activity.services import record
 from approvals.models import ApprovalRequest
 from billing.models import Subscription
 from fraud.models import FraudFlag
-from listings.models import Listing, Zone
+from listings.models import Category, Listing, Zone
 from portfolio import health
 from portfolio.models import BusinessHealthSnapshot
 from portfolio.services import assign_account_manager
@@ -41,7 +42,7 @@ ITEM_KEYS = {
     "listings_total", "listings_waiting", "last_order_at", "last_contact", "open_fraud_flags",
 }
 DETAIL_KEYS = ITEM_KEYS | {
-    "business_kind", "business_category", "gps_address", "lat", "lng", "location_accuracy_m",
+    "business_kind", "business_category", "business_categories", "gps_address", "lat", "lng", "location_accuracy_m",
     "location_is_manual", "location_set_by", "business_contact_phone", "business_description", "opening_hours", "hours",
     "signboard_photo", "email", "registered_by", "created_at", "listings", "pending_requests", "recent_calls", "recent_visits",
     "assignments", "open_flags", "can_manage", "owner_confirmation",
@@ -538,3 +539,43 @@ class SubscriptionsDueTests(PortfolioApiBase):
     def test_scouts_cannot_open_subscriptions_due(self):
         self.auth(self.kwame)
         self.assertEqual(self.client.get(self.DUE_URL).status_code, 403)
+
+
+class PortfolioCategoriesTests(PortfolioApiBase):
+    """Staff see every category a business has, the main one first; `business_category` / `category` stay the main."""
+
+    def setUp(self):
+        super().setUp()
+        self.owner = make_business("Adwoa Fabrics", manager=self.kwame, registered_by=self.kwame)
+        self.cats = [
+            Category.objects.create(slug=f"pc-{name}", icon="🧵", label=name.title(), color="#336699", kind="product")
+            for name in ("fabrics", "shoes", "bags")
+        ]
+
+    def test_portfolio_business_shows_all_categories_main_first(self):
+        set_categories(self.owner.profile, [self.cats[1].pk, self.cats[2].pk, self.cats[0].pk])
+        expected = [{"id": c.pk, "name": c.label} for c in (self.cats[1], self.cats[2], self.cats[0])]
+        self.auth(self.kwame)
+        detail = self.client.get(f"{URL}{self.owner.pk}/").json()
+        self.assertEqual(detail["business_categories"], expected)
+        self.assertEqual(detail["business_category"], expected[0])
+        self.auth(self.lead)
+        sheet = self.client.get(f"{URL}{self.owner.pk}/review/").json()
+        self.assertEqual(sheet["business"]["categories"], expected)
+        self.assertEqual(sheet["business"]["category"], expected[0])
+
+    def test_business_with_no_categories_gets_an_empty_list(self):
+        self.auth(self.kwame)
+        detail = self.client.get(f"{URL}{self.owner.pk}/").json()
+        self.assertEqual((detail["business_category"], detail["business_categories"]), (None, []))
+        self.auth(self.lead)
+        sheet = self.client.get(f"{URL}{self.owner.pk}/review/").json()
+        self.assertEqual((sheet["business"]["category"], sheet["business"]["categories"]), (None, []))
+
+    def test_an_older_business_with_only_a_main_category_lists_it(self):
+        from accounts.models import BusinessOwnerProfile
+
+        BusinessOwnerProfile.objects.filter(pk=self.owner.profile.pk).update(business_category=self.cats[0])
+        self.auth(self.kwame)
+        detail = self.client.get(f"{URL}{self.owner.pk}/").json()
+        self.assertEqual(detail["business_categories"], [{"id": self.cats[0].pk, "name": self.cats[0].label}])

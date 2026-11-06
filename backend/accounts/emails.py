@@ -209,3 +209,15 @@ def send_business_claim_email(owner, claim_link):
         "— AshantiHub"
     )
     _send("Set up your AshantiHub business login", message, owner.email)
+
+
+def send_email_confirmation_email(email, link):
+    subject = "Confirm your email for AshantiHub"
+    message = (
+        "Open the link below to confirm this email address for your AshantiHub business:\n\n"
+        f"{link}\n\n"
+        "This link works once and expires in 48 hours.\n\n"
+        "If you weren't expecting this, you can safely ignore this email.\n\n"
+        "— AshantiHub"
+    )
+    _send(subject, message, email)

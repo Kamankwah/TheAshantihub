@@ -1,4 +1,5 @@
 import { api, ApiError } from "../../lib/api";
+import { normalizeGhanaPost } from "../../lib/ghanaPost";
 
 export type CheckoutForm = {
   method: "door_to_door" | "store_pickup";
@@ -26,7 +27,7 @@ export function checkoutBody(f: CheckoutForm): Record<string, unknown> {
     delivery_method: "door_to_door",
     delivery_address: f.address.trim(),
     delivery_phone: f.phone.trim(),
-    delivery_gps_address: f.gps.trim().toUpperCase(),
+    delivery_gps_address: normalizeGhanaPost(f.gps),
     delivery_landmark: f.landmark.trim(),
     ...(f.lat !== undefined && f.lng !== undefined ? { delivery_lat: f.lat, delivery_lng: f.lng } : {}),
   };

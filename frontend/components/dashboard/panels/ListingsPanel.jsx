@@ -490,6 +490,15 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                     )}
                     {direct && ["draft", "pending_review"].includes(item.status) && <div style={{ fontSize: "0.68rem", color: D.amber, fontWeight: 700, marginTop: 3 }}>Needs a second person to approve</div>}
                     {item.status === "rejected" && item.rejection_reason && <div style={{ fontSize: "0.65rem", color: D.red, marginTop: 3 }}>Rejected: {item.rejection_reason}</div>}
+                    {item.status === "pending_review" && item.hold_notice && <div style={{ fontSize: "0.72rem", color: D.textDim, marginTop: 3 }}>{item.hold_notice}</div>}
+                    {["draft", "rejected"].includes(item.status) && Array.isArray(item.fix_reasons) && item.fix_reasons.length > 0 && (
+                      <div style={{ marginTop: 4 }}>
+                        <div style={{ fontSize: "0.68rem", color: D.amber, fontWeight: 700 }}>From your last submit:</div>
+                        <ul style={{ margin: "2px 0 0", paddingLeft: 16, fontSize: "0.72rem", color: D.textDim }}>
+                          {item.fix_reasons.map((reason, i) => <li key={i}>{reason}</li>)}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     {canEdit && <button onClick={() => { setEditingId(item.id); setEditBarcodeError(null); setEditForm({

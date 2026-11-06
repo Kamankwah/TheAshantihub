@@ -104,6 +104,92 @@ describe("business home", () => {
     expect(screen.queryByText(/running low/i)).toBeNull();
   });
 
+  it("email_banner_shows_on_home_while_the_email_is_unconfirmed", async () => {
+    server({
+      "/api/accounts/me/": me({ go_live: { live: false, blockers: [{ code: "email_unconfirmed", message: "Confirm your email." }] } }),
+      "/api/orders/owner/": { results: [], next: null },
+      "/api/accounts/business/hours/": { has_hours: true, days: [] },
+      "/api/catalogue/stock/": stock(),
+    });
+    await render(client(<BusinessHome />));
+    expect(await screen.findByText("Confirm your email to publish listings")).toBeTruthy();
+  });
+
+  it("a_not_live_owner_sees_a_checklist_of_the_servers_blockers_with_no_approval_wait", async () => {
+    server({
+      "/api/accounts/me/": me({ kyc_status: "pending", identity_status: "not_submitted", go_live: { live: false, blockers: [{ code: "no_pin", message: "Share your shop location." }, { code: "terms_missing", message: "Accept the seller terms." }] } }),
+      "/api/orders/owner/": { results: [], next: null },
+      "/api/accounts/business/hours/": { has_hours: true, days: [] },
+      "/api/catalogue/stock/": stock(),
+    });
+    await render(client(<BusinessHome />));
+    expect(await screen.findByText("To start listing, finish these:")).toBeTruthy();
+    expect(screen.getByText("Share your shop location.")).toBeTruthy();
+    expect(screen.getByText("Accept the seller terms.")).toBeTruthy();
+    expect(screen.queryByText(/once verified|as soon as you/i)).toBeNull();
+  });
+
+  it("no_checklist_for_a_live_owner_whose_kyc_is_still_pending", async () => {
+    server({
+      "/api/accounts/me/": me({ kyc_status: "pending", identity_status: "not_submitted", go_live: { live: true, blockers: [] } }),
+      "/api/orders/owner/": { results: [], next: null },
+      "/api/accounts/business/hours/": { has_hours: true, days: [] },
+      "/api/catalogue/stock/": stock(),
+    });
+    await render(client(<BusinessHome />));
+    await screen.findByText(/Akwaaba, Kwame/);
+    expect(screen.queryByText("To start listing, finish these:")).toBeNull();
+    expect(screen.getByText("Live")).toBeTruthy();
+    expect(screen.queryByText("Verification in progress")).toBeNull();
+  });
+
+  const pillCases: [string, Record<string, unknown>, string][] = [
+    ["verified", { kyc_status: "verified", go_live: { live: true, blockers: [] } }, "Verified"],
+    ["live_but_not_verified", { kyc_status: "pending", go_live: { live: true, blockers: [] } }, "Live"],
+    ["finishing_setup", { kyc_status: "pending", go_live: { live: false, blockers: [{ code: "no_pin", message: "Share your shop location." }] } }, "Finish setup"],
+    ["rejected", { kyc_status: "rejected", go_live: { live: false, blockers: [{ code: "kyc_rejected", message: "Fix it." }] } }, "Needs changes"],
+  ];
+  it.each(pillCases)("status_pill_matches_the_web_chip_%s", async (_name, over, label) => {
+    server({
+      "/api/accounts/me/": me({ identity_status: "not_submitted", ...over }),
+      "/api/orders/owner/": { results: [], next: null },
+      "/api/accounts/business/hours/": { has_hours: true, days: [] },
+      "/api/catalogue/stock/": stock(),
+    });
+    await render(client(<BusinessHome />));
+    await screen.findByText(/Akwaaba, Kwame/);
+    expect(screen.getByText(label)).toBeTruthy();
+    expect(screen.queryByText("Verification in progress")).toBeNull();
+    expect(screen.queryByText("Verification needs attention")).toBeNull();
+  });
+
+  it("a_rejected_owner_gets_no_email_banner_or_checklist_just_the_servers_sentence_and_a_way_to_fix_it", async () => {
+    server({
+      "/api/accounts/me/": me({ kyc_status: "rejected", identity_status: "not_submitted", go_live: { live: false, blockers: [{ code: "email_unconfirmed", message: "Confirm your email." }, { code: "kyc_rejected", message: "Your application needs changes. Open your profile to see what to fix." }] } }),
+      "/api/orders/owner/": { results: [], next: null },
+      "/api/accounts/business/hours/": { has_hours: true, days: [] },
+      "/api/catalogue/stock/": stock(),
+    });
+    await render(client(<BusinessHome />));
+    expect(await screen.findByText("Your application needs changes. Open your profile to see what to fix.")).toBeTruthy();
+    expect(screen.queryByText("Confirm your email to publish listings")).toBeNull();
+    expect(screen.queryByText("To start listing, finish these:")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "See what to fix" }));
+    expect(router.push).toHaveBeenCalledWith("/manage/verification");
+  });
+
+  it("no_email_banner_when_the_server_reports_no_email_blocker", async () => {
+    server({
+      "/api/accounts/me/": me({ go_live: { live: true, blockers: [] } }),
+      "/api/orders/owner/": { results: [], next: null },
+      "/api/accounts/business/hours/": { has_hours: true, days: [] },
+      "/api/catalogue/stock/": stock(),
+    });
+    await render(client(<BusinessHome />));
+    await screen.findByText(/Akwaaba, Kwame/);
+    expect(screen.queryByText("Confirm your email to publish listings")).toBeNull();
+  });
+
   it("orders_waiting_to_be_prepared_are_counted_from_the_api", async () => {
     server({
       "/api/accounts/me/": me(),
@@ -214,6 +300,45 @@ describe("business listings", () => {
     expect(await screen.findByText(/Photo is too dark/)).toBeTruthy();
     await fireEvent.press(screen.getByLabelText("Send for review"));
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith("/api/listings/mine/9/submit/", { method: "POST" }));
+  });
+
+  const heldRows = [
+    listing({ id: 11, name: "Held mat", status: "pending_review", hold_notice: "We need to check this listing." }),
+    listing({ id: 12, name: "Plain mat", status: "pending_review", hold_notice: null }),
+  ];
+  const sentBack = [
+    listing({ id: 13, name: "Returned bag", status: "draft", fix_reasons: ["Add at least one photo.", "Add a price."] }),
+    listing({ id: 14, name: "Fresh bag", status: "draft", fix_reasons: [] }),
+  ];
+
+  it("the_list_shows_the_calm_hold_line_only_on_a_held_listing", async () => {
+    server({ "/api/listings/mine/": heldRows });
+    await render(client(<BusinessListings />));
+    await screen.findByText("Held mat");
+    expect(screen.getAllByText("We need to check this listing.")).toHaveLength(1);
+  });
+
+  it("a_held_listing_screen_shows_the_calm_hold_line", async () => {
+    mockParams = { id: "11" };
+    server({ "/api/listings/mine/": heldRows });
+    await render(client(<ListingManage />));
+    expect(await screen.findByText("We need to check this listing.")).toBeTruthy();
+  });
+
+  it("a_draft_sent_back_lists_what_to_fix", async () => {
+    mockParams = { id: "13" };
+    server({ "/api/listings/mine/": sentBack });
+    await render(client(<ListingManage />));
+    expect(await screen.findByText("• Add at least one photo.")).toBeTruthy();
+    expect(screen.getByText("• Add a price.")).toBeTruthy();
+  });
+
+  it("a_draft_with_no_fix_reasons_shows_no_fix_list", async () => {
+    mockParams = { id: "14" };
+    server({ "/api/listings/mine/": sentBack });
+    await render(client(<ListingManage />));
+    await screen.findByText("Fresh bag");
+    expect(screen.queryByText("From your last submit")).toBeNull();
   });
 
   it("live_listing_can_be_restocked_with_a_count", async () => {

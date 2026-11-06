@@ -125,7 +125,8 @@ def _revert_listing(change, approval, owner):
     if listing is not None:
         listing.status = Listing.REJECTED
         listing.rejection_reason = UNDO_LISTING_REASON
-        listing.save(update_fields=["status", "rejection_reason"])
+        listing.hold_reasons = []
+        listing.save(update_fields=["status", "rejection_reason", "hold_reasons"])
     return []
 
 

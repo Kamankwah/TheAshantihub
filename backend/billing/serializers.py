@@ -1,9 +1,11 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from accounts.categories import InvalidCategories, set_categories
 from accounts.models import BusinessOwnerProfile
 
 from .clock import subscription_state
@@ -13,6 +15,19 @@ from .models import Subscription, SubscriptionPlan, Transaction
 # every "N months from now" calculation in this file approximates a calendar
 # month as 30 days via timedelta(days=30 * cycle_months) rather than
 # dateutil.relativedelta(months=cycle_months).
+
+
+def kind_step_categories(data):
+    """The `categories` a client sent with the kind (start-trial, business-kind), read raw.
+
+    None when the key is absent: transitional, for clients built before categories (the mobile app, a cached older web
+    bundle), which then set the kind without categories. Otherwise a list for `set_categories`; a value that is not a
+    list becomes `[]`, so `null`, `"3"` or `{}` are refused like an empty list ("Choose at least one category.").
+    """
+    if not hasattr(data, "get") or "categories" not in data:
+        return None
+    categories = data.get("categories")
+    return categories if isinstance(categories, list) else []
 
 
 class SubscriptionPlanSerializer(serializers.ModelSerializer):
@@ -153,6 +168,8 @@ class StartTrialSerializer(serializers.Serializer):
         queryset=SubscriptionPlan.objects.filter(status=SubscriptionPlan.ACTIVE_STATUS),
     )
     cycle_months = serializers.ChoiceField(choices=Subscription.CYCLE_CHOICES)
+    # `categories` is not a field: save() reads it raw (kind_step_categories), only when this call sets the kind, so
+    # set_categories gives its own messages and any value is ignored once the kind is set (as in BusinessKindView).
 
     def validate(self, attrs):
         if attrs["plan"].kind != attrs["business_kind"]:
@@ -169,27 +186,40 @@ class StartTrialSerializer(serializers.Serializer):
         period_length = timedelta(days=30 * cycle_months)
 
         profile = business_owner.profile
-        if profile.business_kind and profile.business_kind != plan.kind:
-            raise serializers.ValidationError({
-                "plan": [
-                    f"This plan is for {plan.get_kind_display().lower()} businesses, and yours is "
-                    f"registered as a {profile.get_business_kind_display().lower()} business."
-                ]
-            })
-        profile.business_kind = business_kind
-        profile.save(update_fields=["business_kind"])
+        # One transaction: a refused category list, or any later failure, leaves the kind unset so the owner can retry.
+        with transaction.atomic():
+            locked = BusinessOwnerProfile.objects.select_for_update(of=("self",)).get(pk=profile.pk)
+            profile.business_kind = locked.business_kind  # the cached profile feeds compute_registration_step()
+            if locked.business_kind and locked.business_kind != plan.kind:
+                raise serializers.ValidationError({
+                    "plan": [
+                        f"This plan is for {plan.get_kind_display().lower()} businesses, and yours is "
+                        f"registered as a {locked.get_business_kind_display().lower()} business."
+                    ]
+                })
+            if not locked.business_kind:
+                locked.business_kind = business_kind
+                locked.save(update_fields=["business_kind"])
+                categories = kind_step_categories(self.initial_data)
+                if categories is not None:  # absent: an older client sets the kind without categories
+                    try:
+                        set_categories(locked, categories)
+                    except InvalidCategories as error:
+                        raise serializers.ValidationError({"categories": [error.message]})
+                profile.business_kind = business_kind
+                profile.business_category = locked.business_category
 
-        subscription, _ = Subscription.objects.update_or_create(
-            business_owner=business_owner,
-            defaults={
-                "plan": plan,
-                "cycle_months": cycle_months,
-                "is_trial": True,
-                "status": Subscription.ACTIVE,
-                "current_period_start": now,
-                "current_period_end": now + period_length,
-            },
-        )
+            subscription, _ = Subscription.objects.update_or_create(
+                business_owner=business_owner,
+                defaults={
+                    "plan": plan,
+                    "cycle_months": cycle_months,
+                    "is_trial": True,
+                    "status": Subscription.ACTIVE,
+                    "current_period_start": now,
+                    "current_period_end": now + period_length,
+                },
+            )
         return subscription
 
 

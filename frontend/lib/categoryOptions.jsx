@@ -28,8 +28,14 @@ function chainOf(cat, byId) {
 // "Department › Sub" for a sub-category, the bare label for a top-level one.
 // For places that can only take one flat label (a filter chip list).
 export function categoryPathLabel(cat, all) {
+  return categoryPathLabeler(all)(cat);
+}
+
+// The same labels for many categories against one lookup of `all`:
+// categoryPathLabeler(all)(cat) === categoryPathLabel(cat, all).
+export function categoryPathLabeler(all) {
   const byId = byIdOf(all);
-  return chainOf(cat, byId).map((c) => c.label).join(" › ");
+  return (cat) => chainOf(cat, byId).map((c) => c.label).join(" › ");
 }
 
 // → [{ key, label, options: [{ id, label }] }] in list order. A product

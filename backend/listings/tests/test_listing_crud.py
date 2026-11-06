@@ -162,6 +162,8 @@ class ListingCRUDTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_submit_moves_draft_to_pending_review(self):
+        # A KYC-verified owner is grandfathered live (accounts.golive), so no email or pin is needed here.
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(kyc_status=BusinessOwner.VERIFIED)
         listing = Listing.objects.create(
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name="Ready Listing", description="D.", contact_phone="+233207445566",
@@ -305,7 +307,7 @@ class ListingCRUDTests(TestCase):
         BusinessOwnerProfile.objects.create(
             business_owner=no_sub_owner, ghana_card_number="GHA-333444555-6",
             gps_address="AK-039-5061", business_contact_phone="+233207445588",
-            is_formal=False, default_payout_method="momo", payout_momo_network="MTN",
+            business_kind="service", is_formal=False, default_payout_method="momo", payout_momo_network="MTN",
             payout_momo_number="+233207445588", payout_momo_name="No Sub Owner",
         )
         self._auth(no_sub_owner)
@@ -317,7 +319,64 @@ class ListingCRUDTests(TestCase):
         self.assertEqual(response.status_code, 201, response.content)
 
     @override_settings(SUBSCRIPTIONS_ENABLED=False)
+    def test_no_business_type_no_listing_when_subscriptions_are_off(self):
+        typeless = BusinessOwner.objects.create(
+            full_name="Typeless Owner", login_phone="+233207445599", password_hash="x",
+        )
+        profile = BusinessOwnerProfile.objects.create(
+            business_owner=typeless, gps_address="AK-039-5062", business_contact_phone="+233207445599",
+        )
+        self._auth(typeless)
+        body = {"category": self.hotels.id, "zone": self.manhyia.id, "name": "Open", "description": "D."}
+        response = self.client.post("/api/listings/mine/", body, format="json")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["business_kind"], ["Choose your business type first."])
+        self.assertFalse(Listing.objects.filter(business_owner=typeless).exists())
+
+        profile.business_kind = "service"
+        profile.save()
+        response = self.client.post("/api/listings/mine/", body, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+
+    @override_settings(SUBSCRIPTIONS_ENABLED=False)
+    def test_the_business_type_rule_does_not_touch_ashanti_direct_or_edits(self):
+        company = BusinessOwner.objects.create(
+            full_name="Ashanti Direct", login_phone="+233207445500", password_hash="x", is_company=True,
+        )
+        BusinessOwnerProfile.objects.create(business_owner=company)
+        # The owner endpoint refuses Ashanti Direct (it is run from the staff dashboard), so exercise the shared rule.
+        from listings.serializers import validate_listing_for_owner
+        data = {"category": self.hotels, "zone": self.manhyia, "name": "Direct", "description": "D."}
+        self.assertEqual(validate_listing_for_owner(company, data, initial_data={}), data)
+
+        # An edit of an existing draft never asks for the type: the rule guards only the first listing.
+        typeless = BusinessOwner.objects.create(
+            full_name="Old Owner", login_phone="+233207445501", password_hash="x",
+        )
+        BusinessOwnerProfile.objects.create(business_owner=typeless, business_contact_phone="+233207445501")
+        draft = Listing.objects.create(
+            business_owner=typeless, category=self.hotels, zone=self.manhyia, name="Old", description="D.",
+            contact_phone="+233207445501",
+        )
+        self._auth(typeless)
+        response = self.client.patch(f"/api/listings/mine/{draft.id}/", {"description": "Updated."}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+
+    @override_settings(SUBSCRIPTIONS_ENABLED=True)
+    def test_with_subscriptions_on_the_listing_rule_is_unchanged_by_a_missing_business_type(self):
+        # The default owner holds an active subscription and a profile without a business_kind.
+        self.assertIsNone(self.owner.profile.business_kind)
+        self._auth(self.owner)
+        response = self.client.post(
+            "/api/listings/mine/",
+            {"category": self.hotels.id, "zone": self.manhyia.id, "name": "Open", "description": "D."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+
+    @override_settings(SUBSCRIPTIONS_ENABLED=False)
     def test_frozen_subscriptions_have_no_listing_cap(self):
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(business_kind="product")
         basic_plan = SubscriptionPlan.objects.get(tier="product_basic")
         self.owner.subscription.plan = basic_plan
         self.owner.subscription.save()

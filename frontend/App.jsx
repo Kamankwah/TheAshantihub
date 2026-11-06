@@ -68,6 +68,7 @@ import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
 import EventCard, { formatEventDate } from "./components/EventCard.jsx";
 import OtpSignIn from "./components/OtpSignIn.jsx";
 import { isOtpChallenge, otpCode } from "./lib/otp.js";
+import { apiErrorMessage } from "./lib/apiErrorMessage.js";
 import { D, glassCard, ghs, tint } from "./components/dashboard/theme.js";
 import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
@@ -98,6 +99,7 @@ const BusinessRegistrationFlow = lazy(() => import("./components/BusinessRegistr
 const BusinessClaimPage = lazy(() => import("./components/BusinessClaimPage.jsx"));
 const OwnerConfirmPage = lazy(() => import("./components/OwnerConfirmPage.jsx"));
 const ShareLocationPage = lazy(() => import("./components/ShareLocationPage.jsx"));
+const ConfirmEmailPage = lazy(() => import("./components/ConfirmEmailPage.jsx"));
 const UnsubscribePage = lazy(() => import("./components/UnsubscribePage.jsx"));
 const TrackedLinkPage = lazy(() => import("./components/TrackedLinkPage.jsx"));
 const CartPage = lazy(() => import("./components/shop/CartPage.jsx"));
@@ -1279,7 +1281,14 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   const handleSignup=async(e)=>{
     e.preventDefault();
     setError(null);
-    if(!phone && !email){
+    // A business must give an email: the confirmation link goes there, and it cannot go live without one confirmed.
+    const typedEmail=email.trim();
+    if(accountType==="business_owner"){
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typedEmail)){
+        setError("Enter your email so we can send you a confirmation link.");
+        return;
+      }
+    } else if(!phone && !typedEmail){
       setError("Please provide a phone number or email address.");
       return;
     }
@@ -1289,12 +1298,12 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
     const consentField=Object.keys(ticked).length?{marketing_consent:ticked}:{};
     try {
       const result=accountType==="business_owner"
-        ? await auth.registerBusinessOwner({full_name:fullName,login_phone:phone||undefined,email:email||undefined,password,...consentField})
-        : await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:email||undefined,password,...consentField});
+        ? await auth.registerBusinessOwner({full_name:fullName,login_phone:phone||undefined,email:typedEmail,password,...consentField})
+        : await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:typedEmail||undefined,password,...consentField});
       if(isOtpChallenge(result)){setOtp({challenge:result,purpose:"sign_up",accountType});setPassword("");return;}
       onSuccess(result);
     } catch (err) {
-      setError("Could not create your account. Please check your details.");
+      setError(apiErrorMessage(err,"Could not create your account. Please check your details."));
     } finally {
       setSubmitting(false);
     }
@@ -1370,7 +1379,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
           </div>
           <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={authInputStyle}/>
           <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" style={authInputStyle}/>
-          <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" style={authInputStyle}/>
+          <input value={email} onChange={e=>setEmail(e.target.value)} type={accountType==="business_owner"?"text":"email"} inputMode="email" aria-required={accountType==="business_owner"} placeholder="Email" style={authInputStyle}/>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
           <fieldset style={{border:`1px solid ${C.line}`,borderRadius:10,padding:"8px 12px",margin:"0 0 12px"}}>
             <legend style={{fontSize:"0.72rem",fontWeight:800,padding:"0 4px"}}>Offers from AshantiHub (optional)</legend>
@@ -2397,6 +2406,8 @@ const PATH_TO_PAGE = {
   "/business/confirm": "business-confirm",
   // The owner's texted "share my shop location" link (address verification): public, token in the #fragment.
   "/share-location": "share-location",
+  // The owner's emailed "confirm your email" link (go-live rule): public, token in the #fragment.
+  "/confirm-email": "confirm-email",
   // The full shopping cart (Marketplace Plan 4); the Navbar/StorefrontHeader cart icons go here.
   "/cart": "cart",
   // The secure checkout (Marketplace Plan 4): a standalone page with its own slim header, no Navbar/Footer.
@@ -2418,6 +2429,7 @@ const PAGE_TO_PATH = {
   "business-claim": "/business/claim",
   "business-confirm": "/business/confirm",
   "share-location": "/share-location",
+  "confirm-email": "/confirm-email",
   cart: "/cart",
   checkout: "/checkout",
   "checkout-verify": "/checkout/verify",
@@ -2511,7 +2523,7 @@ function AshantiHubApp() {
   const [authReturn,setAuthReturn]=useState(null);
   const auth=useAuth();
   const queryClient=useQueryClient();
-  const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;
+  const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,goLive:auth.user.go_live,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;
   // Site-wide light/dark theme for every page. useTheme() follows the device
   // until the user toggles, and sets `data-theme` + the `dark` class on
   // <html>: the class drives the Tailwind/shadcn tokens, and `data-theme`
@@ -2971,6 +2983,7 @@ function AshantiHubApp() {
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
   if(page==="business-confirm") return <OwnerConfirmPage/>;
   if(page==="share-location") return <ShareLocationPage/>;
+  if(page==="confirm-email") return <ConfirmEmailPage/>;
   if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
   if(unsubscribeMatch) return <UnsubscribePage token={unsubscribeMatch.params.token} onHome={()=>navigate("/")}/>;
   if(notifyStopMatch) return <NotifyStopPage token={notifyStopMatch.params.token} onHome={()=>navigate("/")}/>;

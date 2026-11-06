@@ -395,20 +395,31 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     def compute_registration_step(self):
         if self.registration_channel == self.SCOUT:
             return self._scout_registration_step()
+        if self.kyc_status == self.VERIFIED and not self.is_company and not subscriptions_enabled():
+            # With subscriptions off the first listing needs a business type (gate e) and this step is the only door
+            # that sets it, so a verified owner who never chose one (KYC approved at this step, or verified and never
+            # subscribed) is sent to it, as the scout branch does. A rejected owner and an owner with no profile are
+            # unchanged, and so is everything with the switch on.
+            profile = getattr(self, "profile", None)
+            if profile is not None and not profile.business_kind:
+                return "plan_selection"
         if self.kyc_status in (self.VERIFIED, self.REJECTED):
             return "complete"
         try:
             profile = self.profile
         except BusinessOwnerProfile.DoesNotExist:
             return "business_info"
-        # The Ghana Card, certificate and TIN are optional: KYC rests on the
-        # Ghana Post address, so that and a contact phone finish this step.
-        if not (profile.gps_address and profile.business_contact_phone):
+        # The Ghana Card, certificate, TIN and Ghana Post code are optional: a contact phone finishes this step. The
+        # shop pin comes next, then the business type, then the terms. Payout details are no longer part of the chain
+        # (they are asked for on Profile and Settings, and gate withdrawals, not registration).
+        if not profile.business_contact_phone:
             return "business_info"
+        from .location_capture import has_pin  # local: location_capture imports this module
+
+        if not has_pin(profile):
+            return "shop_location"
         if not profile.business_kind or (subscriptions_enabled() and getattr(self, "subscription", None) is None):
             return "plan_selection"
-        if not profile.has_payout_details():
-            return "payment_info"
         if not profile.terms_accepted_at:
             return "terms"
         return "complete"
@@ -419,9 +430,14 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
         payout details" — and only once KYC has verified the business."""
         if self.kyc_status != self.VERIFIED:
             return "complete"
-        if subscriptions_enabled() and getattr(self, "subscription", None) is None:
-            return "plan_selection"
         profile = getattr(self, "profile", None)
+        # "plan_selection" is also the business-type step: with subscriptions off it asks only for the type, which the
+        # first listing needs (gate e). With them on the plan choice carries the type, so that rule is unchanged.
+        if subscriptions_enabled():
+            if getattr(self, "subscription", None) is None:
+                return "plan_selection"
+        elif not (profile and profile.business_kind):
+            return "plan_selection"
         if profile is None or not profile.has_payout_details():
             return "payment_info"
         return "complete"
@@ -536,6 +552,8 @@ class BusinessOwnerProfile(models.Model):
     )
     location_set_at = models.DateTimeField(null=True, blank=True)
     location_is_manual = models.BooleanField(default=False)
+    # A line the owner writes so a rider or a visitor can find the shop ("opposite the Kejetia main gate").
+    landmark = models.CharField(max_length=200, blank=True, default="")
     # The staff member who last set the pin (registration, a scout's update); null when the owner set it themself
     # (location capture) or when nobody did. The address maker-checker rule reads it: whoever placed the pin cannot be
     # the one who verifies the address.
@@ -625,6 +643,44 @@ class LocationCapture(models.Model):
 
     def __str__(self):
         return f"{self.source} location capture #{self.pk} for owner {self.business_owner_id}"
+
+
+class EmailConfirmationToken(models.Model):
+    """One mailed link that proves a business owner receives their email (self-serve onboarding, phase 2). A bearer token:
+    the raw value exists only in the email and the owner's browser, the row keeps its SHA-256 hash. `email` is the
+    normalised address the link went to, so a link never confirms an address it was not sent to. Rows are never deleted.
+    See `accounts.email_confirmation`."""
+
+    business_owner = models.ForeignKey(BusinessOwner, on_delete=models.CASCADE, related_name="email_confirmations")
+    email = models.CharField(max_length=254)
+    token_hash = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"email confirmation #{self.pk} for owner {self.business_owner_id}"
+
+
+class BusinessOwnerCategory(models.Model):
+    """One category a business chose, in the order it chose them. Position 0 is the main one, mirrored in
+    `BusinessOwnerProfile.business_category`. Write the list through `accounts.categories.set_categories` (API use); the
+    only other writer is `resync_after_category_delete`, run when a Category is deleted."""
+
+    profile = models.ForeignKey(BusinessOwnerProfile, on_delete=models.CASCADE, related_name="category_links")
+    category = models.ForeignKey("listings.Category", on_delete=models.CASCADE, related_name="+")
+    position = models.PositiveSmallIntegerField()
+
+    class Meta:
+        ordering = ["position"]
+        constraints = [
+            models.UniqueConstraint(fields=["profile", "category"], name="uniq_owner_category"),
+            models.UniqueConstraint(fields=["profile", "position"], name="uniq_owner_category_position"),
+        ]
 
 
 class ScoutAssignment(models.Model):

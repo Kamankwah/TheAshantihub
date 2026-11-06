@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import timedelta
 from decimal import Decimal
@@ -16,6 +17,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts import golive
 from accounts.direct import direct_q
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
 from activity.services import record as activity_record
@@ -25,7 +27,7 @@ from accounts.views import IsBusinessOwner
 from billing.models import Transaction
 from notifications.services import notify_business_owner, notify_staff_role
 
-from . import image_variants, lifecycle, revisions, variants
+from . import autopublish, image_variants, lifecycle, revisions, variants
 from .moderation_checks import (
     CONTACT_DETAILS_MESSAGE,
     blocking_failures,
@@ -65,6 +67,8 @@ from .pricing import effective_price_expr
 from .validators import validate_image_size
 from .visibility import hidden_business_q, sold_out_q
 from .visits import record_visit
+
+logger = logging.getLogger(__name__)
 
 
 def _with_rating_annotations(queryset):
@@ -873,18 +877,69 @@ class ListingSubmitView(ScopedOwner, APIView):
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
         self.check_object_permissions(request, listing)
-        if listing.status in (Listing.DROPPED, Listing.DISCONTINUED):
-            return Response({"status": "A dropped or discontinued listing cannot be submitted."}, status=400)
-        if listing.status not in (Listing.DRAFT, Listing.REJECTED):
-            return Response(
-                {"status": "Only draft or rejected listings can be submitted for review."}, status=400
-            )
         from . import media
 
-        if media.waiting_for_video(listing):
-            return Response({"detail": revisions.WAIT_FOR_VIDEO_MESSAGE}, status=400)
-        listing.status = Listing.PENDING_REVIEW
-        listing.save(update_fields=["status"])
+        published = False
+        # Read, decide and write under one row lock (as ModerationApproveView does): two submits at once cannot both
+        # publish, and a drop or discontinue that lands in between is never overwritten by this stale copy.
+        with db_transaction.atomic():
+            listing = generics.get_object_or_404(Listing.objects.select_for_update(of=("self",)), pk=pk)
+            if listing.status in (Listing.DROPPED, Listing.DISCONTINUED):
+                return Response({"status": "A dropped or discontinued listing cannot be submitted."}, status=400)
+            if listing.status not in (Listing.DRAFT, Listing.REJECTED):
+                return Response(
+                    {"status": "Only draft or rejected listings can be submitted for review."}, status=400
+                )
+
+            # Every way a business moves its own listing to review passes here (a new draft and a resubmitted rejected
+            # one alike), so this is the one go-live gate. Ashanti Direct's company owner and KYC-verified businesses
+            # are live.
+            codes = golive.blockers(listing.business_owner)
+            if codes:
+                blockers = [{"code": code, "message": golive.MESSAGES[code]} for code in codes]
+                return Response(
+                    {"code": "not_live", "detail": blockers[0]["message"], "blockers": blockers}, status=403,
+                )
+            if media.waiting_for_video(listing):
+                return Response({"detail": revisions.WAIT_FOR_VIDEO_MESSAGE}, status=400)
+            if settings.LISTING_AUTO_PUBLISH_ENABLED and autopublish.eligible(request.user, listing):
+                verdict = autopublish.evaluate(listing)
+                if verdict.outcome == autopublish.FIX:
+                    # Kept so the draft still says what to change after a reload; the listing itself stays as it was.
+                    listing.hold_reasons = verdict.details
+                    listing.save(update_fields=["hold_reasons"])
+                    return Response(
+                        {"code": "needs_fixes", "detail": verdict.reasons[0], "reasons": verdict.reasons}, status=400,
+                    )
+                published = verdict.outcome == autopublish.PASS
+                held = verdict.details if verdict.outcome == autopublish.HOLD else []
+            else:
+                held = []
+            if published:
+                listing.status = Listing.PUBLISHED
+                listing.rejection_reason = None
+                listing.reviewed_by = None
+                listing.reviewed_at = None
+                listing.hold_reasons = []
+                listing.save(update_fields=[
+                    "status", "rejection_reason", "reviewed_by", "reviewed_at", "hold_reasons", "updated_at",
+                ])
+            else:
+                listing.status = Listing.PENDING_REVIEW
+                listing.hold_reasons = held
+                listing.save(update_fields=["status", "hold_reasons", "updated_at"])
+        if published:
+            # The listing is live whatever happens to the notice, so a failure here never changes the answer.
+            try:
+                notify_business_owner(
+                    listing.business_owner, "listing_approved", "Listing published",
+                    body=f"“{listing.name}” is now live on AshantiHub.",
+                    link="/business-dashboard", icon="✅",
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("could not notify owner %s that listing %s was published", listing.business_owner_id, listing.pk)
+            autopublish.spot_check_first_listing(listing)
+            return Response({"id": listing.id, "status": listing.status})
         notify_staff_role(
             "listings.moderate", "listing_needs_moderation", "New listing for review",
             body=f"“{listing.name}” has been submitted for moderation.",
@@ -1070,9 +1125,14 @@ class ModerationApproveView(APIView):
                 return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
             if listing.status != Listing.PENDING_REVIEW:
                 return Response({"detail": "Only a listing waiting for review can be approved."}, status=400)
-            if listing.business_owner.kyc_status != BusinessOwner.VERIFIED:
+            codes = golive.blockers(listing.business_owner)
+            if codes:
                 return Response(
-                    {"detail": "Cannot publish a listing whose owner is not KYC-verified."}, status=400
+                    {
+                        "detail": golive.staff_message(codes), "code": "not_live",
+                        "blockers": [{"code": code, "message": golive.MESSAGES[code]} for code in codes],
+                    },
+                    status=400,
                 )
             if media.waiting_for_video(listing):
                 return Response({"detail": "Wait for the video to finish converting before approving."}, status=400)
@@ -1080,7 +1140,8 @@ class ModerationApproveView(APIView):
             listing.rejection_reason = None
             listing.reviewed_by = request.user
             listing.reviewed_at = timezone.now()
-            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+            listing.hold_reasons = []
+            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at", "hold_reasons"])
         notify_business_owner(
             listing.business_owner, "listing_approved", "Listing published",
             body=f"“{listing.name}” is now live on AshantiHub.",
@@ -1108,7 +1169,8 @@ class ModerationRejectView(APIView):
             listing.rejection_reason = reason
             listing.reviewed_by = request.user
             listing.reviewed_at = timezone.now()
-            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+            listing.hold_reasons = []
+            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at", "hold_reasons"])
             if taken_down:
                 revisions.close_for_take_down(listing, request.user)
         notify_business_owner(
@@ -1130,16 +1192,20 @@ class ModerationReReviewView(APIView):
         return [HasRolePermission("listings.moderate")]
 
     def post(self, request, pk):
-        listing = generics.get_object_or_404(Listing, pk=pk)
-        if listing.status != Listing.REJECTED:
-            return Response(
-                {"detail": "Only a rejected listing can be sent back for re-review."}, status=400
-            )
-        listing.status = Listing.PENDING_REVIEW
-        listing.rejection_reason = None
-        listing.reviewed_by = None
-        listing.reviewed_at = None
-        listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+        # Read, check and write under one row lock (as ModerationApproveView does): a listing auto-published or
+        # decided in between is never pulled back to pending by this stale copy.
+        with db_transaction.atomic():
+            listing = generics.get_object_or_404(Listing.objects.select_for_update(of=("self",)), pk=pk)
+            if listing.status != Listing.REJECTED:
+                return Response(
+                    {"detail": "Only a rejected listing can be sent back for re-review."}, status=400
+                )
+            listing.status = Listing.PENDING_REVIEW
+            listing.rejection_reason = None
+            listing.reviewed_by = None
+            listing.reviewed_at = None
+            listing.hold_reasons = []
+            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at", "hold_reasons"])
         notify_staff_role(
             "listings.moderate", "listing_needs_moderation", "Listing re-opened for review",
             body=f"“{listing.name}” has been re-opened and needs moderation again.",
