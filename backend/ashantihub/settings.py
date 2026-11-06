@@ -568,8 +568,6 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # instead of hanging a request when Redis is unreachable.
 CELERY_BROKER_TRANSPORT_OPTIONS = {"socket_connect_timeout": 1, "socket_timeout": 5}
 CELERY_TASK_PUBLISH_RETRY_POLICY = {"max_retries": 1, "interval_start": 0, "interval_step": 0.5, "interval_max": 0.5}
-# Each job's owning app adds its own entry; core/tests/test_background_jobs.py
-# fails if an entry names a task that doesn't exist. Times are Africa/Accra.
 # Staff roles that must use 2-step sign-in until a Super Admin saves a policy in Security settings (review BE-16): the
 # ones that move money (accountant, general manager, cosigner), approve work (operations) or read customer data
 # (support). Super Admin is always required. Set DJANGO_STAFF_2FA_DEFAULT_ROLES= (empty) to opt a server out.
@@ -580,6 +578,40 @@ STAFF_TWO_FACTOR_DEFAULT_ROLES = [] if TESTING else env.list(
 # A Hubtel checkout nobody paid is closed after this long and its stock/coupon reservation released (review BE-07).
 CHECKOUT_PENDING_TTL_MINUTES = env.int("CHECKOUT_PENDING_TTL_MINUTES", default=120)
 
+# Queues (review ARC-05). Money and reconciliation jobs run on their own `money` queue and worker, so a backlog of
+# report exports, video conversions or bulk texts can never delay a payment, a refund or a withdrawal poll. `slow`
+# holds the long or bulk jobs; everything else stays on the default `celery` queue. The worker commands in
+# infra/compose/docker-compose.yml consume exactly these three queues: a task routed to a queue no worker reads
+# would silently never run, so add a queue in both places (core/tests/test_celery_routing.py checks the settings side).
+# The first matching pattern wins, so the specific names come before their app's catch-all.
+CELERY_TASK_ROUTES = {
+    "wallets.tasks.send_due_vendor_texts": {"queue": "slow"},
+    "wallets.tasks.queue_vendor_digests": {"queue": "slow"},
+    "wallets.tasks.catch_up_digests": {"queue": "slow"},
+    "payments.tasks.*": {"queue": "money"},
+    "ledger.tasks.*": {"queue": "money"},
+    "wallets.tasks.*": {"queue": "money"},
+    "billing.tasks.*": {"queue": "money"},
+    "commission.tasks.*": {"queue": "money"},
+    "reports.tasks.*": {"queue": "slow"},
+    "insights.tasks.*": {"queue": "slow"},
+    "marketing.tasks.*": {"queue": "slow"},
+    "marketing.tasks_promos.*": {"queue": "slow"},
+    "listings.tasks.*": {"queue": "slow"},
+    "catalogue.tasks.*": {"queue": "slow"},
+    "portfolio.tasks.*": {"queue": "slow"},
+}
+CELERY_TASK_DEFAULT_QUEUE = "celery"
+# A job that hangs is killed instead of holding a worker slot for ever: soft limit raises SoftTimeLimitExceeded inside
+# the task (so it can log and clean up), the hard limit kills the child 60 s later. 10 minutes covers the longest
+# job (a PDF export or a 60 s video conversion).
+CELERY_TASK_SOFT_TIME_LIMIT = 600
+CELERY_TASK_TIME_LIMIT = 660
+# One job at a time per worker slot, so a long job does not hold prefetched short ones behind it.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
+# Each job's owning app adds its own entry; core/tests/test_background_jobs.py
+# fails if an entry names a task that doesn't exist. Times are Africa/Accra.
 CELERY_BEAT_SCHEDULE = {
     "payments-alert-unprocessed-webhooks": {
         "task": "payments.tasks.alert_unprocessed_webhooks",

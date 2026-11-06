@@ -240,7 +240,7 @@ fi
 # fails the deploy here, after sign-in and the public site already work on
 # the new release — never between the new API and its frontend.
 log "Starting the realtime service, worker and scheduler"
-"${COMPOSE[@]}" up -d realtime worker beat
+"${COMPOSE[@]}" up -d realtime worker worker-money beat
 
 log "Waiting for the realtime service to answer"
 for _ in $(seq 1 45); do
@@ -267,6 +267,20 @@ done
 "${COMPOSE[@]}" exec -T worker celery -A ashantihub inspect ping --timeout 5 >/dev/null || {
 	echo "FATAL: the Celery worker did not answer. Recent logs:" >&2
 	"${COMPOSE[@]}" logs --tail=60 worker >&2
+	exit 1
+}
+
+log "Waiting for the money worker"
+for _ in $(seq 1 30); do
+	if "${COMPOSE[@]}" exec -T worker-money celery -A ashantihub inspect ping --timeout 5 >/dev/null 2>&1; then
+		echo "  money worker answering"
+		break
+	fi
+	sleep 2
+done
+"${COMPOSE[@]}" exec -T worker-money celery -A ashantihub inspect ping --timeout 5 >/dev/null || {
+	echo "FATAL: the money worker did not answer. Recent logs:" >&2
+	"${COMPOSE[@]}" logs --tail=60 worker-money >&2
 	exit 1
 }
 

@@ -58,7 +58,11 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     env_file: ../../backend/.env
-    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --maxmemory 128mb --maxmemory-policy volatile-lru --save '' --appendonly no"]
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --maxmemory 128mb --maxmemory-policy volatile-lru --save '' --appendonly yes --appendfsync everysec"]
+    # AOF on a named volume: queued jobs (a pending refund, a text, an export) survive a Redis restart or a
+    # container re-create instead of being lost with the process (review ARC-05).
+    volumes:
+      - redis-data:/data
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
       interval: 10s
@@ -143,7 +147,21 @@ services:
   # session cleanup, the nightly activity check (see CELERY_BEAT_SCHEDULE).
   worker:
     <<: *app
-    command: ["celery", "-A", "ashantihub", "worker", "--loglevel=INFO", "--concurrency=2"]
+    command: ["celery", "-A", "ashantihub", "worker", "--loglevel=INFO", "--concurrency=2", "-Q", "celery,slow", "-n", "general@%h"]
+    volumes:
+      - ../../backend/media:/app/media
+      - ../../backend/private:/app/private
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Payments, refunds, withdrawals and ledger jobs on their own queue and process (review ARC-05): a backlog of exports,
+  # videos or bulk texts in `worker` cannot delay them.
+  worker-money:
+    <<: *app
+    command: ["celery", "-A", "ashantihub", "worker", "--loglevel=INFO", "--concurrency=2", "-Q", "money", "-n", "money@%h"]
     volumes:
       - ../../backend/media:/app/media
       - ../../backend/private:/app/private
@@ -178,3 +196,4 @@ services:
 volumes:
   pgdata:
   osrm-data:
+  redis-data:

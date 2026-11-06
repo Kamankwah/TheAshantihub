@@ -21,14 +21,14 @@ Status: `done` = fixed, tested, committed on the branch · `partial` = fixed as 
 | BE-11 | P2 | Cart price snapshot never revalidated | Reprice at checkout, prompt on change | queued |
 | BE-06 | P2 | Hubtel HTTP call inside a DB transaction holding row locks | `process_payment(defer_provider_call=True)` + `start_hubtel_checkout`; order checkout calls Hubtel after commit, a failure cancels the order and returns the stock (503 `payment_unavailable`) | **partial** — order checkout done; booking, ticket, event, top-up and subscription callers still call Hubtel inside their own (smaller) transactions |
 | BE-09 | P2 | 12 h web tokens, no revocation, no 401 recovery | `token_version` claim; suspension check for all kinds; shorter token + refresh | queued |
-| BE-13 | P3 | Webhook row written before the signature check; edge cases | Verify first; alert on `processed=False` | queued |
-| BE-14 | P3 | Reset token plaintext + query string; weak password rule | Hash token, fragment URL, invalidate older tokens, breached-password check | queued |
-| BE-16 | P3 | Staff 2FA mandatory only for Super Admin | Default-require for money/PII/approval roles | queued |
+| BE-13 | P3 | Webhook row written before the signature check; edge cases | Verify first; alert on `processed=False` | **done** signature verified before anything is stored (a rejected call leaves a size-only marker); `payments.tasks.alert_unprocessed_webhooks` logs signed-but-unapplied callbacks at ERROR |
+| BE-14 | P3 | Reset token plaintext + query string; weak password rule | Hash token, fragment URL, invalidate older tokens, breached-password check | **done** reset tokens SHA-256 at rest, `#fragment` link (frontend reads both), only the newest link works, common / all-digit passwords refused — live reset links issued before the deploy stop working |
+| BE-16 | P3 | Staff 2FA mandatory only for Super Admin | Default-require for money/PII/approval roles | **done** `STAFF_TWO_FACTOR_DEFAULT_ROLES` (accountant, general_manager, cosigner, operations, support) required until a Super Admin saves a policy — those staff must enrol 2-step at next sign-in |
 | ARC-07 | P3 | Insecure dev defaults (`ALLOWED_HOSTS=*`, CORS allow-all) | Fail closed when `DEBUG` is off | **done** `core.E001–E003` system checks (run by every `migrate`) |
-| ARC-03 | P2 | Health endpoint always 200; no external monitoring | `/healthz` vs `/readyz`; uptime probe; alerts | queued |
+| ARC-03 | P2 | Health endpoint always 200; no external monitoring | `/healthz` vs `/readyz`; uptime probe; alerts | **partial** `/api/readyz/` (DB-checked, 503 when down), `deploy.sh` waits on it, `infra/scripts/uptime_probe.sh` written — **not installed anywhere**: an external uptime service / second host is an owner action |
 | ARC-02 | P2 | No CI, no enforced merge gate | GitHub Actions + branch protection | queued (needs repo admin) |
-| ARC-04 | P2 | Deploy/rollback: restore-only rollback, mutable tags, migrate before swap | SHA-tagged images, migration lint, `lock_timeout` | queued |
-| ARC-05 | P3 | Celery: one queue, no time limits, non-durable Redis | `money` / `slow` queues, limits, AOF | queued |
+| ARC-04 | P2 | Deploy/rollback: restore-only rollback, mutable tags, migrate before swap | SHA-tagged images, migration lint, `lock_timeout` | **done** SHA-tagged images (5 kept), `rollback.sh`, `migrate` under `lock_timeout=15s`, `core/migration_lint.py` in CI. Rollback is code only; restoring data stays the pre-deploy dump |
+| ARC-05 | P3 | Celery: one queue, no time limits, non-durable Redis | `money` / `slow` queues, limits, AOF | **done** `money` / `slow` / default queues with a `worker-money` service, 10-min task limits, prefetch 1, Redis AOF on a volume. Not done: `acks_late` (needs a per-task idempotency audit) |
 | ARC-08 | P3 | Giant views (`OrderCheckoutView.post` 284 lines) | Extract checkout services | queued (after BE-05/06) |
 | BE-18 | P4 | PII in logs, Node 20 EOL, `.env` into db/redis, docs drift | Clean up | queued |
 | ARC-01 / DB-01 | P0 | Backups local, untested, 0644, unalerted | — | **moved** to the Database track (first item) |

@@ -23,7 +23,7 @@ cannot reach production data.
 
 Each environment's stack: `db`, `redis` (no host port), `web` (sync gunicorn, WSGI: all HTTP),
 `realtime` (gunicorn with one uvicorn worker on `ashantihub.asgi:application`: `/ws/` only),
-`worker` and `beat`. `web` stays WSGI so a hung view is still killed by `--timeout` and Postgres
+`worker`, `worker-money` and `beat`. `web` stays WSGI so a hung view is still killed by `--timeout` and Postgres
 connections stay capped.
 
 | | Production | Staging |
@@ -41,7 +41,7 @@ connections stay capped.
 | Path | Purpose |
 |---|---|
 | `backend/Dockerfile.prod` | Production image: gunicorn, non-root. (`backend/Dockerfile` remains the dev image.) |
-| `infra/compose/docker-compose.yml` | The `db`, `redis`, `web`, `realtime`, `worker` and `beat` stack, parameterised per environment; all but `db` and `redis` share one image (`APP_IMAGE`, no default). |
+| `infra/compose/docker-compose.yml` | The `db`, `redis`, `web`, `realtime`, `worker`, `worker-money` and `beat` stack, parameterised per environment; all but `db` and `redis` share one image (`APP_IMAGE`, no default). |
 | `infra/scripts/deploy.sh` | The deploy. Backs up, pulls, builds, migrates, publishes; on production also reinstalls the nginx templates when they changed. |
 | `infra/scripts/backup-db.sh` | Verified gzipped `pg_dump`. Runs before every deploy and nightly. |
 | `infra/scripts/install-hestia-templates.sh` | Installs the nginx templates below into HestiaCP. |
@@ -323,7 +323,7 @@ keeps the container's old environment and does not re-read `env_file`, so use
 `up -d --force-recreate` (or re-run `deploy.sh`):
 
 ```bash
-docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml up -d --force-recreate web realtime worker beat
+docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml up -d --force-recreate web realtime worker worker-money beat
 ```
 
 **Service area.** `routing/region.py` refuses checkouts outside an approximate
@@ -426,6 +426,16 @@ exim4 -qff                    # force a queue run
 exim4 -Mrm <id>               # drop a frozen message
 tail -f /var/log/exim4/mainlog
 ```
+
+## Background job queues
+
+`worker` consumes the `celery` (default) and `slow` queues; `worker-money` consumes `money` only, so payment expiry,
+refunds, withdrawals, ledger postings and the subscription clock never wait behind report exports, video conversions or
+bulk texts. The routing is `CELERY_TASK_ROUTES` in `backend/ashantihub/settings.py`; a new queue must be added there
+and to a worker's `-Q` list, or its tasks silently never run. Every task has a 10-minute soft / 11-minute hard time
+limit. Redis keeps an append-only file on the `redis-data` volume, so queued jobs survive a restart. The first deploy
+after this change re-creates Redis (jobs queued at that instant are lost - deploy at a quiet time) and starts
+`worker-money` (about 150 MB more memory per environment).
 
 ## Releases and rollback
 

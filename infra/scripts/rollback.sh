@@ -40,7 +40,7 @@ sed -i "s|^APP_IMAGE=.*|APP_IMAGE=$IMAGE|" "$APP_DIR/infra/compose/.env"
 COMPOSE=(docker compose -p "$PROJECT" -f "$APP_DIR/infra/compose/docker-compose.yml")
 
 echo "==> Rolling back to $IMAGE"
-"${COMPOSE[@]}" up -d --no-build web realtime worker beat
+"${COMPOSE[@]}" up -d --no-build web realtime worker worker-money beat
 
 echo "==> Waiting for the API"
 for _ in $(seq 1 45); do
