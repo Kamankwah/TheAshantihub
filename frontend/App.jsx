@@ -68,6 +68,7 @@ import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
 import EventCard, { formatEventDate } from "./components/EventCard.jsx";
 import OtpSignIn from "./components/OtpSignIn.jsx";
 import { isOtpChallenge, otpCode } from "./lib/otp.js";
+import { apiErrorMessage } from "./lib/apiErrorMessage.js";
 import { D, glassCard, ghs, tint } from "./components/dashboard/theme.js";
 import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
@@ -1302,7 +1303,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
       if(isOtpChallenge(result)){setOtp({challenge:result,purpose:"sign_up",accountType});setPassword("");return;}
       onSuccess(result);
     } catch (err) {
-      setError("Could not create your account. Please check your details.");
+      setError(apiErrorMessage(err,"Could not create your account. Please check your details."));
     } finally {
       setSubmitting(false);
     }

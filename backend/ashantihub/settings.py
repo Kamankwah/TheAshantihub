@@ -438,6 +438,8 @@ REST_FRAMEWORK = {
         # page the mailed link opens.
         "email_confirmation_send": "10/min",
         "email_confirmation_confirm": "20/min",
+        # The signed-in owner adding or correcting their own unconfirmed email (OwnerEmailView): 5 an hour per owner.
+        "owner_email_change": "5/hour",
         # A staff member emailing owners claim links (portfolio.views.ClaimLinkView).
         "claim_link": "5/hour",
         # A business asking to change its name, sign-in phone or email (portfolio.detail_changes).

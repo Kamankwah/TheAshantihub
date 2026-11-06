@@ -50,7 +50,7 @@ describe("registration api", () => {
   });
 
   it("posts_a_device_fix_with_its_accuracy", async () => {
-    apiMock.mockResolvedValue({ plus_code: "6CCHPV8F+9Q", tier: "unverified", tier_label: "", is_manual: false, landmark: "" });
+    apiMock.mockResolvedValue({ plus_code: "6CRWM9RJ+22", tier: "located", tier_label: "Location shared by the owner", is_manual: false, landmark: "" });
     await saveShopLocation({ lat: 6.69, lng: -1.62, accuracy_m: 18 });
     expect(apiMock).toHaveBeenCalledWith("/api/accounts/me/location/", { body: { lat: 6.69, lng: -1.62, accuracy_m: 18 } });
   });

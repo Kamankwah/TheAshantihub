@@ -9,7 +9,11 @@ image and price outlier checks are deliberately not built.
 * `pass`: publish at once.
 * `fix`:  the owner changes something and submits again; each reason is one plain sentence saying what to change.
 * `hold`: goes to the moderation queue as before; reasons are for staff and are never shown as a refusal.
+
+Every reason is a `{code, message}` pair (`Verdict.details`); the submit door stores them on `Listing.hold_reasons`, so
+staff see why a listing is held. The owner sees the fix sentences for a fix and only `OWNER_HOLD_NOTICE` for a hold.
 """
+import io
 import logging
 import re
 from dataclasses import dataclass, field
@@ -31,6 +35,20 @@ MIN_PHOTO_SIDE = 800
 MIN_NAME_LENGTH = 3
 MIN_DESCRIPTION_LENGTH = 40
 
+OWNER_HOLD_NOTICE = "We need to check this listing."
+
+# Codes stored on Listing.hold_reasons. A hold code is staff-only; a fix code's message is the sentence the owner is shown.
+PHOTO_MISSING, PHOTO_UNREADABLE, PHOTO_TOO_SMALL = "photo_missing", "photo_unreadable", "photo_too_small"
+NAME_TOO_SHORT, DESCRIPTION_TOO_SHORT, PRICE_MISSING = "name_too_short", "description_too_short", "price_missing"
+CATEGORY_KIND_MISMATCH, CONTACT_DETAILS = "category_kind_mismatch", "contact_details_in_text"
+PROHIBITED_TERM, DAILY_LIMIT, PHOTO_CHECK_FAILED = "prohibited_term", "daily_limit", "photo_check_unavailable"
+HOLD_CODES = frozenset({PROHIBITED_TERM, DAILY_LIMIT, PHOTO_CHECK_FAILED})
+# The only codes whose message may be shown to the owner: an allow-list, so a hold code added later is never leaked.
+FIX_CODES = frozenset({
+    PHOTO_MISSING, PHOTO_UNREADABLE, PHOTO_TOO_SMALL, NAME_TOO_SHORT, DESCRIPTION_TOO_SHORT, PRICE_MISSING,
+    CATEGORY_KIND_MISMATCH, CONTACT_DETAILS,
+})
+
 NO_PHOTO = "Add a main photo that is at least 800 by 800 pixels."
 UNREADABLE_PHOTO = "We could not read your main photo. Upload it again as a JPEG or PNG."
 PHOTO_CHECK_UNAVAILABLE = "The main photo could not be checked because file storage failed. Look at the photo yourself."
@@ -43,10 +61,18 @@ CONTACT_IN_TEXT = (
 )
 
 
+def detail(code, message):
+    return {"code": code, "message": message}
+
+
 @dataclass
 class Verdict:
     outcome: str
-    reasons: list = field(default_factory=list)
+    details: list = field(default_factory=list)
+
+    @property
+    def reasons(self):
+        return [item["message"] for item in self.details]
 
 
 def prohibited_terms():
@@ -57,33 +83,83 @@ class PhotoCheckUnavailable(Exception):
     """The photo could not be checked for a reason that is not the owner's: the storage itself failed."""
 
 
+class _StorageStream:
+    """Wraps the file object a storage backend gave us so that anything its reads raise is told apart from Pillow's own
+    decode failures: ConnectionError and TimeoutError are OSErrors, exactly as Pillow's are, so the exception type alone
+    cannot say whose fault a failed read is. `AttributeError` and `io.UnsupportedOperation` (a stream that cannot seek)
+    pass through untouched: Pillow reads those as "not seekable" and falls back to reading the whole file."""
+
+    def __init__(self, handle):
+        self._handle = handle
+
+    def _guard(self, name, *args):
+        try:
+            return getattr(self._handle, name)(*args)
+        except (AttributeError, io.UnsupportedOperation):
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise PhotoCheckUnavailable from exc
+
+    def read(self, *args):
+        return self._guard("read", *args)
+
+    def readline(self, *args):
+        return self._guard("readline", *args)
+
+    def readinto(self, *args):
+        return self._guard("readinto", *args)
+
+    def seek(self, *args):
+        return self._guard("seek", *args)
+
+    def tell(self):
+        return self._guard("tell")
+
+    def close(self):
+        return self._guard("close")
+
+    def __getattr__(self, name):
+        return getattr(self._handle, name)
+
+
 def _photo_reason(listing):
-    """None when the stored original of the main photo is at least 800 px each way. Only the image header is read,
-    so a huge file costs nothing. A file that is missing, empty or not an image is the owner's to fix (a reason). A
-    storage failure (the backend down or timing out) is not: it raises `PhotoCheckUnavailable`, so the listing goes to
-    staff instead of telling the owner to re-upload a fine photo."""
+    """None when the stored original of the main photo is at least 800 px each way, else a (code, message) pair. Only the
+    image header is read, so a huge file costs nothing. Opening and decoding are told apart:
+
+    * a file that is missing (`FileNotFoundError`), empty, truncated or
+      not an image (Pillow's `UnidentifiedImageError`, `DecompressionBombError`, and the `OSError`/`ValueError`/
+      `SyntaxError` it raises while parsing) is the owner's to fix;
+    * anything else - the storage backend failing on open or on a read (connection, timeout, botocore-style or generic
+      errors), or an unexpected error from the decoder - is not: it raises `PhotoCheckUnavailable`, so the listing goes to
+      staff with a logged warning instead of a 500 or telling the owner to re-upload a fine photo."""
     from PIL import Image, UnidentifiedImageError
 
     name = listing.main_photo.name if listing.main_photo else ""
     if not name:
-        return NO_PHOTO
+        return PHOTO_MISSING, NO_PHOTO
     try:
         handle = listing.main_photo.storage.open(name, "rb")
     except FileNotFoundError:
         logger.warning("main photo %r of listing %s is missing from storage", name, listing.pk)
-        return UNREADABLE_PHOTO
-    except Exception as exc:  # noqa: BLE001 - anything else is the storage failing, not a bad upload
-        logger.warning("storage failed reading main photo %r of listing %s", name, listing.pk, exc_info=True)
+        return PHOTO_UNREADABLE, UNREADABLE_PHOTO
+    except Exception as exc:  # noqa: BLE001 - anything else (a ValueError from a misconfigured storage too) is the storage, not a bad upload
+        logger.warning("storage failed opening main photo %r of listing %s", name, listing.pk, exc_info=True)
         raise PhotoCheckUnavailable from exc
     try:
         with handle:
-            with Image.open(handle) as image:
+            with Image.open(_StorageStream(handle)) as image:
                 width, height = image.size
-    except (UnidentifiedImageError, OSError, SyntaxError, ValueError, Image.DecompressionBombError):
+    except PhotoCheckUnavailable:
+        logger.warning("storage failed reading main photo %r of listing %s", name, listing.pk, exc_info=True)
+        raise
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, SyntaxError, ValueError, EOFError):
         logger.warning("could not read main photo %r of listing %s", name, listing.pk, exc_info=True)
-        return UNREADABLE_PHOTO
+        return PHOTO_UNREADABLE, UNREADABLE_PHOTO
+    except Exception as exc:  # noqa: BLE001 - an error we do not recognise is not proof the owner's photo is bad
+        logger.warning("unexpected error checking main photo %r of listing %s", name, listing.pk, exc_info=True)
+        raise PhotoCheckUnavailable from exc
     if width < MIN_PHOTO_SIDE or height < MIN_PHOTO_SIDE:
-        return (
+        return PHOTO_TOO_SMALL, (
             f"Your main photo is {width} by {height} pixels. "
             f"Upload one that is at least {MIN_PHOTO_SIDE} by {MIN_PHOTO_SIDE} pixels."
         )
@@ -97,36 +173,38 @@ def _category_reason(listing):
     if owner.is_company or profile is None or not profile.business_kind or category is None or not category.kind:
         return None
     if category.kind != profile.business_kind:
-        return f"Your business is registered for {profile.business_kind} listings only. Choose a {profile.business_kind} category."
+        return CATEGORY_KIND_MISMATCH, (
+            f"Your business is registered for {profile.business_kind} listings only. Choose a {profile.business_kind} category."
+        )
     return None
 
 
 def _fix_checks(listing):
-    """(fix reasons, photo_unavailable)."""
-    reasons = []
+    """(fix details, photo_unavailable)."""
+    found = []
     photo_unavailable = False
     try:
         photo = _photo_reason(listing)
     except PhotoCheckUnavailable:
         photo, photo_unavailable = None, True
     if photo:
-        reasons.append(photo)
+        found.append(detail(*photo))
     if len((listing.name or "").strip()) < MIN_NAME_LENGTH:
-        reasons.append(SHORT_NAME)
+        found.append(detail(NAME_TOO_SHORT, SHORT_NAME))
     if len((listing.description or "").strip()) < MIN_DESCRIPTION_LENGTH:
-        reasons.append(SHORT_DESCRIPTION)
+        found.append(detail(DESCRIPTION_TOO_SHORT, SHORT_DESCRIPTION))
     if listing.price_amount is None or listing.price_amount <= 0:
-        reasons.append(NO_PRICE)
+        found.append(detail(PRICE_MISSING, NO_PRICE))
     category = _category_reason(listing)
     if category:
-        reasons.append(category)
+        found.append(detail(*category))
     if contact_details_in(listing.name) or contact_details_in(listing.description):
-        reasons.append(CONTACT_IN_TEXT)
-    return reasons, photo_unavailable
+        found.append(detail(CONTACT_DETAILS, CONTACT_IN_TEXT))
+    return found, photo_unavailable
 
 
 def fix_reasons(listing):
-    return _fix_checks(listing)[0]
+    return [item["message"] for item in _fix_checks(listing)[0]]
 
 
 def _prohibited_hit(listing):
@@ -155,12 +233,14 @@ def hold_reasons(listing):
     reasons = []
     term = _prohibited_hit(listing)
     if term:
-        reasons.append(f"The name or description contains the word “{term}”, which needs a staff check.")
+        reasons.append(detail(PROHIBITED_TERM, f"The name or description contains the word “{term}”, which needs a staff check."))
     owner = listing.business_owner
     limit = settings.UNVERIFIED_DAILY_LISTING_LIMIT
     profile = getattr(owner, "profile", None)
     if location_tier.tier(profile) != location_tier.VERIFIED and submitted_today(owner, exclude_pk=listing.pk) >= limit:
-        reasons.append(f"This business has already submitted {limit} listings today and its location is not verified.")
+        reasons.append(detail(
+            DAILY_LIMIT, f"This business has already submitted {limit} listings today and its location is not verified.",
+        ))
     return reasons
 
 
@@ -170,7 +250,7 @@ def evaluate(listing):
         return Verdict(FIX, reasons)
     reasons = hold_reasons(listing)
     if photo_unavailable:
-        return Verdict(HOLD, [PHOTO_CHECK_UNAVAILABLE, *reasons])
+        return Verdict(HOLD, [detail(PHOTO_CHECK_FAILED, PHOTO_CHECK_UNAVAILABLE), *reasons])
     if reasons:
         return Verdict(HOLD, reasons)
     return Verdict(PASS, [])

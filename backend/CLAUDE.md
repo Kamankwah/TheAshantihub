@@ -247,8 +247,34 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   (the go-live rule needs one and the confirmation link goes out at sign-up), and its duplicate-email refusal says "A business
   owner with this email already exists." The Ghana Post code is optional on the server (blank is stored null). A staff approve
   refused for `not_live` returns staff wording (`golive.staff_message`, which falls back to the owner sentence or the bare code
-  for a blocker with no staff phrase) plus `blockers`. A photo-storage failure in the auto-publish photo check holds the listing
-  for staff instead of refusing it.
+  for a blocker with no staff phrase) plus `blockers`. The auto-publish photo check tells opening the file from decoding it: a missing file or a Pillow decode failure
+  (unidentifiable, truncated, decompression bomb, a ValueError while decoding) is the owner's fix; any other failure (a ValueError
+  on open, from a misconfigured storage, included), including a ConnectionError/TimeoutError
+  or botocore-style error raised by a storage read, holds the listing for staff with a logged warning (never a 500).
+  **Hold and fix reasons are stored:** `Listing.hold_reasons` is a list of `{code, message}` set by the submit door (a `fix` or a
+  `hold`) and cleared on publish, approve, reject, re-review, an undone scout listing and the next submit. Staff see it as
+  `hold_reasons` on the moderation queue (only while the listing is waiting for review, with the specific word or limit); the
+  owner's own listing carries `hold_notice` (one generic line for a hold, never the specifics) and `fix_reasons` (the plain
+  sentences for a draft or rejected listing sent back; an ALLOW-LIST of `autopublish.FIX_CODES`, so a hold code added later can
+  never reach an owner). An owner's edit (PATCH) of a draft or rejected listing clears the stored list.
+  **Self-serve add or correct email:** `POST business-owners/me/email/` {email, password} (owner only, `owner_email_change`
+  5/hour counting wrong passwords too, `activity_exempt`) is allowed ONLY while the owner has no email or the current one is not
+  confirmed; a confirmed email gets 403 `email_confirmed` pointing at Profile & Settings -> Request a change (the staff-verified
+  path). The email is a password-reset destination and a sign-in code channel, so: the CURRENT PASSWORD is checked first (400
+  `wrong_password`, one answer for wrong or missing, before any address check), `step_up.require(CONTACT_CHANGE,
+  force=escrow.enabled())` runs in the same atomic block as the save (403 `step_up_required`), and an ACTUAL change (not the same
+  address typed again) does what the staff-checked route does: payout cooling restarts, trusted devices and every phone
+  `MobileSession` end (the access token is stateless and carries no session id, so the phone's refresh dies too and the app signs in
+  again at the next refresh; web is unaffected), the sign-in phone is ALWAYS texted and the old email (if any) told as well (both after commit, send errors swallowed), a
+  payout-cooling in-app notice is added only when a destination was actually pushed back, and `business.email_changed` is recorded
+  last with masked values. The password is trimmed before it is checked. A business owner may receive and verify `contact_change`
+  step-up codes (`otp.views_step_up._codes_off`, ledger on); no other owner action opened up. The 200 body is `{email, sent,
+  side_effects: {signed_out_phone, payout_cooling}}`, both false for a same-address resend, so clients can say honestly what happened. It trims and lower-cases, refuses another business's email, a staff
+  email and a customer's verified recovery email with one wording (`email_confirmation.address_taken`), revokes the older live links and
+  mails a fresh one (`email_confirmation.set_email` then `send`; a daily-limit 429 still leaves the new address saved and the old
+  links revoked; that 429 carries `side_effects` too). **Known gap before the ledger or the OTP switches go on:** `otp.identity.contacts()` offers an UNCONFIRMED email as a
+  code channel for an owner, so an address set through this door becomes a step-up/sign-in code channel before it is proven. Decide how existing
+  owners with an unconfirmed email get confirmed (they were never sent a link), then exclude unconfirmed emails from `contacts()`. Never a token in a response.
   The self-registered step chain is `business_info` -> `shop_location` -> plan/type -> `terms`; `payment_info` is no longer in it
   (the scout chain still has it).
 - **Email confirmation (`accounts/email_confirmation.py`)** is a bearer link made like the shop-location one: only the SHA-256 hash

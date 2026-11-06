@@ -101,6 +101,38 @@ describe('AuthModal', () => {
     })
   })
 
+  describe('sign-up refusals', () => {
+    function fillCustomer() {
+      fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Kofi Mensah' } })
+      fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Create Free Account' }))
+    }
+    const refused = (status, body) => Object.assign(new Error(`failed with status ${status}`), { status, body })
+
+    it('shows the server field message when sign-up is refused (400)', async () => {
+      const auth = makeAuth({ registerCustomer: vi.fn().mockRejectedValue(refused(400, { phone: ['A customer with this phone already exists.'] })) })
+      render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
+      fillCustomer()
+      expect(await screen.findByText('A customer with this phone already exists.')).toBeInTheDocument()
+      expect(screen.queryByText(/Could not create your account/)).not.toBeInTheDocument()
+    })
+
+    it('shows the server detail when there is one', async () => {
+      const auth = makeAuth({ registerCustomer: vi.fn().mockRejectedValue(refused(400, { detail: 'Choose a stronger password.' })) })
+      render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
+      fillCustomer()
+      expect(await screen.findByText('Choose a stronger password.')).toBeInTheDocument()
+    })
+
+    it('keeps the generic sentence when the failure carries no server message', async () => {
+      const auth = makeAuth({ registerCustomer: vi.fn().mockRejectedValue(new Error('network')) })
+      render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
+      fillCustomer()
+      expect(await screen.findByText('Could not create your account. Please check your details.')).toBeInTheDocument()
+    })
+  })
+
   it('shows an error message and does not call onSuccess when login fails', async () => {
     const auth = makeAuth({ login: vi.fn().mockRejectedValue(new Error('API request failed with status 400')) })
     const onSuccess = vi.fn()

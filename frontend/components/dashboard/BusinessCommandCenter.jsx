@@ -238,7 +238,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
 
           <div style={{ maxWidth: 1080, width: "100%", margin: "0 auto", padding: "22px 18px 72px", flex: 1 }}>
             {/* The go-live rule's email blocker, on every tab: the server lists it until the link is opened. */}
-            {!showProfile && <EmailConfirmBanner goLive={user?.goLive} />}
+            {!showProfile && <EmailConfirmBanner goLive={user?.goLive} onSaved={() => auth.refreshUser?.()?.catch?.(() => {})} />}
             {showProfile ? (
               <ProfilePanel user={user} />
             ) : !canList ? (

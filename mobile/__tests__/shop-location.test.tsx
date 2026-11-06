@@ -30,7 +30,10 @@ const permission = Location.requestForegroundPermissionsAsync as jest.Mock;
 const position = Location.getCurrentPositionAsync as jest.Mock;
 const mapsReady = maps.mapsReady as jest.Mock;
 
-const SAVED = { plus_code: "6CCHPV8F+9Q", landmark: "Opposite the Total station", tier: "unverified", tier_label: "", is_manual: false };
+// What the server really answers: the plus code of the pin sent, tier "located" and its label.
+const SAVED = { plus_code: "6CRWM9QG+C6", landmark: "Opposite the Total station", tier: "located", tier_label: "Location shared by the owner", is_manual: false };
+const PIN_6_7 = { ...SAVED, plus_code: "6CRWP92C+22", tier_label: "Location shared by the owner", is_manual: true };
+const PIN_6_69 = { ...SAVED, plus_code: "6CRWM9RJ+22", is_manual: true };
 const LOCATION = "/api/accounts/me/location/";
 
 beforeEach(() => {
@@ -58,19 +61,29 @@ describe("shop location step", () => {
     await screen.findByText(/accurate to/);
     await fireEvent.changeText(screen.getByLabelText("Landmark (optional)"), "  Opposite the Total station ");
     await fireEvent.press(screen.getByRole("button", { name: "Save my shop location" }));
-    expect(await screen.findByText("6CCHPV8F+9Q")).toBeTruthy();
+    expect(await screen.findByText("6CRWM9QG+C6")).toBeTruthy();
     expect(apiMock).toHaveBeenCalledWith(LOCATION, { body: { lat: 6.688512, lng: -1.6244, accuracy_m: 18, landmark: "Opposite the Total station" } });
     expect(screen.getByText("This is where riders will collect. You can fix it later.")).toBeTruthy();
     expect(screen.getByText("Opposite the Total station")).toBeTruthy();
   });
 
-  it("shows_the_tier_label_only_when_the_server_sent_one", async () => {
-    apiMock.mockResolvedValue({ ...SAVED, tier_label: "Shop pin set" });
+  it("shows_the_servers_tier_label", async () => {
+    apiMock.mockResolvedValue(SAVED);
     await render(<ShopLocation />);
     await useMyLocation();
     await screen.findByText(/accurate to/);
     await fireEvent.press(screen.getByRole("button", { name: "Save my shop location" }));
-    expect(await screen.findByText("Shop pin set")).toBeTruthy();
+    expect(await screen.findByText("Location shared by the owner")).toBeTruthy();
+  });
+
+  it("shows_no_tier_line_when_the_server_sent_no_label", async () => {
+    apiMock.mockResolvedValue({ ...SAVED, tier_label: "" });
+    await render(<ShopLocation />);
+    await useMyLocation();
+    await screen.findByText(/accurate to/);
+    await fireEvent.press(screen.getByRole("button", { name: "Save my shop location" }));
+    await screen.findByText("6CRWM9QG+C6");
+    expect(screen.queryByText("Location shared by the owner")).toBeNull();
   });
 
   it("says_what_to_do_when_permission_is_denied_and_sends_nothing", async () => {
@@ -84,29 +97,29 @@ describe("shop location step", () => {
   });
 
   it("sends_a_pin_placed_on_the_map_as_manual_without_accuracy", async () => {
-    apiMock.mockResolvedValue({ ...SAVED, is_manual: true });
+    apiMock.mockResolvedValue(PIN_6_7);
     await render(<ShopLocation />);
     await fireEvent(screen.getByTestId("map"), "press", { nativeEvent: { coordinate: { latitude: 6.7, longitude: -1.63 } } });
     await fireEvent.press(screen.getByRole("button", { name: "Save my shop location" }));
-    await screen.findByText("6CCHPV8F+9Q");
+    await screen.findByText("6CRWP92C+22");
     expect(apiMock).toHaveBeenCalledWith(LOCATION, { body: { lat: 6.7, lng: -1.63, manual: true } });
   });
 
   it("dragging_the_pin_turns_a_device_fix_into_a_manual_pin", async () => {
-    apiMock.mockResolvedValue(SAVED);
+    apiMock.mockResolvedValue(PIN_6_69);
     await render(<ShopLocation />);
     await useMyLocation();
     await screen.findByText(/accurate to/);
     await fireEvent(screen.getByTestId("map-marker"), "dragEnd", { nativeEvent: { coordinate: { latitude: 6.69, longitude: -1.62 } } });
     await fireEvent.press(screen.getByRole("button", { name: "Save my shop location" }));
-    await screen.findByText("6CCHPV8F+9Q");
+    await screen.findByText("6CRWM9RJ+22");
     expect(apiMock).toHaveBeenCalledWith(LOCATION, { body: { lat: 6.69, lng: -1.62, manual: true } });
   });
 
   it("a_slow_phone_reading_does_not_overwrite_a_pin_placed_meanwhile", async () => {
     let arrive: (v: unknown) => void = () => {};
     position.mockReturnValue(new Promise((resolve) => { arrive = resolve; }));
-    apiMock.mockResolvedValue(SAVED);
+    apiMock.mockResolvedValue(PIN_6_7);
     await render(<ShopLocation />);
     await useMyLocation();
     await waitFor(() => expect(position).toHaveBeenCalled());
@@ -114,7 +127,7 @@ describe("shop location step", () => {
     await act(async () => { arrive({ coords: { latitude: 6.5, longitude: -1.5, accuracy: 12 } }); });
     expect(screen.queryByText(/accurate to/)).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Save my shop location" }));
-    await screen.findByText("6CCHPV8F+9Q");
+    await screen.findByText("6CRWP92C+22");
     expect(apiMock).toHaveBeenCalledWith(LOCATION, { body: { lat: 6.7, lng: -1.63, manual: true } });
   });
 

@@ -6,6 +6,7 @@ import shutil
 import tempfile
 from datetime import timedelta
 from decimal import Decimal
+from unittest import mock
 
 from django.core.files.base import ContentFile
 from django.test import TestCase, override_settings
@@ -15,6 +16,7 @@ from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile
+from accounts.testing import make_staff, staff_token
 from fraud.models import FraudFlag
 from listings import autopublish
 from listings.models import Category, Listing, Zone
@@ -365,3 +367,343 @@ class AutoPublishTests(TestCase):
         row.refresh_from_db()
         self.assertEqual(row.status, Listing.PUBLISHED)
         self.assertEqual(FraudFlag.objects.filter(business_owner=self.owner).count(), 1)
+
+
+class _Handle:
+    """A stand-in for a storage file object whose reads fail the way a remote store fails."""
+
+    def __init__(self, error):
+        self.error = error
+
+    def read(self, *args):
+        raise self.error
+
+    def seek(self, *args):
+        raise self.error
+
+    def tell(self):
+        raise self.error
+
+    def readline(self, *args):
+        raise self.error
+
+    def readinto(self, *args):
+        raise self.error
+
+    def close(self):
+        raise self.error
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class BotoLikeError(Exception):
+    """Not an OSError, like botocore's exceptions."""
+
+
+@override_settings(MEDIA_ROOT=MEDIA, LISTING_AUTO_PUBLISH_ENABLED=True, LISTING_PROHIBITED_TERMS=[], UNVERIFIED_DAILY_LISTING_LIMIT=20)
+class PhotoCheckExceptionTests(TestCase):
+    """Opening the file from storage is told apart from decoding it: a bad file is the owner's to fix, a storage or
+    unexpected failure holds the listing for staff, and nothing is ever a 500."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.zone = Zone.objects.get(name="Manhyia")
+        self.owner = make_owner("+233241460011")
+        self.row = Listing.objects.create(
+            business_owner=self.owner, category=Category.objects.get(slug="hotels"), zone=self.zone, name="Kente cloth",
+            description=LONG, contact_phone=self.owner.login_phone, price_amount=Decimal("120.00"),
+        )
+        self.row.main_photo.save("photo.jpg", image_file(900, 900), save=True)
+
+    def submit(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.owner, 'business_owner')}")
+        return self.client.post(f"/api/listings/mine/{self.row.pk}/submit/")
+
+    def assert_fix(self):
+        with self.assertLogs("listings.autopublish", "WARNING"):
+            response = self.submit()
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["reasons"], [autopublish.UNREADABLE_PHOTO])
+
+    def assert_hold(self):
+        with self.assertLogs("listings.autopublish", "WARNING"):
+            response = self.submit()
+        self.assertEqual((response.status_code, response.json().get("status")), (200, Listing.PENDING_REVIEW), response.content)
+        self.row.refresh_from_db()
+        self.assertEqual([item["code"] for item in self.row.hold_reasons], ["photo_check_unavailable"])
+
+    # ---- opening ----------------------------------------------------------------------------------------
+    def test_a_missing_file_is_a_fix(self):
+        with mock.patch.object(self.row.main_photo.storage, "open", side_effect=FileNotFoundError("gone")):
+            self.assert_fix()
+
+    def test_a_value_error_on_open_is_a_misconfigured_storage_and_holds(self):
+        with mock.patch.object(self.row.main_photo.storage, "open", side_effect=ValueError("bad storage config")):
+            self.assert_hold()
+
+    def test_a_non_seekable_stream_still_decodes_through_pillows_fallback(self):
+        with open(self.row.main_photo.path, "rb") as stored:
+            data = stored.read()
+
+        class NoSeek(io.BytesIO):
+            def seek(self, *args):
+                raise io.UnsupportedOperation("not seekable")
+
+            def tell(self):
+                raise io.UnsupportedOperation("not seekable")
+
+        with mock.patch.object(self.row.main_photo.storage, "open", return_value=NoSeek(data)):
+            self.assertEqual(self.submit().json()["status"], Listing.PUBLISHED)
+
+    def test_readline_readinto_and_close_go_through_the_same_guard(self):
+        stream = autopublish._StorageStream(_Handle(ConnectionError("reset")))
+        for call in (lambda: stream.readline(), lambda: stream.readinto(bytearray(4)), lambda: stream.close()):
+            with self.assertRaises(autopublish.PhotoCheckUnavailable):
+                call()
+
+    def test_connection_timeout_botocore_style_and_generic_errors_on_open_hold(self):
+        for error in (ConnectionError("down"), TimeoutError("slow"), BotoLikeError("EndpointConnectionError"),
+                      PermissionError("denied"), RuntimeError("anything")):
+            with self.subTest(error=type(error).__name__):
+                self.row.status = Listing.DRAFT
+                self.row.save(update_fields=["status"])
+                with mock.patch.object(self.row.main_photo.storage, "open", side_effect=error):
+                    self.assert_hold()
+
+    # ---- decoding ---------------------------------------------------------------------------------------
+    def test_an_unidentifiable_image_is_a_fix(self):
+        from PIL import UnidentifiedImageError
+
+        with mock.patch("PIL.Image.open", side_effect=UnidentifiedImageError("cannot identify")):
+            self.assert_fix()
+
+    def test_a_decompression_bomb_is_a_fix(self):
+        with mock.patch("PIL.Image.open", side_effect=Image.DecompressionBombError("too big")):
+            self.assert_fix()
+
+    def test_pillow_os_and_value_errors_are_fixes(self):
+        for error in (OSError("image file is truncated"), ValueError("bad header"), SyntaxError("bad png")):
+            with self.subTest(error=type(error).__name__):
+                with mock.patch("PIL.Image.open", side_effect=error):
+                    self.assert_fix()
+
+    def test_a_truncated_file_is_a_fix(self):
+        buffer = io.BytesIO()
+        Image.new("RGB", (900, 900), (1, 2, 3)).save(buffer, "PNG")
+        self.row.main_photo.save("cut.png", ContentFile(buffer.getvalue()[:20]), save=True)
+        self.assert_fix()
+
+    def test_a_storage_error_while_reading_the_bytes_holds_not_fixes(self):
+        # ConnectionError and TimeoutError are OSErrors, as Pillow's decode failures are; the read is still storage's.
+        for error in (ConnectionError("reset"), TimeoutError("read timed out"), BotoLikeError("ReadTimeoutError")):
+            with self.subTest(error=type(error).__name__):
+                self.row.status = Listing.DRAFT
+                self.row.save(update_fields=["status"])
+                with mock.patch.object(self.row.main_photo.storage, "open", return_value=_Handle(error)):
+                    self.assert_hold()
+
+    def test_an_unexpected_decoder_error_holds(self):
+        with mock.patch("PIL.Image.open", side_effect=RuntimeError("decoder bug")):
+            self.assert_hold()
+
+
+@override_settings(MEDIA_ROOT=MEDIA, LISTING_AUTO_PUBLISH_ENABLED=True, LISTING_PROHIBITED_TERMS=[], UNVERIFIED_DAILY_LISTING_LIMIT=20)
+class HoldReasonsTests(TestCase):
+    """The reasons a listing was held or sent back are stored on it: staff see exactly why, the owner sees a generic
+    line for a hold and the plain fix sentences for a fix, and the reasons never outlive the state they describe."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.zone = Zone.objects.get(name="Manhyia")
+        self.owner = make_owner("+233241460021")
+        self.staff = make_staff("operations", "hold-reasons@example.com")
+
+    def listing(self, **extra):
+        values = dict(
+            business_owner=self.owner, category=Category.objects.get(slug="hotels"), zone=self.zone, name="Kente cloth",
+            description=LONG, contact_phone=self.owner.login_phone, price_amount=Decimal("120.00"),
+        )
+        values.update(extra)
+        row = Listing.objects.create(**values)
+        row.main_photo.save("photo.jpg", image_file(900, 900), save=True)
+        return row
+
+    def as_owner(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.owner, 'business_owner')}")
+
+    def as_staff(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.staff)}")
+
+    def submit(self, row):
+        self.as_owner()
+        return self.client.post(f"/api/listings/mine/{row.pk}/submit/")
+
+    def held_listing(self):
+        with self.settings(LISTING_PROHIBITED_TERMS=["gun"]):
+            row = self.listing(description=LONG + " Includes a gun holster.")
+            self.assertEqual(self.submit(row).json()["status"], Listing.PENDING_REVIEW)
+        row.refresh_from_db()
+        return row
+
+    def queue_row(self, row, status="pending"):
+        self.as_staff()
+        body = self.client.get(f"/api/listings/moderation/pending/?status={status}").json()
+        return next(item for item in body if item["id"] == row.pk)
+
+    def test_a_prohibited_term_hold_stores_a_coded_reason(self):
+        row = self.held_listing()
+        self.assertEqual([item["code"] for item in row.hold_reasons], ["prohibited_term"])
+        self.assertIn("gun", row.hold_reasons[0]["message"])
+
+    def test_the_daily_limit_hold_stores_a_coded_reason(self):
+        with self.settings(UNVERIFIED_DAILY_LISTING_LIMIT=1):
+            self.listing(status=Listing.PUBLISHED)
+            row = self.listing()
+            self.assertEqual(self.submit(row).json()["status"], Listing.PENDING_REVIEW)
+        row.refresh_from_db()
+        self.assertEqual([item["code"] for item in row.hold_reasons], ["daily_limit"])
+
+    def test_a_storage_failure_hold_stores_a_coded_reason(self):
+        row = self.listing()
+        with mock.patch.object(row.main_photo.storage, "open", side_effect=ConnectionError("down")):
+            with self.assertLogs("listings.autopublish", "WARNING"):
+                self.submit(row)
+        row.refresh_from_db()
+        self.assertEqual([item["code"] for item in row.hold_reasons], ["photo_check_unavailable"])
+
+    def test_staff_queue_shows_why_a_listing_is_held(self):
+        row = self.held_listing()
+        item = self.queue_row(row)
+        self.assertEqual([entry["code"] for entry in item["hold_reasons"]], ["prohibited_term"])
+        self.assertIn("gun", item["hold_reasons"][0]["message"])
+
+    def test_staff_queue_hold_reasons_is_an_empty_list_for_a_plain_pending_listing(self):
+        with self.settings(LISTING_AUTO_PUBLISH_ENABLED=False):
+            row = self.listing()
+            self.submit(row)
+        self.assertEqual(self.queue_row(row)["hold_reasons"], [])
+
+    def test_the_owner_payload_hides_the_specifics_of_a_hold(self):
+        row = self.held_listing()
+        self.as_owner()
+        item = next(i for i in self.client.get("/api/listings/mine/").json() if i["id"] == row.pk)
+        self.assertEqual(item["hold_notice"], autopublish.OWNER_HOLD_NOTICE)
+        self.assertEqual(item["fix_reasons"], [])
+        self.assertNotIn("hold_reasons", item)
+        self.assertNotIn("gun", str(item["hold_notice"]).lower())
+        self.assertNotIn("prohibited", str(item).lower())
+
+    def test_a_fix_stores_the_sentences_and_the_owner_payload_shows_them(self):
+        row = self.listing(name="Ab")
+        response = self.submit(row)
+        self.assertEqual(response.status_code, 400)
+        row.refresh_from_db()
+        self.assertEqual(row.status, Listing.DRAFT)
+        self.assertEqual([item["code"] for item in row.hold_reasons], ["name_too_short"])
+        self.as_owner()
+        item = next(i for i in self.client.get("/api/listings/mine/").json() if i["id"] == row.pk)
+        self.assertEqual(item["fix_reasons"], [autopublish.SHORT_NAME])
+        self.assertIsNone(item["hold_notice"])
+
+    def test_a_clean_resubmit_after_a_fix_publishes_and_clears_the_reasons(self):
+        row = self.listing(name="Ab")
+        self.submit(row)
+        Listing.objects.filter(pk=row.pk).update(name="Kente cloth")
+        self.assertEqual(self.submit(row).json()["status"], Listing.PUBLISHED)
+        row.refresh_from_db()
+        self.assertEqual(row.hold_reasons, [])
+
+    def test_a_resubmit_that_is_held_again_replaces_the_old_reasons(self):
+        row = self.listing(name="Ab")
+        self.submit(row)
+        with self.settings(LISTING_PROHIBITED_TERMS=["gun"]):
+            Listing.objects.filter(pk=row.pk).update(name="Kente cloth", description=LONG + " a gun holster")
+            self.submit(row)
+        row.refresh_from_db()
+        self.assertEqual([item["code"] for item in row.hold_reasons], ["prohibited_term"])
+
+    def test_a_resubmit_with_the_switch_off_clears_the_reasons(self):
+        row = self.listing(name="Ab")
+        self.submit(row)
+        Listing.objects.filter(pk=row.pk).update(name="Kente cloth")
+        with self.settings(LISTING_AUTO_PUBLISH_ENABLED=False):
+            self.submit(row)
+        row.refresh_from_db()
+        self.assertEqual((row.status, row.hold_reasons), (Listing.PENDING_REVIEW, []))
+
+    def test_staff_approve_clears_the_reasons(self):
+        row = self.held_listing()
+        self.as_staff()
+        self.assertEqual(self.client.post(f"/api/listings/moderation/{row.pk}/approve/").status_code, 200)
+        row.refresh_from_db()
+        self.assertEqual((row.status, row.hold_reasons), (Listing.PUBLISHED, []))
+
+    def test_staff_reject_clears_the_reasons(self):
+        row = self.held_listing()
+        self.as_staff()
+        self.assertEqual(
+            self.client.post(f"/api/listings/moderation/{row.pk}/reject/", {"reason": "No"}, format="json").status_code, 200,
+        )
+        row.refresh_from_db()
+        self.assertEqual((row.status, row.hold_reasons), (Listing.REJECTED, []))
+
+    def test_re_review_of_a_rejected_listing_starts_with_no_stale_reasons(self):
+        row = self.listing(status=Listing.REJECTED, hold_reasons=[{"code": "daily_limit", "message": "old"}])
+        self.as_staff()
+        self.assertEqual(self.client.post(f"/api/listings/moderation/{row.pk}/re-review/").status_code, 200)
+        row.refresh_from_db()
+        self.assertEqual(row.hold_reasons, [])
+
+    def test_a_published_listing_never_shows_reasons(self):
+        row = self.listing(status=Listing.PUBLISHED, hold_reasons=[{"code": "daily_limit", "message": "stale"}])
+        self.assertEqual(self.queue_row(row, "approved")["hold_reasons"], [])
+        self.as_owner()
+        item = next(i for i in self.client.get("/api/listings/mine/").json() if i["id"] == row.pk)
+        self.assertEqual((item["hold_notice"], item["fix_reasons"]), (None, []))
+
+    def test_only_allow_listed_fix_codes_reach_the_owner(self):
+        row = self.listing(
+            status=Listing.DRAFT,
+            hold_reasons=[
+                {"code": "name_too_short", "message": autopublish.SHORT_NAME},
+                {"code": "a_future_hold_code", "message": "Staff-only wording"},
+                {"code": "prohibited_term", "message": "contains gun"},
+            ],
+        )
+        self.as_owner()
+        item = next(i for i in self.client.get("/api/listings/mine/").json() if i["id"] == row.pk)
+        self.assertEqual(item["fix_reasons"], [autopublish.SHORT_NAME])
+        self.assertNotIn("Staff-only", str(item))
+        self.assertIsNone(item["hold_notice"])
+
+    def test_every_code_autopublish_can_emit_as_a_fix_is_allow_listed(self):
+        self.assertEqual(
+            autopublish.FIX_CODES & autopublish.HOLD_CODES, frozenset(),
+        )
+        row = self.listing(name="Ab", description="x", price_amount=None)
+        row.main_photo.delete(save=True)
+        codes = {item["code"] for item in autopublish.evaluate(row).details}
+        self.assertTrue(codes and codes <= autopublish.FIX_CODES, codes)
+
+    def test_editing_a_draft_clears_the_stored_fix_list(self):
+        row = self.listing(name="Ab")
+        self.submit(row)
+        row.refresh_from_db()
+        self.assertTrue(row.hold_reasons)
+        self.as_owner()
+        response = self.client.patch(f"/api/listings/mine/{row.pk}/", {"name": "Kente cloth"}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        row.refresh_from_db()
+        self.assertEqual(row.hold_reasons, [])
+        self.assertEqual(response.json()["fix_reasons"], [])
+
+    def test_editing_a_listing_with_nothing_stored_changes_nothing_else(self):
+        row = self.listing()
+        self.as_owner()
+        self.assertEqual(self.client.patch(f"/api/listings/mine/{row.pk}/", {"name": "Kente"}, format="json").status_code, 200)
+        row.refresh_from_db()
+        self.assertEqual((row.name, row.hold_reasons), ("Kente", []))

@@ -20,8 +20,9 @@ from django.utils import timezone
 
 from otp.models import EMAIL, VerifiedContact
 
-from .claims import ClaimError, hash_token
+from .claims import ClaimError, hash_token, mask_email
 from .emails import send_email_confirmation_email
+from .serializers import EMAIL_TAKEN
 from .models import BusinessOwner, EmailConfirmationToken
 
 LINK_TTL = timedelta(hours=48)
@@ -34,6 +35,10 @@ REVOKED = "This link has been replaced by a newer one. Open the newest email fro
 EXPIRED = "This link has expired. Ask for a new one from your dashboard."
 TOO_MANY = "Five confirmation emails a day is the most one business can be sent. Try again tomorrow."
 NO_EMAIL = "Add an email address to your account first."
+EMAIL_CONFIRMED = (
+    "Your email address is already confirmed, so it can only be changed with our team's check. "
+    "Open Profile & Settings and choose Request a change."
+)
 
 
 def normalise(email):
@@ -67,6 +72,89 @@ def send(owner):
             business_owner=locked, email=email, token_hash=hash_token(raw), expires_at=now + LINK_TTL,
         )
     send_email_confirmation_email(locked.email, link_url(raw))
+
+
+def address_taken(owner, address):
+    """True when `address` is already another contact in the system: another business owner's email (any letter case),
+    a staff member's email, or a customer's verified recovery email (a place that account's codes go). One answer for all
+    three, so the refusal never says which kind it was."""
+    from portfolio.detail_changes import _recovery_clash
+    from portfolio.proposals import contact_duplicate_errors
+
+    return bool(contact_duplicate_errors(owner, {"email": address}).get("email") or _recovery_clash("email", address))
+
+
+NO_SIDE_EFFECTS = {"signed_out_phone": False, "payout_cooling": False}
+
+
+def set_email(owner, address, *, request=None):
+    """Let the signed-in owner add or correct their own email, but ONLY while none is on file or the one on file has not
+    been confirmed (a confirmed address is the staff-verified change path: `portfolio.detail_changes`). Raises ClaimError
+    `email_confirmed` (403), or `email_taken` (400) when the address is another contact's (see `address_taken`).
+
+    The address is a password-reset destination and a sign-in code channel, so an ACTUAL change (not the same address
+    typed again) does what the staff-checked route does (`portfolio.detail_changes.approval_apply`): payout destinations
+    wait the cooling period again, trusted devices and every phone session end (owner web tokens are stateless and
+    cannot be revoked), the sign-in phone is always texted and the old email (if any) told after commit, and the owner is told in the app when payout cooling restarts, and
+    `business.email_changed` is recorded with masked values, last, because record() holds the activity chain lock until
+    commit. Normalised address saved; every live confirmation link (made for the old address) is revoked either way.
+
+    Call it inside the view's transaction, after the step-up check, and then call `send` outside it. The owner row is
+    locked first, as in `send`, so a confirm and a correction cannot interleave. Returns (the locked owner, side_effects): `signed_out_phone` is true only if a phone session was actually ended,
+    `payout_cooling` only if a payout destination was actually pushed back; both false for a same-address resend."""
+    from activity.services import record
+    from notifications.services import notify_business_owner
+    from otp import devices, notices
+    from otp.models import SMS, TrustedDevice
+    from wallets.holder_details import restart_cooling
+
+    from . import mobile_sessions
+
+    address = normalise(address)
+    with transaction.atomic():
+        locked = BusinessOwner.objects.select_for_update().get(pk=owner.pk)  # 1. the owner
+        if is_confirmed(locked):
+            raise ClaimError(EMAIL_CONFIRMED, code="email_confirmed", status_code=403)
+        if address_taken(locked, address):
+            raise ClaimError(EMAIL_TAKEN, code="email_taken", status_code=400)
+        before = normalise(locked.email)
+        now = timezone.now()
+        EmailConfirmationToken.objects.filter(
+            business_owner=locked, used_at__isnull=True, revoked_at__isnull=True,
+        ).update(revoked_at=now)  # 2. the live links for the old address
+        if before == address:
+            return locked, dict(NO_SIDE_EFFECTS)
+        locked.email = address
+        locked.save(update_fields=["email"])
+        cooling = restart_cooling(locked, now)
+        devices_ended = devices.revoke_all(locked, TrustedDevice.STAFF_RECOVERY, now=now)
+        sessions_ended = mobile_sessions.revoke_all("business_owner", locked.pk)
+        # After commit. The sign-in phone is ALWAYS texted: the old email (if any) was never proven to reach the owner, so a
+        # thief who typed an address cannot be the only one told. The old email is told as well. `contact_changed` swallows
+        # send errors, so a notice never undoes the change.
+        phone = (locked.login_phone or "").strip()
+        if phone:
+            text = notices.CONTACT_CHANGED_TEXT[EMAIL] if before else notices.EMAIL_ADDED_TEXT
+            transaction.on_commit(lambda: notices.contact_changed(locked, SMS, phone, now=now, text=text))
+        if before:
+            transaction.on_commit(lambda: notices.contact_changed(locked, EMAIL, before, now=now))
+        if cooling:
+            # Mirrors the staff route's wording and its condition (only when a destination was actually pushed back), so an
+            # owner with no payout details is not alarmed. Before record(): that holds the activity chain lock.
+            notify_business_owner(
+                locked, "email_changed", "Your email address was changed",
+                body="Your payout accounts wait the cooling period again before they can receive money.",
+                link="detail-changes", icon="🪪",
+            )
+        record(
+            locked, "business.email_changed", target=locked,
+            summary="Added or corrected the business's own email before confirming it",
+            before={"email": mask_email(before) if before else None},
+            after={"email": mask_email(address), "destinations_cooling": cooling, "trusted_devices_ended": devices_ended,
+                   "phone_sessions_ended": sessions_ended},
+            request=request,
+        )
+    return locked, {"signed_out_phone": bool(sessions_ended), "payout_cooling": bool(cooling)}
 
 
 def _find(raw):
