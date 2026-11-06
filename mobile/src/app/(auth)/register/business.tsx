@@ -72,14 +72,15 @@ export default function BusinessInfo() {
   const [photoError, setPhotoError] = useState<string | null>(null);
 
   async function submit() {
-    const problem = ghanaPostError(gps);
+    // Optional: the shop pin on the next step places the business. A code that is typed must still be a valid one.
+    const typed = gps.trim();
+    const problem = typed ? ghanaPostError(gps) : null;
     if (problem) return setErrors({ gps: problem });
-    const address = normalizeGhanaPost(gps);
     setBusy(true);
     setErrors({});
     try {
       await saveBusinessInfo({
-        gps_address: address,
+        ...(typed ? { gps_address: normalizeGhanaPost(gps) } : {}),
         business_contact_phone: phone.trim(),
         is_formal: formal,
         ...(card.trim() ? { ghana_card_number: card.trim() } : {}),
@@ -109,10 +110,10 @@ export default function BusinessInfo() {
         <Upload label="Card back" value={back} onPick={setBack} onError={setPhotoError} />
       </View>
       {photoError ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 13 }}>{photoError}</Text> : null}
-      <Field label="Ghana Post GPS address" value={gps} onChangeText={setGps} autoCapitalize="characters" placeholder="AK-039-5028" helper="Example: AK-039-5028" error={errors.gps} />
+      <Field label="Ghana Post GPS address" value={gps} onChangeText={setGps} autoCapitalize="characters" placeholder="AK-039-5028" helper="Optional. We use your shop pin." error={errors.gps} />
       <Field label="Business contact phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" />
       {errors.form ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 13 }}>{errors.form}</Text> : null}
-      <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>Our team verifies every business before it goes live.</Text>
+      <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>Confirm your email and share your shop pin to start listing. Verification later earns you the Verified mark.</Text>
       <Button label="Continue" onPress={submit} loading={busy} />
     </Screen>
   );

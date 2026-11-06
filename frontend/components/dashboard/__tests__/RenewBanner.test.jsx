@@ -82,12 +82,12 @@ describe('RenewBanner in the business dashboard', () => {
     )
     return seen
   }
-  function renderDashboard(kycStatus) {
+  function renderDashboard(kycStatus, goLive = { live: false, blockers: [{ code: 'no_pin', message: 'Share your shop location.' }] }) {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={queryClient}>
         <BusinessCommandCenter initialTab="deliveries" onExit={vi.fn()} PaymentComponent={() => null}
-          user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus }} auth={{ isLoading: false, logout: vi.fn() }} />
+          user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus, goLive }} auth={{ isLoading: false, logout: vi.fn() }} />
       </QueryClientProvider>,
     )
   }
@@ -100,11 +100,18 @@ describe('RenewBanner in the business dashboard', () => {
     expect(await screen.findByRole('heading', { name: '💳 Subscription' })).toBeInTheDocument()
   })
 
-  it('is not shown while KYC is pending', async () => {
+  it('is not shown while the owner is not live', async () => {
     const seen = mockDashboard(subscription())
     renderDashboard('pending')
     await waitFor(() => expect(seen.subscription).toBe(true))
-    expect(screen.getByText(/under review/i)).toBeInTheDocument()
+    expect(screen.getByText('To start listing, finish these:')).toBeInTheDocument()
     expect(screen.queryByText(/Your subscription has ended/)).not.toBeInTheDocument()
+  })
+
+  it('is shown to an owner who is KYC-pending but live', async () => {
+    mockDashboard(subscription())
+    renderDashboard('pending', { live: true, blockers: [] })
+    expect(await screen.findByText('Your subscription has ended. Renew by 20 Oct to keep your listings visible.')).toBeInTheDocument()
+    expect(screen.queryByText('To start listing, finish these:')).not.toBeInTheDocument()
   })
 })

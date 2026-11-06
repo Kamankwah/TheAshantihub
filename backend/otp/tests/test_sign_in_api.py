@@ -201,7 +201,7 @@ class SignUpTests(SignInApiBase):
         self.assertTrue(VerifiedContact.objects.filter(account_type="customer", account_id=yaa.pk, destination="+233245550000").exists())
 
     def test_a_business_registration_does_too(self):
-        response = self.client.post("/api/accounts/business-owners/register/", {"full_name": "Kofi Boateng", "login_phone": "+233207770000", "password": PASSWORD}, format="json")
+        response = self.client.post("/api/accounts/business-owners/register/", {"full_name": "Kofi Boateng", "login_phone": "+233207770000", "email": "kofi@example.com", "password": PASSWORD}, format="json")
         self.assertEqual(response.status_code, 201, response.content)
         self.assertNotIn("token", response.json())
         self.assertTrue(response.json()["otp_required"])
@@ -326,8 +326,13 @@ class RegistrationWithoutContactTests(SignInApiBase):
 
     @SIGN_UP_ON
     def test_owner_with_only_a_foreign_phone_is_refused_and_nothing_is_created(self):
+        # A business must give an email, so a business can no longer arrive with no usable contact; the missing email is
+        # what is refused.
         response = self.register_owner(login_phone="+447700900124")
-        self.assertEqual((response.status_code, response.json()), (400, {"login_phone": [NO_CODE]}))
+        self.assertEqual(
+            (response.status_code, response.json()),
+            (400, {"email": ["Enter your email so we can send you a confirmation link."]}),
+        )
         self.assertFalse(BusinessOwner.objects.filter(full_name="Yaw").exists())
 
     @SIGN_UP_ON
@@ -339,7 +344,8 @@ class RegistrationWithoutContactTests(SignInApiBase):
     @SIGN_UP_ON
     def test_a_ghana_mobile_without_an_email_still_registers(self):
         self.assertEqual(self.register_customer(phone="0245550001").status_code, 201)
-        self.assertEqual(self.register_owner(login_phone="0207770001").status_code, 201)
+        self.assertEqual(self.register_owner(login_phone="0207770001").status_code, 400)  # a business must give an email
+        self.assertEqual(self.register_owner(login_phone="0207770001", email="yaw1@example.com").status_code, 201)
 
     @SIGN_UP_ON
     def test_an_existing_foreign_customer_owing_the_sign_up_check_gets_no_channel(self):
@@ -351,6 +357,6 @@ class RegistrationWithoutContactTests(SignInApiBase):
         response = self.register_customer(phone="+447700900123")
         self.assertEqual(response.status_code, 201)
         self.assertEqual(set(response.json()), {"id", "full_name", "phone", "email", "token"})
-        owner = self.register_owner(login_phone="+447700900124")
+        owner = self.register_owner(login_phone="+447700900124", email="yaw2@example.com")
         self.assertEqual(owner.status_code, 201)
         self.assertIn("token", owner.json())

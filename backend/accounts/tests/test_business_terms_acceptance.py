@@ -23,7 +23,7 @@ class TermsAcceptanceTests(TestCase):
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(owner, 'business_owner')}")
         return client
 
-    def test_cannot_accept_terms_before_business_and_payment_info_are_complete(self):
+    def test_cannot_accept_terms_before_the_earlier_steps_are_complete(self):
         owner = self._make_owner()
         client = self._client_for(owner)
         response = client.post("/api/accounts/business-owners/me/terms/")
@@ -31,10 +31,10 @@ class TermsAcceptanceTests(TestCase):
         owner.profile.refresh_from_db()
         self.assertIsNone(owner.profile.terms_accepted_at)
 
-    def test_accepts_terms_once_business_and_payment_info_are_complete(self):
+    def test_accepts_terms_once_the_earlier_steps_are_complete(self):
         owner = self._make_owner(
             ghana_card_number="GHA-222333444-5", gps_address="AK-039-6000",
-            business_contact_phone="+233206665599", is_formal=False,
+            business_contact_phone="+233206665599", is_formal=False, lat="6.690000", lng="-1.620000",
             ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg",
             default_payout_method="momo", payout_momo_number="+233206665599",
         )

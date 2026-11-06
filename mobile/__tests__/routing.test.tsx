@@ -17,7 +17,9 @@ describe("role routing", () => {
 
   it("an_unfinished_business_registration_resumes_where_it_stopped", () => {
     expect(routeFor("signedIn", "business_owner", { registrationStep: "payment_info", kycStatus: "pending" })).toBe("/register/payout");
-    expect(routeFor("signedIn", "business_owner", { registrationStep: "complete", kycStatus: "pending" })).toBe("/register/submitted");
+    // A finished sign-up lands on the home screen, which shows the checklist; it never waits behind a screen for staff approval.
+    expect(routeFor("signedIn", "business_owner", { registrationStep: "complete", kycStatus: "pending" })).toBe("/business/home");
+    expect(routeFor("signedIn", "business_owner", { registrationStep: "complete", kycStatus: "rejected" })).toBe("/business/home");
     expect(routeFor("signedIn", "business_owner", { registrationStep: "complete", kycStatus: "verified" })).toBe("/business/home");
   });
 

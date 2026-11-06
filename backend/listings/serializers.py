@@ -4,7 +4,7 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
 
-from accounts import direct
+from accounts import direct, location_tier
 from accounts.models import BusinessOwner
 from billing.models import Subscription
 
@@ -187,13 +187,19 @@ class BusinessOwnerMiniSerializer(serializers.ModelSerializer):
     # kyc_status stays for older clients. Querysets feeding this select_related("business_owner__profile"), and
     # no Ghana Card detail is ever serialized here.
     identity_verified = serializers.BooleanField(read_only=True)
+    # How far the shop's location can be trusted (a label, not a gate), read from the same selected profile.
+    location_tier = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessOwner
-        fields = ["id", "full_name", "name", "kyc_status", "identity_verified", "is_ashanti_direct"]
+        fields = ["id", "full_name", "name", "kyc_status", "identity_verified", "is_ashanti_direct", "location_tier"]
 
     def get_is_ashanti_direct(self, obj):
         return direct.is_direct(obj)
+
+    def get_location_tier(self, obj):
+        tier = location_tier.tier(getattr(obj, "profile", None))
+        return {"tier": tier, "label": location_tier.LABELS[tier]}
 
 
 def live_sale_ends_at(obj):

@@ -36,7 +36,7 @@ const FAQS: Faq[] = [
   {
     question: "How do I register my business?",
     answer:
-      "Tap \"Register Your Business\" from the About or Business page, follow the guided form (business details, category, zone and verification documents), and our team will review and verify your submission before it goes live.",
+      "Tap \"Register Your Business\" from the About or Business page, follow the guided form, confirm your email and share your shop pin to start listing. Verification later earns you the Verified mark.",
   },
   {
     question: "How do I order from or ask about a listing?",

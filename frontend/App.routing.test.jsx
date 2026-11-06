@@ -1097,6 +1097,27 @@ describe('AshantiHub routing — /share-location', () => {
   }, 8000)
 })
 
+// Self-serve go-live — /confirm-email is the owner's emailed "confirm your email" page (token in the #fragment, POSTed
+// in the body), a standalone public page: not the storefront and not a 404.
+describe('AshantiHub routing — /confirm-email', () => {
+  it('opens the confirm-email page and confirms the token from the fragment', async () => {
+    let body = null
+    server.use(
+      http.post('http://localhost:8000/api/accounts/email-confirmation/confirm/', async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json({ email_confirmed: true })
+      }),
+    )
+    window.history.replaceState(null, '', '/confirm-email#token=mail-tok')
+    renderStaffAt('/confirm-email')
+    expect(await screen.findByText(/Your email is confirmed/, {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByTestId('location').textContent).toBe('/confirm-email')
+    expect(body).toEqual({ token: 'mail-tok' })
+    expect(screen.queryByText('Page Not Found')).not.toBeInTheDocument()
+    window.history.replaceState(null, '', '/')
+  }, 8000)
+})
+
 // Dark mode covers every page (owner decision, plan M1B task 4): the app root
 // and the marketplace home both paint from the --ah-* theme tokens.
 describe('AshantiHub — dark theme scope', () => {

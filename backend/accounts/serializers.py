@@ -7,6 +7,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
 from . import sessions
 from .authentication import ACCOUNT_MODELS
@@ -91,6 +92,9 @@ def _capture_marketing_consent(subject, choices, context):
 
 
 NO_CODE_CONTACT = "Enter a Ghana mobile number or an email so we can send you a code."
+
+
+EMAIL_REQUIRED = "Enter your email so we can send you a confirmation link."
 
 
 def _require_usable_contact(unsaved_account, field):
@@ -339,6 +343,19 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
 class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
+    # Required: the go-live rule needs a confirmed email, and the confirmation link goes out at sign-up. The model
+    # field is unique, so the unique validator is kept (as the model field would add it).
+    email = serializers.EmailField(
+        max_length=254,
+        error_messages={
+            "required": EMAIL_REQUIRED, "blank": EMAIL_REQUIRED, "null": EMAIL_REQUIRED,
+        },
+        validators=[
+            UniqueValidator(
+                queryset=BusinessOwner.objects.all(), message="A business owner with this email already exists.",
+            )
+        ],
+    )
     kyc_status = serializers.CharField(read_only=True)
     marketing_consent = serializers.JSONField(write_only=True, required=False)
 
@@ -687,19 +704,22 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
             if errors:
                 raise serializers.ValidationError(errors)
 
-        # Only the Ghana Post GPS address is mandatory, and it must be in the
-        # Ashanti Region. The Ghana Card, certificate and TIN are optional:
-        # KYC rests on the address. Checked against the effective
-        # (post-update) value so a partial edit of an already-complete
-        # profile still passes. A code sent now is stored in its canonical form (AK-039-5028), never as typed, so the
-        # staff screens and the duplicate check see one shape.
+        # The Ghana Post GPS address is optional: the shop pin is the address. A code that is typed must be in the
+        # Ashanti Region (and well formed); it is checked against the effective (post-update) value so a partial edit
+        # of an already-complete profile still passes. A code sent now is stored in its canonical form (AK-039-5028),
+        # never as typed, so the staff screens and the duplicate check see one shape. Blank is stored as None.
         gps = data.get("gps_address", self.instance.gps_address)
-        try:
-            canonical = validate_ashanti_gps(gps)
-        except serializers.ValidationError as exc:
-            raise serializers.ValidationError({"gps_address": exc.detail})
-        if "gps_address" in data:
-            data["gps_address"] = canonical
+        if isinstance(gps, str) and not gps.strip():
+            gps = None
+        if gps is not None:
+            try:
+                canonical = validate_ashanti_gps(gps)
+            except serializers.ValidationError as exc:
+                raise serializers.ValidationError({"gps_address": exc.detail})
+            if "gps_address" in data:
+                data["gps_address"] = canonical
+        elif "gps_address" in data:
+            data["gps_address"] = None
 
         return data
 

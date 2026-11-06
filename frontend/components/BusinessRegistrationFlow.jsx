@@ -12,18 +12,23 @@ import { useMyCategories } from "../hooks/useMyCategories.js";
 import CategoryChips from "./CategoryChips.jsx";
 import { BUSINESS_TERMS_COPY } from "./businessTerms.js";
 import OtpSignIn from "./OtpSignIn.jsx";
+import ShopLocationStep from "./ShopLocationStep.jsx";
 import { isOtpChallenge } from "../lib/otp.js";
 
 // ─── BusinessRegistrationFlow ─────────────────────────────────────────────
 // The 5-stage business-owner registration wizard: Personal Information (only
-// when no account exists yet) -> Business Information (KYC) -> Plan
-// Selection (subscription plan + free trial) -> Payment Account Information
-// (payout) -> Terms & Conditions. One component with internal step state,
+// when no account exists yet) -> Business Information (contact phone; the rest
+// is optional) -> Shop Location (the pin) -> Business Type (or Plan Selection
+// while subscriptions are offered) -> Terms & Conditions. Payment Account
+// Information (payout) is no longer part of a self-registered owner's chain
+// (the server never reports it for them; payout details are asked for on
+// Profile and gate withdrawals); the form stays only for a scout-registered
+// owner, whose chain still ends there. One component with internal step state,
 // not five separate AshantiHub pages — these steps are a single sequential
 // flow, matching how BusinessDashboard is one component with internal tabs
 // rather than several pages.
 //
-// business_info/plan_selection/payment_info steps call auth.refreshUser()
+// business_info/shop_location/plan_selection/payment_info steps call auth.refreshUser()
 // after their own submit and route to whatever registration_step the server
 // reports next, rather than always advancing to a hardcoded next step — this
 // is what makes the "Fix and Resubmit after rejection" entry point (from
@@ -46,12 +51,17 @@ import { isOtpChallenge } from "../lib/otp.js";
 const STEP_LABELS = {
   personal_info: "1 of 5: Personal Information",
   business_info: "2 of 5: Business Information",
-  plan_selection: "3 of 5: Choose Your Plan",
-  payment_info: "4 of 5: Payment Account Information",
+  shop_location: "3 of 5: Your shop location",
+  plan_selection: "4 of 5: Choose Your Plan",
+  payment_info: "5 of 5: Payment Account Information",
   terms: "5 of 5: Terms & Conditions",
 };
 
-const TYPE_STEP_LABEL = "3 of 5: Your Business Type";
+const TYPE_STEP_LABEL = "4 of 5: Your Business Type";
+
+// The steps the server can report as next, in the order a self-registered owner meets them (payment_info is only ever
+// reported for a scout-registered owner).
+const KNOWN_STEPS = ["business_info", "shop_location", "plan_selection", "payment_info", "terms"];
 
 const CYCLE_OPTIONS = [1, 3, 6, 12];
 
@@ -151,9 +161,15 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
   const handlePersonalInfoSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    // Email is required: the confirmation link goes there, and a business with no confirmed email cannot go live.
+    const typedEmail = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typedEmail)) {
+      setError("Enter your email so we can send you a confirmation link.");
+      return;
+    }
     setSubmitting(true);
     try {
-      const result = await auth.registerBusinessOwner({ full_name: fullName, login_phone: phone, email: email || undefined, password });
+      const result = await auth.registerBusinessOwner({ full_name: fullName, login_phone: phone, email: typedEmail, password });
       if (isOtpChallenge(result)) {
         setOtpChallenge(result);
         setPassword("");
@@ -168,36 +184,42 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
     }
   };
 
+  // Go wherever the server says the registration stands: the dashboard when it is complete, otherwise the next step.
+  const goToServerStep = (fresh) => {
+    if (fresh.registration_step === "complete") {
+      setShowBizDash(true);
+    } else if (KNOWN_STEPS.includes(fresh.registration_step)) {
+      setStep(fresh.registration_step);
+    } else {
+      setError("Something went wrong determining your next step. Please refresh the page and try again.");
+    }
+  };
+
   const handleBusinessInfoSubmit = async (e) => {
     e.preventDefault();
     setError(null);
-    // Only a valid Ashanti Region Ghana Post address (and a contact phone) is required. The Ghana Card,
-    // certificate and TIN are optional here; they are only needed later for the verified check mark.
-    const gpsProblem = ghanaPostError(gpsAddress);
+    // Only the contact phone is required. The Ghana Post address, Ghana Card, certificate and TIN are optional here (the
+    // shop pin on the next step is what places the business); a Ghana Post address that is typed must still be a valid
+    // Ashanti Region one. The Ghana Card is only needed later for the verified check mark.
+    const typedGps = gpsAddress.trim();
+    const gpsProblem = typedGps ? ghanaPostError(gpsAddress) : null;
     if (gpsProblem === GHANA_POST_REGION) {
       // The shared check words the region rule for a shopper's delivery; a business is told it is about admission.
       setError("AshantiHub only admits businesses in the Ashanti Region — your Ghana Post address must be an Ashanti Region address (it begins with “A”, e.g. AK-039-5028)."); return;
     }
     if (gpsProblem) { setError(gpsProblem); return; }
-    const gps = normalizeGhanaPost(gpsAddress);
     setSubmitting(true);
     try {
       // Send only what the owner actually filled in: no empty strings, no null files.
-      const payload = { gps_address: gps, business_contact_phone: businessContactPhone, is_formal: isFormal };
+      const payload = { business_contact_phone: businessContactPhone, is_formal: isFormal };
+      if (typedGps) payload.gps_address = normalizeGhanaPost(gpsAddress);
       if (ghanaCardNumber.trim()) payload.ghana_card_number = ghanaCardNumber.trim();
       if (ghanaCardFront) payload.ghana_card_front_image = ghanaCardFront;
       if (ghanaCardBack) payload.ghana_card_back_image = ghanaCardBack;
       if (isFormal && businessRegCertificate) payload.business_reg_certificate = businessRegCertificate;
       if (isFormal && tin.trim()) payload.tin = tin.trim();
       await auth.submitBusinessInfo(payload);
-      const fresh = await auth.refreshUser();
-      if (fresh.registration_step === "complete") {
-        setShowBizDash(true);
-      } else if (["business_info", "plan_selection", "payment_info", "terms"].includes(fresh.registration_step)) {
-        setStep(fresh.registration_step);
-      } else {
-        setError("Something went wrong determining your next step. Please refresh the page and try again.");
-      }
+      goToServerStep(await auth.refreshUser());
     } catch (err) {
       const detail = err?.body && typeof err.body === "object"
         ? [].concat(...Object.values(err.body))[0]
@@ -219,14 +241,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
         ...categoryPayloadFor(skipCategories),
       });
       queryClient.invalidateQueries({ queryKey: ["my-categories"] });
-      const fresh = await auth.refreshUser();
-      if (fresh.registration_step === "complete") {
-        setShowBizDash(true);
-      } else if (["business_info", "plan_selection", "payment_info", "terms"].includes(fresh.registration_step)) {
-        setStep(fresh.registration_step);
-      } else {
-        setError("Something went wrong determining your next step. Please refresh the page and try again.");
-      }
+      goToServerStep(await auth.refreshUser());
     } catch (err) {
       // The server's own refusal (e.g. a category list it will not take) is shown as sent; the picks stay.
       setError(apiErrorMessage(err, "Could not save your plan selection. Please try again."));
@@ -245,14 +260,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
     try {
       await apiPost("/api/billing/business-kind/", { business_kind: businessKind, ...categoryPayloadFor(skipCategories) });
       queryClient.invalidateQueries({ queryKey: ["my-categories"] });
-      const fresh = await auth.refreshUser();
-      if (fresh.registration_step === "complete") {
-        setShowBizDash(true);
-      } else if (["business_info", "plan_selection", "payment_info", "terms"].includes(fresh.registration_step)) {
-        setStep(fresh.registration_step);
-      } else {
-        setError("Something went wrong determining your next step. Please refresh the page and try again.");
-      }
+      goToServerStep(await auth.refreshUser());
     } catch (err) {
       if (err?.body?.code === "use_plan_selection") {
         // Subscriptions came back on: show the server's line and reload the plans.
@@ -284,14 +292,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
         payout_bank_account_name: payoutBankAccountName || undefined,
         payout_bank_name: payoutBankName || undefined,
       });
-      const fresh = await auth.refreshUser();
-      if (fresh.registration_step === "complete") {
-        setShowBizDash(true);
-      } else if (["business_info", "plan_selection", "payment_info", "terms"].includes(fresh.registration_step)) {
-        setStep(fresh.registration_step);
-      } else {
-        setError("Something went wrong determining your next step. Please refresh the page and try again.");
-      }
+      goToServerStep(await auth.refreshUser());
     } catch (err) {
       setError("Could not save your payment details. Please check your details.");
     } finally {
@@ -417,7 +418,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
             <h2 style={{color:C.ink,fontSize:"1.05rem",margin:"0 0 14px"}}>Create your business account</h2>
             <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={inputStyle}/>
             <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" required style={inputStyle}/>
-            <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" style={inputStyle}/>
+            <input value={email} onChange={e=>setEmail(e.target.value)} type="text" inputMode="email" autoComplete="email" placeholder="Email" aria-required="true" style={inputStyle}/>
             <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={inputStyle}/>
             <button type="submit" disabled={submitting} style={submitStyle}>{submitting?"Creating account…":"Continue"}</button>
           </form>
@@ -434,8 +435,8 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
             <label style={labelStyle}>Ghana Card — back
               <input type="file" accept="image/*" onChange={e=>setGhanaCardBack(e.target.files[0] || null)} style={inputStyle}/>
             </label>
-            <input value={gpsAddress} onChange={e=>setGpsAddress(e.target.value)} onBlur={()=>{ if (!ghanaPostError(gpsAddress)) setGpsAddress(normalizeGhanaPost(gpsAddress)); }} placeholder="Ghana Post GPS address (e.g. AK-039-5028)" required style={inputStyle}/>
-            <div style={{color:C.warnInk,fontSize:"0.68rem",margin:"-6px 0 10px",lineHeight:1.4}}>📍 Ashanti Region only — your Ghana Post address must be an Ashanti Region address (it begins with “A”).</div>
+            <input value={gpsAddress} onChange={e=>setGpsAddress(e.target.value)} onBlur={()=>{ if (!ghanaPostError(gpsAddress)) setGpsAddress(normalizeGhanaPost(gpsAddress)); }} placeholder="Ghana Post GPS address (e.g. AK-039-5028)" style={inputStyle}/>
+            <div style={{color:C.inkDim,fontSize:"0.68rem",margin:"-6px 0 10px",lineHeight:1.4}}>Optional. We use your shop pin.</div>
             <input value={businessContactPhone} onChange={e=>setBusinessContactPhone(e.target.value)} placeholder="Business contact phone (AshantiHub support only, not shown to shoppers)" required style={inputStyle}/>
             <label style={{...labelStyle,display:"flex",alignItems:"center",gap:8}}>
               <input type="checkbox" checked={isFormal} onChange={e=>setIsFormal(e.target.checked)}/>
@@ -450,6 +451,10 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
             </>}
             <button type="submit" disabled={submitting} style={submitStyle}>{submitting?"Saving…":"Continue"}</button>
           </form>
+        )}
+
+        {step==="shop_location" && (
+          <ShopLocationStep auth={auth} onDone={goToServerStep}/>
         )}
 
         {step==="plan_selection" && typeOnly && (

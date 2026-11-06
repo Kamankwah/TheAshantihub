@@ -162,6 +162,8 @@ class ListingCRUDTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_submit_moves_draft_to_pending_review(self):
+        # A KYC-verified owner is grandfathered live (accounts.golive), so no email or pin is needed here.
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(kyc_status=BusinessOwner.VERIFIED)
         listing = Listing.objects.create(
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name="Ready Listing", description="D.", contact_phone="+233207445566",

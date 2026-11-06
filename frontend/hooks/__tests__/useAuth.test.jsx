@@ -170,6 +170,25 @@ describe('useAuth', () => {
     })
   })
 
+  it('submitBusinessInfo sends no gps_address when it is omitted, and the server accepts that', async () => {
+    let seen
+    server.use(
+      http.patch('http://localhost:8000/api/accounts/business-owners/me/profile/', async ({ request }) => {
+        const formData = await request.formData()
+        seen = { gps: formData.get('gps_address'), phone: formData.get('business_contact_phone') }
+        return HttpResponse.json({ business_contact_phone: '+233201112233', gps_address: null, registration_step: 'shop_location' })
+      }),
+    )
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let answer
+    await act(async () => {
+      answer = await result.current.submitBusinessInfo({ business_contact_phone: '+233201112233', is_formal: false, gps_address: '' })
+    })
+    expect(seen).toEqual({ gps: null, phone: '+233201112233' })
+    expect(answer.registration_step).toBe('shop_location')
+  })
+
   it('updateProfile patches customers/me/profile/ as multipart/form-data', async () => {
     server.use(
       http.patch('http://localhost:8000/api/accounts/customers/me/profile/', async ({ request }) => {

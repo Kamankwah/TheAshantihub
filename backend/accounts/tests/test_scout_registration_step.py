@@ -1,7 +1,7 @@
 """A scout-registered owner's registration steps (plan decision 3): the scout
 captured the business details and the claim records the terms, so the owner
 only ever sees "pick a plan" and "add payout details" — once KYC has verified
-the business. Self-registered owners are pinned unchanged here too."""
+the business. Self-registered owners are pinned here too (their chain ends terms, never payout details)."""
 from datetime import timedelta
 
 from django.core.cache import cache
@@ -106,10 +106,18 @@ class ScoutStepWithSubscriptionsOffTests(TestCase):
         self.assertEqual(_step(_owner(BusinessOwner.SCOUT, **details)), "complete")
 
 
-class SelfRegisteredStepUnchangedTests(TestCase):
-    def test_a_self_registered_owner_without_an_address_still_needs_business_info(self):
-        details = dict(SCOUT_CAPTURE, gps_address=None)
+PIN = dict(lat="6.690000", lng="-1.620000")
+
+
+class SelfRegisteredStepTests(TestCase):
+    def test_a_self_registered_owner_without_a_contact_phone_still_needs_business_info(self):
+        details = dict(SCOUT_CAPTURE, business_contact_phone=None)
         self.assertEqual(_step(_owner(BusinessOwner.SELF, **details)), "business_info")
+
+    def test_a_self_registered_owner_without_an_address_is_asked_for_the_shop_location(self):
+        # The Ghana Post code is optional now; the pin is the next step.
+        details = dict(SCOUT_CAPTURE, gps_address=None)
+        self.assertEqual(_step(_owner(BusinessOwner.SELF, **details)), "shop_location")
 
     def test_registration_step_skips_documents(self):
         # Address and contact phone are all the business-info step now needs:
@@ -118,11 +126,11 @@ class SelfRegisteredStepUnchangedTests(TestCase):
             with self.subTest(is_formal=formal):
                 owner = _owner(
                     BusinessOwner.SELF, phone=f"+23324122000{int(formal)}", business_kind="product",
-                    gps_address="AK-039-5028", business_contact_phone="+233241220001", is_formal=formal,
+                    gps_address="AK-039-5028", business_contact_phone="+233241220001", is_formal=formal, **PIN,
                 )
                 self.assertEqual(_step(owner), "plan_selection")
                 _subscribe(owner)
-                self.assertEqual(_step(owner), "payment_info")
+                self.assertEqual(_step(owner), "terms")
 
     def test_a_verified_self_registered_owner_is_complete_without_a_plan(self):
         owner = _owner(BusinessOwner.SELF, kyc_status=BusinessOwner.VERIFIED, **SCOUT_CAPTURE)
@@ -130,10 +138,10 @@ class SelfRegisteredStepUnchangedTests(TestCase):
 
     def test_a_self_registered_owner_still_ends_on_terms(self):
         owner = _owner(BusinessOwner.SELF, **FULL_SELF_SERVICE)
+        self.assertEqual(_step(owner), "shop_location")
+        BusinessOwnerProfile.objects.filter(business_owner=owner).update(**PIN)
         self.assertEqual(_step(owner), "plan_selection")
         _subscribe(owner)
-        self.assertEqual(_step(owner), "payment_info")
-        BusinessOwnerProfile.objects.filter(business_owner=owner).update(**MOMO)
         self.assertEqual(_step(owner), "terms")
         BusinessOwnerProfile.objects.filter(business_owner=owner).update(terms_accepted_at=timezone.now())
         self.assertEqual(_step(owner), "complete")

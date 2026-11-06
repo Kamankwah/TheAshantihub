@@ -57,6 +57,8 @@ class BusinessOwnerModelTests(TestCase):
 
 
 class ComputeRegistrationStepTests(TestCase):
+    PIN = dict(lat="6.690000", lng="-1.620000")  # a shared shop location: the step after business_info
+
     def _make_owner_with_profile(self, kyc_status=BusinessOwner.PENDING, **profile_overrides):
         owner = BusinessOwner.objects.create(
             full_name="Step Trader", login_phone="+233209990001", password_hash="x",
@@ -68,7 +70,7 @@ class ComputeRegistrationStepTests(TestCase):
     def _give_plan_selection(self, owner, kind="product"):
         # Sets business_kind + creates an active Subscription, i.e. completes
         # the "plan_selection" step so compute_registration_step() can move
-        # on to payment_info/terms/complete.
+        # on to terms/complete.
         plan, _ = SubscriptionPlan.objects.get_or_create(
             tier=f"test_{kind}_plan",
             defaults=dict(
@@ -91,33 +93,34 @@ class ComputeRegistrationStepTests(TestCase):
 
     def test_formal_business_without_documents_leaves_business_info(self):
         owner = self._make_owner_with_profile(
-            gps_address="AK-1", business_contact_phone="+233201111111", is_formal=True,
+            gps_address="AK-1", business_contact_phone="+233201111111", **self.PIN, is_formal=True,
         )
         self.assertEqual(owner.compute_registration_step(), "plan_selection")
 
-    def test_business_info_needs_the_address_and_contact_phone(self):
+    def test_business_info_needs_only_the_contact_phone(self):
+        # The Ghana Post code is optional now; the next step is the shop pin.
         no_address = self._make_owner_with_profile(business_contact_phone="+233201111111")
-        self.assertEqual(no_address.compute_registration_step(), "business_info")
+        self.assertEqual(no_address.compute_registration_step(), "shop_location")
         BusinessOwner.objects.all().delete()
-        no_phone = self._make_owner_with_profile(gps_address="AK-1")
+        no_phone = self._make_owner_with_profile(gps_address="AK-1", **self.PIN)
         self.assertEqual(no_phone.compute_registration_step(), "business_info")
 
     def test_address_and_phone_without_card_or_images_leave_business_info(self):
         owner = self._make_owner_with_profile(
-            gps_address="AK-1", business_contact_phone="+233201111111",
+            gps_address="AK-1", business_contact_phone="+233201111111", **self.PIN,
         )
         self.assertEqual(owner.compute_registration_step(), "plan_selection")
 
     def test_business_info_complete_needs_plan_selection(self):
         owner = self._make_owner_with_profile(
-            ghana_card_number="GHA-2", gps_address="AK-2", business_contact_phone="+233201111112",
+            ghana_card_number="GHA-2", gps_address="AK-2", business_contact_phone="+233201111112", **self.PIN,
             ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg", is_formal=False,
         )
         self.assertEqual(owner.compute_registration_step(), "plan_selection")
 
     def test_plan_selection_without_business_kind_still_needs_plan_selection(self):
         owner = self._make_owner_with_profile(
-            ghana_card_number="GHA-2b", gps_address="AK-2b", business_contact_phone="+233201111112",
+            ghana_card_number="GHA-2b", gps_address="AK-2b", business_contact_phone="+233201111112", **self.PIN,
             ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg", is_formal=False,
         )
         # A Subscription with no business_kind set still isn't "plan_selection"-complete.
@@ -133,26 +136,27 @@ class ComputeRegistrationStepTests(TestCase):
         )
         self.assertEqual(owner.compute_registration_step(), "plan_selection")
 
-    def test_plan_selection_complete_needs_payment_info(self):
+    def test_plan_selection_complete_needs_terms(self):
         owner = self._make_owner_with_profile(
-            ghana_card_number="GHA-2c", gps_address="AK-2c", business_contact_phone="+233201111112",
+            ghana_card_number="GHA-2c", gps_address="AK-2c", business_contact_phone="+233201111112", **self.PIN,
             ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg", is_formal=False,
         )
         self._give_plan_selection(owner)
-        self.assertEqual(owner.compute_registration_step(), "payment_info")
+        self.assertEqual(owner.compute_registration_step(), "terms")
 
-    def test_momo_selected_without_number_still_needs_payment_info(self):
+    def test_payout_details_are_not_a_registration_step(self):
+        # Moved to Profile and Settings: a momo choice with no number does not hold the owner at registration.
         owner = self._make_owner_with_profile(
-            ghana_card_number="GHA-3", gps_address="AK-3", business_contact_phone="+233201111113",
+            ghana_card_number="GHA-3", gps_address="AK-3", business_contact_phone="+233201111113", **self.PIN,
             ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg", is_formal=False,
             default_payout_method="momo",
         )
         self._give_plan_selection(owner)
-        self.assertEqual(owner.compute_registration_step(), "payment_info")
+        self.assertEqual(owner.compute_registration_step(), "terms")
 
-    def test_payment_info_complete_needs_terms(self):
+    def test_payout_details_given_still_need_terms(self):
         owner = self._make_owner_with_profile(
-            ghana_card_number="GHA-4", gps_address="AK-4", business_contact_phone="+233201111114",
+            ghana_card_number="GHA-4", gps_address="AK-4", business_contact_phone="+233201111114", **self.PIN,
             ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg", is_formal=False,
             default_payout_method="momo", payout_momo_number="+233201111114",
         )
@@ -161,7 +165,7 @@ class ComputeRegistrationStepTests(TestCase):
 
     def test_terms_accepted_is_complete(self):
         owner = self._make_owner_with_profile(
-            ghana_card_number="GHA-5", gps_address="AK-5", business_contact_phone="+233201111115",
+            ghana_card_number="GHA-5", gps_address="AK-5", business_contact_phone="+233201111115", **self.PIN,
             ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg", is_formal=False,
             default_payout_method="momo", payout_momo_number="+233201111115",
             terms_accepted_at=timezone.now(),
