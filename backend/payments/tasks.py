@@ -40,3 +40,24 @@ def expire_stale_checkouts():
         except Exception:
             logger.exception("could not expire checkout session %s", pk)
     return expired
+
+
+@shared_task
+def alert_unprocessed_webhooks():
+    """Make signed Hubtel callbacks that were NOT applied visible (review BE-13): an amount mismatch, an unknown
+    reference, a success with no amount, a late payment. Each one is a customer who may have been charged without
+    getting their order, so it is logged at ERROR (Sentry) for reconciliation. Runs every 30 minutes and looks at the
+    30-minute window that ended 15 minutes ago, so each event is reported once and a callback that is still being
+    retried has had time to succeed."""
+    from .models import WebhookEvent
+
+    now = timezone.now()
+    stuck = list(
+        WebhookEvent.objects.filter(
+            signature_valid=True, processed=False,
+            received_at__gte=now - timedelta(minutes=45), received_at__lt=now - timedelta(minutes=15),
+        ).values_list("pk", "hubtel_reference", "processing_note")[:50]
+    )
+    for pk, reference, note in stuck:
+        logger.error("Hubtel webhook %s (%s) was not applied: %s", pk, reference or "no reference", note or "no note")
+    return len(stuck)

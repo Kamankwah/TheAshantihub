@@ -118,23 +118,24 @@ class HubtelWebhookView(APIView):
 
         reference = _dig(payload, _REFERENCE_KEYS)
 
-        # 1. Log the raw payload before any branching — including
-        # invalid-signature attempts, per docs/HUBTEL_INTEGRATION.md §8.
-        webhook_event = WebhookEvent.objects.create(
-            raw_payload=payload,
-            signature_valid=False,
-            hubtel_reference=reference or "",
-        )
-
-        # 2. Signature verification — reject unsigned/invalid requests with
-        # 401 and do not process them any further.
+        # 1. Verify the signature BEFORE storing anything (review BE-13): this endpoint is unauthenticated, so a payload
+        # that fails the check is untrusted input and is not kept. It leaves a row with only its size and a note (enough
+        # to see an attack in the admin and the logs), never the caller's JSON, so strangers cannot fill the table.
         if not hubtel_client.verify_webhook_signature(raw_body, request.headers):
-            webhook_event.processing_note = "Rejected: invalid or missing webhook signature."
-            webhook_event.save(update_fields=["processing_note"])
+            WebhookEvent.objects.create(
+                raw_payload={"rejected": "invalid or missing signature", "bytes": len(raw_body)},
+                signature_valid=False,
+                processing_note="Rejected: invalid or missing webhook signature.",
+            )
+            logger.warning("Hubtel webhook rejected: bad signature (%d bytes)", len(raw_body))
             return Response({"detail": "Invalid signature."}, status=401)
 
-        webhook_event.signature_valid = True
-        webhook_event.save(update_fields=["signature_valid"])
+        # 2. A signed payload is logged raw before any branching, per docs/HUBTEL_INTEGRATION.md §8.
+        webhook_event = WebhookEvent.objects.create(
+            raw_payload=payload,
+            signature_valid=True,
+            hubtel_reference=(reference or "")[:128],
+        )
 
         if not reference:
             webhook_event.processing_note = "Rejected: no client reference found in payload."

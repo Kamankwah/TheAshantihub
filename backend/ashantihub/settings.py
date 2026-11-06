@@ -574,6 +574,10 @@ CELERY_TASK_PUBLISH_RETRY_POLICY = {"max_retries": 1, "interval_start": 0, "inte
 CHECKOUT_PENDING_TTL_MINUTES = env.int("CHECKOUT_PENDING_TTL_MINUTES", default=120)
 
 CELERY_BEAT_SCHEDULE = {
+    "payments-alert-unprocessed-webhooks": {
+        "task": "payments.tasks.alert_unprocessed_webhooks",
+        "schedule": 1800.0,  # every 30 minutes
+    },
     "payments-expire-stale-checkouts": {
         "task": "payments.tasks.expire_stale_checkouts",
         "schedule": 600.0,  # every 10 minutes

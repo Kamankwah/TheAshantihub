@@ -59,12 +59,21 @@ class WebhookSignatureTests(TestCase):
         )
         self.assertEqual(response.status_code, 401)
 
-    def test_every_webhook_including_invalid_signature_is_logged(self):
+    def test_a_rejected_webhook_leaves_a_marker_but_not_the_callers_payload(self):
+        # Review BE-13: an unsigned caller must not be able to store arbitrary JSON.
         self.assertEqual(WebhookEvent.objects.count(), 0)
-        self._post({"ClientReference": "AH-TEST-1", "Status": "Success"}, signature="wrong")
-        self.assertEqual(WebhookEvent.objects.count(), 1)
+        self._post({"ClientReference": "AH-TEST-1", "Status": "Success", "junk": "x" * 500}, signature="wrong")
         event = WebhookEvent.objects.get()
         self.assertFalse(event.signature_valid)
+        self.assertEqual(event.hubtel_reference, "")
+        self.assertNotIn("junk", event.raw_payload)
+        self.assertNotIn("ClientReference", event.raw_payload)
+        self.assertIn("Rejected", event.processing_note)
+
+    def test_a_signed_webhook_is_logged_raw(self):
+        self._post({"ClientReference": "AH-TEST-1", "Status": "Success", "Amount": 1})
+        event = WebhookEvent.objects.get()
+        self.assertTrue(event.signature_valid)
         self.assertEqual(event.raw_payload["ClientReference"], "AH-TEST-1")
 
     def test_response_never_echoes_the_webhook_secret(self):
