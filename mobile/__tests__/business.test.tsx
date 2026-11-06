@@ -338,7 +338,7 @@ describe("business listings", () => {
     server({ "/api/listings/mine/": sentBack });
     await render(client(<ListingManage />));
     await screen.findByText("Fresh bag");
-    expect(screen.queryByText("To fix before you submit again")).toBeNull();
+    expect(screen.queryByText("From your last submit")).toBeNull();
   });
 
   it("live_listing_can_be_restocked_with_a_count", async () => {

@@ -493,7 +493,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                     {item.status === "pending_review" && item.hold_notice && <div style={{ fontSize: "0.72rem", color: D.textDim, marginTop: 3 }}>{item.hold_notice}</div>}
                     {["draft", "rejected"].includes(item.status) && Array.isArray(item.fix_reasons) && item.fix_reasons.length > 0 && (
                       <div style={{ marginTop: 4 }}>
-                        <div style={{ fontSize: "0.68rem", color: D.amber, fontWeight: 700 }}>To fix before you submit again:</div>
+                        <div style={{ fontSize: "0.68rem", color: D.amber, fontWeight: 700 }}>From your last submit:</div>
                         <ul style={{ margin: "2px 0 0", paddingLeft: 16, fontSize: "0.72rem", color: D.textDim }}>
                           {item.fix_reasons.map((reason, i) => <li key={i}>{reason}</li>)}
                         </ul>

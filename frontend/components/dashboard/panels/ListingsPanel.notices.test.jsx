@@ -31,13 +31,13 @@ describe('ListingsPanel server notices', () => {
     expect(await screen.findByText('Add at least one photo.')).toBeInTheDocument()
     expect(screen.getByText('Add a price.')).toBeInTheDocument()
     expect(screen.getByText('The description is too short.')).toBeInTheDocument()
-    expect(screen.getAllByText('To fix before you submit again:')).toHaveLength(2)
+    expect(screen.getAllByText('From your last submit:')).toHaveLength(2)
   })
 
   it('shows nothing when the notices are null or empty', async () => {
     renderWith([row({ status: 'pending_review', hold_notice: null, fix_reasons: [] }), row({ id: 2, name: 'Plain', status: 'draft', fix_reasons: [] })])
     await screen.findByText('Plain')
     expect(screen.queryByText('We need to check this listing.')).not.toBeInTheDocument()
-    expect(screen.queryByText(/To fix before you submit again/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/From your last submit/)).not.toBeInTheDocument()
   })
 })
