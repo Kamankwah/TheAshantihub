@@ -570,7 +570,14 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {"socket_connect_timeout": 1, "socket_timeout"
 CELERY_TASK_PUBLISH_RETRY_POLICY = {"max_retries": 1, "interval_start": 0, "interval_step": 0.5, "interval_max": 0.5}
 # Each job's owning app adds its own entry; core/tests/test_background_jobs.py
 # fails if an entry names a task that doesn't exist. Times are Africa/Accra.
+# A Hubtel checkout nobody paid is closed after this long and its stock/coupon reservation released (review BE-07).
+CHECKOUT_PENDING_TTL_MINUTES = env.int("CHECKOUT_PENDING_TTL_MINUTES", default=120)
+
 CELERY_BEAT_SCHEDULE = {
+    "payments-expire-stale-checkouts": {
+        "task": "payments.tasks.expire_stale_checkouts",
+        "schedule": 600.0,  # every 10 minutes
+    },
     "storefront-send-opening-notices": {
         "task": "storefront.tasks.send_opening_notices",
         "schedule": 60.0,

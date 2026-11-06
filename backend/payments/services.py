@@ -37,15 +37,29 @@ from .models import CheckoutSession
 
 logger = logging.getLogger(__name__)
 
+class PaidForCancelledOrder(Exception):
+    """A payment was confirmed for an order that was cancelled meanwhile (review BE-17). The finalizer refuses it so
+    the webhook can mark the session failed and flag it for a manual refund, instead of reviving a cancelled order."""
+
+
 def _finalize_order_checkout(session):
-    from orders.models import Order
+    from cart.models import CartItem
+    from orders.models import Order, OrderItem
 
     order_id = session.metadata.get("order_id")
     order = Order.objects.select_for_update().get(id=order_id)
     if order.status == Order.PAID:
         return  # already finalized — idempotency belt-and-suspenders
+    if order.status == Order.CANCELLED:
+        raise PaidForCancelledOrder(f"Order {order.pk}: paid after it was cancelled")
     order.status = Order.PAID
     order.save(update_fields=["status"])
+
+    # The cart is cleared when the order is paid, not when it is created (review BE-08): on the Hubtel path the shopper
+    # may never return to the site, and a still-full cart would let them buy the same goods twice. Only the lines this
+    # order bought are removed, so anything added while they were paying stays.
+    for listing_id, variant_id in OrderItem.objects.filter(order=order).values_list("listing_id", "variant_id"):
+        CartItem.objects.filter(cart__customer_id=order.customer_id, listing_id=listing_id, variant_id=variant_id).delete()
 
     from ledger import escrow
 

@@ -13,7 +13,7 @@ from billing.models import Transaction
 from . import hubtel_client
 from .models import CheckoutSession, WebhookEvent
 from .serializers import CheckoutSessionStatusSerializer
-from .services import finalize_failure, finalize_success
+from .services import PaidForCancelledOrder, finalize_failure, finalize_success
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +157,14 @@ class HubtelWebhookView(APIView):
                 webhook_event.processing_note = (
                     f"No-op: session {reference} already {session.status}."
                 )
+                if (
+                    session.status in (CheckoutSession.FAILED, CheckoutSession.EXPIRED)
+                    and _classify_status(_dig(payload, _STATUS_KEYS)) == CheckoutSession.SUCCESS
+                ):
+                    # Hubtel says the customer paid a session we had already given up on (review BE-07). Nothing is
+                    # applied - the stock went back - but the money is real, so it must not pass unnoticed.
+                    webhook_event.processing_note += " PAID LATE: the customer was charged for a session already closed - refund or reconcile by hand."
+                    logger.error("Hubtel reported success for %s session %s: customer charged, reconcile/refund", session.status, reference)
                 webhook_event.save(update_fields=["processed", "processing_note"])
                 return Response({"detail": "Already processed."}, status=200)
 
@@ -215,6 +223,8 @@ class HubtelWebhookView(APIView):
                         finalize_success(session)
                 except EventCancelledError:
                     return self._paid_for_cancelled_event(session, webhook_event, reference)
+                except PaidForCancelledOrder:
+                    return self._paid_for_cancelled_order(session, webhook_event, reference)
 
                 webhook_event.processed = True
                 webhook_event.processing_note = f"Finalized success for {reference}."
@@ -238,6 +248,24 @@ class HubtelWebhookView(APIView):
             )
             webhook_event.save(update_fields=["processing_note"])
             return Response({"detail": "Acknowledged, no action taken."}, status=200)
+
+    @staticmethod
+    def _paid_for_cancelled_order(session, webhook_event, reference):
+        """Hubtel took the money for an order cancelled meanwhile (review BE-17). The order stays cancelled. Its stock
+        already went back when it was cancelled, so finalize_failure is NOT run (it would return the stock twice); the
+        session is marked failed and rolled back, and the webhook row tells Support to refund by hand."""
+        session.refresh_from_db()
+        session.status = CheckoutSession.FAILED
+        session.metadata = {**session.metadata, "not_applied": "order_cancelled", "rolled_back": True}
+        session.save(update_fields=["status", "metadata", "updated_at"])
+        webhook_event.processed = True
+        webhook_event.processing_note = (
+            f"Paid after its order was cancelled: {reference} marked failed, the order stays cancelled. "
+            "The customer was charged - refund by hand (manual reconciliation)."
+        )
+        webhook_event.save(update_fields=["processed", "processing_note"])
+        logger.error("Hubtel payment %s arrived after its order was cancelled; marked failed for manual refund", reference)
+        return Response({"detail": "Order cancelled, not applied."}, status=200)
 
     @staticmethod
     def _paid_for_cancelled_event(session, webhook_event, reference):

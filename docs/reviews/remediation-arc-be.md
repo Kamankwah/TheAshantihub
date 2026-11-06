@@ -13,11 +13,11 @@ Status: `done` = fixed, tested, committed on the branch · `partial` = fixed as 
 | BE-03 | P1 | Payment provider fails open when `HUBTEL_CLIENT_ID` is blank | Explicit `PAYMENTS_PROVIDER`; `payments.E001–E003/W001` system checks run by every `migrate`; `create_checkout` refuses blank credentials | **done** `0f185007` — operators must set `PAYMENTS_PROVIDER=simulated` (or `hubtel`) in each server `.env` |
 | BE-04 | P1 | Webhook status parser matches substrings ("Unpaid" = paid) | Exact-match normalised statuses; success needs a matching amount | **partial** `d246f96b` — server-side confirmation through Hubtel's status API is blocked on their docs / sandbox |
 | BE-12 | P1 | 75 known advisories (Pillow 66, DRF 5, requests 4) | Pillow 13.0.0, DRF 3.18.2, requests 2.33.0 | **done** `92e58c43` — `pip-audit`: none |
-| BE-01 | P0 | Ghana Card / certificate images in public `MEDIA_ROOT`, served by nginx with no auth | Private storage + short-lived signed URLs; random file names; move existing files; nginx deny | **next** |
-| BE-05 | P2 | Checkout/booking: no idempotency key; cart read outside the transaction | Lock + re-read cart in the transaction; client `request_id` with a unique constraint | queued |
-| BE-07 | P2 | Pending checkouts/bookings/tickets never expire | Beat reaper: expire stale `PENDING` sessions, release stock | queued |
-| BE-08 | P2 | Cart not cleared after a Hubtel-confirmed order | Clear in the finalizer | queued |
-| BE-17 | P3 | Late payment can mark a cancelled order PAID | Fail the session + refund path | queued |
+| BE-01 | P0 | Ghana Card / certificate images in public `MEDIA_ROOT`, served by nginx with no auth | Private storage + short-lived signed URLs; random file names; move existing files; nginx deny | **done** `bd24f1e4` — run `ls /opt/ashantihub/backend/media/ghana_cards | wc -l` on the server before shipping; deploy runs `move_identity_files_private` |
+| BE-05 | P2 | Checkout/booking: no idempotency key; cart read outside the transaction | Lock + re-read cart in the transaction; client `request_id` with a unique constraint | **done** `22c5e15c` |
+| BE-07 | P2 | Pending checkouts/bookings/tickets never expire | Beat reaper `payments.tasks.expire_stale_checkouts` (TTL `CHECKOUT_PENDING_TTL_MINUTES`=120); a late success on a closed session is logged "PAID LATE" for manual refund | **done** |
+| BE-08 | P2 | Cart not cleared after a Hubtel-confirmed order | Finalizer clears the lines the order bought | **done** |
+| BE-17 | P3 | Late payment can mark a cancelled order PAID | Session failed (`not_applied=order_cancelled`), order stays cancelled, flagged for manual refund | **done** |
 | BE-11 | P2 | Cart price snapshot never revalidated | Reprice at checkout, prompt on change | queued |
 | BE-06 | P2 | Hubtel HTTP call inside a DB transaction holding row locks | Commit, call Hubtel outside the transaction | queued |
 | BE-09 | P2 | 12 h web tokens, no revocation, no 401 recovery | `token_version` claim; suspension check for all kinds; shorter token + refresh | queued |
