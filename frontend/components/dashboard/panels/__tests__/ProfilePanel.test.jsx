@@ -28,6 +28,24 @@ describe('ProfilePanel: the header chip follows the real KYC status', () => {
     for (const text of hidden) expect(screen.queryByText(text)).not.toBeInTheDocument()
   })
 
+  it('a live owner whose application is still pending reads "Live", never "Waiting for approval"', async () => {
+    renderPanel([], { fullName: 'Kofi', kycStatus: 'pending', goLive: { live: true, blockers: [] } })
+    expect(await screen.findByText('Live')).toBeInTheDocument()
+    expect(screen.queryByText('Waiting for approval')).not.toBeInTheDocument()
+  })
+
+  it('a pending owner with blockers reads "Finish setup", not an approval wait', async () => {
+    renderPanel([], { fullName: 'Kofi', kycStatus: 'pending', goLive: { live: false, blockers: [{ code: 'no_pin', message: 'x' }] } })
+    expect(await screen.findByText('Finish setup')).toBeInTheDocument()
+    expect(screen.queryByText('Waiting for approval')).not.toBeInTheDocument()
+  })
+
+  it('a rejected owner keeps "Needs attention" even with go-live data', async () => {
+    renderPanel([], { fullName: 'Kofi', kycStatus: 'rejected', goLive: { live: false, blockers: [{ code: 'kyc_rejected', message: 'x' }] } })
+    expect(await screen.findByText('Needs attention')).toBeInTheDocument()
+    expect(screen.queryByText('Finish setup')).not.toBeInTheDocument()
+  })
+
   it('shows no chip when the status is unknown', async () => {
     renderPanel([], { fullName: 'Kofi' })
     await screen.findByText('Kofi')

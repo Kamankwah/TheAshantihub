@@ -87,7 +87,7 @@ describe('RenewBanner in the business dashboard', () => {
     render(
       <QueryClientProvider client={queryClient}>
         <BusinessCommandCenter initialTab="deliveries" onExit={vi.fn()} PaymentComponent={() => null}
-          user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus }} auth={{ isLoading: false, logout: vi.fn() }} />
+          user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus, goLive: { live: false, blockers: [{ code: 'no_pin', message: 'Share your shop location.' }] } }} auth={{ isLoading: false, logout: vi.fn() }} />
       </QueryClientProvider>,
     )
   }
@@ -104,7 +104,7 @@ describe('RenewBanner in the business dashboard', () => {
     const seen = mockDashboard(subscription())
     renderDashboard('pending')
     await waitFor(() => expect(seen.subscription).toBe(true))
-    expect(screen.getByText(/under review/i)).toBeInTheDocument()
+    expect(screen.getByText('To start listing, finish these:')).toBeInTheDocument()
     expect(screen.queryByText(/Your subscription has ended/)).not.toBeInTheDocument()
   })
 })

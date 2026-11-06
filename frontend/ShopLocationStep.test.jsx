@@ -9,7 +9,7 @@ const URL = 'http://localhost:8000/api/accounts/me/location/'
 
 const STATE = {
   pin: { lat: 6.69, lng: -1.62, accuracy_m: 20, set_by: 'owner', set_at: '2026-11-06T10:00:00Z', is_manual: false },
-  plus_code: '6FM4+PV Kumasi', landmark: '', tier: 'device', tier_label: 'Shared from the shop', is_manual: false,
+  plus_code: '6CRWM9QG+C6', landmark: '', tier: 'located', tier_label: 'Location shared by the owner', is_manual: false,
 }
 
 function stubGeolocation(coords) {
@@ -40,6 +40,11 @@ function renderStep(auth, onDone = vi.fn()) {
   return onDone
 }
 
+function renderStepWithUnmount(auth) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(<QueryClientProvider client={queryClient}><ShopLocationStep auth={auth} onDone={vi.fn()} /></QueryClientProvider>)
+}
+
 const makeAuth = () => ({ refreshUser: vi.fn().mockResolvedValue({ registration_step: 'plan_selection' }) })
 
 describe('ShopLocationStep', () => {
@@ -52,7 +57,7 @@ describe('ShopLocationStep', () => {
     fireEvent.click(screen.getByRole('button', { name: /Use my current location/ }))
     fireEvent.click(await screen.findByRole('button', { name: 'Save my shop location' }))
 
-    expect(await screen.findByText('6FM4+PV Kumasi')).toBeInTheDocument()
+    expect(await screen.findByText('6CRWM9QG+C6')).toBeInTheDocument()
     expect(bodies).toEqual([{ lat: 6.69, lng: -1.62, accuracy_m: 20 }])
     expect(screen.getByText('This is where riders will collect. You can fix it later.')).toBeInTheDocument()
     expect(onDone).not.toHaveBeenCalled()
@@ -60,6 +65,22 @@ describe('ShopLocationStep', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await waitFor(() => expect(onDone).toHaveBeenCalledWith({ registration_step: 'plan_selection' }))
     expect(auth.refreshUser).toHaveBeenCalledTimes(1)
+  })
+
+  it("shows the server's tier label after saving, and nothing when the label is empty", async () => {
+    capture(() => HttpResponse.json(STATE))
+    const { unmount } = renderStepWithUnmount(makeAuth())
+    fireEvent.click(screen.getByRole('button', { name: 'drop-pin' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save my shop location' }))
+    expect(await screen.findByText('Location shared by the owner')).toBeInTheDocument()
+    unmount()
+
+    capture(() => HttpResponse.json({ ...STATE, tier_label: '' }))
+    renderStep(makeAuth())
+    fireEvent.click(screen.getByRole('button', { name: 'drop-pin' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save my shop location' }))
+    expect(await screen.findByText('6CRWM9QG+C6')).toBeInTheDocument()
+    expect(screen.queryByText('Location shared by the owner')).not.toBeInTheDocument()
   })
 
   it('sends a pin placed by hand as manual, with no accuracy, and the landmark when typed', async () => {
@@ -70,7 +91,7 @@ describe('ShopLocationStep', () => {
     fireEvent.click(screen.getByRole('button', { name: 'drop-pin' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save my shop location' }))
 
-    expect(await screen.findByText('6FM4+PV Kumasi')).toBeInTheDocument()
+    expect(await screen.findByText('6CRWM9QG+C6')).toBeInTheDocument()
     expect(bodies).toEqual([{ lat: 6.7, lng: -1.62, manual: true, landmark: 'Opposite the Total filling station' }])
   })
 

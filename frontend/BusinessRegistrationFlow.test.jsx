@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
+import { apiPatchForm } from './apiClient.js'
 import BusinessRegistrationFlow from './components/BusinessRegistrationFlow.jsx'
 
 // BusinessRegistrationFlow's plan_selection step reads useSubscriptionPlans()
@@ -312,7 +313,7 @@ describe('BusinessRegistrationFlow', () => {
         .mockResolvedValueOnce({ registration_step: 'shop_location' })
         .mockResolvedValueOnce({ registration_step: 'plan_selection' })
       const auth = makeAuth({ refreshUser })
-      server.use(http.post('http://localhost:8000/api/accounts/me/location/', () => HttpResponse.json({ plus_code: '6FM4+PV Kumasi', landmark: '', tier: 'manual', tier_label: 'Placed by hand', is_manual: true })))
+      server.use(http.post('http://localhost:8000/api/accounts/me/location/', () => HttpResponse.json({ plus_code: '6CRWM9QG+C6', landmark: '', tier: 'located', tier_label: 'Location shared by the owner', is_manual: true })))
       renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="business_info" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
 
       fireEvent.change(screen.getByPlaceholderText('Business contact phone (AshantiHub support only, not shown to shoppers)'), { target: { value: '+233201112233' } })
@@ -326,6 +327,27 @@ describe('BusinessRegistrationFlow', () => {
 
       expect(await screen.findByText(/Choose your plan/)).toBeInTheDocument()
       expect(screen.queryByText(/How should we pay you/)).not.toBeInTheDocument()
+    })
+
+    it('reaches the shop location step through the real profile PATCH with no Ghana Post address', async () => {
+      let sentGps = 'unset'
+      server.use(http.patch('http://localhost:8000/api/accounts/business-owners/me/profile/', async ({ request }) => {
+        sentGps = (await request.formData()).get('gps_address')
+        return HttpResponse.json({ registration_step: 'shop_location' })
+      }))
+      const auth = makeAuth({
+        submitBusinessInfo: (fields) => {
+          const formData = new FormData()
+          Object.entries(fields).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') formData.append(k, v) })
+          return apiPatchForm('/api/accounts/business-owners/me/profile/', formData)
+        },
+        refreshUser: vi.fn().mockResolvedValue({ registration_step: 'shop_location' }),
+      })
+      renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="business_info" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+      fireEvent.change(screen.getByPlaceholderText('Business contact phone (AshantiHub support only, not shown to shoppers)'), { target: { value: '+233201112233' } })
+      fireEvent.submit(screen.getByRole('button', { name: 'Continue' }).closest('form'))
+      expect(await screen.findByRole('heading', { name: 'Where is your shop?' })).toBeInTheDocument()
+      expect(sentGps).toBeNull()
     })
 
     it('resumes at shop_location when the server says that is the next step', () => {

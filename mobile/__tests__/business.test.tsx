@@ -115,6 +115,49 @@ describe("business home", () => {
     expect(await screen.findByText("Confirm your email to publish listings")).toBeTruthy();
   });
 
+  it("a_not_live_owner_sees_a_checklist_of_the_servers_blockers_with_no_approval_wait", async () => {
+    server({
+      "/api/accounts/me/": me({ kyc_status: "pending", identity_status: "not_submitted", go_live: { live: false, blockers: [{ code: "no_pin", message: "Share your shop location." }, { code: "terms_missing", message: "Accept the seller terms." }] } }),
+      "/api/orders/owner/": { results: [], next: null },
+      "/api/accounts/business/hours/": { has_hours: true, days: [] },
+      "/api/catalogue/stock/": stock(),
+    });
+    await render(client(<BusinessHome />));
+    expect(await screen.findByText("To start listing, finish these:")).toBeTruthy();
+    expect(screen.getByText("Share your shop location.")).toBeTruthy();
+    expect(screen.getByText("Accept the seller terms.")).toBeTruthy();
+    expect(screen.queryByText(/once verified|as soon as you/i)).toBeNull();
+  });
+
+  it("no_checklist_for_a_live_owner_whose_kyc_is_still_pending", async () => {
+    server({
+      "/api/accounts/me/": me({ kyc_status: "pending", identity_status: "not_submitted", go_live: { live: true, blockers: [] } }),
+      "/api/orders/owner/": { results: [], next: null },
+      "/api/accounts/business/hours/": { has_hours: true, days: [] },
+      "/api/catalogue/stock/": stock(),
+    });
+    await render(client(<BusinessHome />));
+    await screen.findByText(/Akwaaba, Kwame/);
+    expect(screen.queryByText("To start listing, finish these:")).toBeNull();
+    expect(screen.getByText("Live")).toBeTruthy();
+    expect(screen.queryByText("Verification in progress")).toBeNull();
+  });
+
+  it("a_rejected_owner_gets_no_email_banner_or_checklist_just_the_servers_sentence_and_a_way_to_fix_it", async () => {
+    server({
+      "/api/accounts/me/": me({ kyc_status: "rejected", identity_status: "not_submitted", go_live: { live: false, blockers: [{ code: "email_unconfirmed", message: "Confirm your email." }, { code: "kyc_rejected", message: "Your application needs changes. Open your profile to see what to fix." }] } }),
+      "/api/orders/owner/": { results: [], next: null },
+      "/api/accounts/business/hours/": { has_hours: true, days: [] },
+      "/api/catalogue/stock/": stock(),
+    });
+    await render(client(<BusinessHome />));
+    expect(await screen.findByText("Your application needs changes. Open your profile to see what to fix.")).toBeTruthy();
+    expect(screen.queryByText("Confirm your email to publish listings")).toBeNull();
+    expect(screen.queryByText("To start listing, finish these:")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "See what to fix" }));
+    expect(router.push).toHaveBeenCalledWith("/manage/verification");
+  });
+
   it("no_email_banner_when_the_server_reports_no_email_blocker", async () => {
     server({
       "/api/accounts/me/": me({ go_live: { live: true, blockers: [] } }),

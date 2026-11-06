@@ -110,6 +110,7 @@ export default function ShopLocationStep({ auth, onDone }) {
       {state && (
         <div role="status" style={{ background: tint(C.kente2, "12"), border: `1px solid ${C.kente2}`, borderRadius: 10, padding: "10px 12px", color: C.ink, fontSize: "0.8rem", lineHeight: 1.6 }}>
           {state.plus_code && <div>Plus code: <strong style={{ fontFamily: CODE_FONT }}>{state.plus_code}</strong></div>}
+          {state.tier_label && <div>{state.tier_label}</div>}
           {state.landmark && <div>Landmark: {state.landmark}</div>}
           <div>This is where riders will collect. You can fix it later.</div>
         </div>

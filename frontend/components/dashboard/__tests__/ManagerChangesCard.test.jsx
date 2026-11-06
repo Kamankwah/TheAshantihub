@@ -106,7 +106,7 @@ describe('ManagerChangesCard on the dashboard', () => {
     render(
       <QueryClientProvider client={queryClient}>
         <BusinessCommandCenter onExit={vi.fn()} auth={{ isLoading: false, logout: vi.fn() }}
-          user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus }} />
+          user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus, goLive: { live: false, blockers: [{ code: 'no_pin', message: 'Share your shop location.' }] } }} />
       </QueryClientProvider>,
     )
   }
@@ -114,7 +114,7 @@ describe('ManagerChangesCard on the dashboard', () => {
   it('lets an owner whose KYC is still under review undo a change', async () => {
     serveChanges([change({ kind: 'business.update', summary: 'Changed sign-in phone' })])
     renderDashboard('pending')
-    expect(screen.getByText(/under review/i)).toBeInTheDocument()
+    expect(screen.getByText('To start listing, finish these:')).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'Changes by your account manager' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: "This wasn't me" })).toBeInTheDocument()
   })

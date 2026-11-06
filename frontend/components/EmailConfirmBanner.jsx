@@ -13,6 +13,8 @@ import { D, tint } from "./dashboard/theme.js";
 const RESEND_URL = "/api/accounts/business-owners/me/email-confirmation/";
 const RESEND_FAILED = "We couldn't send the link. Check your connection and try again.";
 
+const MISSING_HOW = "Add your email in Profile & Settings (Request a change) so we can send you a confirmation link.";
+
 const codeOf = (blocker) => (typeof blocker === "string" ? blocker : blocker?.code);
 
 export default function EmailConfirmBanner({ goLive, email }) {
@@ -23,7 +25,9 @@ export default function EmailConfirmBanner({ goLive, email }) {
   const blockers = Array.isArray(goLive?.blockers) ? goLive.blockers : [];
   const unconfirmed = blockers.find((b) => codeOf(b) === "email_unconfirmed");
   const missing = blockers.find((b) => codeOf(b) === "email_missing");
-  if (!unconfirmed && !missing) return null;
+  // A rejected application is a different problem: the dashboard shows "needs changes", not an email prompt.
+  const rejected = blockers.some((b) => codeOf(b) === "kyc_rejected");
+  if (rejected || (!unconfirmed && !missing)) return null;
 
   const resend = async () => {
     setSending(true);
@@ -46,6 +50,7 @@ export default function EmailConfirmBanner({ goLive, email }) {
       <div style={{ flex: "1 1 260px", minWidth: 0 }}>
         <div style={{ fontWeight: 800, color: D.text, fontSize: "0.86rem" }}>Confirm your email to publish listings</div>
         {missing && !unconfirmed && serverLine && <div style={{ color: D.textDim, fontSize: "0.78rem", marginTop: 2 }}>{serverLine}</div>}
+        {missing && !unconfirmed && <div style={{ color: D.textDim, fontSize: "0.78rem", marginTop: 2 }}>{MISSING_HOW}</div>}
         {unconfirmed && <div style={{ color: D.textDim, fontSize: "0.78rem", marginTop: 2 }}>Open the link we emailed you. Can't find it? Send a new one.</div>}
         {sent && <div role="status" style={{ color: D.text, fontSize: "0.78rem", fontWeight: 700, marginTop: 6 }}>{email ? `Sent to ${email}` : "Sent. Check your inbox (and your spam folder)."}</div>}
         {error && <div role="alert" style={{ color: D.red, fontSize: "0.78rem", fontWeight: 700, marginTop: 6 }}>{error}</div>}

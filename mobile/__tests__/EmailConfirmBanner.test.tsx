@@ -29,6 +29,11 @@ describe("email confirm banner", () => {
     expect(screen.queryByText("Confirm your email to publish listings")).toBeNull();
   });
 
+  it("stays_hidden_for_a_rejected_application_even_with_an_email_blocker", async () => {
+    await render(<EmailConfirmBanner goLive={{ live: false, blockers: [...unconfirmed.blockers, { code: "kyc_rejected", message: "Your application needs changes." }] }} />);
+    expect(screen.queryByText("Confirm your email to publish listings")).toBeNull();
+  });
+
   it("offers_resend_when_the_email_is_unconfirmed", async () => {
     await render(<EmailConfirmBanner goLive={unconfirmed} />);
     expect(screen.getByText("Confirm your email to publish listings")).toBeTruthy();
@@ -38,6 +43,7 @@ describe("email confirm banner", () => {
   it("shows_the_server_sentence_and_no_resend_when_the_email_is_missing", async () => {
     await render(<EmailConfirmBanner goLive={missing} />);
     expect(screen.getByText("Add an email address so we can confirm it.")).toBeTruthy();
+    expect(screen.getByText("Add your email in Profile & Settings (Request a change) so we can send you a confirmation link.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Resend" })).toBeNull();
   });
 

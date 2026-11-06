@@ -38,8 +38,9 @@ describe("business registration", () => {
     expect(stepRoute("terms", "pending")).toBe("/register/terms");
   });
 
-  it("submitted_screen_shown_when_step_complete_and_not_yet_verified", () => {
-    expect(stepRoute("complete", "pending")).toBe("/register/submitted");
+  it("a_complete_registration_goes_home_whether_or_not_staff_have_verified_it", () => {
+    expect(stepRoute("complete", "pending")).toBe("/");
+    expect(stepRoute("complete", "rejected")).toBe("/");
     expect(stepRoute("complete", "verified")).toBe("/");
   });
 
@@ -92,6 +93,29 @@ describe("business registration", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
     expect(await screen.findByText("Enter a valid Ghana Post GPS address, like AK-039-5028.")).toBeTruthy();
     expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it("the_ghana_post_address_is_optional_says_so_and_is_left_out_of_the_payload_when_empty", async () => {
+    apiMock.mockResolvedValueOnce({}).mockResolvedValueOnce({ account_type: "business_owner", id: 3, full_name: "K", registration_step: "shop_location", kyc_status: "pending" });
+    await render(<BusinessScreen />);
+    expect(screen.getByText("Optional. We use your shop pin.")).toBeTruthy();
+    expect(screen.queryByText("Example: AK-039-5028")).toBeNull();
+    await fireEvent.changeText(screen.getByLabelText("Business contact phone"), "0207886600");
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/register/shop-location"));
+    const [, init] = apiMock.mock.calls[0];
+    expect(init.body.get("gps_address")).toBeNull();
+    expect(init.body.get("business_contact_phone")).toBe("0207886600");
+  });
+
+  it("blank_spaces_in_the_ghana_post_field_count_as_empty", async () => {
+    apiMock.mockResolvedValueOnce({}).mockResolvedValueOnce({ account_type: "business_owner", id: 3, full_name: "K", registration_step: "shop_location", kyc_status: "pending" });
+    await render(<BusinessScreen />);
+    await fireEvent.changeText(screen.getByLabelText("Ghana Post GPS address"), "   ");
+    await fireEvent.changeText(screen.getByLabelText("Business contact phone"), "0207886600");
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/register/shop-location"));
+    expect(apiMock.mock.calls[0][1].body.get("gps_address")).toBeNull();
   });
 
   it("tin_field_only_for_formal_business", async () => {

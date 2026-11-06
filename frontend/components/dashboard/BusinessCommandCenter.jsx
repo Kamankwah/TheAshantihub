@@ -115,12 +115,17 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
 
   const isVerified = user?.kycStatus === "verified";
   const isRejected = user?.kycStatus === "rejected";
+  // The server's go-live rule, not staff review, decides whether a business can list: a KYC-pending owner it calls live
+  // gets the full dashboard, and one with blockers gets the checklist of what is left to finish.
+  const goLive = user?.goLive;
+  const canList = isVerified || goLive?.live === true;
+  const blockers = Array.isArray(goLive?.blockers) ? goLive.blockers : [];
   const showToast = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
   // A business that holds a plan keeps the tab (paid access runs to term end); one that holds none has nothing to see.
   const tabs = buildTabs(profile?.business_kind).filter(t => !(t.id === "subscription" && plansGone && subscriptionLoaded && !subscription?.id));
   const activeLabel = tabs.find(t => t.id === tab)?.label || "Overview";
 
-  const selectTab = (id, { view } = {}) => { if (!isVerified) return; setTabView(view || null); setTab(id); setMobileNavOpen(false); setShowProfile(false); };
+  const selectTab = (id, { view } = {}) => { if (!canList) return; setTabView(view || null); setTab(id); setMobileNavOpen(false); setShowProfile(false); };
 
   if (auth.isLoading) {
     return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: D.pageBg, color: D.textDim }}>Loading…</div>;
@@ -173,13 +178,13 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
             {tabs.map(t => {
               const active = tab === t.id;
               return (
-                <button key={t.id} disabled={!isVerified} onClick={() => selectTab(t.id)} style={{
+                <button key={t.id} disabled={!canList} onClick={() => selectTab(t.id)} style={{
                   display: "flex", alignItems: "center", gap: 10, textAlign: "left",
                   background: active ? "rgba(212,160,23,0.16)" : "transparent",
                   border: "none", borderLeft: active ? `3px solid ${D.gold}` : "3px solid transparent",
-                  color: !isVerified ? "rgba(253,246,227,0.3)" : active ? D.gold : "rgba(253,246,227,0.75)",
+                  color: !canList ? "rgba(253,246,227,0.3)" : active ? D.gold : "rgba(253,246,227,0.75)",
                   borderRadius: "0 10px 10px 0", padding: "10px 12px", fontSize: "0.8rem",
-                  fontWeight: active ? 800 : 600, cursor: isVerified ? "pointer" : "not-allowed",
+                  fontWeight: active ? 800 : 600, cursor: canList ? "pointer" : "not-allowed",
                   fontFamily: "inherit", whiteSpace: "nowrap",
                 }}>
                   <span style={{ fontSize: "1rem" }}>{t.icon}</span>{t.label}
@@ -236,7 +241,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
             {!showProfile && <EmailConfirmBanner goLive={user?.goLive} />}
             {showProfile ? (
               <ProfilePanel user={user} />
-            ) : !isVerified ? (
+            ) : !canList ? (
               <>
               <div style={{ ...glassCard, padding: "30px 24px", textAlign: "center", marginBottom: 16 }}>
                 {isRejected ? (
@@ -248,10 +253,16 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                   </>
                 ) : (
                   <>
-                    <div style={{ fontSize: "2rem", marginBottom: 10 }}>⏳</div>
-                    <div style={{ fontWeight: 900, color: D.text, fontSize: "1.05rem", marginBottom: 8 }}>Your application is under review</div>
-                    <div style={{ color: D.textDim, fontSize: "0.85rem", lineHeight: 1.6 }}>Our team is checking your business details and address. This usually takes 1-2 business days — you'll be able to manage listings, enquiries and your subscription here as soon as you're approved.</div>
-                    <div style={{ color: D.textDim, fontSize: "0.85rem", lineHeight: 1.6, marginTop: 8 }}>While you wait, you can add your Ghana Card for the verified check mark under Profile &amp; Settings → Get verified.</div>
+                    <div style={{ fontWeight: 900, color: D.text, fontSize: "1.05rem", marginBottom: 12 }}>To start listing, finish these:</div>
+                    <ul style={{ listStyle: "none", margin: "0 auto", padding: 0, maxWidth: 460, textAlign: "left", display: "flex", flexDirection: "column", gap: 8 }}>
+                      {blockers.map((b, i) => (
+                        <li key={b?.code || i} style={{ color: D.textDim, fontSize: "0.85rem", lineHeight: 1.5, display: "flex", gap: 8 }}>
+                          <span aria-hidden="true" style={{ color: D.amber, fontWeight: 900 }}>•</span>
+                          <span>{typeof b === "string" ? b : b?.message}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div style={{ color: D.textDim, fontSize: "0.82rem", lineHeight: 1.6, marginTop: 14 }}>You can also add your Ghana Card for the verified check mark under Profile &amp; Settings → Get verified.</div>
                   </>
                 )}
               </div>

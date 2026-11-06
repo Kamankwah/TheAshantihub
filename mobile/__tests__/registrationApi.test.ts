@@ -1,5 +1,8 @@
 import { api } from "../src/lib/api";
-import { resendEmailConfirmation, saveShopLocation, stepRoute } from "../src/lib/registrationApi";
+import { router } from "expo-router";
+
+import { resendEmailConfirmation, resumeRegistration, saveShopLocation, stepRoute } from "../src/lib/registrationApi";
+import { useAuth } from "../src/state/auth";
 
 jest.mock("expo-router", () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
 jest.mock("expo-secure-store", () => ({
@@ -17,6 +20,27 @@ beforeEach(() => jest.clearAllMocks());
 describe("registration api", () => {
   it("maps_shop_location_to_its_own_screen", () => {
     expect(stepRoute("shop_location", "pending")).toBe("/register/shop-location");
+  });
+
+  it("a_complete_registration_goes_home_even_while_staff_have_not_verified_it", () => {
+    expect(stepRoute("complete", "pending")).toBe("/");
+    expect(stepRoute("complete", "rejected")).toBe("/");
+    expect(stepRoute("complete", "verified")).toBe("/");
+  });
+
+  it("resume_goes_straight_to_the_business_home_and_refreshes_the_stored_step_so_the_front_door_cannot_send_it_back", async () => {
+    useAuth.setState({ status: "signedIn", account: { type: "business_owner", id: 3, fullName: "K", registrationStep: "terms", kycStatus: "pending" } as never });
+    apiMock.mockResolvedValue({ registration_step: "complete", kyc_status: "pending" });
+    await resumeRegistration();
+    expect(router.replace).toHaveBeenCalledWith("/business/home");
+    expect(useAuth.getState().account).toMatchObject({ registrationStep: "complete", kycStatus: "pending" });
+  });
+
+  it("resume_still_goes_to_the_next_unfinished_step", async () => {
+    useAuth.setState({ status: "signedIn", account: { type: "business_owner", id: 3, fullName: "K", registrationStep: "business_info" } as never });
+    apiMock.mockResolvedValue({ registration_step: "shop_location", kyc_status: "pending" });
+    await resumeRegistration();
+    expect(router.replace).toHaveBeenCalledWith("/register/shop-location");
   });
 
   it("keeps_the_other_steps_where_they_were", () => {

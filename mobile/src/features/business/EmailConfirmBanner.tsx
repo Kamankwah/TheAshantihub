@@ -8,6 +8,7 @@ import { useTheme } from "../../theme/useTheme";
 import { Button } from "../../ui/Button";
 import type { GoLive } from "./queries";
 
+const MISSING_HOW = "Add your email in Profile & Settings (Request a change) so we can send you a confirmation link.";
 const RESEND_FAILED = "We couldn't send the link. Check your connection and try again.";
 
 /**
@@ -25,7 +26,8 @@ export function EmailConfirmBanner({ goLive }: { goLive?: GoLive }) {
   const blockers = Array.isArray(goLive?.blockers) ? goLive.blockers : [];
   const unconfirmed = blockers.find((b) => b?.code === "email_unconfirmed");
   const missing = blockers.find((b) => b?.code === "email_missing");
-  if (!unconfirmed && !missing) return null;
+  // A rejected application is a different problem: the home screen says it needs changes, not "confirm your email".
+  if (blockers.some((b) => b?.code === "kyc_rejected") || (!unconfirmed && !missing)) return null;
 
   async function resend() {
     setSending(true);
@@ -46,9 +48,12 @@ export function EmailConfirmBanner({ goLive }: { goLive?: GoLive }) {
       <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.bodyBold, fontSize: 16 }}>Confirm your email to publish listings</Text>
       {unconfirmed ? (
         <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>Open the link we emailed you. Can’t find it? Send a new one.</Text>
-      ) : missing?.message ? (
-        <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>{missing.message}</Text>
-      ) : null}
+      ) : (
+        <>
+          {missing?.message ? <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>{missing.message}</Text> : null}
+          <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>{MISSING_HOW}</Text>
+        </>
+      )}
       {sent ? <Text accessibilityRole="alert" style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 14 }}>Sent. Check your inbox (and your spam folder).</Text> : null}
       {error ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 14 }}>{error}</Text> : null}
       {unconfirmed ? <Button variant="secondary" label="Resend" onPress={() => void resend()} loading={sending} /> : null}

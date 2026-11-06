@@ -886,7 +886,7 @@ export const handlers = [
   // Saving the owner's own shop pin (registration step and dashboard): the server's own-state answer.
   http.post('http://localhost:8000/api/accounts/me/location/', () => HttpResponse.json({
     pin: { lat: 6.6885, lng: -1.6244, accuracy_m: 20, set_by: 'owner', set_at: '2026-11-06T10:00:00Z', is_manual: false },
-    plus_code: '6FM4+PV Kumasi', landmark: '', tier: 'device', tier_label: 'Shared from the shop', is_manual: false,
+    plus_code: '6CRWM9QG+C6', landmark: '', tier: 'located', tier_label: 'Location shared by the owner', is_manual: false,
     address_status: 'not_verified', wrong_reason: null, can_capture: true,
   })),
   // Email confirmation (go-live rule): the owner asks for a link (204, nothing in the body), and the emailed page confirms it.

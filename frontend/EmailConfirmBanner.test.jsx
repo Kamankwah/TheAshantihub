@@ -27,7 +27,13 @@ describe('EmailConfirmBanner', () => {
     render(<EmailConfirmBanner goLive={{ live: false, blockers: [blocker('email_missing'), blocker('no_pin')] }} />)
     expect(screen.getByText('Confirm your email to publish listings')).toBeInTheDocument()
     expect(screen.getByText('server says email_missing')).toBeInTheDocument()
+    expect(screen.getByText('Add your email in Profile & Settings (Request a change) so we can send you a confirmation link.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Resend' })).not.toBeInTheDocument()
+  })
+
+  it('stays hidden for a rejected application, even when the email is also a blocker', () => {
+    const { container } = render(<EmailConfirmBanner goLive={{ live: false, blockers: [blocker('email_unconfirmed'), blocker('kyc_rejected')] }} />)
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('resends and says where it went, using the address it was given', async () => {

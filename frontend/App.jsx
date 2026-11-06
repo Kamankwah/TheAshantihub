@@ -1280,7 +1280,14 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   const handleSignup=async(e)=>{
     e.preventDefault();
     setError(null);
-    if(!phone && !email){
+    // A business must give an email: the confirmation link goes there, and it cannot go live without one confirmed.
+    const typedEmail=email.trim();
+    if(accountType==="business_owner"){
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typedEmail)){
+        setError("Enter your email so we can send you a confirmation link.");
+        return;
+      }
+    } else if(!phone && !typedEmail){
       setError("Please provide a phone number or email address.");
       return;
     }
@@ -1290,8 +1297,8 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
     const consentField=Object.keys(ticked).length?{marketing_consent:ticked}:{};
     try {
       const result=accountType==="business_owner"
-        ? await auth.registerBusinessOwner({full_name:fullName,login_phone:phone||undefined,email:email||undefined,password,...consentField})
-        : await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:email||undefined,password,...consentField});
+        ? await auth.registerBusinessOwner({full_name:fullName,login_phone:phone||undefined,email:typedEmail,password,...consentField})
+        : await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:typedEmail||undefined,password,...consentField});
       if(isOtpChallenge(result)){setOtp({challenge:result,purpose:"sign_up",accountType});setPassword("");return;}
       onSuccess(result);
     } catch (err) {
@@ -1371,7 +1378,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
           </div>
           <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={authInputStyle}/>
           <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" style={authInputStyle}/>
-          <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" style={authInputStyle}/>
+          <input value={email} onChange={e=>setEmail(e.target.value)} type={accountType==="business_owner"?"text":"email"} inputMode="email" aria-required={accountType==="business_owner"} placeholder="Email" style={authInputStyle}/>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
           <fieldset style={{border:`1px solid ${C.line}`,borderRadius:10,padding:"8px 12px",margin:"0 0 12px"}}>
             <legend style={{fontSize:"0.72rem",fontWeight:800,padding:"0 4px"}}>Offers from AshantiHub (optional)</legend>
