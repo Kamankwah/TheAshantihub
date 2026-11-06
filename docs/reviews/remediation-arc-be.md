@@ -24,7 +24,7 @@ Status: `done` = fixed, tested, committed on the branch · `partial` = fixed as 
 | BE-13 | P3 | Webhook row written before the signature check; edge cases | Verify first; alert on `processed=False` | queued |
 | BE-14 | P3 | Reset token plaintext + query string; weak password rule | Hash token, fragment URL, invalidate older tokens, breached-password check | queued |
 | BE-16 | P3 | Staff 2FA mandatory only for Super Admin | Default-require for money/PII/approval roles | queued |
-| ARC-07 | P3 | Insecure dev defaults (`ALLOWED_HOSTS=*`, CORS allow-all) | Fail closed when `DEBUG` is off | queued |
+| ARC-07 | P3 | Insecure dev defaults (`ALLOWED_HOSTS=*`, CORS allow-all) | Fail closed when `DEBUG` is off | **done** `core.E001–E003` system checks (run by every `migrate`) |
 | ARC-03 | P2 | Health endpoint always 200; no external monitoring | `/healthz` vs `/readyz`; uptime probe; alerts | queued |
 | ARC-02 | P2 | No CI, no enforced merge gate | GitHub Actions + branch protection | queued (needs repo admin) |
 | ARC-04 | P2 | Deploy/rollback: restore-only rollback, mutable tags, migrate before swap | SHA-tagged images, migration lint, `lock_timeout` | queued |
