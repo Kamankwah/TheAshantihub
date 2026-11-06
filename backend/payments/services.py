@@ -448,7 +448,10 @@ def finalize_failure(session):
         handler(session)
 
 
-def process_payment(*, kind, amount, purpose, business_owner=None, customer=None, metadata=None, processing_fee=None, wallet=False):
+def process_payment(
+    *, kind, amount, purpose, business_owner=None, customer=None, metadata=None, processing_fee=None, wallet=False,
+    defer_provider_call=False,
+):
     """The shared entrypoint described in this module's docstring. Returns:
     - `{"mode": "immediate", "transaction": Transaction, "session": CheckoutSession}`
       when PAYMENTS_PROVIDER != "hubtel" (or for a wallet payment) — the Transaction already exists and
@@ -463,6 +466,11 @@ def process_payment(*, kind, amount, purpose, business_owner=None, customer=None
     it is immediate whatever PAYMENTS_PROVIDER says, and the order finalizer debits the wallet instead of provider
     clearing; wallet payment also pays service requests, stays and ticket purchases (WALLET_KINDS), not only orders
     (ledger.posting.InsufficientFunds when the balance is too low, which rolls the caller's transaction back).
+
+    `defer_provider_call=True` (Hubtel mode only) creates the PENDING session but does not call Hubtel, returning
+    `{"mode": "hubtel_pending", "session": ...}`; the caller commits its own transaction and then calls
+    `start_hubtel_checkout(session)`. A caller that holds row locks must use it: Hubtel is a network call with a 15 s
+    timeout and must never be made while locks are held (review BE-06).
     """
     if bool(business_owner) == bool(customer):
         raise ValueError("process_payment requires exactly one of business_owner or customer")
@@ -510,7 +518,12 @@ def process_payment(*, kind, amount, purpose, business_owner=None, customer=None
     # settings.PAYMENTS_PROVIDER == "hubtel" — UNVERIFIED path, see
     # hubtel_client.py's module docstring. Only ever reached once
     # HUBTEL_CLIENT_ID etc. are actually set, which they are not at launch.
-    checkout = hubtel_client.create_checkout(session)
+    if defer_provider_call:
+        return {"mode": "hubtel_pending", "session": session}
+    return _redirect_result(session, hubtel_client.create_checkout(session))
+
+
+def _redirect_result(session, checkout):
     session.provider = "hubtel"
     session.checkout_url = checkout.get("checkout_url")
     session.hubtel_checkout_id = checkout.get("checkout_id")
@@ -522,3 +535,34 @@ def process_payment(*, kind, amount, purpose, business_owner=None, customer=None
         "reference": session.reference,
         "session": session,
     }
+
+
+def start_hubtel_checkout(session):
+    """Call Hubtel for a session made with ``defer_provider_call=True``, outside any transaction. If Hubtel cannot be
+    reached (or refuses), the session is closed as FAILED and its kind's rollback runs in its own transaction - stock
+    and coupon uses go back - and the error is re-raised for the caller to answer 502/503. A session whose Hubtel call
+    died ambiguously (timeout after Hubtel accepted) is also closed: nothing was shown to the shopper, so no payment
+    link exists for them to use."""
+    try:
+        checkout = hubtel_client.create_checkout(session)
+        if not checkout.get("checkout_url"):
+            raise ValueError("Hubtel returned no checkout URL")
+    except Exception:
+        with db_transaction.atomic():
+            locked = CheckoutSession.objects.select_for_update().get(pk=session.pk)
+            if locked.status == CheckoutSession.PENDING:
+                locked.status = CheckoutSession.FAILED
+                locked.save(update_fields=["status", "updated_at"])
+                finalize_failure(locked)
+                _cancel_unpaid_order(locked)
+        raise
+    return _redirect_result(session, checkout)
+
+
+def _cancel_unpaid_order(session):
+    """An order whose payment could never start is cancelled, so it does not sit PENDING for the shopper to see."""
+    if session.kind != CheckoutSession.ORDER_CHECKOUT:
+        return
+    from orders.models import Order
+
+    Order.objects.filter(pk=session.metadata.get("order_id"), status=Order.PENDING).update(status=Order.CANCELLED)

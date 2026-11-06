@@ -101,3 +101,58 @@ class CheckoutLifecycleTests(WebhookProcessingTests):
         self.assertEqual(expire_stale_checkouts(), 0)
         recent.refresh_from_db()
         self.assertEqual(recent.status, CheckoutSession.PENDING)
+
+
+class HubtelStartOutsideTransactionTests(CheckoutLifecycleTests.__bases__[0]):
+    """BE-06: the Hubtel HTTP call is made after the checkout transaction commits, and a failure puts the stock back."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        from accounts.authentication import issue_token
+
+        super().setUp()
+        owner = BusinessOwner.objects.create(full_name="Kofi", login_phone="+233207661009", password_hash="x")
+        self.listing = Listing.objects.create(
+            business_owner=owner, category=Category.objects.get(slug="shops"), zone=Zone.objects.get(name="Manhyia"),
+            name="Lamp", description="D.", contact_phone="+233207661009", price_amount="150.00",
+            status=Listing.PUBLISHED, stock_quantity=5,
+        )
+        self.api = APIClient()
+        self.api.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.customer, 'customer')}")
+        self.api.post("/api/cart/items/", {"listing": self.listing.pk, "quantity": 2}, format="json")
+
+    @override_settings(PAYMENTS_PROVIDER="hubtel", HUBTEL_CLIENT_ID="id", HUBTEL_CLIENT_SECRET="secret")
+    def test_hubtel_is_called_with_no_open_transaction_and_returns_the_link(self):
+        from django.db import connection
+        from unittest import mock
+
+        seen = {}
+
+        def fake(session):
+            seen["depth"] = len(connection.savepoint_ids)
+            return {"checkout_url": "https://pay.example/x", "checkout_id": "c1"}
+
+        baseline = len(connection.savepoint_ids)  # TestCase holds its own outer transaction
+        with mock.patch("payments.hubtel_client.create_checkout", side_effect=fake):
+            response = self.api.post("/api/orders/checkout/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["checkout_url"], "https://pay.example/x")
+        self.assertEqual(seen["depth"], baseline, "Hubtel was called inside the checkout's own atomic block")
+        self.assertEqual(Order.objects.get().status, Order.PENDING)
+        self.assertTrue(CartItem.objects.exists())  # the cart is cleared when the payment lands, not now
+
+    @override_settings(PAYMENTS_PROVIDER="hubtel", HUBTEL_CLIENT_ID="id", HUBTEL_CLIENT_SECRET="secret")
+    def test_a_hubtel_failure_returns_503_cancels_the_order_and_restores_stock(self):
+        from unittest import mock
+
+        with mock.patch("payments.hubtel_client.create_checkout", side_effect=ConnectionError("down")):
+            response = self.api.post("/api/orders/checkout/", {}, format="json")
+        self.assertEqual(response.status_code, 503, response.content)
+        self.assertEqual(response.json()["code"], "payment_unavailable")
+        order = Order.objects.get()
+        session = CheckoutSession.objects.get()
+        self.listing.refresh_from_db()
+        self.assertEqual(order.status, Order.CANCELLED)
+        self.assertEqual(session.status, CheckoutSession.FAILED)
+        self.assertEqual(self.listing.stock_quantity, 5)

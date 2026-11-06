@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from decimal import Decimal
 
@@ -34,7 +36,7 @@ from ledger import escrow, posting
 from ledger.models import Account
 from ledger.money import from_pesewas, to_pesewas
 from payments.providers import get_provider
-from payments.services import process_payment
+from payments.services import process_payment, start_hubtel_checkout
 
 from . import hold, locks
 from .models import DeliveryAssignment, Order, OrderItem
@@ -48,6 +50,8 @@ from .serializers import (
     StaffOrderSerializer,
 )
 
+
+logger = logging.getLogger(__name__)
 
 # How a customer pays at checkout (wallets plan 3a): by mobile money through the provider (the default, today's path)
 # or from their AshantiHub wallet, which needs LEDGER_ENABLED.
@@ -395,6 +399,7 @@ class OrderCheckoutView(APIView):
                         amount=total + processing,
                         processing_fee=processing,
                         wallet=payment_method == WALLET,
+                        defer_provider_call=True,  # Hubtel is called after this transaction commits (review BE-06)
                         purpose=f"AshantiHub Order #{order.id}",
                         customer=request.user,
                         # stock_reservations lets _fail_order_checkout put the stock
@@ -412,22 +417,30 @@ class OrderCheckoutView(APIView):
                 db_transaction.set_rollback(True)
                 return Response({"detail": WALLET_TOO_LOW, "code": "insufficient_funds"}, status=status.HTTP_409_CONFLICT)
 
-            if result["mode"] == "redirect":
-                redirect = {
-                    "mode": "redirect",
-                    "checkout_url": result["checkout_url"],
-                    "reference": result["reference"],
-                }
-                if escrow.enabled():
-                    redirect["payment_processing"] = str(processing)
-                return Response(redirect, status=status.HTTP_200_OK)
+            hubtel_session = None
+            if result["mode"] == "hubtel_pending":
+                hubtel_session = result["session"]
+            else:
+                # Immediate/simulated mode - process_payment() has already created the Transaction and run
+                # _finalize_order_checkout (order.status = PAID) synchronously, exactly as this view always did.
+                order.refresh_from_db()
+                cart.items.all().delete()
 
-            # Immediate/simulated mode — process_payment() has already
-            # created the Transaction and run _finalize_order_checkout
-            # (order.status = PAID) synchronously, exactly matching this
-            # view's pre-existing behavior.
-            order.refresh_from_db()
-            cart.items.all().delete()
+        if hubtel_session is not None:
+            # The order, stock reservation and session are committed and every row lock is released; only now do we
+            # wait on Hubtel. If it fails the session is closed and the stock goes back (start_hubtel_checkout).
+            try:
+                result = start_hubtel_checkout(hubtel_session)
+            except Exception:
+                logger.exception("Hubtel checkout could not be started for order %s", order.id)
+                return Response(
+                    {"detail": "We could not start the payment. Nothing was charged - please try again.", "code": "payment_unavailable"},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            redirect = {"mode": "redirect", "checkout_url": result["checkout_url"], "reference": result["reference"]}
+            if escrow.enabled():
+                redirect["payment_processing"] = str(processing)
+            return Response(redirect, status=status.HTTP_200_OK)
 
         body = OrderSerializer(order).data
         if escrow.enabled():

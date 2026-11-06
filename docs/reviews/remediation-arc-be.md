@@ -19,7 +19,7 @@ Status: `done` = fixed, tested, committed on the branch · `partial` = fixed as 
 | BE-08 | P2 | Cart not cleared after a Hubtel-confirmed order | Finalizer clears the lines the order bought | **done** |
 | BE-17 | P3 | Late payment can mark a cancelled order PAID | Session failed (`not_applied=order_cancelled`), order stays cancelled, flagged for manual refund | **done** |
 | BE-11 | P2 | Cart price snapshot never revalidated | Reprice at checkout, prompt on change | queued |
-| BE-06 | P2 | Hubtel HTTP call inside a DB transaction holding row locks | Commit, call Hubtel outside the transaction | queued |
+| BE-06 | P2 | Hubtel HTTP call inside a DB transaction holding row locks | `process_payment(defer_provider_call=True)` + `start_hubtel_checkout`; order checkout calls Hubtel after commit, a failure cancels the order and returns the stock (503 `payment_unavailable`) | **partial** — order checkout done; booking, ticket, event, top-up and subscription callers still call Hubtel inside their own (smaller) transactions |
 | BE-09 | P2 | 12 h web tokens, no revocation, no 401 recovery | `token_version` claim; suspension check for all kinds; shorter token + refresh | queued |
 | BE-13 | P3 | Webhook row written before the signature check; edge cases | Verify first; alert on `processed=False` | queued |
 | BE-14 | P3 | Reset token plaintext + query string; weak password rule | Hash token, fragment URL, invalidate older tokens, breached-password check | queued |
