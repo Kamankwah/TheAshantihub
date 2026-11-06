@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import * as Location from "expo-location";
 
 import ShopLocation from "../src/app/(auth)/register/shop-location";
@@ -101,6 +101,21 @@ describe("shop location step", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Save my shop location" }));
     await screen.findByText("6CCHPV8F+9Q");
     expect(apiMock).toHaveBeenCalledWith(LOCATION, { body: { lat: 6.69, lng: -1.62, manual: true } });
+  });
+
+  it("a_slow_phone_reading_does_not_overwrite_a_pin_placed_meanwhile", async () => {
+    let arrive: (v: unknown) => void = () => {};
+    position.mockReturnValue(new Promise((resolve) => { arrive = resolve; }));
+    apiMock.mockResolvedValue(SAVED);
+    await render(<ShopLocation />);
+    await useMyLocation();
+    await waitFor(() => expect(position).toHaveBeenCalled());
+    await fireEvent(screen.getByTestId("map"), "press", { nativeEvent: { coordinate: { latitude: 6.7, longitude: -1.63 } } });
+    await act(async () => { arrive({ coords: { latitude: 6.5, longitude: -1.5, accuracy: 12 } }); });
+    expect(screen.queryByText(/accurate to/)).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Save my shop location" }));
+    await screen.findByText("6CCHPV8F+9Q");
+    expect(apiMock).toHaveBeenCalledWith(LOCATION, { body: { lat: 6.7, lng: -1.63, manual: true } });
   });
 
   it("shows_the_servers_refusal_as_it_was_sent", async () => {

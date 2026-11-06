@@ -46,6 +46,8 @@ function fieldMessage(error: unknown): string {
 export default function ShopLocation() {
   const { c, radius } = useTheme();
   const ref = useRef<MapView>(null);
+  // Counts the owner's own placements (tap or drag), so a slow phone reading that lands after one is thrown away.
+  const placed = useRef(0);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [landmark, setLandmark] = useState("");
   const [locating, setLocating] = useState(false);
@@ -59,20 +61,24 @@ export default function ShopLocation() {
   const dim = { color: c.dim, fontFamily: fonts.body, fontSize: 14, lineHeight: 20 } as const;
 
   function place(point: Point) {
+    placed.current += 1;
     setError(undefined);
     setDraft({ lat: six(point.latitude), lng: six(point.longitude), accuracy: null, manual: true });
   }
 
   async function useMyLocation() {
+    const started = placed.current;
     setLocating(true);
     setError(undefined);
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
+      if (placed.current !== started) return;
       if (!permission.granted) {
         setError(DENIED);
         return;
       }
       const { coords } = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      if (placed.current !== started) return; // the owner placed the pin by hand while this reading was coming
       if (typeof coords.accuracy !== "number" || !Number.isFinite(coords.accuracy)) {
         setError(NO_ACCURACY);
         return;

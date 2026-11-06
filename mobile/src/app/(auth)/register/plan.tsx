@@ -28,6 +28,9 @@ export default function PlanStep() {
   const [busy, setBusy] = useState(false);
   const plans = useQuery({ queryKey: ["plans"], queryFn: listPlans });
   const shown = asList(plans.data).filter((p) => p.kind === kind);
+  // Subscriptions off: once the server has answered with an empty list there is nothing to choose, so the step is only
+  // "Your Business Type". While plans load, or if they failed to load, the plan wording stays; only an answered empty list counts.
+  const typeOnly = plans.isSuccess && (Array.isArray(plans.data) || Array.isArray((plans.data as { results?: unknown } | null)?.results)) && asList(plans.data).length === 0;
   // Plans are only asked for when this kind of business has some; otherwise it continues without choosing one.
   const needsPlan = shown.length > 0;
 
@@ -39,7 +42,7 @@ export default function PlanStep() {
       else await saveBusinessKind(kind!);
       await resumeRegistration();
     } catch (e) {
-      setError(messageFor(e, "We couldn't save your plan. Try again."));
+      setError(messageFor(e, typeOnly ? "We couldn't save your business type. Try again." : "We couldn't save your plan. Try again."));
     } finally {
       setBusy(false);
     }
@@ -61,13 +64,13 @@ export default function PlanStep() {
 
   return (
     <Screen>
-      <RegistrationHeader step={4} title="Choose your plan" back />
-      <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>What will you sell?</Text>
+      <RegistrationHeader step={4} title={typeOnly ? "Your Business Type" : "Choose your plan"} back />
+      <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>{typeOnly ? "What kind of business is this?" : "What will you sell?"}</Text>
       {option(kind === "product", "Products", () => { setKind("product"); setTier(undefined); })}
       {option(kind === "service", "Services, stays and events", () => { setKind("service"); setTier(undefined); })}
       {plans.isPending ? <Skeleton height={72} /> : null}
       {plans.isError ? <EmptyState title="We couldn't load the plans" action={{ label: "Try again", onPress: () => plans.refetch() }} /> : null}
-      {kind && !plans.isPending && !plans.isError && !needsPlan ? (
+      {kind && !plans.isPending && !plans.isError && !needsPlan && !typeOnly ? (
         <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14, lineHeight: 20 }}>There are no plans for this yet. You can continue, and we will tell you when plans open.</Text>
       ) : null}
       {kind && needsPlan ? (
