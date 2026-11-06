@@ -11,6 +11,9 @@ import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
 import { Screen } from "../../../ui/Screen";
 
+const EMAIL_LOOKS_RIGHT = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
+const EMAIL_NEEDED = "Enter your email so we can send you a confirmation link.";
+
 export default function Personal() {
   const { c } = useTheme();
   const [first, setFirst] = useState("");
@@ -22,6 +25,11 @@ export default function Personal() {
   const [busy, setBusy] = useState(false);
 
   async function submit() {
+    const address = email.trim();
+    if (!EMAIL_LOOKS_RIGHT.test(address)) {
+      setErrors({ email: EMAIL_NEEDED });
+      return;
+    }
     setBusy(true);
     setErrors({});
     const digits = phone.replace(/\D/g, "").replace(/^0/, "").replace(/^233/, "");
@@ -29,7 +37,7 @@ export default function Personal() {
       const result = await ownerRegister({
         full_name: `${first.trim()} ${last.trim()}`.trim(),
         login_phone: `+233${digits}`,
-        ...(email.trim() ? { email: email.trim() } : {}),
+        email: address,
         password,
       });
       if (result.kind === "challenge") {

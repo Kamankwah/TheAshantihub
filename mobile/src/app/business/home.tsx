@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { Linking, Pressable, Text, View } from "react-native";
 
+import { EmailConfirmBanner } from "../../features/business/EmailConfirmBanner";
 import { useHoursStatus, useMe, useStock } from "../../features/business/queries";
 import { buildSpendSeries, useSpend } from "../../features/business/spend";
 import { SpendChart } from "../../features/business/SpendChart";
@@ -30,6 +31,8 @@ export default function BusinessHome() {
     <Screen>
       <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 30 }}>{first ? `Akwaaba, ${first}` : "Akwaaba"}</Text>
       {me.data?.identity_status === "verified" ? <VerifiedBadge /> : me.data ? <Pill tone={me.data.kyc_status === "rejected" ? "error" : "warn"} icon="clock" label={me.data.kyc_status === "rejected" ? "Verification needs attention" : "Verification in progress"} /> : null}
+
+      <EmailConfirmBanner goLive={me.data?.go_live} />
 
       {hours.data && !hours.data.has_hours ? (
         <Pressable accessibilityRole="button" accessibilityLabel="Add your opening hours" onPress={() => router.push("/manage/hours" as never)} style={card}>

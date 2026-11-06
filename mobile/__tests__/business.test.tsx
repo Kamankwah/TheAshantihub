@@ -104,6 +104,29 @@ describe("business home", () => {
     expect(screen.queryByText(/running low/i)).toBeNull();
   });
 
+  it("email_banner_shows_on_home_while_the_email_is_unconfirmed", async () => {
+    server({
+      "/api/accounts/me/": me({ go_live: { live: false, blockers: [{ code: "email_unconfirmed", message: "Confirm your email." }] } }),
+      "/api/orders/owner/": { results: [], next: null },
+      "/api/accounts/business/hours/": { has_hours: true, days: [] },
+      "/api/catalogue/stock/": stock(),
+    });
+    await render(client(<BusinessHome />));
+    expect(await screen.findByText("Confirm your email to publish listings")).toBeTruthy();
+  });
+
+  it("no_email_banner_when_the_server_reports_no_email_blocker", async () => {
+    server({
+      "/api/accounts/me/": me({ go_live: { live: true, blockers: [] } }),
+      "/api/orders/owner/": { results: [], next: null },
+      "/api/accounts/business/hours/": { has_hours: true, days: [] },
+      "/api/catalogue/stock/": stock(),
+    });
+    await render(client(<BusinessHome />));
+    await screen.findByText(/Akwaaba, Kwame/);
+    expect(screen.queryByText("Confirm your email to publish listings")).toBeNull();
+  });
+
   it("orders_waiting_to_be_prepared_are_counted_from_the_api", async () => {
     server({
       "/api/accounts/me/": me(),

@@ -61,7 +61,7 @@ export default function PlanStep() {
 
   return (
     <Screen>
-      <RegistrationHeader step={3} title="Choose your plan" back />
+      <RegistrationHeader step={4} title="Choose your plan" back />
       <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>What will you sell?</Text>
       {option(kind === "product", "Products", () => { setKind("product"); setTier(undefined); })}
       {option(kind === "service", "Services, stays and events", () => { setKind("service"); setTier(undefined); })}
