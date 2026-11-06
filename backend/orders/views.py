@@ -1,7 +1,7 @@
 from django.conf import settings
 from decimal import Decimal
 
-from django.db import transaction as db_transaction
+from django.db import IntegrityError, transaction as db_transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import generics, status
@@ -98,11 +98,48 @@ class OrderCheckoutView(APIView):
 
     permission_classes = [IsAuthenticated, IsCustomer, MarketplaceOpen]
 
+    CART_RELATED = ("listing__business_owner__profile", "listing__category", "variant")
+
+    @staticmethod
+    def _signature(items):
+        """What a cart line commits the shopper to; two reads with the same signature priced the same goods."""
+        return sorted((i.listing_id, i.variant_id, i.quantity, str(i.unit_price_snapshot)) for i in items)
+
     def post(self, request):
+        """Idempotent on the optional `request_id` (review BE-05): a repeat of a request that already made an order
+        returns that order's result instead of making another, including when two copies race."""
+        raw = request.data.get("request_id")
+        request_id = raw.strip()[:64] if isinstance(raw, str) else ""
+        if request_id:
+            existing = Order.objects.filter(customer=request.user, request_id=request_id).first()
+            if existing is not None:
+                return self._replay(existing, request)
+        try:
+            return self._checkout(request, request_id)
+        except IntegrityError:
+            existing = Order.objects.filter(customer=request.user, request_id=request_id).first() if request_id else None
+            if existing is None:
+                raise
+            return self._replay(existing, request)  # the other copy won the race; this one rolled back whole
+
+    def _replay(self, order, request):
+        """The response the first request got, rebuilt from what it saved."""
+        session = (
+            CheckoutSession.objects.filter(kind=CheckoutSession.ORDER_CHECKOUT, metadata__order_id=order.id)
+            .order_by("-id").first()
+        )
+        if order.status == Order.PENDING and session is not None and session.status == CheckoutSession.PENDING and session.checkout_url:
+            return Response(
+                {"mode": "redirect", "checkout_url": session.checkout_url, "reference": session.reference}, status=status.HTTP_200_OK,
+            )
+        return Response(OrderSerializer(order).data, status=status.HTTP_200_OK)
+
+    def _checkout(self, request, request_id):
         cart = Cart.objects.filter(customer=request.user).first()
-        items = list(cart.items.select_related("listing__business_owner__profile", "listing__category", "variant")) if cart is not None else []
+        items = list(cart.items.select_related(*self.CART_RELATED)) if cart is not None else []
         if not items:
             return Response({"detail": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
+        read_signature = self._signature(items)
         # A line whose listing was dropped, discontinued or unpublished, or whose business is hidden, is refused
         # before any stock is touched; the cart is left as it is for the shopper to fix.
         hidden_ids = set(
@@ -197,6 +234,19 @@ class OrderCheckoutView(APIView):
             quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"), plan=plan)
 
         with db_transaction.atomic():
+            # Lock the cart row and read it again: the cart above was read before this transaction, so a second tab, a
+            # retry or a bulk add could have changed it, and two checkouts of one cart would otherwise both buy it. The
+            # lock order (cart, then listings, then variants) is the same one the bulk cart add takes. A cart that
+            # changed since the prices and fee were worked out is refused; the shopper reviews it and tries again.
+            Cart.objects.select_for_update().get(pk=cart.pk)
+            items = list(cart.items.select_related(*self.CART_RELATED))
+            if not items:
+                return Response({"detail": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
+            if self._signature(items) != read_signature:
+                return Response(
+                    {"detail": "Your cart changed while you were checking out. Review it and try again.", "code": "cart_changed"},
+                    status=status.HTTP_409_CONFLICT,
+                )
             # Checkout promotions (marketing): off unless settings.MARKETING_PROMOS_ENABLED, and
             # then priced here, before anything is reserved or written, under the flash-sale and
             # coupon row locks. With the switch off `promo` stays None and nothing below changes.
@@ -314,6 +364,7 @@ class OrderCheckoutView(APIView):
                 delivery_gps_address=delivery_gps_address, delivery_landmark=delivery_landmark,
                 delivery_lat=request.data.get("delivery_lat") if delivery_method == Order.DOOR_TO_DOOR else None,
                 delivery_lng=request.data.get("delivery_lng") if delivery_method == Order.DOOR_TO_DOOR else None,
+                request_id=request_id,
             )
             if waiver is not None and fee_quote and fee_quote.get("waived"):
                 waivers.record_charge(order, waiver, Decimal(fee_quote["waived"]["amount"]))

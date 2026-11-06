@@ -76,9 +76,17 @@ class Order(models.Model):
     # Null means ready now. Fixed on the order, so a vendor editing their hours later never moves it. Delivery is not
     # dispatched before this time, and the store-pickup window and the delivery promise clock both start from it.
     ready_not_before = models.DateTimeField(null=True, blank=True)
+    # The client's idempotency key for the checkout POST (review BE-05): a retry of the same request returns this order
+    # instead of making a second one. Blank for older clients that send none.
+    request_id = models.CharField(max_length=64, blank=True, default="")
 
     class Meta:
         ordering = ["-placed_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["customer", "request_id"], condition=~models.Q(request_id=""), name="order_request_id_unique_per_customer",
+            ),
+        ]
 
     def __str__(self):
         return f"Order {self.id} — {self.customer.full_name} ({self.status})"
