@@ -272,7 +272,9 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   side_effects: {signed_out_phone, payout_cooling}}`, both false for a same-address resend, so clients can say honestly what happened. It trims and lower-cases, refuses another business's email, a staff
   email and a customer's verified recovery email with one wording (`email_confirmation.address_taken`), revokes the older live links and
   mails a fresh one (`email_confirmation.set_email` then `send`; a daily-limit 429 still leaves the new address saved and the old
-  links revoked). Answers 200 `{"email", "sent": true}`; never a token.
+  links revoked; that 429 carries `side_effects` too). **Known gap before the ledger or the OTP switches go on:** `otp.identity.contacts()` offers an UNCONFIRMED email as a
+  code channel for an owner, so an address set through this door becomes a step-up/sign-in code channel before it is proven. Decide how existing
+  owners with an unconfirmed email get confirmed (they were never sent a link), then exclude unconfirmed emails from `contacts()`. Never a token in a response.
   The self-registered step chain is `business_info` -> `shop_location` -> plan/type -> `terms`; `payment_info` is no longer in it
   (the scout chain still has it).
 - **Email confirmation (`accounts/email_confirmation.py`)** is a bearer link made like the shop-location one: only the SHA-256 hash

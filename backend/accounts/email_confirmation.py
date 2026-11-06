@@ -123,7 +123,7 @@ def set_email(owner, address, *, request=None):
             business_owner=locked, used_at__isnull=True, revoked_at__isnull=True,
         ).update(revoked_at=now)  # 2. the live links for the old address
         if before == address:
-            return locked, NO_SIDE_EFFECTS
+            return locked, dict(NO_SIDE_EFFECTS)
         locked.email = address
         locked.save(update_fields=["email"])
         cooling = restart_cooling(locked, now)

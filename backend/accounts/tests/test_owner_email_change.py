@@ -114,6 +114,8 @@ class OwnerEmailChangeTests(TestCase):
             )
         response = self.post(owner, "ama@example.com")
         self.assertEqual((response.status_code, response.json()["code"]), (429, "too_many_links"))
+        # The change is committed even though no link could go out, so the answer says what happened to the owner.
+        self.assertEqual(set(response.json()["side_effects"]), {"signed_out_phone", "payout_cooling"})
         self.client.credentials()
         self.assertEqual(self.client.post(CONFIRM, {"token": old}, format="json").json()["code"], "revoked")
 

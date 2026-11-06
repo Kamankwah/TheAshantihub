@@ -87,7 +87,11 @@ class OwnerEmailView(APIView):
         try:
             email_confirmation.send(owner)
         except ClaimError as exc:
-            return _refusal(exc)
+            # The change itself is committed (sessions ended, cooling restarted) even when no link could go out, so the
+            # owner is told what happened to them as well as why there is no link.
+            response = _refusal(exc)
+            response.data["side_effects"] = side_effects
+            return response
         return Response({"email": owner.email, "sent": True, "side_effects": side_effects})
 
 
