@@ -4,7 +4,7 @@ import { usePeopleLookup, usePeopleRecent, usePersonProfile } from "../../../hoo
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D, glassCard } from "../theme.js";
 import { button, callout, chip, dim, field, pill } from "./panelStyles.js";
-import { formatDateTime, labelStyle, money } from "./portfolioParts.jsx";
+import { formatDateTime, labelStyle, money, usePlansGone } from "./portfolioParts.jsx";
 import RecoveryRequestForm from "./RecoveryRequestForm.jsx";
 import StaffHoursSection from "./StaffHoursSection.jsx";
 
@@ -88,6 +88,8 @@ function StartConversation({ profile, orders, onDone }) {
 function Profile({ kind, id, auth, onBack, onLogCall, onNavigate, canRecover }) {
   const q = usePersonProfile(kind, id);
   const [starting, setStarting] = useState(false);
+  // With no plan on offer (plans answered []), the backend's empty subscription reads "No plan · none"; show none of it.
+  const plansGone = usePlansGone();
   useEffect(() => { apiPost("/api/support/staff/profile-opened/", { kind, id }).catch(() => {}); }, [kind, id]);
   if (q.isLoading) return <div style={dim}>Loading…</div>;
   if (q.isError || !q.data) return <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load that profile.</div>;
@@ -135,8 +137,8 @@ function Profile({ kind, id, auth, onBack, onLogCall, onNavigate, canRecover }) 
         )}
       </div>
       {!customer && (
-        <Section title="Subscription and account manager">
-          {q.data.subscription ? (
+        <Section title={plansGone ? "Account manager" : "Subscription and account manager"}>
+          {plansGone ? null : q.data.subscription ? (
             <div style={{ color: D.text, fontSize: "0.85rem" }}>{`${q.data.subscription.plan || "No plan"} · ${q.data.subscription.state}${q.data.subscription.overdue_day != null ? ` · day ${q.data.subscription.overdue_day}` : ""}${q.data.subscription.current_period_end ? ` · period ends ${formatDateTime(q.data.subscription.current_period_end)}` : ""}`}</div>
           ) : <div style={dim}>No subscription on record.</div>}
           <div style={dim}>{profile.account_manager ? `Account manager: ${profile.account_manager}` : "No account manager set."}</div>

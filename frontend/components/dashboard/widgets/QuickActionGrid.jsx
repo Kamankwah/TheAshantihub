@@ -11,7 +11,7 @@ const ACTIONS = [
   { id: "credit", icon: "🏅", label: "Apply for Credit", sub: "Check your score" },
 ];
 
-export default function QuickActionGrid({ onNavigate }) {
+export default function QuickActionGrid({ onNavigate, plansGone = false }) {
   if (!onNavigate) return null;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
@@ -22,7 +22,7 @@ export default function QuickActionGrid({ onNavigate }) {
         }}>
           <div style={{ width: 34, height: 34, borderRadius: 10, background: D.goldSoft, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.05rem", marginBottom: 8 }}>{a.icon}</div>
           <div style={{ fontWeight: 800, fontSize: "0.8rem", color: D.text }}>{a.label}</div>
-          <div style={{ fontSize: "0.68rem", color: D.textDim, marginTop: 2 }}>{a.sub}</div>
+          <div style={{ fontSize: "0.68rem", color: D.textDim, marginTop: 2 }}>{plansGone && a.id === "payments" ? "Transactions" : a.sub}</div>
         </button>
       ))}
     </div>

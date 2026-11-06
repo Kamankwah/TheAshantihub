@@ -115,7 +115,16 @@ def subscription_state(subscription, now=None):
     `pause_enabled` says whether the pause is switched on. While it is off the
     state is never "paused" (a paused row reads as overdue), `pause_at`,
     `hide_on`, `renew_by` and `paused_at` are None, and `overdue_day` is the
-    day of being overdue, not capped at 14."""
+    day of being overdue, not capped at 14.
+
+    With SUBSCRIPTIONS_ENABLED off there is no subscription product, so no
+    screen may say a business is overdue, paused or unsubscribed: the state is
+    always the empty one (NONE, every date None, `pause_enabled` False), even
+    for a row that is lapsed or was paused before the switch went off."""
+    from .switch import subscriptions_enabled
+
+    if not subscriptions_enabled():
+        return _empty_state(False)
     enabled = pause_enabled()
     state = _empty_state(enabled)
     if subscription is None:

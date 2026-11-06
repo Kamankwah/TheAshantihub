@@ -69,6 +69,9 @@ function recordList(urls, results = ROWS, summary = SUMMARY) {
     return HttpResponse.json(page(results, summary))
   }))
 }
+const PLAN = { id: 1, tier: 'growth', name: 'Growth', monthly_price: '30.00', kind: 'product', features: [], is_recommended: false }
+// The test server answers GET /api/billing/plans/ with [] (none offered) unless told otherwise.
+const offerPlans = () => server.use(http.get(`${API}/api/billing/plans/`, () => HttpResponse.json([PLAN])))
 const param = (url, key) => new URL(url).searchParams.get(key)
 
 describe("PortfolioPanel — a scout's portfolio", () => {
@@ -85,6 +88,7 @@ describe("PortfolioPanel — a scout's portfolio", () => {
   it('lists the businesses with health, subscription, listings and last contact', async () => {
     const urls = []
     recordList(urls)
+    offerPlans()
     renderPanel()
     const card = await screen.findByRole('article', { name: 'Adwoa Fabrics' })
     expect(within(card).getByText('Needs attention')).toBeInTheDocument()
@@ -176,6 +180,34 @@ describe("PortfolioPanel — a scout's portfolio", () => {
     expect(await screen.findByRole('heading', { name: 'Kofi Stores' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send KYC again' })).toBeInTheDocument()
     expect(screen.queryByText('Sent to the KYC queue')).not.toBeInTheDocument()
+  })
+})
+
+describe('PortfolioPanel — subscription wording follows the plans on offer', () => {
+  const active = { state: 'active', plan_name: 'Monthly', monthly_price: '120.00', current_period_end: '2026-11-20T00:00:00Z', pause_enabled: false }
+
+  it('says Active with no renew date once no plan is offered', async () => {
+    recordList([], [row({ subscription: active })])
+    renderPanel()
+    const card = await screen.findByRole('article', { name: 'Adwoa Fabrics' })
+    await waitFor(() => expect(within(card).getByText('Active')).toBeInTheDocument())
+    expect(card.textContent).not.toMatch(/renews/)
+  })
+
+  it('does not call a business without a plan unsubscribed once no plan is offered', async () => {
+    recordList([], [row({ subscription: { state: 'none' }, kyc_status: 'pending' })])
+    renderPanel()
+    const card = await screen.findByRole('article', { name: 'Adwoa Fabrics' })
+    await waitFor(() => expect(card.textContent).not.toMatch(/Starts after KYC|No plan yet/))
+  })
+
+  it('keeps the renew date and the plain no-plan text while plans are offered', async () => {
+    offerPlans()
+    recordList([], [row({ subscription: active }), row({ id: 13, business_name: 'Kofi Tools', subscription: { state: 'none' } })])
+    renderPanel()
+    const card = await screen.findByRole('article', { name: 'Adwoa Fabrics' })
+    expect(within(card).getByText(`Active · renews ${formatDay('2026-11-20T00:00:00Z')}`)).toBeInTheDocument()
+    expect(within(screen.getByRole('article', { name: 'Kofi Tools' })).getByText('No plan yet')).toBeInTheDocument()
   })
 })
 

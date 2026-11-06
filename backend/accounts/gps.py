@@ -2,10 +2,22 @@
 
 AshantiHub only admits businesses located in the **Ashanti Region**. A Ghana
 Post GPS digital address looks like ``AK-039-5028`` — a 2-letter area code, a
-3-4 digit district code, and a 4-digit unique code. The **first letter of the
+3-4 character district code, and a 4-character unique code. The number groups
+are not always digits: the owner's screenshot of the GhanaPostGPS app shows a
+real Obuasi code, ``AO-T010-3560``, with a letter in the middle group and four
+characters in it (``AO`` is Obuasi, ``AK`` Kumasi, ``AM`` Mampong). Whether the
+last group ever holds a letter is unverified, so both groups accept letters or
+digits rather than risk refusing a real code. The **first letter of the
 area code is the region initial**, and Ashanti Region addresses always begin
 with ``A`` (no other region uses an A-prefix), so that letter is how we enforce
 "Ashanti Region only".
+
+People type the code loosely (``ak 039 5028``, ``AK0395028``, ``ak_039.5028``),
+so ``normalize_gps`` drops separators and case before reformatting. A grouping the
+person typed (three groups) is kept as typed or refused, never re-cut. It never
+replaces one character with another (no reading ``O`` as ``0``): letters are
+legitimate in the number groups, so converting would corrupt real codes. A code
+is never invented or looked up.
 
 An optional best-effort call to the public ghana-api.dev validator can also
 confirm the code is a *real* Ghana Post address (not just well-formed); it is
@@ -21,7 +33,15 @@ import re
 from django.conf import settings
 from rest_framework import serializers
 
-GPS_FORMAT = re.compile(r"^[A-Z]{2}-\d{3,4}-\d{4}$")
+GPS_FORMAT = re.compile(r"^[A-Z]{2}-[A-Z0-9]{3,4}-[A-Z0-9]{4}$")
+# Separators people type between the groups: whitespace, hyphens (plain, hyphen, en and em dash, minus), underscore,
+# dot and slash.
+_SEPARATORS = re.compile(r"[\s\-\u2010\u2013\u2014\u2212_./]")
+_SEPARATOR_RUN = re.compile(r"[\s\-\u2010\u2013\u2014\u2212_./]+")
+_LOOSE_CODE = re.compile(r"^([A-Z]{2})([A-Z0-9]{7,8})$")
+_AREA = re.compile(r"^[A-Z]{2}$")
+_DISTRICT = re.compile(r"^[A-Z0-9]{3,4}$")
+_UNIQUE = re.compile(r"^[A-Z0-9]{4}$")
 ASHANTI_REGION_LETTER = "A"
 # The Ashanti Region as a generous box (a shop near the border must not be refused; a fix from Accra, Tamale or
 # a desktop's IP location must). Used by every location-capture path.
@@ -31,7 +51,27 @@ GHANA_API_VALIDATE_URL = "https://api.ghana-api.dev/api/v1/addresses/validate/{c
 
 
 def normalize_gps(raw):
-    return (raw or "").strip().upper()
+    """Return the canonical code (``AK-039-5028`` or ``AK-0395-0285``) when ``raw`` is a code typed loosely, else the
+    trimmed upper-case text so the format check rejects it. Only separators and case change; no character is replaced.
+
+    A typed grouping is never re-grouped: when the text splits on separator runs into exactly three groups, they must
+    already be 2 letters, 3-4 letters-or-digits and 4 letters-or-digits, or the text is returned as typed (so the format
+    message shows) -- ``AK-039-50288`` is a typo, not ``AK-0395-0288``. Text with no separators, or with another number
+    of groups, has its separators dropped and is re-split by length (7 -> 3-4, 8 -> 4-4).
+    """
+    text = str(raw or "").strip().upper()
+    groups = [group for group in _SEPARATOR_RUN.split(text) if group]
+    if len(groups) == 3:
+        area, district, unique = groups
+        if _AREA.match(area) and _DISTRICT.match(district) and _UNIQUE.match(unique):
+            return f"{area}-{district}-{unique}"
+        return text
+    match = _LOOSE_CODE.match(_SEPARATORS.sub("", text))
+    if not match:
+        return text
+    area, rest = match.groups()
+    cut = 3 if len(rest) == 7 else 4
+    return f"{area}-{rest[:cut]}-{rest[cut:]}"
 
 
 def remote_is_real(code):

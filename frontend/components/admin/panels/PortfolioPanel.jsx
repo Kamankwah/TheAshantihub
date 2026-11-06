@@ -7,7 +7,7 @@ import { button, callout, chip, dim, field, pill } from "./panelStyles.js";
 import BusinessPage from "./BusinessPage.jsx";
 import {
   FollowUpForm, HealthChip, ReassignForm, card, errorStyle, eyebrow, flagCount, formatDay, h2, h3, labelStyle,
-  lastContactText, listingsLiveText, subscriptionText, useDebounced,
+  lastContactText, listingsLiveText, subscriptionText, useDebounced, usePlansGone,
 } from "./portfolioParts.jsx";
 
 const MINE_CHIPS = [["", "All", "total"], ["healthy", "Healthy", "healthy"], ["needs_attention", "Needs attention", "needs_attention"], ["at_risk", "At risk", "at_risk"], ["new", "New", "new"]];
@@ -63,6 +63,7 @@ function Fact({ label, value }) {
 }
 
 function BusinessCard({ business: b, onOpen }) {
+  const plansGone = usePlansGone();
   return (
     // The whole card opens the business (canvas 02); the Open button stays as the keyboard path.
     <article aria-label={b.business_name} onClick={() => onOpen(b.id)} style={{ ...glassCard, padding: 14, display: "flex", flexDirection: "column", gap: 10, cursor: "pointer" }}>
@@ -74,7 +75,7 @@ function BusinessCard({ business: b, onOpen }) {
         <HealthChip rating={b.health?.rating} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-        <Fact label="Subscription" value={subscriptionText(b.subscription, b.kyc_status)} />
+        <Fact label="Subscription" value={subscriptionText(b.subscription, b.kyc_status, plansGone)} />
         <Fact label="Listings live" value={listingsLiveText(b)} />
         <Fact label="Last contact" value={lastContactText(b.last_contact)} />
       </div>
@@ -145,6 +146,7 @@ const td = { padding: "8px", verticalAlign: "top", borderTop: `1px solid ${D.div
 // initialScout: the scoreboard's Open / View lands here filtered to that scout (any team, so scope "all").
 function AllPortfolios({ auth, onOpen, initialScout = null }) {
   const queryClient = useQueryClient();
+  const plansGone = usePlansGone();
   const [scope, setScope] = useState(initialScout != null ? "all" : defaultScope(auth));
   const [filters, setFilters] = useState({ scout: initialScout != null ? String(initialScout) : "", health: "", subscription: "", zone: "", unassigned: false, flag: "" });
   const [search, setSearch] = useState("");
@@ -255,7 +257,7 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
                       {flagCount(b.open_fraud_flags) > 0 && <span style={chip(D.red)}>🚩 Fraud case open</span>}
                       {b.has_hours === false && <span style={chip(D.amber)}>Hours not set</span>}
                     </td>
-                    <td style={td}>{subscriptionText(b.subscription, b.kyc_status)}</td>
+                    <td style={td}>{subscriptionText(b.subscription, b.kyc_status, plansGone)}</td>
                     <td style={td}>{listingsLiveText(b)}</td>
                     <td style={td}>{b.last_order_at ? formatDay(b.last_order_at) : "No orders yet"}</td>
                     <td style={td}>{lastContactText(b.last_contact)}</td>
@@ -281,6 +283,7 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
 }
 
 function AtRisk({ auth, onOpen }) {
+  const plansGone = usePlansGone();
   const [scope, setScope] = useState(defaultScope(auth));
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(null); // {id, form: "follow-up" | "reassign"}
@@ -322,7 +325,7 @@ function AtRisk({ auth, onOpen }) {
             </div>
             <div style={dim}>{[b.zone?.name, b.account_manager ? `account manager ${b.account_manager.full_name}` : "no account manager"].filter(Boolean).join(" · ")}</div>
             <ul style={{ margin: 0, paddingLeft: 18, fontSize: "0.8rem", color: D.text }}>
-              <li>{`Subscription: ${subscriptionText(b.subscription, b.kyc_status)}`}</li>
+              <li>{`Subscription: ${subscriptionText(b.subscription, b.kyc_status, plansGone)}`}</li>
               <li>{`Listings live: ${listingsLiveText(b)}`}</li>
               <li>{b.last_order_at ? `Last order ${formatDay(b.last_order_at)}` : "No orders yet"}</li>
               <li>{`Last contact: ${lastContactText(b.last_contact)}`}</li>

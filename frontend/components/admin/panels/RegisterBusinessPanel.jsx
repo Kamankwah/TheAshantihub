@@ -7,6 +7,7 @@ import { useRegistrationOptions } from "../../../hooks/useRegistrationOptions.js
 import CategoryChips from "../../CategoryChips.jsx";
 import { categoryPathLabeler } from "../../../lib/categoryOptions.jsx";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
+import { normalizeGhanaPost } from "../../../lib/ghanaPost.js";
 import BusinessHoursEditor from "../../BusinessHoursEditor.jsx";
 import LocationPicker from "../../LocationPicker.jsx";
 import { D, glassCard } from "../theme.js";
@@ -378,7 +379,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
     setCheck({ state: "checking", result: null, error: null });
     try {
       const result = await apiPost("/api/portfolio/register/check/", {
-        owner_phone: form.owner_phone.trim(), business_name: form.business_name.trim(), gps_address: form.gps_address.trim(),
+        owner_phone: form.owner_phone.trim(), business_name: form.business_name.trim(), gps_address: normalizeGhanaPost(form.gps_address),
         lat: Number(form.lat), lng: Number(form.lng), ghana_card_number: form.ghana_card_number.trim(),
       });
       setCheck({ state: "done", result, error: null });
@@ -422,7 +423,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
     put("business_kind", form.business_kind);
     if (picks.length > 0) fd.append("business_categories", JSON.stringify(picks));
     put("zone", form.zone);
-    put("gps_address", form.gps_address.trim());
+    put("gps_address", normalizeGhanaPost(form.gps_address));
     put("lat", form.lat);
     put("lng", form.lng);
     if (!form.location_is_manual) put("location_accuracy_m", form.location_accuracy_m);

@@ -2,6 +2,8 @@ import { useMyListings } from "../../../hooks/useMyListings.js";
 import { useMyTransactions } from "../../../hooks/useMyTransactions.js";
 import { useMyCreditScore } from "../../../hooks/useMyCreditScore.js";
 import { useMySubscription } from "../../../hooks/useMySubscription.js";
+import { useSubscriptionPlans } from "../../../hooks/useSubscriptionPlans.js";
+import { noPlansOffered } from "../../../lib/plansOffered.js";
 import { useMyHeroSubmission } from "../../../hooks/useMyHeroSubmission.js";
 import { useOwnerReviews } from "../../../hooks/useOwnerReviews.js";
 import { useBusinessProfile } from "../../../hooks/useBusinessProfile.js";
@@ -48,6 +50,10 @@ export default function AnalyticsPanel({ user, onNavigate, businessKind }) {
   const { data: transactions } = useMyTransactions();
   const { data: scoreData } = useMyCreditScore();
   const { data: subscription } = useMySubscription();
+  // Once /api/billing/plans/ has answered [] nothing is on offer: no plan, renewal or
+  // "no subscription" wording, whatever old plan row the owner still has. Loading
+  // and errors keep today's screen.
+  const plansGone = noPlansOffered(useSubscriptionPlans());
   const { data: heroSubmission } = useMyHeroSubmission();
   const { data: reviews } = useOwnerReviews(user?.id);
   const { data: profile } = useBusinessProfile();
@@ -86,11 +92,12 @@ export default function AnalyticsPanel({ user, onNavigate, businessKind }) {
   const reviewCount = reviews?.review_count ?? 0;
   const avgRating = reviews?.avg_rating;
 
+  const subscriptionKpi = { icon: "💳", label: "Subscription", value: sub ? (sub.plan?.name || "Active") : "None", accent: D.green, sub: sub ? (daysLeft != null ? `Renews in ${daysLeft}d` : sub.status) : "No active plan" };
   const kpis = [
     { icon: "📦", label: "Active Listings", value: publishedCount, accent: D.gold, sub: `${listingList.length} total`, trend: statusCounts.pending_review ? `${statusCounts.pending_review} pending` : null },
     { icon: "⭐", label: "Business Rating", value: reviewCount > 0 ? `${Number(avgRating).toFixed(1)}★` : "—", accent: D.amber, sub: reviewCount > 0 ? `${reviewCount} review${reviewCount === 1 ? "" : "s"}` : "No reviews yet" },
     { icon: "🏅", label: "Credit Score", value: score != null ? score : "—", accent: score != null ? getScoreColor(score) : D.textDim, sub: scoreData?.grade ? `Grade ${scoreData.grade}` : "Not scored yet" },
-    { icon: "💳", label: "Subscription", value: sub ? (sub.plan?.name || "Active") : "None", accent: D.green, sub: sub ? (daysLeft != null ? `Renews in ${daysLeft}d` : sub.status) : "No active plan" },
+    ...(plansGone ? [] : [subscriptionKpi]),
   ];
 
   const firstName = user?.fullName?.split(" ")[0] || "there";
@@ -119,9 +126,11 @@ export default function AnalyticsPanel({ user, onNavigate, businessKind }) {
             {profile?.gps_address ? `📍 ${profile.gps_address}` : "Your business at a glance"}
             {profile?.business_contact_phone ? ` • ${profile.business_contact_phone}` : ""}
           </div>
-          <div style={{ fontSize: "0.68rem", color: D.textFaint, marginTop: 6 }}>
-            {sub ? `💳 ${sub.plan?.name} plan • ${sub.status}${daysLeft != null ? ` • renews in ${daysLeft} days` : ""}` : "💳 No active subscription yet — see the Subscription tab"}
-          </div>
+          {!plansGone && (
+            <div style={{ fontSize: "0.68rem", color: D.textFaint, marginTop: 6 }}>
+              {sub ? `💳 ${sub.plan?.name} plan • ${sub.status}${daysLeft != null ? ` • renews in ${daysLeft} days` : ""}` : "💳 No active subscription yet — see the Subscription tab"}
+            </div>
+          )}
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: "0.62rem", color: D.textDim, textTransform: "uppercase", letterSpacing: "0.06em" }}>Spend last 6 months</div>
@@ -167,9 +176,11 @@ export default function AnalyticsPanel({ user, onNavigate, businessKind }) {
       </div>
 
       {/* Plan usage */}
-      <ChartFrame title="Plan usage" icon="📊" minHeight={90}>
-        <UsageMeters data={usageData} />
-      </ChartFrame>
+      {!plansGone && (
+        <ChartFrame title="Plan usage" icon="📊" minHeight={90}>
+          <UsageMeters data={usageData} />
+        </ChartFrame>
+      )}
 
       {/* Your Listings */}
       <ChartFrame title="Your Listings" icon="🏷️" minHeight={0}>
@@ -204,7 +215,7 @@ export default function AnalyticsPanel({ user, onNavigate, businessKind }) {
       {/* Quick actions */}
       <div>
         <div style={{ fontWeight: 800, color: D.text, fontSize: "0.85rem", marginBottom: 10 }}>⚡ Quick Actions</div>
-        <QuickActionGrid onNavigate={onNavigate} />
+        <QuickActionGrid onNavigate={onNavigate} plansGone={plansGone} />
       </div>
     </div>
   );

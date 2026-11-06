@@ -116,3 +116,43 @@ describe('SupportPeoplePanel opening hours', () => {
     expect(screen.getByText('Read-only')).toBeInTheDocument()
   })
 })
+
+describe('SupportPeoplePanel subscription section when no plan is offered', () => {
+  const PLAN = { id: 1, tier: 'growth', name: 'Growth', monthly_price: '30.00', kind: 'product', features: [], is_recommended: false }
+  const business = (subscription) => http.get(`${API}/api/support/staff/businesses/5/360/`, () => HttpResponse.json({
+    kind: 'business', profile: { id: 5, name: 'Akosua Ntoma', owner_name: 'Akosua', phone: '024 *** 118', since: '2026-09-01T00:00:00Z', status: { key: 'verified', label: 'Verified' }, account_manager: null },
+    kpis: { listings_live: 2, listings_total: 3, conversations: 0, open_conversations: 0, calls: 0, last_call_at: null, reviews: 0 },
+    subscription, conversations: [], calls: [], hours: [],
+  }))
+  const opened = [http.post(`${API}/api/support/staff/profile-opened/`, () => HttpResponse.json({ recorded: true })), http.get(`${API}/api/support/staff/people/recent/`, () => HttpResponse.json([]))]
+  const plans = (list) => http.get(`${API}/api/billing/plans/`, () => HttpResponse.json(list))
+  const legacy = { plan: null, state: 'none', overdue_day: null, current_period_end: null }
+
+  it('shows neither "No plan" nor "No subscription on record" once plans are answered empty', async () => {
+    server.use(plans([]), business(legacy), ...opened)
+    wrap(<SupportPeoplePanel profile={{ kind: 'business', id: 5 }} auth={{ hasPermission: () => false }} />)
+    expect(await screen.findByText('No account manager set.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText(/No plan/)).not.toBeInTheDocument())
+    expect(screen.queryByText(/No subscription on record/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/ · none/)).not.toBeInTheDocument()
+  })
+
+  it('shows no subscription line at all when plans are gone and the business has no subscription row', async () => {
+    server.use(plans([]), business(null), ...opened)
+    wrap(<SupportPeoplePanel profile={{ kind: 'business', id: 5 }} auth={{ hasPermission: () => false }} />)
+    expect(await screen.findByText('No account manager set.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText(/No subscription on record/)).not.toBeInTheDocument())
+  })
+
+  it('keeps today\'s text while plans are offered', async () => {
+    server.use(plans([PLAN]), business(legacy), ...opened)
+    wrap(<SupportPeoplePanel profile={{ kind: 'business', id: 5 }} auth={{ hasPermission: () => false }} />)
+    expect(await screen.findByText('No plan · none')).toBeInTheDocument()
+  })
+
+  it('keeps "No subscription on record." while plans are offered', async () => {
+    server.use(plans([PLAN]), business(null), ...opened)
+    wrap(<SupportPeoplePanel profile={{ kind: 'business', id: 5 }} auth={{ hasPermission: () => false }} />)
+    expect(await screen.findByText('No subscription on record.')).toBeInTheDocument()
+  })
+})
