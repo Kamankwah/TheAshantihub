@@ -95,6 +95,23 @@ class ListingModerationQueueTests(TestCase):
         self.assertIsNone(self.rejected.reviewed_by)
         self.assertIsNone(self.rejected.reviewed_at)
 
+    def test_re_review_locks_the_row_so_a_publish_in_between_is_not_pulled_back(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self._auth()
+        with CaptureQueriesContext(connection) as queries:
+            self.assertEqual(self.client.post(f"/api/listings/moderation/{self.rejected.id}/re-review/").status_code, 200)
+        locking = [q["sql"] for q in queries if "FOR UPDATE" in q["sql"] and "listings_listing" in q["sql"]]
+        self.assertTrue(locking, "re-review must read the listing under a row lock")
+
+    def test_re_review_of_a_listing_that_is_no_longer_rejected_changes_nothing(self):
+        self._auth()
+        response = self.client.post(f"/api/listings/moderation/{self.published.id}/re-review/")
+        self.assertEqual(response.status_code, 400)
+        self.published.refresh_from_db()
+        self.assertEqual(self.published.status, Listing.PUBLISHED)
+
     def test_re_review_rejects_a_non_rejected_listing(self):
         self._auth()
         response = self.client.post(f"/api/listings/moderation/{self.published.id}/re-review/")

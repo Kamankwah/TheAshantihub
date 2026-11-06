@@ -11,6 +11,9 @@ import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
 import { Screen } from "../../../ui/Screen";
 
+const EMAIL_LOOKS_RIGHT = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
+const EMAIL_NEEDED = "Enter your email so we can send you a confirmation link.";
+
 export default function Personal() {
   const { c } = useTheme();
   const [first, setFirst] = useState("");
@@ -22,6 +25,11 @@ export default function Personal() {
   const [busy, setBusy] = useState(false);
 
   async function submit() {
+    const address = email.trim();
+    if (!EMAIL_LOOKS_RIGHT.test(address)) {
+      setErrors({ email: EMAIL_NEEDED });
+      return;
+    }
     setBusy(true);
     setErrors({});
     const digits = phone.replace(/\D/g, "").replace(/^0/, "").replace(/^233/, "");
@@ -29,7 +37,7 @@ export default function Personal() {
       const result = await ownerRegister({
         full_name: `${first.trim()} ${last.trim()}`.trim(),
         login_phone: `+233${digits}`,
-        ...(email.trim() ? { email: email.trim() } : {}),
+        email: address,
         password,
       });
       if (result.kind === "challenge") {
@@ -63,7 +71,7 @@ export default function Personal() {
       <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" error={errors.email || undefined} />
       <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete="password-new" textContentType="newPassword" helper="At least 8 characters." error={errors.password || undefined} />
       {errors.form ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 13 }}>{errors.form}</Text> : null}
-      <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>Our team verifies every business before it goes live.</Text>
+      <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>Confirm your email and share your shop pin to start listing. Verification later earns you the Verified mark.</Text>
       <Button label="Continue" onPress={submit} loading={busy} disabled={!first || !phone || !password} />
     </Screen>
   );

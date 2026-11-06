@@ -92,7 +92,7 @@ class FrozenTests(TestCase):
     def test_registration_asks_for_a_kind_not_a_plan(self):
         complete_business_info(self.owner.profile)
         owner = BusinessOwner.objects.get(pk=self.owner.pk)
-        self.assertEqual(owner.compute_registration_step(), "payment_info")      # kind set, no subscription needed
+        self.assertEqual(owner.compute_registration_step(), "terms")      # kind set, no subscription needed
 
     def test_registration_still_asks_for_a_kind_when_none_is_set(self):
         complete_business_info(self.owner.profile, kind="")
@@ -269,4 +269,5 @@ def complete_business_info(profile, kind="product"):
     profile.ghana_card_front_image = "front.jpg"
     profile.ghana_card_back_image = "back.jpg"
     profile.business_kind = kind
+    profile.lat, profile.lng = "6.690000", "-1.620000"  # the shop pin step comes before the business type
     profile.save()

@@ -206,15 +206,15 @@ class BusinessOwnerProfileUpdateTests(TestCase):
         self.assertFalse(owner.profile.business_reg_certificate)
         self.assertFalse(owner.profile.tin)
 
-    def test_missing_gps_address_is_still_rejected(self):
+    def test_missing_gps_address_is_accepted_the_shop_pin_is_the_address(self):
         owner = self._make_owner(BusinessOwner.PENDING, gps_address=None)
         response = self._client(owner).patch(
             "/api/accounts/business-owners/me/profile/",
             {"business_contact_phone": "+233208889901"},
             format="json",
         )
-        self.assertEqual(response.status_code, 400, response.content)
-        self.assertIn("gps_address", response.json())
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNone(response.json()["gps_address"])
 
     def test_non_ashanti_gps_is_still_rejected(self):
         owner = self._make_owner(BusinessOwner.PENDING, ghana_card_number=None)
@@ -286,3 +286,40 @@ class BusinessOwnerProfileUpdateTests(TestCase):
         response = self.client.get("/api/accounts/business-owners/me/profile/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["ghana_card_number"], "GHA-777888999-0")
+
+
+class FreshProfileWithoutGhanaPostCodeTests(TestCase):
+    """The Ghana Post code is optional now (the shop pin is the address): a self-registered business moves on without it."""
+
+    def setUp(self):
+        self.owner = BusinessOwner.objects.create(
+            full_name="Ama Fresh", login_phone="+233208880011", password_hash="x", email="fresh@example.com",
+        )
+        BusinessOwnerProfile.objects.create(business_owner=self.owner)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.owner, 'business_owner')}")
+
+    def patch(self, body):
+        return self.client.patch("/api/accounts/business-owners/me/profile/", body, format="json")
+
+    def test_business_info_without_a_code_is_accepted_and_moves_to_the_shop_location_step(self):
+        response = self.patch({"business_contact_phone": "+233208880011", "is_formal": False})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self.client.get("/api/accounts/me/").json()["registration_step"], "shop_location")
+        self.assertFalse(BusinessOwnerProfile.objects.get(business_owner=self.owner).gps_address)
+
+    def test_a_blank_code_is_stored_as_none(self):
+        response = self.patch({"business_contact_phone": "+233208880011", "gps_address": "  "})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNone(BusinessOwnerProfile.objects.get(business_owner=self.owner).gps_address)
+
+    def test_a_typed_bad_code_still_fails(self):
+        for bad in ("not-a-code", "GA-543-0125"):
+            response = self.patch({"business_contact_phone": "+233208880011", "gps_address": bad})
+            self.assertEqual(response.status_code, 400, (bad, response.content))
+            self.assertIn("gps_address", response.json())
+
+    def test_a_typed_good_code_is_stored_canonically(self):
+        response = self.patch({"business_contact_phone": "+233208880011", "gps_address": "ak0395028"})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(BusinessOwnerProfile.objects.get(business_owner=self.owner).gps_address, "AK-039-5028")

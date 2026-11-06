@@ -159,7 +159,6 @@ const ALL: Route[] = [
   B("biz-promo-flash", () => require("../src/app/manage/promo-flash")),
   B("biz-hours", () => require("../src/app/manage/hours")),
   B("biz-verification", () => require("../src/app/manage/verification")),
-  B("submitted", () => require("../src/app/(auth)/register/submitted")),
 ];
 
 type N = { type: string; props: Record<string, any>; children?: (N | string)[] | null };

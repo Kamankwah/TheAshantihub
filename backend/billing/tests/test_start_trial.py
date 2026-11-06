@@ -26,7 +26,7 @@ class StartTrialTests(TestCase):
         defaults = dict(
             business_owner=owner,
             ghana_card_number="GHA-770001", gps_address="AK-770-001",
-            business_contact_phone="+233207770001", is_formal=False,
+            business_contact_phone="+233207770001", is_formal=False, lat="6.690000", lng="-1.620000",
             ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg",
         )
         defaults.update(profile_overrides)
@@ -53,7 +53,7 @@ class StartTrialTests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.content)
         data = response.json()
-        self.assertEqual(data["registration_step"], "payment_info")
+        self.assertEqual(data["registration_step"], "terms")
         self.assertTrue(data["subscription"]["is_trial"])
         self.assertEqual(data["subscription"]["plan"]["tier"], "product_basic")
 

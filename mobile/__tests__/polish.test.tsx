@@ -187,6 +187,38 @@ describe("plan step", () => {
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith("/api/billing/business-kind/", { body: { business_kind: "service" } }));
   });
 
+  it("an_empty_plans_list_turns_the_step_into_a_business_type_question_with_no_plan_wording", async () => {
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === "/api/billing/plans/") return [];
+      if (path === "/api/billing/business-kind/") return {};
+      if (path === "/api/accounts/me/") return { account_type: "business_owner", id: 3, full_name: "K", registration_step: "terms", kyc_status: "pending" };
+      throw new ApiError(404, {});
+    });
+    useAuth.setState({ status: "signedIn", account: { type: "business_owner", id: 3, fullName: "K" } });
+    await render(client(<PlanStep />));
+    expect(await screen.findByText("Your Business Type")).toBeTruthy();
+    expect(screen.getByText("What kind of business is this?")).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText("Products"));
+    expect(screen.queryByText(/plan/i)).toBeNull();
+    expect(screen.queryByText(/free|when plans open|a month/i)).toBeNull();
+    const next = screen.getByLabelText("Continue");
+    expect(next.props.accessibilityState?.disabled).toBe(false);
+    await fireEvent.press(next);
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith("/api/billing/business-kind/", { body: { business_kind: "product" } }));
+  });
+
+  it("with_plans_the_step_keeps_its_plan_wording", async () => {
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === "/api/billing/plans/") return [plan];
+      throw new ApiError(404, {});
+    });
+    useAuth.setState({ status: "signedIn", account: { type: "business_owner", id: 3, fullName: "K" } });
+    await render(client(<PlanStep />));
+    expect(await screen.findByText("Choose your plan")).toBeTruthy();
+    expect(screen.getByText("What will you sell?")).toBeTruthy();
+    expect(screen.queryByText("Your Business Type")).toBeNull();
+  });
+
   it("a_plans_answer_that_is_not_a_plain_list_does_not_crash", async () => {
     apiMock.mockImplementation(async (path: string) => {
       if (path === "/api/billing/plans/") return { results: [plan] };

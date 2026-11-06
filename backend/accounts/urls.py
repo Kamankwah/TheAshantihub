@@ -1,6 +1,8 @@
 from django.urls import path
 
-from . import view_as_views, views, views_address, views_deletion, views_location, views_mobile_session
+from . import (
+    view_as_views, views, views_address, views_deletion, views_email_confirmation, views_location, views_mobile_session,
+)
 
 urlpatterns = [
     path("me/", views.me, name="accounts-me"),
@@ -121,6 +123,14 @@ urlpatterns = [
         name="business-owner-identity",
     ),
     path("business/hours/", views.BusinessHoursView.as_view(), name="business-hours"),
+    path(
+        "business-owners/me/email-confirmation/", views_email_confirmation.SendEmailConfirmationView.as_view(),
+        name="email-confirmation-send",
+    ),
+    path(
+        "email-confirmation/confirm/", views_email_confirmation.ConfirmEmailView.as_view(),
+        name="email-confirmation-confirm",
+    ),
     path("business-owners/me/terms/", views.TermsAcceptView.as_view(), name="business-owner-terms"),
     path("kyc/pending/", views.KYCPendingQueueView.as_view(), name="kyc-pending"),
     path("kyc/stats/", views.KYCStatsView.as_view(), name="kyc-stats"),
