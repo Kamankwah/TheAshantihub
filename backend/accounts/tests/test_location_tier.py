@@ -7,11 +7,14 @@ from django.utils import timezone
 from openlocationcode import openlocationcode
 from rest_framework.test import APIClient
 
-from accounts import location_tier, pluscode
+from accounts import location_capture, location_tier, pluscode
 from accounts.address_verification import owner_gps_evidence
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, LocationCapture
 from accounts.testing import make_staff, staff_token
+from commission.models import CommissionAccrual
+from commission.tests.base import CommissionBase
+from fraud import services as fraud
 from fraud.models import FraudFlag
 from listings.models import Category, Listing, Zone
 
@@ -265,7 +268,7 @@ class TierTests(Base):
 
 class ClosePinFlagTests(Base):
     def flags(self):
-        return FraudFlag.objects.filter(kind=FraudFlag.SIMILAR_NEARBY, dedupe_key__startswith="pin-near-")
+        return FraudFlag.objects.filter(kind=FraudFlag.OTHER, dedupe_key__startswith="pin-near-")
 
     def test_second_business_within_25m_raises_one_flag_and_still_saves(self):
         first = self.make_owner()
@@ -326,3 +329,84 @@ class ClosePinFlagTests(Base):
             200,
         )
         self.assertEqual(self.flags().count(), 1)
+
+    def test_the_notice_says_plainly_it_is_a_co_location_notice(self):
+        first, second = self.make_owner(), self.make_owner()
+        self.post({**KUMASI, "accuracy_m": 5}, owner=first)
+        self.post({"lat": 6.68861, "lng": -1.6244, "accuracy_m": 5}, owner=second)
+        flag = self.flags().get()
+        self.assertEqual(flag.kind, FraudFlag.OTHER)
+        self.assertNotEqual(flag.dedupe_key.split(":")[0], "similar_nearby")
+        self.assertIn("Co-location notice", flag.detail)
+        self.assertIn("normal", flag.detail)
+        self.assertIn("apart", flag.title)
+
+    def test_a_re_share_of_an_unchanged_pin_raises_nothing(self):
+        first, second = self.make_owner(), self.make_owner()
+        self.post({**KUMASI, "accuracy_m": 5}, owner=first)
+        # the second business already holds a pin 11 m away, placed before the first (no check ran for it)
+        BusinessOwnerProfile.objects.filter(business_owner=second).update(lat=Decimal("6.688610"), lng=Decimal("-1.624400"))
+        self.assertEqual(self.flags().count(), 0)
+        response = self.post({"lat": 6.68861, "lng": -1.6244, "accuracy_m": 5}, owner=second)  # same spot again
+        self.assertEqual(response.status_code, 200, response.content)
+        response = self.post({"lat": 6.6886105, "lng": -1.6244, "accuracy_m": 5}, owner=second)  # about half a metre
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self.flags().count(), 0)
+
+    def test_a_dismissed_pair_is_not_raised_again_when_the_pin_moves_a_few_metres(self):
+        first, second = self.make_owner(), self.make_owner()
+        self.post({**KUMASI, "accuracy_m": 5}, owner=first)
+        self.post({"lat": 6.68861, "lng": -1.6244, "accuracy_m": 5}, owner=second)
+        flag = self.flags().get()
+        fraud.dismiss(flag.pk, make_staff("super_admin", "boss-near@example.com"), note="Same market building")
+        self.post({"lat": 6.68863, "lng": -1.6244, "accuracy_m": 5}, owner=second)  # moved about 2 m
+        self.post({"lat": 6.68862, "lng": -1.6244, "accuracy_m": 5}, owner=first)  # the other business moves too
+        self.assertEqual(self.flags().count(), 1)
+        self.assertEqual(self.flags().get().status, FraudFlag.DISMISSED)
+
+    def test_more_than_three_neighbours_raises_exactly_three_nearest_first(self):
+        crowd = [self.make_owner() for _ in range(5)]
+        for index, other in enumerate(crowd):  # 0, 2, 4, 6, 8 m north of the spot
+            self.post({"lat": 6.6885 + index * 0.000018, "lng": -1.6244, "accuracy_m": 5}, owner=other)
+        flags_after_setup = self.flags().count()
+        newcomer = self.make_owner()
+        self.post({"lat": 6.6885, "lng": -1.6244, "accuracy_m": 5}, owner=newcomer)
+        mine = self.flags().filter(business_owner=newcomer)
+        self.assertEqual(mine.count(), 3)
+        self.assertEqual(
+            {flag.related_business_owner_id for flag in mine}, {crowd[0].pk, crowd[1].pk, crowd[2].pk},
+        )
+        self.assertGreater(self.flags().count(), flags_after_setup)
+
+
+class CoLocationNoticeDoesNotTouchCommissionTests(CommissionBase):
+    """Confirming a co-location notice must reverse no commission and offer no suspension."""
+
+    def test_confirming_the_notice_leaves_commission_and_the_business_alone(self):
+        from commission.services import REVERSING_KINDS
+
+        self.assertNotIn(FraudFlag.OTHER, REVERSING_KINDS)
+        self.assertNotIn(FraudFlag.OTHER, FraudFlag.SUSPENDABLE)
+        self.policy()
+        owner = self.pending_owner()
+        self.approve(owner)
+        accrual = CommissionAccrual.objects.get()
+        neighbour = BusinessOwner.objects.create(full_name="Next door", login_phone="+233244999001", password_hash="x")
+        BusinessOwnerProfile.objects.create(
+            business_owner=neighbour, business_name="Next door shop", lat=Decimal("6.688600"), lng=Decimal("-1.624400"),
+        )
+        # the commission business re-shares its (unverified-for-the-test) pin to a spot next to the neighbour
+        BusinessOwnerProfile.objects.filter(business_owner=owner).update(
+            lat=Decimal("6.7"), lng=Decimal("-1.6"), address_verified=False, address_verified_at=None,
+        )
+        location_capture.capture_for_owner(owner, {"lat": 6.68861, "lng": -1.6244, "accuracy_m": 5})
+        flag = FraudFlag.objects.get(dedupe_key__startswith="pin-near-")
+        self.assertEqual(flag.business_owner, owner)
+        with self.assertRaises(fraud.FraudError):
+            fraud.confirm(flag.pk, self.boss, note="Checked", suspend=True)
+        fraud.confirm(flag.pk, self.boss, note="Checked")
+        accrual.refresh_from_db()
+        owner.refresh_from_db()
+        self.assertEqual(accrual.status, CommissionAccrual.ON_HOLD)
+        self.assertFalse(owner.is_suspended)
+        self.assertFalse(CommissionAccrual.objects.filter(status=CommissionAccrual.REVERSED).exists())

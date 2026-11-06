@@ -16,7 +16,7 @@ coordinates on `BusinessOwnerProfile` are the truth; a `LocationCapture` row rec
   Ashanti Region box. Only the owner's own `POST me/location/` may place the pin by hand (`OwnerFixSerializer`: `manual`,
   no accuracy figure, and an optional `landmark`); the staff link uses the base serializer, which has no such fields, so
   a link capture can never be manual.
-* After any capture, another business pinned within 25 m raises a staff case (never a refusal): shops share buildings.
+* After any capture, another business pinned within 25 m raises a staff notice (never a refusal): shops share buildings.
 """
 import logging
 import math
@@ -49,7 +49,8 @@ LINK_TTL = timedelta(hours=48)
 DAILY_LINKS = 5  # links per business per Accra day
 MAX_ACCURACY_M = 100
 NEAR_PIN_M = 25  # another business pinned this close is flagged for staff
-NEAR_PIN_FLAGS = 10  # at most this many cases from one capture (a market building)
+NEAR_PIN_FLAGS = 3  # at most this many new cases from one capture (a market building), nearest first
+SAME_PIN_M = 1  # a re-share this close to the pin already held changes nothing and is not checked again
 LANDMARK_MAX = 200
 
 INVALID = "This link isn't valid. Check you opened the whole link, or ask AshantiHub for a new one."
@@ -162,6 +163,7 @@ def _apply_fix(owner, fix, source, now, row=None, request=None):
     if profile is None:
         profile = BusinessOwnerProfile(business_owner=owner)
     manual = fix.get("manual", False)
+    previous = (profile.lat, profile.lng) if has_pin(profile) else None
     profile.lat, profile.lng, profile.location_accuracy_m = fix["lat"], fix["lng"], fix["accuracy_m"]  # None when by hand
     profile.location_set_by, profile.location_set_at = BusinessOwnerProfile.LOCATION_BY_OWNER, now
     profile.location_is_manual, profile.location_set_by_staff = manual, None
@@ -180,7 +182,8 @@ def _apply_fix(owner, fix, source, now, row=None, request=None):
         after={"accuracy_m": fix["accuracy_m"], "source": source, **({"manual": True} if manual else {})},
         request=request,
     )
-    flag_close_pins(owner, profile)
+    if previous is None or distance_m(previous[0], previous[1], profile.lat, profile.lng) > SAME_PIN_M:
+        flag_close_pins(owner, profile)  # only a pin that moved; a re-share of the same spot is not news
     return row
 
 
@@ -201,27 +204,33 @@ def _close_pins(owner, profile):
 
 
 def flag_close_pins(owner, profile):
-    """Open a staff case for every other business pinned within `NEAR_PIN_M` of this one. A bounding box (a range on the two
-    columns) narrows the rows first, then the exact great-circle distance decides: no scan of every business. A case is
-    keyed on the pair, so sharing again never opens a second one while the first is open. Never raises: the capture has
-    already succeeded and a flag is only a note for staff."""
+    """Open a staff notice for up to `NEAR_PIN_FLAGS` other businesses pinned within `NEAR_PIN_M` of this one, nearest first.
+    A bounding box (a range on the two columns) narrows the rows first, then the exact great-circle distance decides: no
+    scan of every business. It is a co-location notice (kind `other`: confirming it reverses no commission and suspends
+    nobody), so a pair is raised once ever: a case in ANY status under the pair's key (open, confirmed or dismissed) means
+    staff have seen it. Never raises: the capture has already succeeded and a notice is only a note for staff."""
     try:
         with transaction.atomic():  # a savepoint: a failure here must not poison the capture's own transaction
-            mine = owner.display_name
-            for distance, other in _close_pins(owner, profile)[:NEAR_PIN_FLAGS]:
+            pairs = []
+            for distance, other in _close_pins(owner, profile):
                 low, high = sorted([owner.pk, other.business_owner_id])
+                pairs.append((f"pin-near-{low}-{high}", distance, other))
+            seen = set(FraudFlag.objects.filter(dedupe_key__in=[key for key, _, _ in pairs]).values_list("dedupe_key", flat=True))
+            mine = owner.display_name
+            for key, distance, other in [pair for pair in pairs if pair[0] not in seen][:NEAR_PIN_FLAGS]:
                 theirs, metres = other.business_owner.display_name, round(distance)
                 raise_flag(
-                    FraudFlag.SIMILAR_NEARBY,
-                    title=f"{mine} is pinned {metres} m from {theirs}"[:200],
+                    FraudFlag.OTHER,
+                    title=f"Shops pinned {metres} m apart: {mine} and {theirs}"[:200],
                     detail=(
-                        f"{mine} shared a shop location {metres} m from {theirs}. Shops in one building or market "
-                        "often share a spot: check they are different businesses."
+                        f"Co-location notice, not an accusation. {mine} shared a shop location {metres} m from {theirs}. "
+                        "Shops in one building or market often share a spot, so this is normal. Look only if the two "
+                        "businesses seem to be the same shop."
                     ),
                     evidence=[f"{metres} m apart", "Pin placed by hand" if profile.location_is_manual else "Pin from the phone"],
                     business_owner=owner,
                     related_business_owner=other.business_owner,
-                    dedupe_key=f"pin-near-{low}-{high}",
+                    dedupe_key=key,
                 )
     except Exception:  # noqa: BLE001 - the capture already succeeded
         logger.exception("Close-pin check failed for business owner %s", owner.pk)
