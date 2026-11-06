@@ -1,12 +1,12 @@
 Django==5.2.18
-djangorestframework==3.16.1
+djangorestframework==3.18.2
 djangorestframework-simplejwt==5.5.1
 psycopg2-binary==2.9.9
 django-environ==0.11.2
-Pillow==10.4.0
+Pillow==13.0.0
 django-cors-headers==4.9.0
 python-magic==0.4.27
-requests==2.32.3
+requests==2.33.0
 gunicorn==23.0.0
 # OpenAPI schema for the mobile app's typed client (GET /api/schema/).
 drf-spectacular==0.30.0
