@@ -427,6 +427,19 @@ exim4 -Mrm <id>               # drop a frozen message
 tail -f /var/log/exim4/mainlog
 ```
 
+## Releases and rollback
+
+- Each deploy builds `<project>-app:<git sha>` (web, realtime, worker and beat all run that one image); the five most
+  recent stay on the server. `bash infra/scripts/rollback.sh` lists them and `rollback.sh <sha>` restarts the four
+  services on an earlier one in about a minute, without a rebuild. It swaps code only - the database is not touched.
+- That is safe because migrations must work for both the new and the previous release: `core/migration_lint.py` (run
+  by CI on every pull request) rejects a migration that removes or renames a column or table, rewrites a column, adds a
+  NOT NULL column with no default, or builds an index under a lock, unless a reviewer marks it
+  `# lint-migrations: ok <reason>`. Remove a column in a *later* release than the one that stops using it.
+- `deploy.sh` runs `migrate` with `lock_timeout=15s` while the old containers still serve: a migration that cannot get
+  its lock fails the deploy and the site stays up on the previous release.
+- If a bad release damaged data, restoring the pre-deploy dump (`Backups`, below) is a separate, deliberate step.
+
 ## Health and uptime
 
 - `GET /api/health/` is **liveness**: the process answers (Docker's healthcheck uses it). `GET /api/readyz/` is **readiness**:

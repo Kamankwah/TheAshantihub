@@ -18,6 +18,7 @@ class Migration(migrations.Migration):
             name='request_id',
             field=models.CharField(blank=True, default='', max_length=64),
         ),
+        # lint-migrations: ok partial unique index over a column that is '' for every existing row; orders is a small table
         migrations.AddConstraint(
             model_name='order',
             constraint=models.UniqueConstraint(condition=models.Q(('request_id', ''), _negated=True), fields=('customer', 'request_id'), name='order_request_id_unique_per_customer'),

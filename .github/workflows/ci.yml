@@ -38,6 +38,13 @@ jobs:
         ah-backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: New migrations are safe to run while the previous release is serving (review ARC-04)
+        if: github.event_name == 'pull_request'
+        run: |
+          files=$(git diff --name-only --diff-filter=A "origin/${{ github.base_ref }}...HEAD" -- 'backend/*/migrations/*.py' | grep -v '__init__.py' || true)
+          if [ -n "$files" ]; then python3 backend/core/migration_lint.py $files; else echo "no new migrations"; fi
       - name: Build the backend image
         run: docker build -t ah-backend backend
       - name: Django system checks
