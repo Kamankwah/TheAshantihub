@@ -8,6 +8,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import BusinessOwner, PasswordResetToken
+from accounts.reset_tokens import hash_token
 from accounts.testing import make_staff, staff_token
 from accounts.two_factor import encrypt_secret
 from activity.models import ActivityEvent
@@ -69,11 +70,12 @@ class RecoveryTests(TestCase):
         self.assertFalse(service.is_locked(self.customer))
         reset = PasswordResetToken.objects.get(account_type="customer", account_id=self.customer.pk)
         self.assertEqual(mail.outbox[-1].to, ["ama@example.com"])
-        self.assertIn(reset.token, mail.outbox[-1].body)
+        raw = mail.outbox[-1].body.split("#token=")[1].split("&")[0]
+        self.assertEqual(hash_token(raw), reset.token)
         event = ActivityEvent.objects.get(verb="otp.recovered")
         self.assertEqual(event.actor_id, self.boss.pk)
-        self.assertNotIn(reset.token, str(event.after))
-        self.assertNotIn(reset.token, event.summary)
+        self.assertNotIn(raw, str(event.after))
+        self.assertNotIn(raw, event.summary)
 
     def test_a_link_by_text_goes_to_the_phone(self):
         self.as_staff(self.support)
@@ -82,7 +84,7 @@ class RecoveryTests(TestCase):
             approvals.approve(approval_id, self.boss)
         reset = PasswordResetToken.objects.get()
         self.assertEqual(senders.sms_outbox[-1].to, "+233241234567")
-        self.assertIn(reset.token, senders.sms_outbox[-1].body)
+        self.assertEqual(hash_token(senders.sms_outbox[-1].body.split("#token=")[1].split("&")[0]), reset.token)
         self.assertTrue(OtpEvent.objects.filter(kind=OtpEvent.SENT, purpose="recovery").exists())
 
     def test_a_text_is_refused_while_texts_are_only_simulated(self):
@@ -228,7 +230,7 @@ class RecoveryChainAndNoticeTests(TestCase):
         notice = senders.sms_outbox[-1]
         self.assertEqual(notice.to, "+233241234567")
         self.assertIn("removed your authenticator", notice.body)
-        self.assertNotIn(reset.token, notice.body)
+        self.assertNotIn("#token=", notice.body)
         self.assertNotIn("http", notice.body)
         self.assertNotIn("ama@example.com", notice.body)
 

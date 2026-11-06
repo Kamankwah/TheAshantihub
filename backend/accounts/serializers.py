@@ -9,10 +9,11 @@ from django.utils.crypto import get_random_string
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
-from . import lockout, sessions
+from . import lockout, reset_tokens, sessions
 from .authentication import ACCOUNT_MODELS
 from .emails import send_password_reset_email, send_staff_invite_email
 from .gps import validate_ashanti_gps
+from .passwords import validate_new_password
 from .models import (
     BusinessOwner,
     BusinessOwnerProfile,
@@ -108,7 +109,7 @@ def _require_usable_contact(unsaved_account, field):
 
 
 class CustomerRegistrationSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=8)
+    password = serializers.CharField(write_only=True, min_length=8, validators=[validate_new_password])
     # {"sms": true, "email": true, ...} - the sign-up form's marketing boxes, each separate and unticked by default.
     marketing_consent = serializers.JSONField(write_only=True, required=False)
 
@@ -223,7 +224,7 @@ class StaffInviteSerializer(serializers.ModelSerializer):
 
 class StaffActivateSerializer(serializers.Serializer):
     token = serializers.CharField()
-    password = serializers.CharField(min_length=8)
+    password = serializers.CharField(min_length=8, validators=[validate_new_password])
 
     def validate_token(self, value):
         try:
@@ -283,14 +284,8 @@ class PasswordResetRequestSerializer(serializers.Serializer):
                 # A scout-registered owner must accept the Business Agreement
                 # through a claim (accounts/claims.py), not a reset.
                 continue
-            token = get_random_string(43)
-            PasswordResetToken.objects.create(
-                account_type=account_type,
-                account_id=account.id,
-                token=token,
-                expires_at=timezone.now() + PASSWORD_RESET_TOKEN_LIFETIME,
-            )
-            reset_link = f"{settings.FRONTEND_BASE_URL}/reset-password?token={token}&type={account_type}"
+            token = reset_tokens.issue(account_type, account.id)
+            reset_link = reset_tokens.link_for(token, account_type)
             send_password_reset_email(email, reset_link)
         return None
 
@@ -298,12 +293,12 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 class PasswordResetConfirmSerializer(serializers.Serializer):
     token = serializers.CharField()
     account_type = serializers.ChoiceField(choices=list(ACCOUNT_MODELS.keys()))
-    password = serializers.CharField(min_length=8)
+    password = serializers.CharField(min_length=8, validators=[validate_new_password])
 
     def validate(self, attrs):
         try:
             reset_token = PasswordResetToken.objects.get(
-                token=attrs["token"], account_type=attrs["account_type"]
+                token=reset_tokens.hash_token(attrs["token"]), account_type=attrs["account_type"]
             )
         except PasswordResetToken.DoesNotExist as exc:
             raise serializers.ValidationError("Invalid or expired reset token") from exc
@@ -363,7 +358,7 @@ class OwnerEmailSerializer(serializers.Serializer):
 
 
 class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=8)
+    password = serializers.CharField(write_only=True, min_length=8, validators=[validate_new_password])
     # Required: the go-live rule needs a confirmed email, and the confirmation link goes out at sign-up. The model
     # field is unique, so the unique validator is kept (as the model field would add it).
     email = serializers.EmailField(

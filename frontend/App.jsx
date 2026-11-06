@@ -1479,7 +1479,9 @@ function StaffActivatePage({auth,onSuccess}) {
 // token to store.
 function ResetPasswordPage({auth,setPage,setAuthModal}) {
   const location=useLocation();
-  const params=new URLSearchParams(location.search);
+  // The emailed link carries the token in the #fragment (it stays out of server logs and Referer headers); a link
+  // from before that change used the query string, so both are read.
+  const params=new URLSearchParams(location.hash.replace(/^#/,"")||location.search);
   const token=params.get("token")||"";
   const accountType=params.get("type")||"customer";
   const [password,setPassword]=useState("");

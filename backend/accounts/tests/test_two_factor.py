@@ -15,6 +15,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from accounts import two_factor
 from accounts.models import PasswordResetToken, StaffSession, StaffTwoFactor, StaffUser
+from accounts.reset_tokens import hash_token
 from accounts.testing import make_staff as _make_staff
 from accounts.testing import staff_token
 from activity.models import ActivityEvent
@@ -306,7 +307,7 @@ class ChallengeBindingTests(TwoFactorBase):
         enrol_token = self.password_step("boss@example.com").json()["mfa_token"]
         for staff in (self.esi, self.boss):
             PasswordResetToken.objects.create(
-                token=f"reset-{staff.pk}", account_type="staff", account_id=staff.pk,
+                token=hash_token(f"reset-{staff.pk}"), account_type="staff", account_id=staff.pk,
                 expires_at=timezone.now() + timedelta(hours=1),
             )
             done = self.client.post(
