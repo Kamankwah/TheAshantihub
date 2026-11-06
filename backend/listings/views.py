@@ -26,7 +26,7 @@ from accounts.views import IsBusinessOwner
 from billing.models import Transaction
 from notifications.services import notify_business_owner, notify_staff_role
 
-from . import image_variants, lifecycle, revisions, variants
+from . import autopublish, image_variants, lifecycle, revisions, variants
 from .moderation_checks import (
     CONTACT_DETAILS_MESSAGE,
     blocking_failures,
@@ -890,8 +890,27 @@ class ListingSubmitView(ScopedOwner, APIView):
             return Response({"code": "not_live", "detail": blockers[0]["message"], "blockers": blockers}, status=403)
         if media.waiting_for_video(listing):
             return Response({"detail": revisions.WAIT_FOR_VIDEO_MESSAGE}, status=400)
+        if settings.LISTING_AUTO_PUBLISH_ENABLED and autopublish.eligible(request.user, listing):
+            verdict = autopublish.evaluate(listing)
+            if verdict.outcome == autopublish.FIX:
+                return Response(
+                    {"code": "needs_fixes", "detail": verdict.reasons[0], "reasons": verdict.reasons}, status=400,
+                )
+            if verdict.outcome == autopublish.PASS:
+                listing.status = Listing.PUBLISHED
+                listing.rejection_reason = None
+                listing.reviewed_by = None
+                listing.reviewed_at = None
+                listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at", "updated_at"])
+                notify_business_owner(
+                    listing.business_owner, "listing_approved", "Listing published",
+                    body=f"“{listing.name}” is now live on AshantiHub.",
+                    link="/business-dashboard", icon="✅",
+                )
+                autopublish.spot_check_first_listing(listing)
+                return Response({"id": listing.id, "status": listing.status})
         listing.status = Listing.PENDING_REVIEW
-        listing.save(update_fields=["status"])
+        listing.save(update_fields=["status", "updated_at"])
         notify_staff_role(
             "listings.moderate", "listing_needs_moderation", "New listing for review",
             body=f"“{listing.name}” has been submitted for moderation.",

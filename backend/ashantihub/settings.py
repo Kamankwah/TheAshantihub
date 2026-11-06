@@ -738,6 +738,15 @@ ASHANTI_DIRECT_EMAIL = env("ASHANTI_DIRECT_EMAIL", default="")
 # and nothing is blocked. Turn on once the opening time is confirmed.
 MARKETPLACE_GATE_ENABLED = env.bool("MARKETPLACE_GATE_ENABLED", default=False)
 
+# Minimal auto-publish at submit (listings.autopublish, self-serve onboarding spec section 6). While off, every submitted
+# listing goes to the moderation queue exactly as before. On, a live business's clean listing is published at once, a
+# fixable one is sent back with reasons, and one that trips a prohibited word or the daily limit goes to staff.
+# LISTING_PROHIBITED_TERMS is a comma-separated list of words; UNVERIFIED_DAILY_LISTING_LIMIT applies only to a business
+# whose location staff have not verified.
+LISTING_AUTO_PUBLISH_ENABLED = env.bool("LISTING_AUTO_PUBLISH_ENABLED", default=False)
+LISTING_PROHIBITED_TERMS = env.list("LISTING_PROHIBITED_TERMS", default=[])
+UNVERIFIED_DAILY_LISTING_LIMIT = env.int("UNVERIFIED_DAILY_LISTING_LIMIT", default=20)
+
 # One-time codes and 2-step sign-in for everyone (otp app; spec §9, plan docs/superpowers/plans/2026-10-16-otp-security.md).
 # All three default OFF: with them off, sign-in, sign-up and every sensitive endpoint behave exactly as before. Turn
 # them on only after the frontend screens (Plan 2F) ship, and the sign-in ones only once OTP_SMS_PROVIDER=hubtel
