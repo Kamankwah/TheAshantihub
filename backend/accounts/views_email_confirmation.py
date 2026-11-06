@@ -4,15 +4,22 @@ the link opens confirms it. The service is `accounts.email_confirmation`; see it
 The public view is POST-only with the token in the body, so it never lands in an access log or a browser history, and
 every answer (errors and throttling too) says `no-referrer` and `no-store`. It is `activity_exempt`: the middleware
 would store the request body, which holds the token."""
-from django.db import IntegrityError
+from django.contrib.auth.hashers import check_password
+from django.db import IntegrityError, transaction
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from ledger import escrow
+from otp import step_up
 
 from . import email_confirmation
 from .claims import ClaimError
 from .serializers import EMAIL_TAKEN, OwnerEmailSerializer
 from .views import IsBusinessOwner
 from .views_location import _PublicLinkView, _refusal
+
+
+WRONG_PASSWORD = "That password isn't right."
 
 
 class SendEmailConfirmationView(APIView):
@@ -37,6 +44,10 @@ class OwnerEmailView(APIView):
     link itself goes only to the inbox. Refusals: 400 {"email": [...]} for an invalid or taken address, 429 `too_many_links`
     when five links went out today (the address is saved either way, and the older links are already revoked).
 
+    The body also carries the owner's current `password` (400 `wrong_password` otherwise), and while the ledger is on a
+    step-up code is asked for as well (403 `step_up_required`, `X-Step-Up-Token`). An actual change restarts payout cooling,
+    ends trusted devices and every phone session, and tells the old contact (see `email_confirmation.set_email`).
+
     `activity_exempt` and never logged: the body is an email address, and the mail must go out after the save commits."""
 
     permission_classes = [IsBusinessOwner]
@@ -45,12 +56,25 @@ class OwnerEmailView(APIView):
 
     def post(self, request):
         owner = request.user
-        if email_confirmation.is_confirmed(owner):  # first, so a confirmed owner is told where to go whatever they typed
+        body = request.data if isinstance(request.data, dict) else {}
+        # First of all, before anything about the account is revealed: a borrowed or stolen session must not be able to
+        # point the account's password reset and sign-in codes at its own address. A wrong and a missing password
+        # answer alike, and every attempt counts toward the endpoint's throttle.
+        password = body.get("password")
+        if not isinstance(password, str) or not password or not check_password(password, owner.password_hash or ""):
+            return Response(
+                {"detail": WRONG_PASSWORD, "password": [WRONG_PASSWORD], "code": "wrong_password"}, status=400,
+            )
+        if email_confirmation.is_confirmed(owner):  # so a confirmed owner is told where to go whatever they typed
             return Response({"detail": email_confirmation.EMAIL_CONFIRMED, "code": "email_confirmed"}, status=403)
-        serializer = OwnerEmailSerializer(data=request.data, context={"owner": owner})
-        serializer.is_valid(raise_exception=True)
+        serializer = OwnerEmailSerializer(data=body, context={"owner": owner})
         try:
-            owner = email_confirmation.set_email(owner, serializer.validated_data["email"])
+            with transaction.atomic():
+                # A code first, as for a customer's recovery email: spent only if the change saves, so a refused address
+                # leaves it usable for the retry. Always asked while the ledger is on.
+                step_up.require(request, step_up.CONTACT_CHANGE, force=escrow.enabled())
+                serializer.is_valid(raise_exception=True)
+                owner = email_confirmation.set_email(owner, serializer.validated_data["email"], request=request)
         except IntegrityError:  # another owner took it between the check and the save
             return Response({"email": [EMAIL_TAKEN]}, status=400)
         except ClaimError as exc:

@@ -17,7 +17,7 @@ TERMS_MISSING = "terms_missing"
 KYC_REJECTED = "kyc_rejected"
 
 MESSAGES = {
-    EMAIL_MISSING: "Add your email address below so we can send you a link to confirm it.",
+    EMAIL_MISSING: "Add your email address so we can send you a link to confirm it.",
     EMAIL_UNCONFIRMED: "Open the link we emailed you to confirm your email address.",
     NO_PIN: "Share your shop's location so customers can find you.",
     NO_BUSINESS_KIND: "Choose whether you sell products or offer services.",

@@ -347,14 +347,17 @@ EMAIL_TAKEN = "A business owner with this email already exists."
 
 class OwnerEmailSerializer(serializers.Serializer):
     """The signed-in owner adding or correcting their own email (`business-owners/me/email/`): the registration form's
-    email rules (valid, 254 characters at most, not another owner's) with the address trimmed and lower-cased first, and
+    email rules (valid, 254 characters at most, not another business owner's, a staff member's or a customer's verified
+    recovery email) with the address trimmed and lower-cased first, and
     the duplicate check case-insensitive."""
 
     email = serializers.EmailField(max_length=254, error_messages=EMAIL_REQUIRED_ERRORS)
 
     def validate_email(self, value):
+        from . import email_confirmation  # lazy: it imports this module
+
         value = value.strip().lower()
-        if BusinessOwner.objects.filter(email__iexact=value).exclude(pk=self.context["owner"].pk).exists():
+        if email_confirmation.address_taken(self.context["owner"], value):
             raise serializers.ValidationError(EMAIL_TAKEN)
         return value
 

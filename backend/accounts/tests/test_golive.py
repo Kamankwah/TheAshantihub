@@ -99,11 +99,12 @@ class BlockerTests(TestCase):
         for message in golive.MESSAGES.values():
             self.assertNotIn("KYC", message)
 
-    def test_email_missing_points_the_owner_at_the_add_email_box(self):
+    def test_email_missing_message_does_not_point_at_a_form_that_may_not_be_on_the_screen(self):
         self.assertEqual(
             golive.MESSAGES["email_missing"],
-            "Add your email address below so we can send you a link to confirm it.",
+            "Add your email address so we can send you a link to confirm it.",
         )
+        self.assertNotIn("below", golive.MESSAGES["email_missing"])
         self.assertEqual(golive.STAFF_REASONS["email_missing"], "no email address")
 
     def test_every_code_has_a_staff_reason_too(self):

@@ -384,8 +384,14 @@ class _Handle:
     def tell(self):
         raise self.error
 
+    def readline(self, *args):
+        raise self.error
+
+    def readinto(self, *args):
+        raise self.error
+
     def close(self):
-        pass
+        raise self.error
 
     def __enter__(self):
         return self
@@ -435,9 +441,29 @@ class PhotoCheckExceptionTests(TestCase):
         with mock.patch.object(self.row.main_photo.storage, "open", side_effect=FileNotFoundError("gone")):
             self.assert_fix()
 
-    def test_a_value_error_on_open_is_a_fix(self):
-        with mock.patch.object(self.row.main_photo.storage, "open", side_effect=ValueError("no file")):
-            self.assert_fix()
+    def test_a_value_error_on_open_is_a_misconfigured_storage_and_holds(self):
+        with mock.patch.object(self.row.main_photo.storage, "open", side_effect=ValueError("bad storage config")):
+            self.assert_hold()
+
+    def test_a_non_seekable_stream_still_decodes_through_pillows_fallback(self):
+        with open(self.row.main_photo.path, "rb") as stored:
+            data = stored.read()
+
+        class NoSeek(io.BytesIO):
+            def seek(self, *args):
+                raise io.UnsupportedOperation("not seekable")
+
+            def tell(self):
+                raise io.UnsupportedOperation("not seekable")
+
+        with mock.patch.object(self.row.main_photo.storage, "open", return_value=NoSeek(data)):
+            self.assertEqual(self.submit().json()["status"], Listing.PUBLISHED)
+
+    def test_readline_readinto_and_close_go_through_the_same_guard(self):
+        stream = autopublish._StorageStream(_Handle(ConnectionError("reset")))
+        for call in (lambda: stream.readline(), lambda: stream.readinto(bytearray(4)), lambda: stream.close()):
+            with self.assertRaises(autopublish.PhotoCheckUnavailable):
+                call()
 
     def test_connection_timeout_botocore_style_and_generic_errors_on_open_hold(self):
         for error in (ConnectionError("down"), TimeoutError("slow"), BotoLikeError("EndpointConnectionError"),
@@ -638,3 +664,46 @@ class HoldReasonsTests(TestCase):
         self.as_owner()
         item = next(i for i in self.client.get("/api/listings/mine/").json() if i["id"] == row.pk)
         self.assertEqual((item["hold_notice"], item["fix_reasons"]), (None, []))
+
+    def test_only_allow_listed_fix_codes_reach_the_owner(self):
+        row = self.listing(
+            status=Listing.DRAFT,
+            hold_reasons=[
+                {"code": "name_too_short", "message": autopublish.SHORT_NAME},
+                {"code": "a_future_hold_code", "message": "Staff-only wording"},
+                {"code": "prohibited_term", "message": "contains gun"},
+            ],
+        )
+        self.as_owner()
+        item = next(i for i in self.client.get("/api/listings/mine/").json() if i["id"] == row.pk)
+        self.assertEqual(item["fix_reasons"], [autopublish.SHORT_NAME])
+        self.assertNotIn("Staff-only", str(item))
+        self.assertIsNone(item["hold_notice"])
+
+    def test_every_code_autopublish_can_emit_as_a_fix_is_allow_listed(self):
+        self.assertEqual(
+            autopublish.FIX_CODES & autopublish.HOLD_CODES, frozenset(),
+        )
+        row = self.listing(name="Ab", description="x", price_amount=None)
+        row.main_photo.delete(save=True)
+        codes = {item["code"] for item in autopublish.evaluate(row).details}
+        self.assertTrue(codes and codes <= autopublish.FIX_CODES, codes)
+
+    def test_editing_a_draft_clears_the_stored_fix_list(self):
+        row = self.listing(name="Ab")
+        self.submit(row)
+        row.refresh_from_db()
+        self.assertTrue(row.hold_reasons)
+        self.as_owner()
+        response = self.client.patch(f"/api/listings/mine/{row.pk}/", {"name": "Kente cloth"}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        row.refresh_from_db()
+        self.assertEqual(row.hold_reasons, [])
+        self.assertEqual(response.json()["fix_reasons"], [])
+
+    def test_editing_a_listing_with_nothing_stored_changes_nothing_else(self):
+        row = self.listing()
+        self.as_owner()
+        self.assertEqual(self.client.patch(f"/api/listings/mine/{row.pk}/", {"name": "Kente"}, format="json").status_code, 200)
+        row.refresh_from_db()
+        self.assertEqual((row.name, row.hold_reasons), ("Kente", []))

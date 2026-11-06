@@ -13,6 +13,7 @@ image and price outlier checks are deliberately not built.
 Every reason is a `{code, message}` pair (`Verdict.details`); the submit door stores them on `Listing.hold_reasons`, so
 staff see why a listing is held. The owner sees the fix sentences for a fix and only `OWNER_HOLD_NOTICE` for a hold.
 """
+import io
 import logging
 import re
 from dataclasses import dataclass, field
@@ -42,6 +43,11 @@ NAME_TOO_SHORT, DESCRIPTION_TOO_SHORT, PRICE_MISSING = "name_too_short", "descri
 CATEGORY_KIND_MISMATCH, CONTACT_DETAILS = "category_kind_mismatch", "contact_details_in_text"
 PROHIBITED_TERM, DAILY_LIMIT, PHOTO_CHECK_FAILED = "prohibited_term", "daily_limit", "photo_check_unavailable"
 HOLD_CODES = frozenset({PROHIBITED_TERM, DAILY_LIMIT, PHOTO_CHECK_FAILED})
+# The only codes whose message may be shown to the owner: an allow-list, so a hold code added later is never leaked.
+FIX_CODES = frozenset({
+    PHOTO_MISSING, PHOTO_UNREADABLE, PHOTO_TOO_SMALL, NAME_TOO_SHORT, DESCRIPTION_TOO_SHORT, PRICE_MISSING,
+    CATEGORY_KIND_MISMATCH, CONTACT_DETAILS,
+})
 
 NO_PHOTO = "Add a main photo that is at least 800 by 800 pixels."
 UNREADABLE_PHOTO = "We could not read your main photo. Upload it again as a JPEG or PNG."
@@ -80,7 +86,8 @@ class PhotoCheckUnavailable(Exception):
 class _StorageStream:
     """Wraps the file object a storage backend gave us so that anything its reads raise is told apart from Pillow's own
     decode failures: ConnectionError and TimeoutError are OSErrors, exactly as Pillow's are, so the exception type alone
-    cannot say whose fault a failed read is."""
+    cannot say whose fault a failed read is. `AttributeError` and `io.UnsupportedOperation` (a stream that cannot seek)
+    pass through untouched: Pillow reads those as "not seekable" and falls back to reading the whole file."""
 
     def __init__(self, handle):
         self._handle = handle
@@ -88,17 +95,28 @@ class _StorageStream:
     def _guard(self, name, *args):
         try:
             return getattr(self._handle, name)(*args)
+        except (AttributeError, io.UnsupportedOperation):
+            raise
         except Exception as exc:  # noqa: BLE001
             raise PhotoCheckUnavailable from exc
 
     def read(self, *args):
         return self._guard("read", *args)
 
+    def readline(self, *args):
+        return self._guard("readline", *args)
+
+    def readinto(self, *args):
+        return self._guard("readinto", *args)
+
     def seek(self, *args):
         return self._guard("seek", *args)
 
     def tell(self):
         return self._guard("tell")
+
+    def close(self):
+        return self._guard("close")
 
     def __getattr__(self, name):
         return getattr(self._handle, name)
@@ -108,7 +126,7 @@ def _photo_reason(listing):
     """None when the stored original of the main photo is at least 800 px each way, else a (code, message) pair. Only the
     image header is read, so a huge file costs nothing. Opening and decoding are told apart:
 
-    * a file that is missing (`FileNotFoundError`, or a `ValueError` for a name storage cannot open), empty, truncated or
+    * a file that is missing (`FileNotFoundError`), empty, truncated or
       not an image (Pillow's `UnidentifiedImageError`, `DecompressionBombError`, and the `OSError`/`ValueError`/
       `SyntaxError` it raises while parsing) is the owner's to fix;
     * anything else - the storage backend failing on open or on a read (connection, timeout, botocore-style or generic
@@ -121,10 +139,10 @@ def _photo_reason(listing):
         return PHOTO_MISSING, NO_PHOTO
     try:
         handle = listing.main_photo.storage.open(name, "rb")
-    except (FileNotFoundError, ValueError):
+    except FileNotFoundError:
         logger.warning("main photo %r of listing %s is missing from storage", name, listing.pk)
         return PHOTO_UNREADABLE, UNREADABLE_PHOTO
-    except Exception as exc:  # noqa: BLE001 - anything else is the storage failing, not a bad upload
+    except Exception as exc:  # noqa: BLE001 - anything else (a ValueError from a misconfigured storage too) is the storage, not a bad upload
         logger.warning("storage failed opening main photo %r of listing %s", name, listing.pk, exc_info=True)
         raise PhotoCheckUnavailable from exc
     try:

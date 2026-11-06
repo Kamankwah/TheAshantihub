@@ -2,22 +2,29 @@
 email on file, or whose current email is not yet confirmed, sets or corrects it themselves and is mailed a fresh
 confirmation link. An owner whose email is confirmed must use the staff-verified change path instead."""
 import re
+from datetime import timedelta
 from decimal import Decimal
+from unittest import mock
 
+from django.contrib.auth.hashers import make_password
 from django.core import mail
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts import email_confirmation, golive
 from accounts.authentication import issue_token
-from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer, EmailConfirmationToken
+from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer, EmailConfirmationToken, MobileSession
 from accounts.testing import make_staff, staff_token
-from otp.models import EMAIL, VerifiedContact
+from activity.models import ActivityEvent
+from otp import step_up
+from otp.models import EMAIL, TrustedDevice, VerifiedContact
+from wallets.models import PayoutDestination
 
 URL = "/api/accounts/business-owners/me/email/"
 CONFIRM = "/api/accounts/email-confirmation/confirm/"
+PASSWORD = "correct-horse-battery"
 TOKEN = re.compile(r"/confirm-email#token=([\w-]+)")
 
 
@@ -32,7 +39,7 @@ class OwnerEmailChangeTests(TestCase):
     def owner(self, email=None, *, confirmed=False, **extra):
         type(self)._n += 1
         owner = BusinessOwner.objects.create(
-            full_name=f"Owner {self._n}", login_phone=f"+23324430{self._n:04d}", password_hash="x", email=email, **extra,
+            full_name=f"Owner {self._n}", login_phone=f"+23324430{self._n:04d}", password_hash=make_password(PASSWORD), email=email, **extra,
         )
         BusinessOwnerProfile.objects.create(
             business_owner=owner, business_contact_phone=owner.login_phone, business_kind="product",
@@ -44,9 +51,12 @@ class OwnerEmailChangeTests(TestCase):
             )
         return BusinessOwner.objects.get(pk=owner.pk)
 
-    def post(self, owner, email, *, token=None):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token or issue_token(owner, 'business_owner')}")
-        return self.client.post(URL, {"email": email}, format="json")
+    def post(self, owner, email, *, token=None, password=PASSWORD, **headers):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token or issue_token(owner, 'business_owner')}", **headers)
+        body = {"email": email}
+        if password is not None:
+            body["password"] = password
+        return self.client.post(URL, body, format="json")
 
     # ---- allowed ---------------------------------------------------------------------------------------
     def test_an_owner_with_no_email_can_set_one_and_is_mailed_a_link(self):
@@ -158,15 +168,27 @@ class OwnerEmailChangeTests(TestCase):
     def test_a_missing_field_is_a_400(self):
         owner = self.owner()
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(owner, 'business_owner')}")
-        self.assertEqual(self.client.post(URL, {}, format="json").status_code, 400)
+        self.assertEqual(self.client.post(URL, {"password": PASSWORD}, format="json").status_code, 400)
 
     def test_it_is_throttled_to_five_an_hour_per_owner(self):
         owner = self.owner()
         for index in range(5):
             self.assertEqual(self.post(owner, f"try{index}@example.com").status_code, 200)
-        self.assertEqual(self.post(owner, "later@example.com").status_code, 429)
+        # Five links went out today, so the daily cap is also at its limit; this must still be the DRF throttle's
+        # answer (no `too_many_links` code) and must change nothing.
+        before = BusinessOwner.objects.get(pk=owner.pk).email
+        response = self.post(owner, "later@example.com")
+        self.assertEqual(response.status_code, 429)
+        self.assertNotEqual(response.json().get("code"), "too_many_links")
+        self.assertEqual(BusinessOwner.objects.get(pk=owner.pk).email, before)
         other = self.owner()
         self.assertEqual(self.post(other, "someone@example.com").status_code, 200)
+
+    def test_wrong_password_attempts_count_toward_the_throttle(self):
+        owner = self.owner()
+        for _ in range(5):
+            self.assertEqual(self.post(owner, "a@example.com", password="nope").status_code, 400)
+        self.assertEqual(self.post(owner, "a@example.com").status_code, 429)
 
     def test_the_scope_is_declared(self):
         from accounts import views_email_confirmation
@@ -186,3 +208,176 @@ class OwnerEmailChangeTests(TestCase):
         response = self.post(None, "a@example.com", token=staff_token(staff))
         self.assertIn(response.status_code, (401, 403))
         self.assertEqual(mail.outbox, [])
+
+    # ---- the current password ------------------------------------------------------------------------------
+    def test_a_wrong_or_missing_password_is_refused_the_same_way_and_changes_nothing(self):
+        owner = self.owner("old@example.com")
+        self.owner("taken@example.com")
+        answers = []
+        for password in ("wrong-password", None, ""):
+            for address in ("new@example.com", "taken@example.com", "not an email"):
+                with self.subTest(password=password, address=address):
+                    cache.clear()  # the throttle is tested on its own below
+                    response = self.post(owner, address, password=password)
+                    self.assertEqual(response.status_code, 400)
+                    self.assertEqual(response.json()["code"], "wrong_password")
+                    self.assertIn("password", response.json())
+                    answers.append(response.json())
+        self.assertTrue(all(answer == answers[0] for answer in answers), "the answer must not depend on the address")
+        owner.refresh_from_db()
+        self.assertEqual(owner.email, "old@example.com")
+        self.assertEqual(mail.outbox, [])
+        self.assertFalse(EmailConfirmationToken.objects.exists())
+
+    def test_the_password_is_checked_before_the_confirmed_state_is_revealed(self):
+        owner = self.owner("ama@example.com", confirmed=True)
+        self.assertEqual(self.post(owner, "x@example.com", password="wrong").json()["code"], "wrong_password")
+        self.assertEqual(self.post(owner, "x@example.com").json()["code"], "email_confirmed")
+
+    # ---- step-up -------------------------------------------------------------------------------------------
+    def step_up_header(self, owner, token):
+        raw = step_up.issue(owner, step_up.CONTACT_CHANGE, self._request_for(token))
+        return {"HTTP_X_STEP_UP_TOKEN": raw}
+
+    def _request_for(self, token):
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        class Fake:
+            auth = AccessToken(token)
+            META = {}
+
+        return Fake()
+
+    @override_settings(LEDGER_ENABLED=True, OTP_STEP_UP_ENFORCED=False)
+    def test_a_step_up_code_is_asked_for_while_the_ledger_is_on(self):
+        owner = self.owner("old@example.com")
+        response = self.post(owner, "new@example.com")
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertEqual(response.json()["code"], "step_up_required")
+        self.assertEqual(response.json()["action"], step_up.CONTACT_CHANGE)
+        owner.refresh_from_db()
+        self.assertEqual(owner.email, "old@example.com")
+        self.assertEqual(mail.outbox, [])
+
+    @override_settings(LEDGER_ENABLED=True, OTP_STEP_UP_ENFORCED=False)
+    def test_a_valid_step_up_token_is_accepted_once(self):
+        owner = self.owner("old@example.com")
+        token = issue_token(owner, "business_owner")
+        headers = self.step_up_header(owner, token)
+        response = self.post(owner, "new@example.com", token=token, **headers)
+        self.assertEqual(response.status_code, 200, response.content)
+        again = self.post(owner, "newer@example.com", token=token, **headers)
+        self.assertEqual((again.status_code, again.json()["code"]), (403, "step_up_required"))
+
+    @override_settings(LEDGER_ENABLED=True, OTP_STEP_UP_ENFORCED=False)
+    def test_a_refused_address_leaves_the_step_up_token_usable(self):
+        owner = self.owner("old@example.com")
+        self.owner("taken@example.com")
+        token = issue_token(owner, "business_owner")
+        headers = self.step_up_header(owner, token)
+        self.assertEqual(self.post(owner, "taken@example.com", token=token, **headers).status_code, 400)
+        self.assertEqual(self.post(owner, "new@example.com", token=token, **headers).status_code, 200)
+
+    @override_settings(LEDGER_ENABLED=False, OTP_STEP_UP_ENFORCED=True)
+    def test_the_enforced_switch_also_asks_for_a_code(self):
+        owner = self.owner()
+        self.assertEqual(self.post(owner, "new@example.com").json()["code"], "step_up_required")
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_a_confirmed_owner_is_refused_before_any_step_up_is_asked(self):
+        owner = self.owner("ama@example.com", confirmed=True)
+        self.assertEqual(self.post(owner, "x@example.com").json()["code"], "email_confirmed")
+
+    # ---- contact-change side effects -----------------------------------------------------------------------
+    def with_assets(self, owner):
+        now = timezone.now()
+        destination = PayoutDestination.objects.create(
+            holder_type="business_owner", holder_id=owner.pk, rail="momo", institution="MTN", account_number="0241234567",
+            account_name="Ama", matched_name="Ama", name_source="simulated", usable_from=now - timedelta(days=3),
+        )
+        TrustedDevice.objects.create(
+            account_type="business_owner", account_id=owner.pk, token_hash="d" * 64, password_fingerprint="x",
+        )
+        MobileSession.objects.create(
+            account_type="business_owner", account_id=owner.pk, family="f" * 32, token_hash="h" * 64,
+            expires_at=now + timedelta(days=1),
+        )
+        return destination
+
+    def test_a_changed_address_restarts_cooling_ends_devices_and_phone_sessions_and_warns_the_old_contact(self):
+        owner = self.owner("old@example.com")
+        destination = self.with_assets(owner)
+        mail.outbox.clear()
+        with mock.patch("otp.notices.senders.deliver") as deliver, self.captureOnCommitCallbacks(execute=True):
+            deliver.return_value = mock.Mock(ok=True, provider="test")
+            response = self.post(owner, "new@example.com")
+        self.assertEqual(response.status_code, 200, response.content)
+        destination.refresh_from_db()
+        self.assertGreater(destination.usable_from, timezone.now())
+        self.assertFalse(TrustedDevice.objects.filter(revoked_at__isnull=True).exists())
+        self.assertFalse(MobileSession.objects.filter(revoked_at__isnull=True).exists())
+        # The old email is told; the new one gets the confirmation link.
+        told = [call.args for call in deliver.call_args_list]
+        self.assertEqual([(args[0], args[1]) for args in told], [("email", "old@example.com")])
+        self.assertIn("changed", told[0][3])
+        self.assertEqual([m.to for m in mail.outbox], [["new@example.com"]])
+
+    def test_adding_a_first_email_tells_the_sign_in_phone(self):
+        owner = self.owner()
+        with mock.patch("otp.notices.senders.deliver") as deliver, self.captureOnCommitCallbacks(execute=True):
+            deliver.return_value = mock.Mock(ok=True, provider="test")
+            self.assertEqual(self.post(owner, "new@example.com").status_code, 200)
+        self.assertEqual([(c.args[0], c.args[1]) for c in deliver.call_args_list], [("sms", owner.login_phone)])
+        self.assertIn("email", deliver.call_args_list[0].args[3].lower())
+
+    def test_the_activity_event_is_masked(self):
+        owner = self.owner("old.person@example.com")
+        self.post(owner, "new.person@example.com")
+        event = ActivityEvent.objects.get(verb="business.email_changed")
+        self.assertEqual(event.target_id, str(owner.pk))
+        text = str((event.summary, event.before, event.after, event.target_label))
+        for full in ("old.person@example.com", "new.person@example.com", "old.person", "new.person"):
+            self.assertNotIn(full, text)
+        self.assertTrue(event.before["email"] and event.after["email"])
+
+    def test_the_activity_event_is_the_last_write(self):
+        owner = self.owner("old@example.com")
+        self.post(owner, "new@example.com")
+        self.assertEqual(ActivityEvent.objects.latest("id").verb, "business.email_changed")
+
+    def test_resending_the_same_address_does_none_of_it(self):
+        owner = self.owner("same@example.com")
+        destination = self.with_assets(owner)
+        before = destination.usable_from
+        with mock.patch("otp.notices.senders.deliver") as deliver, self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.post(owner, "SAME@example.com").status_code, 200)
+        destination.refresh_from_db()
+        self.assertEqual(destination.usable_from, before)
+        self.assertTrue(TrustedDevice.objects.filter(revoked_at__isnull=True).exists())
+        self.assertTrue(MobileSession.objects.filter(revoked_at__isnull=True).exists())
+        deliver.assert_not_called()
+        self.assertFalse(ActivityEvent.objects.filter(verb="business.email_changed").exists())
+        self.assertEqual(len(mail.outbox), 1)  # the link
+
+    # ---- addresses that belong to someone else ---------------------------------------------------------------
+    def test_a_staff_email_or_a_customers_verified_recovery_email_is_refused_with_the_same_words(self):
+        make_staff("operations", "ops-person@example.com")
+        Customer.objects.create(
+            full_name="C", phone="+233241119998", password_hash="x", secondary_email="recovery@example.com",
+            secondary_email_verified=True,
+        )
+        owner = self.owner()
+        for address in ("OPS-person@example.com", "recovery@example.com"):
+            with self.subTest(address=address):
+                response = self.post(owner, address)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.json(), {"email": ["A business owner with this email already exists."]})
+        owner.refresh_from_db()
+        self.assertIsNone(owner.email)
+
+    def test_an_unverified_customer_secondary_email_does_not_block(self):
+        Customer.objects.create(
+            full_name="C", phone="+233241119997", password_hash="x", secondary_email="maybe@example.com",
+            secondary_email_verified=False,
+        )
+        self.assertEqual(self.post(self.owner(), "maybe@example.com").status_code, 200)

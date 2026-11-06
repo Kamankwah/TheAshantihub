@@ -765,7 +765,7 @@ class OwnerListingSerializer(serializers.ModelSerializer):
             return []
         return [
             item["message"] for item in obj.hold_reasons or []
-            if item.get("code") not in autopublish.HOLD_CODES and item.get("message")
+            if item.get("code") in autopublish.FIX_CODES and item.get("message")
         ]
 
     def to_representation(self, obj):
@@ -810,6 +810,10 @@ class OwnerListingSerializer(serializers.ModelSerializer):
         )
 
     def update(self, instance, validated_data):
+        if instance.hold_reasons and instance.status in (Listing.DRAFT, Listing.REJECTED):
+            # The owner is fixing it: the stored "to fix" list described the old content, so it is dropped now and the
+            # next submit works it out again.
+            validated_data = {**validated_data, "hold_reasons": []}
         return save_sent_fields(instance, validated_data)
 
     def create(self, validated_data):

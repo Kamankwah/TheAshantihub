@@ -21,3 +21,15 @@ backend/CLAUDE.md and spec section 11 (gaps removed, closure noted).
 
 ## Tests
 Full run `accounts listings otp storefront marketplace cart orders core portfolio`: 3117 tests, 1 failure (the revisable-fields contract, fixed and re-run green together with golive, autopublish, owner_email_change). `makemigrations --check --dry-run`: no changes.
+
+## Fix round 1 (security review)
+
+Critical: `POST business-owners/me/email/` could let a borrowed session point the account's password reset and sign-in codes at its own address. Now:
+- Body `{email, password}`. The current password is checked FIRST (before the confirmed check, validation and any availability check): wrong, missing or empty all answer 400 `{"detail": "That password isn't right.", "password": ["That password isn't right."], "code": "wrong_password"}`, identical whatever address was typed. Every attempt counts toward the 5/hour throttle.
+- `step_up.require(CONTACT_CHANGE, force=escrow.enabled())` runs in the same `transaction.atomic()` as the save (before validation, as the customer view does), so a refused address leaves the code usable. Failure: 403 `{"detail": "Confirm it's you with a code first.", "code": "step_up_required", "action": "contact_change"}`; the client retries with the `X-Step-Up-Token` header. Also asked when `OTP_STEP_UP_ENFORCED` is on.
+- An actual change (not the same address again) restarts payout cooling, ends trusted devices, ends ALL phone sessions (`MobileSession.revoke_all`; the access token carries no session id, so the current phone cannot be kept - the app signs in again at its next refresh; web JWTs are stateless and unaffected, as with the staff route), tells the old email (else the sign-in phone, with its own "an email was added" text) after commit, and records `business.email_changed` last with masked old/new.
+- A same-address resend does none of that; it only revokes old links and sends a new one.
+
+Tests: full run 3138 OK (1 skipped), makemigrations --check clean.
+
+Minors: (1) throttle test now proves the DRF throttle (no `too_many_links`, email unchanged), plus wrong passwords count; (2) `address_taken` refuses another business, a staff email and a customer's verified recovery email with the one wording; (3) `email_missing` message no longer says "below"; (4) owner `fix_reasons` uses the `FIX_CODES` allow-list; (5) an owner PATCH of a draft/rejected listing clears `hold_reasons` (4-line change in `OwnerListingSerializer.update`); (6) ValueError on open now holds, decode-time ValueError stays a fix, and the storage guard passes `AttributeError`/`io.UnsupportedOperation` through (Pillow's non-seekable fallback works) and guards readline/readinto/close.
