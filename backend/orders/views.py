@@ -12,14 +12,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import BusinessOwner, StaffUser
+from accounts.models import StaffUser
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner, IsCustomer
 from cart import guard as cart_guard
 from cart.models import Cart
 from delivery.models import DeliveryEvent
 from disputes.models import Dispute
-from listings.models import Listing, ListingVariant
 from disputes.serializers import DisputeSerializer
 from notifications.services import notify_customer
 from payments.models import CheckoutSession
