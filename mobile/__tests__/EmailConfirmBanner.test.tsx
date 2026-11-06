@@ -150,6 +150,67 @@ describe("email confirm banner", () => {
     expect(screen.queryByLabelText("Your password")).toBeNull();
   });
 
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])("success_lines_for_signed_out_phone_%s_payout_cooling_%s_appear_only_when_true", async (signedOut, cooling) => {
+    apiMock.mockResolvedValue({ email: "abena@example.com", sent: true, side_effects: { signed_out_phone: signedOut, payout_cooling: cooling } });
+    await render(<EmailConfirmBanner goLive={missing} />);
+    await fill("abena@example.com");
+    expect(await screen.findByText("Sent to abena@example.com")).toBeTruthy();
+    expect(screen.queryByText("You will be asked to sign in again on your phone.") !== null).toBe(signedOut);
+    expect(screen.queryByText("For your safety, payout accounts wait a short cooling period again before withdrawals.") !== null).toBe(cooling);
+  });
+
+  it("a_refused_address_after_the_code_step_keeps_the_token_for_one_corrected_retry", async () => {
+    const stepUp = new ApiError(403, { code: "step_up_required", action: "contact_change", detail: "Confirm it's you with a code first." });
+    let verifies = 0;
+    apiMock.mockImplementation(async (path: string, init?: any) => {
+      if (path === "/api/otp/step-up/send/") return { hint: "+233 ••• 4417" };
+      if (path === "/api/otp/step-up/verify/") { verifies += 1; return { step_up_token: "tok-1" }; }
+      if (path === "/api/accounts/business-owners/me/email/") {
+        if (!init?.headers?.["X-Step-Up-Token"]) throw stepUp;
+        if (init.body.email === "taken@example.com") throw new ApiError(400, { email: ["A business owner with this email already exists."] });
+        return { email: init.body.email, sent: true };
+      }
+      throw new ApiError(404, {});
+    });
+    await render(<EmailConfirmBanner goLive={missing} />);
+    await fill("taken@example.com");
+    await fireEvent.changeText(await screen.findByLabelText("Code we sent you"), "123456");
+    await fireEvent.press(screen.getByRole("button", { name: "Confirm" }));
+    expect(await screen.findByText("A business owner with this email already exists.")).toBeTruthy();
+    await fill("abena@example.com");
+    expect(await screen.findByText("Sent to abena@example.com")).toBeTruthy();
+    expect(verifies).toBe(1);
+    expect(screen.queryByLabelText("Code we sent you")).toBeNull();
+  });
+
+  it("the_kept_token_is_dropped_on_back_so_the_next_attempt_asks_for_a_code_again", async () => {
+    const stepUp = new ApiError(403, { code: "step_up_required", action: "contact_change", detail: "Confirm it's you with a code first." });
+    apiMock.mockImplementation(async (path: string, init?: any) => {
+      if (path === "/api/otp/step-up/send/") return { hint: "+233 ••• 4417" };
+      if (path === "/api/otp/step-up/verify/") return { step_up_token: "tok-1" };
+      if (path === "/api/accounts/business-owners/me/email/") {
+        if (!init?.headers?.["X-Step-Up-Token"]) throw stepUp;
+        throw new ApiError(400, { email: ["A business owner with this email already exists."] });
+      }
+      throw new ApiError(404, {});
+    });
+    await render(<EmailConfirmBanner goLive={unconfirmed} />);
+    await fireEvent.press(screen.getByRole("button", { name: "Wrong address? Change it" }));
+    await fill("taken@example.com");
+    await fireEvent.changeText(await screen.findByLabelText("Code we sent you"), "123456");
+    await fireEvent.press(screen.getByRole("button", { name: "Confirm" }));
+    await screen.findByText("A business owner with this email already exists.");
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Wrong address? Change it" }));
+    await fill("other@example.com");
+    expect(await screen.findByLabelText("Code we sent you")).toBeTruthy();
+  });
+
   it("backing_out_of_the_code_step_returns_to_the_form_with_the_password_cleared", async () => {
     apiMock.mockImplementation(async (path: string) => {
       if (path === "/api/otp/step-up/send/") return { hint: "+233 ••• 4417" };

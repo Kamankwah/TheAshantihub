@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { ApiError } from "../../lib/api";
@@ -29,6 +29,7 @@ const EMAIL_NEEDED = "Enter your email so we can send you a confirmation link.";
  * entered, until that request finishes or the owner goes back); it is never stored or logged. Nothing signs the
  * owner out here: the server revokes other phone sessions and the app asks for a sign-in when the token expires.
  */
+type Effects = { signedOutPhone: boolean; payoutCooling: boolean };
 type Problem = { field: "email" | "password" | "general"; text: string };
 
 export function EmailConfirmBanner({ goLive, onSaved }: { goLive?: GoLive; onSaved?: () => void }) {
@@ -43,6 +44,11 @@ export function EmailConfirmBanner({ goLive, onSaved }: { goLive?: GoLive; onSav
   const [stage, setStage] = useState<"form" | "code">("form");
   const [changing, setChanging] = useState(false);
   const [accepted, setAccepted] = useState("");
+  const [effects, setEffects] = useState<Effects>({ signedOutPhone: false, payoutCooling: false });
+  // A code the server accepted stays good after a 400 (say, a taken address): kept for one corrected retry only,
+  // and dropped on success, Back, Cancel, any other failure or unmount.
+  const keptToken = useRef<string | null>(null);
+  useEffect(() => () => { keptToken.current = null; }, []);
 
   const blockers = Array.isArray(goLive?.blockers) ? goLive.blockers : [];
   const unconfirmed = blockers.find((b) => b?.code === "email_unconfirmed");
@@ -55,6 +61,7 @@ export function EmailConfirmBanner({ goLive, onSaved }: { goLive?: GoLive; onSav
   async function resend() {
     setSending(true);
     setError(undefined);
+    setEffects({ signedOutPhone: false, payoutCooling: false });
     try {
       await resendEmailConfirmation();
       setSent(true);
@@ -74,9 +81,11 @@ export function EmailConfirmBanner({ goLive, onSaved }: { goLive?: GoLive; onSav
   }
 
   /** Never throws. Returns true when it moved on to the code step (the password is kept for the one retry). */
-  async function run(address: string, pw: string, token?: string): Promise<boolean> {
+  async function run(address: string, pw: string, token?: string, fresh = false): Promise<boolean> {
     try {
-      await setOwnerEmail(address, pw, token);
+      const answer = await setOwnerEmail(address, pw, token);
+      keptToken.current = null;
+      setEffects({ signedOutPhone: answer?.side_effects?.signed_out_phone === true, payoutCooling: answer?.side_effects?.payout_cooling === true });
       setAccepted(address);
       setSent(true);
       setChanging(false);
@@ -84,10 +93,14 @@ export function EmailConfirmBanner({ goLive, onSaved }: { goLive?: GoLive; onSav
       setStage("form");
       onSaved?.();
     } catch (e) {
-      if (!token && e instanceof ApiError && e.status === 403 && (e.body as { code?: string } | null)?.code === "step_up_required") {
+      keptToken.current = null;
+      if (!fresh && e instanceof ApiError && e.status === 403 && (e.body as { code?: string } | null)?.code === "step_up_required") {
+        // No token, or the kept one has expired: ask for a code.
         setStage("code");
         return true;
       }
+      // The server keeps a code alive through a refused address or password, so one corrected retry needs no new code.
+      if (token && e instanceof ApiError && e.status === 400) keptToken.current = token;
       setSent(false);
       setStage("form");
       setProblem(problemFor(e));
@@ -112,18 +125,20 @@ export function EmailConfirmBanner({ goLive, onSaved }: { goLive?: GoLive; onSav
       return;
     }
     setSaving(true);
-    const waitingForCode = await run(address, password);
+    setEffects({ signedOutPhone: false, payoutCooling: false });
+    const waitingForCode = await run(address, password, keptToken.current ?? undefined);
     // The password never outlives the request, unless the owner is still entering a code for it.
     if (!waitingForCode) setPassword("");
     setSaving(false);
   }
 
   async function confirmed(token: string) {
-    await run(typed.trim(), password, token);
+    await run(typed.trim(), password, token, true);
     setPassword("");
   }
 
   function closeForm() {
+    keptToken.current = null;
     setChanging(false);
     setStage("form");
     setTyped("");
@@ -141,7 +156,7 @@ export function EmailConfirmBanner({ goLive, onSaved }: { goLive?: GoLive; onSav
         <CodeStep
           action="contact_change"
           onConfirmed={confirmed}
-          onBack={() => { setPassword(""); setStage("form"); }}
+          onBack={() => { keptToken.current = null; setPassword(""); setStage("form"); }}
         />
       </View>
     );
@@ -174,6 +189,8 @@ export function EmailConfirmBanner({ goLive, onSaved }: { goLive?: GoLive; onSav
         </View>
       ) : null}
       {sent ? <Text accessibilityRole="alert" style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 14 }}>{accepted ? `Sent to ${accepted}` : "Sent. Check your inbox (and your spam folder)."}</Text> : null}
+      {sent && effects.signedOutPhone ? <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>You will be asked to sign in again on your phone.</Text> : null}
+      {sent && effects.payoutCooling ? <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14 }}>For your safety, payout accounts wait a short cooling period again before withdrawals.</Text> : null}
       {error ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 14 }}>{error}</Text> : null}
       {unconfirmed ? <Button variant="secondary" label="Resend" onPress={() => void resend()} loading={sending} /> : null}
       {unconfirmed && !changing ? (

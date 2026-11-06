@@ -107,7 +107,7 @@ export const resendEmailConfirmation = () => api("/api/accounts/business-owners/
  * password (400 wrong_password) and past five links a day (429, address saved).
  */
 export const setOwnerEmail = (email: string, password: string, stepUpToken?: string) =>
-  api<{ email: string; sent: boolean }>("/api/accounts/business-owners/me/email/", { body: { email, password }, ...(stepUpToken ? { headers: { "X-Step-Up-Token": stepUpToken } } : {}) });
+  api<{ email: string; sent: boolean; side_effects?: { signed_out_phone?: boolean; payout_cooling?: boolean } }>("/api/accounts/business-owners/me/email/", { body: { email, password }, ...(stepUpToken ? { headers: { "X-Step-Up-Token": stepUpToken } } : {}) });
 
 export const acceptTerms = () => api("/api/accounts/business-owners/me/terms/", { body: {} });
 

@@ -34,6 +34,7 @@ export default function EmailConfirmBanner({ goLive, email, onSaved }) {
   // `error` is { field: "email" | "password" | "general", text }; the alert is tied to its field by aria-describedby.
   const [error, setErrorState] = useState(null);
   const setError = (text, field = "general") => setErrorState(text ? { text, field } : null);
+  const [effects, setEffects] = useState({});
   const [password, setPassword] = useState("");
   const [typed, setTyped] = useState("");
   const [saving, setSaving] = useState(false);
@@ -53,6 +54,7 @@ export default function EmailConfirmBanner({ goLive, email, onSaved }) {
 
   const resend = async () => {
     setSending(true);
+    setEffects({});
     setError("");
     try {
       await apiPost(RESEND_URL, {});
@@ -80,8 +82,11 @@ export default function EmailConfirmBanner({ goLive, email, onSaved }) {
       return;
     }
     setSaving(true);
+    setEffects({});
     try {
-      await apiPost(SET_EMAIL_URL, { email: address, password });
+      const answer = await apiPost(SET_EMAIL_URL, { email: address, password });
+      // Only what the server says really happened is ever shown.
+      setEffects({ signedOutPhone: answer?.side_effects?.signed_out_phone === true, payoutCooling: answer?.side_effects?.payout_cooling === true });
       setAccepted(address);
       setSent(true);
       setChanging(false);
@@ -123,7 +128,7 @@ export default function EmailConfirmBanner({ goLive, email, onSaved }) {
           <form onSubmit={saveEmail} noValidate style={{ display: "grid", gap: 8, marginTop: 8 }}>
             <div>
               <label htmlFor="ecb-email" style={labelStyle}>Email address</label>
-              <input id="ecb-email" type="text" inputMode="email" autoComplete="email" placeholder="you@example.com" value={typed} onChange={(ev) => setTyped(ev.target.value)} aria-invalid={error && error.field !== "password" ? "true" : undefined} aria-describedby={error && error.field !== "password" ? ERROR_ID : undefined} style={inputStyle} />
+              <input id="ecb-email" type="text" inputMode="email" autoComplete="email" placeholder="you@example.com" value={typed} onChange={(ev) => setTyped(ev.target.value)} aria-invalid={error?.field === "email" ? "true" : undefined} aria-describedby={error && error.field !== "password" ? ERROR_ID : undefined} style={inputStyle} />
             </div>
             <div>
               <label htmlFor="ecb-password" style={labelStyle}>Your password</label>
@@ -139,6 +144,8 @@ export default function EmailConfirmBanner({ goLive, email, onSaved }) {
           </form>
         )}
         {sent && <div role="status" style={{ color: D.text, fontSize: "0.78rem", fontWeight: 700, marginTop: 6 }}>{knownAddress ? `Sent to ${knownAddress}` : "Sent. Check your inbox (and your spam folder)."}</div>}
+        {sent && effects.signedOutPhone && <div style={{ color: D.textDim, fontSize: "0.76rem", marginTop: 4 }}>You will be asked to sign in again on your phone.</div>}
+        {sent && effects.payoutCooling && <div style={{ color: D.textDim, fontSize: "0.76rem", marginTop: 4 }}>For your safety, payout accounts wait a short cooling period again before withdrawals.</div>}
         {error && <div id={ERROR_ID} role="alert" style={{ color: D.red, fontSize: "0.78rem", fontWeight: 700, marginTop: 6 }}>{error.text}</div>}
         {unconfirmed && !changing && <button type="button" onClick={() => { setChanging(true); setSent(false); setError(""); }} style={quietBtn}>Wrong address? Change it</button>}
       </div>

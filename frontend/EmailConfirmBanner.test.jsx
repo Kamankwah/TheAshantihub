@@ -133,6 +133,62 @@ describe('EmailConfirmBanner', () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
   })
 
+  it.each([
+    [false, false], [true, false], [false, true], [true, true],
+  ])('success lines for signed_out_phone=%s payout_cooling=%s appear only when true', async (signedOut, cooling) => {
+    server.use(http.post(SET_EMAIL, () => HttpResponse.json({ email: 'abena@example.com', sent: true, side_effects: { signed_out_phone: signedOut, payout_cooling: cooling } })))
+    render(<EmailConfirmBanner goLive={missingGoLive} />)
+    fill('abena@example.com')
+    expect(await screen.findByText('Sent to abena@example.com')).toBeInTheDocument()
+    expect(screen.queryByText('You will be asked to sign in again on your phone.') !== null).toBe(signedOut)
+    expect(screen.queryByText('For your safety, payout accounts wait a short cooling period again before withdrawals.') !== null).toBe(cooling)
+  })
+
+  it('shows no extra lines when the answer carries no side_effects', async () => {
+    server.use(http.post(SET_EMAIL, () => HttpResponse.json({ email: 'abena@example.com', sent: true })))
+    render(<EmailConfirmBanner goLive={missingGoLive} />)
+    fill('abena@example.com')
+    await screen.findByText('Sent to abena@example.com')
+    expect(screen.queryByText(/sign in again/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/cooling period/)).not.toBeInTheDocument()
+  })
+
+  it('marks the email field invalid only for an email error, and the password field for a wrong password', async () => {
+    const email = () => screen.getByLabelText('Email address')
+    const password = () => screen.getByLabelText('Your password')
+    // network failure: neither field is invalid
+    server.use(http.post(SET_EMAIL, () => HttpResponse.error()))
+    const { unmount } = render(<EmailConfirmBanner goLive={missingGoLive} />)
+    fill('abena@example.com')
+    await screen.findByRole('alert')
+    expect(email()).not.toHaveAttribute('aria-invalid')
+    expect(password()).not.toHaveAttribute('aria-invalid')
+    unmount()
+    // 429: not the email field's fault
+    server.use(http.post(SET_EMAIL, () => HttpResponse.json({ detail: 'Too many links today.', code: 'too_many_links' }, { status: 429 })))
+    const second = render(<EmailConfirmBanner goLive={missingGoLive} />)
+    fill('abena@example.com')
+    await screen.findByRole('alert')
+    expect(email()).not.toHaveAttribute('aria-invalid')
+    second.unmount()
+    // wrong password marks the password field only
+    server.use(http.post(SET_EMAIL, () => HttpResponse.json({ detail: "That password isn't right.", code: 'wrong_password' }, { status: 400 })))
+    const third = render(<EmailConfirmBanner goLive={missingGoLive} />)
+    fill('abena@example.com')
+    await screen.findByRole('alert')
+    expect(password()).toHaveAttribute('aria-invalid', 'true')
+    expect(email()).not.toHaveAttribute('aria-invalid')
+    third.unmount()
+    // a cancelled step-up is not an email error either
+    const off = setStepUpHandler(async () => null)
+    server.use(http.post(SET_EMAIL, () => HttpResponse.json({ code: 'step_up_required', action: 'contact_change', detail: "Confirm it's you with a code first." }, { status: 403 })))
+    render(<EmailConfirmBanner goLive={missingGoLive} />)
+    fill('abena@example.com')
+    await screen.findByRole('alert')
+    expect(email()).not.toHaveAttribute('aria-invalid')
+    off()
+  })
+
   it('asks for a code through the shared step-up flow and retries with its token', async () => {
     const asked = []
     const off = setStepUpHandler(async (action) => { asked.push(action); return { token: 'tok-1', expiresIn: 60 } })
