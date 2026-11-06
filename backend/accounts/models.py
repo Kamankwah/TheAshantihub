@@ -409,14 +409,17 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
             profile = self.profile
         except BusinessOwnerProfile.DoesNotExist:
             return "business_info"
-        # The Ghana Card, certificate and TIN are optional: KYC rests on the
-        # Ghana Post address, so that and a contact phone finish this step.
-        if not (profile.gps_address and profile.business_contact_phone):
+        # The Ghana Card, certificate, TIN and Ghana Post code are optional: a contact phone finishes this step. The
+        # shop pin comes next, then the business type, then the terms. Payout details are no longer part of the chain
+        # (they are asked for on Profile and Settings, and gate withdrawals, not registration).
+        if not profile.business_contact_phone:
             return "business_info"
+        from .location_capture import has_pin  # local: location_capture imports this module
+
+        if not has_pin(profile):
+            return "shop_location"
         if not profile.business_kind or (subscriptions_enabled() and getattr(self, "subscription", None) is None):
             return "plan_selection"
-        if not profile.has_payout_details():
-            return "payment_info"
         if not profile.terms_accepted_at:
             return "terms"
         return "complete"

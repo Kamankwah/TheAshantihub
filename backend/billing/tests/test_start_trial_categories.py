@@ -30,7 +30,7 @@ def make_owner(phone, kind=None, **owner_extra):
     profile = BusinessOwnerProfile.objects.create(
         business_owner=owner, business_name="Kwame Shop", business_kind=kind, ghana_card_number=f"GHA-{phone[-6:]}",
         gps_address=f"AK-{phone[-6:]}", business_contact_phone=phone, ghana_card_front_image="front.jpg",
-        ghana_card_back_image="back.jpg",
+        ghana_card_back_image="back.jpg", lat="6.690000", lng="-1.620000",
     )
     return owner, profile
 
@@ -73,7 +73,7 @@ class StartTrialCategoriesTests(_Fixtures, TestCase):
     def test_start_trial_sets_kind_categories_and_subscription_together(self):
         response = self.post(categories=[self.shoes.pk, self.fabrics.pk])
         self.assertEqual(response.status_code, 201, response.content)
-        self.assertEqual(response.json()["registration_step"], "payment_info")
+        self.assertEqual(response.json()["registration_step"], "terms")
         profile, ids = self.stored()
         self.assertEqual(profile.business_kind, "product")
         self.assertEqual(ids, [self.shoes.pk, self.fabrics.pk])
@@ -84,7 +84,7 @@ class StartTrialCategoriesTests(_Fixtures, TestCase):
         # Transitional: an older client (the mobile app, a cached web bundle) never sends the key.
         response = self.post()
         self.assertEqual(response.status_code, 201, response.content)
-        self.assertEqual(response.json()["registration_step"], "payment_info")
+        self.assertEqual(response.json()["registration_step"], "terms")
         profile, ids = self.stored()
         self.assertEqual(profile.business_kind, "product")
         self.assertEqual(ids, [])
@@ -198,7 +198,7 @@ class BusinessKindCategoriesTests(_Fixtures, TestCase):
         # Transitional: an older client (the mobile app, a cached web bundle) never sends the key.
         response = self.post()
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.json(), {"business_kind": "product", "registration_step": "payment_info"})
+        self.assertEqual(response.json(), {"business_kind": "product", "registration_step": "terms"})
         profile, ids = self.stored()
         self.assertEqual(profile.business_kind, "product")
         self.assertEqual(ids, [])

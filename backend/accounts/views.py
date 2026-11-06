@@ -27,7 +27,7 @@ from otp import step_up
 from staffsecurity import signin as signin_log
 from staffsecurity.models import StaffSignInRecord
 
-from . import categories, claims, email_confirmation, files, hours, kyc, mobile_sessions, sessions, two_factor
+from . import categories, claims, email_confirmation, files, golive, hours, kyc, mobile_sessions, sessions, two_factor
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
 from .models import (
@@ -123,6 +123,7 @@ def me(request):
         data["kyc_status"] = request.user.kyc_status
         data["kyc_rejection_reason"] = request.user.kyc_rejection_reason
         data["registration_step"] = request.user.compute_registration_step()
+        data["go_live"] = golive.payload(request.user)
         profile = getattr(request.user, "profile", None)
         data["identity_status"] = profile.identity_status if profile else BusinessOwnerProfile.IDENTITY_NOT_SUBMITTED
         data["identity_rejection_reason"] = profile.identity_rejection_reason if profile else None
@@ -1911,7 +1912,7 @@ class TermsAcceptView(APIView):
         owner = request.user
         if owner.compute_registration_step() != "terms":
             return Response(
-                {"registration_step": "Business and payment information must be complete before accepting terms."},
+                {"registration_step": "Finish the earlier registration steps before accepting terms."},
                 status=400,
             )
         if not hours.has_hours(owner):

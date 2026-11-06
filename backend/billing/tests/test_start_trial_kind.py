@@ -64,7 +64,7 @@ class StartTrialKindTests(TestCase):
         BusinessOwnerProfile.objects.create(
             business_owner=owner, ghana_card_number="GHA-330002", gps_address="AK-330-002",
             business_contact_phone="+233241330002", ghana_card_front_image="front.jpg",
-            ghana_card_back_image="back.jpg",
+            ghana_card_back_image="back.jpg", lat="6.690000", lng="-1.620000",
         )
         self.assertEqual(owner.compute_registration_step(), "plan_selection")
         category = Category.objects.create(
