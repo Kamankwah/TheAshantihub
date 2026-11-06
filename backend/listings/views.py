@@ -16,6 +16,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts import golive
 from accounts.direct import direct_q
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
 from activity.services import record as activity_record
@@ -881,6 +882,12 @@ class ListingSubmitView(ScopedOwner, APIView):
             )
         from . import media
 
+        # Every way a business moves its own listing to review passes here (a new draft and a resubmitted rejected one
+        # alike), so this is the one go-live gate. Ashanti Direct's company owner and KYC-verified businesses are live.
+        codes = golive.blockers(listing.business_owner)
+        if codes:
+            blockers = [{"code": code, "message": golive.MESSAGES[code]} for code in codes]
+            return Response({"code": "not_live", "detail": blockers[0]["message"], "blockers": blockers}, status=403)
         if media.waiting_for_video(listing):
             return Response({"detail": revisions.WAIT_FOR_VIDEO_MESSAGE}, status=400)
         listing.status = Listing.PENDING_REVIEW
@@ -1070,10 +1077,9 @@ class ModerationApproveView(APIView):
                 return Response({"detail": OWN_LISTING, "code": "own_listing"}, status=403)
             if listing.status != Listing.PENDING_REVIEW:
                 return Response({"detail": "Only a listing waiting for review can be approved."}, status=400)
-            if listing.business_owner.kyc_status != BusinessOwner.VERIFIED:
-                return Response(
-                    {"detail": "Cannot publish a listing whose owner is not KYC-verified."}, status=400
-                )
+            codes = golive.blockers(listing.business_owner)
+            if codes:
+                return Response({"detail": golive.MESSAGES[codes[0]], "code": "not_live"}, status=400)
             if media.waiting_for_video(listing):
                 return Response({"detail": "Wait for the video to finish converting before approving."}, status=400)
             listing.status = Listing.PUBLISHED

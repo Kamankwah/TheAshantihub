@@ -83,9 +83,9 @@ class HeroChecksTests(MarketingBase):
         rows = self.pending()
         rows = rows["results"] if isinstance(rows, dict) else rows
         row = rows[0]
-        self.assertEqual({c["key"] for c in row["checks"]}, {"photo", "kyc", "subscription", "caption_length", "contact_details", "hero_slots"})
+        self.assertEqual({c["key"] for c in row["checks"]}, {"photo", "live", "subscription", "caption_length", "contact_details", "hero_slots"})
         self.assertEqual(self.check(row, "photo")["status"], "pass")
-        self.assertEqual(self.check(row, "kyc")["status"], "pass")
+        self.assertEqual(self.check(row, "live")["status"], "pass")
         self.assertEqual(self.check(row, "subscription")["status"], "pass")
         self.assertEqual(self.check(row, "contact_details")["status"], "pass")
         self.assertEqual(self.check(row, "hero_slots")["detail"], "0 of 1 hero slot in use.")
@@ -100,7 +100,7 @@ class HeroChecksTests(MarketingBase):
         rows = self.pending()
         row = (rows["results"] if isinstance(rows, dict) else rows)[0]
         self.assertEqual(self.check(row, "photo")["status"], "warn")
-        self.assertEqual(self.check(row, "kyc")["status"], "fail")
+        self.assertEqual(self.check(row, "live")["status"], "fail")
         self.assertEqual(self.check(row, "subscription")["status"], "fail")
 
     def test_slot_check_fails_when_the_plan_is_full(self):
@@ -197,7 +197,7 @@ class PromotionChecksTests(MarketingBase):
     def test_row_check_line_days_and_slot(self):
         self.promo()
         row = self.rows()[0]
-        self.assertEqual([c["key"] for c in row["checks"]], ["kyc", "subscription", "listing_live"])
+        self.assertEqual([c["key"] for c in row["checks"]], ["live", "subscription", "listing_live"])
         self.assertTrue(all(c["status"] == "pass" for c in row["checks"]))
         self.assertIsNone(row["fraud_hold"])
         self.assertIsNone(row["slot"])
@@ -210,7 +210,7 @@ class PromotionChecksTests(MarketingBase):
         self.listing.save()
         self.promo()
         statuses = {c["key"]: c["status"] for c in self.rows()[0]["checks"]}
-        self.assertEqual(statuses["kyc"], "fail")
+        self.assertEqual(statuses["live"], "fail")
         self.assertEqual(statuses["listing_live"], "fail")
 
     def test_days_left_for_an_active_promotion(self):

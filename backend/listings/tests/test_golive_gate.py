@@ -1,0 +1,126 @@
+"""Listings stop waiting on `kyc_status` (self-serve phase 2, Task 3): a business that is live (golive) may submit
+listings, and staff may approve them, whatever its KYC decision says. A business that is not live is refused at the
+submit door with the blockers named, and staff cannot approve its listing."""
+from decimal import Decimal
+
+from django.test import TestCase
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from accounts import golive
+from accounts.authentication import issue_token
+from accounts.models import BusinessOwner, BusinessOwnerProfile, Role, StaffUser
+from listings.models import Category, Listing, Zone
+from listings.moderation_checks import promotion_checks
+from otp.models import EMAIL, VerifiedContact
+
+
+def make_owner(phone, *, email="ama@example.com", confirmed=True, kyc=BusinessOwner.PENDING):
+    owner = BusinessOwner.objects.create(
+        full_name="Ama Trader", login_phone=phone, password_hash="x", email=email, kyc_status=kyc,
+    )
+    BusinessOwnerProfile.objects.create(
+        business_owner=owner, business_contact_phone=phone, business_kind="service",
+        lat=Decimal("6.690000"), lng=Decimal("-1.620000"), terms_accepted_at=timezone.now(),
+    )
+    if confirmed:
+        VerifiedContact.objects.create(
+            account_type="business_owner", account_id=owner.pk, channel=EMAIL, destination=email.lower(),
+        )
+    return BusinessOwner.objects.get(pk=owner.pk)
+
+
+class GoLiveGateTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.hotels = Category.objects.get(slug="hotels")
+        self.manhyia = Zone.objects.get(name="Manhyia")
+        self.admin = StaffUser.objects.create(
+            full_name="Admin Person", email="admin-golive@example.com", password_hash="x",
+            role=Role.objects.get(name="operations"),
+        )
+
+    def draft(self, owner, status=Listing.DRAFT):
+        return Listing.objects.create(
+            business_owner=owner, category=self.hotels, zone=self.manhyia, name="Lodge", description="D.",
+            contact_phone=owner.login_phone, status=status,
+        )
+
+    def as_(self, who, kind):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(who, kind)}")
+
+    def submit(self, owner, listing):
+        self.as_(owner, "business_owner")
+        return self.client.post(f"/api/listings/mine/{listing.pk}/submit/")
+
+    def test_unconfirmed_owner_cannot_submit(self):
+        owner = make_owner("+233241450001", confirmed=False)
+        listing = self.draft(owner)
+        response = self.submit(owner, listing)
+        self.assertEqual(response.status_code, 403, response.content)
+        body = response.json()
+        self.assertEqual(body["code"], "not_live")
+        self.assertEqual(body["detail"], golive.MESSAGES["email_unconfirmed"])
+        self.assertEqual(body["blockers"], [{"code": "email_unconfirmed", "message": golive.MESSAGES["email_unconfirmed"]}])
+        listing.refresh_from_db()
+        self.assertEqual(listing.status, Listing.DRAFT)
+
+    def test_unconfirmed_owner_cannot_resubmit_a_rejected_listing(self):
+        owner = make_owner("+233241450002", confirmed=False)
+        listing = self.draft(owner, status=Listing.REJECTED)
+        response = self.submit(owner, listing)
+        self.assertEqual((response.status_code, response.json()["code"]), (403, "not_live"))
+        listing.refresh_from_db()
+        self.assertEqual(listing.status, Listing.REJECTED)
+
+    def test_confirmed_pinned_owner_submits_to_pending_review(self):
+        owner = make_owner("+233241450003")
+        self.assertEqual(owner.kyc_status, BusinessOwner.PENDING)
+        listing = self.draft(owner)
+        response = self.submit(owner, listing)
+        self.assertEqual(response.status_code, 200, response.content)
+        listing.refresh_from_db()
+        self.assertEqual(listing.status, Listing.PENDING_REVIEW)
+
+    def test_staff_can_approve_when_owner_live_but_kyc_pending(self):
+        owner = make_owner("+233241450004")
+        listing = self.draft(owner, status=Listing.PENDING_REVIEW)
+        self.as_(self.admin, "staff")
+        response = self.client.post(f"/api/listings/moderation/{listing.pk}/approve/")
+        self.assertEqual(response.status_code, 200, response.content)
+        listing.refresh_from_db()
+        self.assertEqual(listing.status, Listing.PUBLISHED)
+
+    def test_staff_cannot_approve_when_owner_not_live(self):
+        owner = make_owner("+233241450005", confirmed=False)
+        listing = self.draft(owner, status=Listing.PENDING_REVIEW)
+        self.as_(self.admin, "staff")
+        response = self.client.post(f"/api/listings/moderation/{listing.pk}/approve/")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["detail"], golive.MESSAGES["email_unconfirmed"])
+        listing.refresh_from_db()
+        self.assertEqual(listing.status, Listing.PENDING_REVIEW)
+
+    def test_staff_can_approve_a_kyc_verified_owner_with_no_email(self):
+        owner = BusinessOwner.objects.create(
+            full_name="Old Trader", login_phone="+233241450006", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
+        )
+        listing = self.draft(owner, status=Listing.PENDING_REVIEW)
+        self.as_(self.admin, "staff")
+        self.assertEqual(self.client.post(f"/api/listings/moderation/{listing.pk}/approve/").status_code, 200)
+
+    def test_moderation_checks_show_live_check_not_kyc(self):
+        live = make_owner("+233241450007")
+        not_live = make_owner("+233241450008", email="kofi@example.com", confirmed=False)
+        for owner, status, detail in (
+            (live, "pass", None),
+            (not_live, "fail", golive.MESSAGES["email_unconfirmed"]),
+        ):
+            listing = self.draft(owner, status=Listing.PUBLISHED)
+            promotion = type("P", (), {"listing": listing})()
+            checks = promotion_checks(promotion)
+            self.assertNotIn("kyc", [c["key"] for c in checks])
+            check = next(c for c in checks if c["key"] == "live")
+            self.assertEqual((check["label"], check["status"]), ("Business ready to list", status))
+            if detail:
+                self.assertEqual(check["detail"], detail)
