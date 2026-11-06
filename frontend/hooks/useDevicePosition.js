@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 export const POSITION_OPTIONS = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
 
 export const LOCATION_BLOCKED =
-  'Location is blocked for AshantiHub on this phone. To allow it, tap the lock (or ⓘ) next to the web address, set Location to Allow, then tap “Use my location” again.'
+  'Location is blocked for AshantiHub on this phone. To allow it, tap the lock (or ⓘ) next to the web address, set Location to Allow, then tap the location button again.'
 const LOCATION_SLOW = "Couldn't get a location fix in time. Step outside, away from walls, and try again."
 const LOCATION_UNAVAILABLE = "Your phone couldn't work out where you are. Turn on Location (GPS) in your phone's settings and try again."
 const LOCATION_UNSUPPORTED = "This browser can't share its location. Place the pin by hand instead."

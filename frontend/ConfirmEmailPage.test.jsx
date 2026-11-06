@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
+import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { server } from './mocks/server.js'
 import { setStoredAuth } from './apiClient.js'
@@ -26,6 +27,15 @@ describe('ConfirmEmailPage', () => {
     expect(bodies).toEqual([{ token: 'abc123' }])
     expect(window.location.hash).toBe('')
     expect(window.location.pathname).toBe('/confirm-email')
+  })
+
+  it('posts the token exactly once under StrictMode', async () => {
+    let posts = 0
+    server.use(http.post(CONFIRM, () => { posts += 1; return HttpResponse.json({ email_confirmed: true }) }))
+    openWith('#token=abc123')
+    render(<StrictMode><ConfirmEmailPage /></StrictMode>)
+    expect(await screen.findByText(/Your email is confirmed/)).toBeInTheDocument()
+    expect(posts).toBe(1)
   })
 
   it('says the link was already used (410 used)', async () => {
@@ -61,7 +71,7 @@ describe('ConfirmEmailPage', () => {
     server.use(http.post(CONFIRM, () => { called = true; return HttpResponse.json({}) }))
     openWith('')
     render(<ConfirmEmailPage />)
-    expect(await screen.findByRole('alert')).toHaveTextContent(/missing its code/)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/If you already confirmed your email, there is nothing more to do/)
     expect(called).toBe(false)
   })
 

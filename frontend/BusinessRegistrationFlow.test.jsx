@@ -77,13 +77,42 @@ describe('BusinessRegistrationFlow', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })
     fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'abena@example.com' } })
     fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     await waitFor(() => expect(auth.registerBusinessOwner).toHaveBeenCalledWith(
-      expect.objectContaining({ full_name: 'Abena Owusu', login_phone: '+233201112233', password: 'secretpass' })
+      expect.objectContaining({ full_name: 'Abena Owusu', login_phone: '+233201112233', email: 'abena@example.com', password: 'secretpass' })
     ))
     await waitFor(() => expect(screen.getByText(/Tell us about your business/)).toBeInTheDocument())
+  })
+
+  describe('email on the account form', () => {
+    const fill = (email) => {
+      fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })
+      fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+      if (email !== undefined) fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: email } })
+      fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    }
+
+    it.each([['blank', undefined], ['spaces only', '   '], ['not an email', 'abena'], ['no domain dot', 'abena@example']])(
+      'blocks a %s email with the plain message and sends nothing', async (_name, value) => {
+        const auth = makeAuth()
+        renderFlow(<BusinessRegistrationFlow user={null} auth={auth} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+        fill(value)
+        expect(await screen.findByRole('alert')).toHaveTextContent('Enter your email so we can send you a confirmation link.')
+        expect(auth.registerBusinessOwner).not.toHaveBeenCalled()
+      })
+
+    it('sends the trimmed email', async () => {
+      const auth = makeAuth()
+      renderFlow(<BusinessRegistrationFlow user={null} auth={auth} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+      fill('  abena@example.com ')
+      await waitFor(() => expect(auth.registerBusinessOwner).toHaveBeenCalledWith(
+        expect.objectContaining({ email: 'abena@example.com' })
+      ))
+    })
   })
 
   it('starts directly at a resumed step when initialStep is provided', () => {
@@ -430,6 +459,7 @@ describe('BusinessRegistrationFlow', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })
     fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'abena@example.com' } })
     fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
@@ -510,6 +540,7 @@ describe('BusinessRegistrationFlow', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })
     fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'abena@example.com' } })
     fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
@@ -529,6 +560,7 @@ describe('BusinessRegistrationFlow', () => {
     renderFlow(<BusinessRegistrationFlow user={null} auth={auth} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
     fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })
     fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'abena@example.com' } })
     fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Start again' }))
@@ -871,6 +903,7 @@ describe('BusinessRegistrationFlow', () => {
       renderFlow(<BusinessRegistrationFlow user={null} auth={auth} setPage={vi.fn()} setShowBizDash={vi.fn()} />)
       fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Kofi' } })
       fireEvent.change(screen.getByPlaceholderText(/Phone/), { target: { value: '0200000000' } })
+      fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'kofi@example.com' } })
       fireEvent.change(screen.getByPlaceholderText(/Password/), { target: { value: 'longenough1' } })
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
       expect(await screen.findByText('Could not create your account. Please check your details.')).toBeInTheDocument()

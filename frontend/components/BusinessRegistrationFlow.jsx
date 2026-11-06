@@ -161,9 +161,15 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
   const handlePersonalInfoSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    // Email is required: the confirmation link goes there, and a business with no confirmed email cannot go live.
+    const typedEmail = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typedEmail)) {
+      setError("Enter your email so we can send you a confirmation link.");
+      return;
+    }
     setSubmitting(true);
     try {
-      const result = await auth.registerBusinessOwner({ full_name: fullName, login_phone: phone, email: email || undefined, password });
+      const result = await auth.registerBusinessOwner({ full_name: fullName, login_phone: phone, email: typedEmail, password });
       if (isOtpChallenge(result)) {
         setOtpChallenge(result);
         setPassword("");
@@ -412,7 +418,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
             <h2 style={{color:C.ink,fontSize:"1.05rem",margin:"0 0 14px"}}>Create your business account</h2>
             <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={inputStyle}/>
             <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" required style={inputStyle}/>
-            <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" style={inputStyle}/>
+            <input value={email} onChange={e=>setEmail(e.target.value)} type="text" inputMode="email" autoComplete="email" placeholder="Email" aria-required="true" style={inputStyle}/>
             <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={inputStyle}/>
             <button type="submit" disabled={submitting} style={submitStyle}>{submitting?"Creating account…":"Continue"}</button>
           </form>

@@ -16,7 +16,7 @@ export function readConfirmToken(location = window.location) {
 
 const MESSAGES = {
   invalid: "This link isn't valid. Open the whole link from your email, or ask for a new one.",
-  missing: "This link is missing its code. Open the whole link from your email, or ask for a new one.",
+  missing: "This link is missing its code. If you already confirmed your email, there is nothing more to do. Otherwise open the whole link from your email, or ask for a new one.",
   used: "This link has already been used. If you already confirmed your email, there is nothing more to do. Otherwise ask for a new link.",
   expired: "This link has expired. Ask for a new one.",
   revoked: "A newer link has been sent to you since this one. Open the newest email from AshantiHub, or ask for a new link.",
