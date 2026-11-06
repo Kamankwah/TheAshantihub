@@ -73,6 +73,7 @@ urlpatterns = [
     path("business-owners/login/", views.BusinessOwnerLoginView.as_view(), name="business-owner-login"),
     path("business-owners/claim/", views.BusinessOwnerClaimView.as_view(), name="business-owner-claim"),
     path("staff/login/", views.StaffLoginView.as_view(), name="staff-login"),
+    path("sign-out-everywhere/", views.SignOutEverywhereView.as_view(), name="sign-out-everywhere"),
     path("staff/logout/", views.StaffLogoutView.as_view(), name="staff-logout"),
     path("staff/reauth/", views.StaffReauthView.as_view(), name="staff-reauth"),
     path("staff/view-as/", view_as_views.ViewAsView.as_view(), name="staff-view-as"),

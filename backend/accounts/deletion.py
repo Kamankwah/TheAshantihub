@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
 from . import files, mobile_sessions
@@ -134,14 +135,14 @@ def delete_account(account, account_type):
             date_of_birth=None, secondary_email=None, secondary_email_verified=False,
             secondary_email_verify_code=None, secondary_email_verify_expires_at=None, secondary_phone=None,
             secondary_phone_verified=False, secondary_phone_verify_code=None, secondary_phone_verify_expires_at=None,
-            password_hash=unusable, deleted_at=now,
+            password_hash=unusable, deleted_at=now, token_version=F("token_version") + 1,
         )
         account.addresses.all().delete()
     else:
         _close_business(account)
         BusinessOwner.objects.filter(pk=account.pk).update(
             full_name=DELETED_NAME, login_phone=f"deleted-{account.pk}", email=None, password_hash=unusable,
-            deleted_at=now,
+            deleted_at=now, token_version=F("token_version") + 1,
         )
         profile = getattr(account, "profile", None)
         if profile is not None:

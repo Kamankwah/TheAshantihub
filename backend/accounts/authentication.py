@@ -24,6 +24,8 @@ def issue_token(account, account_type, *, request=None, two_factor=False):
     token["account_type"] = account_type
     if account_type == "staff":
         sessions.start(account, token["jti"], request, two_factor=two_factor)
+    else:
+        token["tv"] = account.token_version
     return str(token)
 
 
@@ -55,6 +57,16 @@ class MultiAccountJWTAuthentication(authentication.BaseAuthentication):
         # still unexpired; refuse it so the deletion takes effect at once.
         if getattr(account, "deleted_at", None):
             raise exceptions.AuthenticationFailed("This account has been deleted")
+
+        if not isinstance(account, StaffUser):
+            # A token is only good while the account's token_version is the one it was issued under: a password reset,
+            # a deletion or "sign out everywhere" ends every older token at once (review BE-09). A token from before
+            # the field existed has no claim and counts as version 0.
+            if token.get("tv", 0) != account.token_version:
+                raise exceptions.AuthenticationFailed("Your session has ended. Please sign in again.")
+            # A suspended customer or business owner is cut off at once, as staff are, rather than at their next sign-in.
+            if account.is_suspended:
+                raise exceptions.AuthenticationFailed("This account is suspended")
 
         # A staffer suspended or deactivated mid-session still holds a valid,
         # unexpired token — refuse it here so the block takes effect

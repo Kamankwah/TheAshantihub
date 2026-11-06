@@ -31,11 +31,10 @@ class MigrationLintTests(SimpleTestCase):
     def test_a_reviewed_exception_passes(self):
         self.assertEqual(ops("        # lint-migrations: ok table has 40 rows\n        migrations.RemoveField(model_name='a', name='b')"), [])
 
-    def test_the_existing_order_request_id_migration_is_clean(self):
+    def test_the_reviewed_order_request_id_migration_passes(self):
         from pathlib import Path
 
         import orders
 
         path = Path(orders.__file__).parent / "migrations" / "0013_order_request_id.py"
-        # AddConstraint is flagged for review; nothing else may be.
-        self.assertEqual({p[1] for p in lint_source(path.read_text())}, {"AddConstraint"})
+        self.assertEqual(lint_source(path.read_text()), [])  # its AddConstraint carries a reviewed-exception comment

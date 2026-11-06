@@ -323,7 +323,11 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
         with transaction.atomic():
             self.account.password_hash = make_password(self.validated_data["password"])
-            self.account.save(update_fields=["password_hash"])
+            update_fields = ["password_hash"]
+            if not isinstance(self.account, StaffUser):
+                self.account.token_version += 1  # a reset is often "someone else may have my password": end every token
+                update_fields.append("token_version")
+            self.account.save(update_fields=update_fields)
             self.reset_token.used_at = timezone.now()
             self.reset_token.save(update_fields=["used_at"])
             if isinstance(self.account, StaffUser):

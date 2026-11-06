@@ -70,6 +70,9 @@ class Customer(AuthenticatableAccountMixin, models.Model):
     phone = models.CharField(max_length=20, unique=True, null=True, blank=True)
     email = models.EmailField(unique=True, null=True, blank=True)
     password_hash = models.CharField(max_length=255)
+    # Bumped to end every token already issued to this account (password reset, deletion, "sign out everywhere"). A
+    # token carries the value it was issued under and is refused when it no longer matches (review BE-09).
+    token_version = models.PositiveIntegerField(default=0)
     avatar = models.ImageField(
         upload_to="customer_avatars/", null=True, blank=True,
         validators=[validate_image_content_type],
@@ -318,6 +321,9 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     login_phone = models.CharField(max_length=20, unique=True)
     email = models.EmailField(unique=True, null=True, blank=True)
     password_hash = models.CharField(max_length=255)
+    # Bumped to end every token already issued to this account (password reset, deletion, "sign out everywhere"). A
+    # token carries the value it was issued under and is refused when it no longer matches (review BE-09).
+    token_version = models.PositiveIntegerField(default=0)
     kyc_status = models.CharField(max_length=10, choices=KYC_STATUS_CHOICES, default=PENDING)
     kyc_rejection_reason = models.CharField(max_length=500, null=True, blank=True)
 

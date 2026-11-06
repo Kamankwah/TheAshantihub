@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth.hashers import check_password
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import generics, status
@@ -1341,6 +1341,23 @@ class StaffSignOutEverywhereView(APIView):
         if guard:
             return guard
         return Response({"ended": sessions.revoke_all(staff, StaffSession.SIGNED_OUT_EVERYWHERE)})
+
+
+class SignOutEverywhereView(APIView):
+    """POST /api/accounts/sign-out-everywhere/ - a customer or business owner ends every token and phone session of
+    their own account, this one included (review BE-09). The client then signs in again."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_scope = "login"
+
+    def post(self, request):
+        account = request.user
+        if isinstance(account, StaffUser):
+            return Response({"detail": "Staff end their sessions from the Security page."}, status=status.HTTP_403_FORBIDDEN)
+        account_type = "customer" if isinstance(account, Customer) else "business_owner"
+        type(account).objects.filter(pk=account.pk).update(token_version=F("token_version") + 1)
+        mobile_sessions.revoke_all(account_type, account.pk)
+        return Response({"detail": "Signed out everywhere."})
 
 
 # ── Scout field verification (punch-list item 11) ──────────────────────────
