@@ -758,3 +758,11 @@ OTP_SIGNUP_VERIFICATION_ENFORCED = env.bool("OTP_SIGNUP_VERIFICATION_ENFORCED", 
 # "hubtel" sends through Hubtel SMS with the HUBTEL_SMS_* keys above and an Approved Sender ID. Under
 # `manage.py test` it is always "locmem", which keeps texts in otp.senders.sms_outbox (like Django's mail.outbox).
 OTP_SMS_PROVIDER = "locmem" if TESTING else env("OTP_SMS_PROVIDER", default="simulated")
+
+# A business whose location staff marked wrong (accounts address decision: address_verified False with
+# address_verified_at set) stays public for WRONG_LOCATION_HIDE_DAYS after the decision, then drops out of public browse
+# and carts (listings.visibility.hidden_business_q) until the owner shares a new pin, which clears the decision. Off by
+# default: turn it on only after `manage.py list_wrong_location_businesses` has been read, since every business already
+# marked wrong more than 7 days ago would be hidden on the next request.
+WRONG_LOCATION_HIDE_ENABLED = env.bool("WRONG_LOCATION_HIDE_ENABLED", default=False)
+WRONG_LOCATION_HIDE_DAYS = env.int("WRONG_LOCATION_HIDE_DAYS", default=7)

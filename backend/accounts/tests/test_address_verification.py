@@ -7,7 +7,7 @@ from decimal import Decimal
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -388,6 +388,20 @@ class DecideWrongTests(Base):
         self.assertEqual(notice.link, "/business-dashboard")
         event = ActivityEvent.objects.get(verb="address-marked-wrong")
         self.assertEqual((event.actor_id, event.target_id, event.target_type), (self.ops.pk, str(owner.pk), "accounts.businessowner"))
+
+    def test_the_notice_says_nothing_about_hiding_while_the_switch_is_off(self):
+        owner = self.make_owner()
+        self.wrong(owner, note="Different street.")
+        self.assertNotIn("hidden", Notification.objects.get(business_owner=owner).body)
+
+    @override_settings(WRONG_LOCATION_HIDE_ENABLED=True, WRONG_LOCATION_HIDE_DAYS=7)
+    def test_the_notice_tells_the_owner_when_listings_will_be_hidden(self):
+        owner = self.make_owner()
+        self.wrong(owner, note="Different street.")
+        body = Notification.objects.get(business_owner=owner).body
+        self.assertIn("Different street.", body)
+        self.assertIn("7 days", body)
+        self.assertIn("hidden from shoppers until you share your location again", body)
 
     def test_the_owner_sees_the_reason_and_may_capture_again(self):
         owner = self.make_owner()

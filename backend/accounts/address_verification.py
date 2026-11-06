@@ -15,6 +15,7 @@ The queue lists the businesses whose shop address nobody has decided yet (plus t
 """
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -49,6 +50,7 @@ PIN_CHANGED = "The owner shared a new location since you opened this. Reload to 
 CALL_NOTE_REQUIRED = "Write what the video call showed."
 WRONG_TITLE = "Your shop's address needs attention"
 WRONG_BODY = "AshantiHub could not confirm your shop's location: {reason} Open your dashboard and share your shop's location again from the shop."
+WRONG_HIDE_NOTE = " Your listings stay visible for {days} days. After that they are hidden from shoppers until you share your location again."
 
 
 # --- the queue ------------------------------------------------------------------------------------------------------
@@ -269,8 +271,11 @@ def decide(owner_id, staff, data, *, http_request=None):
             profile.address_first_verified_at = now
         profile.save()
         if result == WRONG:
+            body = WRONG_BODY.format(reason=note.rstrip(".") + ".")
+            if settings.WRONG_LOCATION_HIDE_ENABLED:
+                body += WRONG_HIDE_NOTE.format(days=settings.WRONG_LOCATION_HIDE_DAYS)
             notify_business_owner(
-                owner, "address_wrong", WRONG_TITLE, body=WRONG_BODY.format(reason=note.rstrip(".") + "."),
+                owner, "address_wrong", WRONG_TITLE, body=body,
                 link="/business-dashboard", icon="📍",
             )
         record(

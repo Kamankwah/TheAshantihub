@@ -178,6 +178,13 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   whose subscription is paused - is hidden from public browse by
   `listings.visibility.hidden_business_q()`. Every public listing or event queryset, and adding to
   a cart, must use it.
+- **A wrong location hides a business after 7 days, behind `WRONG_LOCATION_HIDE_ENABLED` (default off).** Inside
+  `hidden_business_q` (`listings.visibility.wrong_location_q`): `address_verified_at` set, `address_verified` false and at
+  least `WRONG_LOCATION_HIDE_DAYS` (7) old. A new owner pin clears the decision (`clear_address_decision`), which un-hides it;
+  nothing is unpublished and open orders are untouched. The owner is told at the decision (the `address_wrong` notice, which
+  adds the 7-day warning only while the switch is on). Before switching on, read
+  `manage.py list_wrong_location_businesses` (read-only dry run): every business already marked wrong longer ago than the
+  window is hidden on the next request.
 - **The subscription clock** (`billing.clock`, hourly) marks overdue, reminds on days 7 and 13 and,
   only with `settings.SUBSCRIPTION_PAUSE_ENABLED` on, pauses at day 15. The setting (env, default
   **off**) stays off until real payments (the planned in-app wallet) can renew automatically.
