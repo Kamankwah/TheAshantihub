@@ -10,6 +10,7 @@ image and price outlier checks are deliberately not built.
 * `fix`:  the owner changes something and submits again; each reason is one plain sentence saying what to change.
 * `hold`: goes to the moderation queue as before; reasons are for staff and are never shown as a refusal.
 """
+import logging
 import re
 from dataclasses import dataclass, field
 
@@ -21,6 +22,8 @@ from accounts.models import BusinessOwner
 
 from .models import Listing
 from .moderation_checks import contact_details_in
+
+logger = logging.getLogger(__name__)
 
 PASS, FIX, HOLD = "pass", "fix", "hold"
 
@@ -62,6 +65,7 @@ def _photo_reason(listing):
             with Image.open(handle) as image:
                 width, height = image.size
     except Exception:  # noqa: BLE001 - a bad upload is the owner's to fix, never a server error
+        logger.warning("could not read main photo %r of listing %s", name, listing.pk, exc_info=True)
         return UNREADABLE_PHOTO
     if width < MIN_PHOTO_SIDE or height < MIN_PHOTO_SIDE:
         return (
@@ -167,8 +171,6 @@ def spot_check_first_listing(listing):
     """One low-priority case the first time a business's listing is published without a person looking at it, so
     staff can spot-check it afterwards. Kind `other` is neutral (it reverses no commission and cannot suspend), and a
     failure here never blocks the owner's listing. Returns the case, or None when this is not the first."""
-    import logging
-
     from fraud.models import FraudFlag
     from fraud.services import raise_flag
 
@@ -186,5 +188,5 @@ def spot_check_first_listing(listing):
             source=FraudFlag.SYSTEM, dedupe_key=key,
         )
     except Exception:  # noqa: BLE001 - a spot check must never stop a publish
-        logging.getLogger(__name__).exception("first-listing spot check failed for owner %s", owner.pk)
+        logger.exception("first-listing spot check failed for owner %s", owner.pk)
         return None

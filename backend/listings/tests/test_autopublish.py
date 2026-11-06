@@ -99,17 +99,23 @@ class AutoPublishTests(TestCase):
     def test_corrupt_image_is_a_fix_not_a_500(self):
         row = self.listing(photo=None)
         row.main_photo.save("bad.jpg", ContentFile(b"this is not an image"), save=True)
-        self.assert_fix(self.submit(row), row, autopublish.UNREADABLE_PHOTO)
+        with self.assertLogs("listings.autopublish", "WARNING"):
+            response = self.submit(row)
+        self.assert_fix(response, row, autopublish.UNREADABLE_PHOTO)
 
     def test_zero_byte_image_is_a_fix_not_a_500(self):
         row = self.listing(photo=None)
         row.main_photo.save("empty.jpg", ContentFile(b""), save=True)
-        self.assert_fix(self.submit(row), row, autopublish.UNREADABLE_PHOTO)
+        with self.assertLogs("listings.autopublish", "WARNING"):
+            response = self.submit(row)
+        self.assert_fix(response, row, autopublish.UNREADABLE_PHOTO)
 
     def test_missing_file_is_a_fix_not_a_500(self):
         row = self.listing()
         row.main_photo.storage.delete(row.main_photo.name)
-        self.assert_fix(self.submit(row), row, autopublish.UNREADABLE_PHOTO)
+        with self.assertLogs("listings.autopublish", "WARNING"):
+            response = self.submit(row)
+        self.assert_fix(response, row, autopublish.UNREADABLE_PHOTO)
 
     def test_short_name_is_a_fix(self):
         row = self.listing(name="Ab")
@@ -288,3 +294,50 @@ class AutoPublishTests(TestCase):
         return StaffUser.objects.create(
             full_name="Scout Person", email="scout-ap@example.com", password_hash="x", role=Role.objects.get(name="operations"),
         )
+
+    # ---- the submit door locks the row -------------------------------------------------------------------------
+    # A real two-thread race needs a TransactionTestCase and a second connection; these change the row at the exact
+    # moment the view has read it but not yet locked it (inside the permission check after the first read).
+    def published_notices(self):
+        return Notification.objects.filter(business_owner=self.owner, kind="listing_approved").count()
+
+    def test_a_second_submit_of_a_published_listing_is_the_same_400_and_sends_no_second_notice(self):
+        row = self.listing()
+        self.assertEqual(self.submit(row).status_code, 200)
+        response = self.submit(row)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"status": "Only draft or rejected listings can be submitted for review."})
+        self.assertEqual(self.published_notices(), 1)
+        self.assertEqual(FraudFlag.objects.filter(business_owner=self.owner).count(), 1)
+
+    def test_a_listing_dropped_after_the_first_read_is_not_resurrected(self):
+        from unittest import mock
+
+        from listings.views import ListingSubmitView
+
+        row = self.listing()
+        original = ListingSubmitView.check_object_permissions
+
+        def drop_then_check(view, request, obj):
+            Listing.objects.filter(pk=obj.pk).update(status=Listing.DROPPED)  # another request, after our read
+            return original(view, request, obj)
+
+        with mock.patch.object(ListingSubmitView, "check_object_permissions", drop_then_check):
+            response = self.submit(row)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"status": "A dropped or discontinued listing cannot be submitted."})
+        row.refresh_from_db()
+        self.assertEqual(row.status, Listing.DROPPED)
+        self.assertEqual(self.published_notices(), 0)
+
+    def test_a_failing_notification_still_answers_200_with_the_listing_published(self):
+        from unittest import mock
+
+        row = self.listing()
+        with mock.patch("listings.views.notify_business_owner", side_effect=RuntimeError("boom")):
+            with self.assertLogs("listings.views", "ERROR"):
+                response = self.submit(row)
+        self.assertEqual((response.status_code, response.json()["status"]), (200, "published"))
+        row.refresh_from_db()
+        self.assertEqual(row.status, Listing.PUBLISHED)
+        self.assertEqual(FraudFlag.objects.filter(business_owner=self.owner).count(), 1)

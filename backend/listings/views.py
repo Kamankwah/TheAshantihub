@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import timedelta
 from decimal import Decimal
@@ -66,6 +67,8 @@ from .pricing import effective_price_expr
 from .validators import validate_image_size
 from .visibility import hidden_business_q, sold_out_q
 from .visits import record_visit
+
+logger = logging.getLogger(__name__)
 
 
 def _with_rating_annotations(queryset):
@@ -874,43 +877,59 @@ class ListingSubmitView(ScopedOwner, APIView):
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
         self.check_object_permissions(request, listing)
-        if listing.status in (Listing.DROPPED, Listing.DISCONTINUED):
-            return Response({"status": "A dropped or discontinued listing cannot be submitted."}, status=400)
-        if listing.status not in (Listing.DRAFT, Listing.REJECTED):
-            return Response(
-                {"status": "Only draft or rejected listings can be submitted for review."}, status=400
-            )
         from . import media
 
-        # Every way a business moves its own listing to review passes here (a new draft and a resubmitted rejected one
-        # alike), so this is the one go-live gate. Ashanti Direct's company owner and KYC-verified businesses are live.
-        codes = golive.blockers(listing.business_owner)
-        if codes:
-            blockers = [{"code": code, "message": golive.MESSAGES[code]} for code in codes]
-            return Response({"code": "not_live", "detail": blockers[0]["message"], "blockers": blockers}, status=403)
-        if media.waiting_for_video(listing):
-            return Response({"detail": revisions.WAIT_FOR_VIDEO_MESSAGE}, status=400)
-        if settings.LISTING_AUTO_PUBLISH_ENABLED and autopublish.eligible(request.user, listing):
-            verdict = autopublish.evaluate(listing)
-            if verdict.outcome == autopublish.FIX:
+        published = False
+        # Read, decide and write under one row lock (as ModerationApproveView does): two submits at once cannot both
+        # publish, and a drop or discontinue that lands in between is never overwritten by this stale copy.
+        with db_transaction.atomic():
+            listing = generics.get_object_or_404(Listing.objects.select_for_update(of=("self",)), pk=pk)
+            if listing.status in (Listing.DROPPED, Listing.DISCONTINUED):
+                return Response({"status": "A dropped or discontinued listing cannot be submitted."}, status=400)
+            if listing.status not in (Listing.DRAFT, Listing.REJECTED):
                 return Response(
-                    {"code": "needs_fixes", "detail": verdict.reasons[0], "reasons": verdict.reasons}, status=400,
+                    {"status": "Only draft or rejected listings can be submitted for review."}, status=400
                 )
-            if verdict.outcome == autopublish.PASS:
+
+            # Every way a business moves its own listing to review passes here (a new draft and a resubmitted rejected
+            # one alike), so this is the one go-live gate. Ashanti Direct's company owner and KYC-verified businesses
+            # are live.
+            codes = golive.blockers(listing.business_owner)
+            if codes:
+                blockers = [{"code": code, "message": golive.MESSAGES[code]} for code in codes]
+                return Response(
+                    {"code": "not_live", "detail": blockers[0]["message"], "blockers": blockers}, status=403,
+                )
+            if media.waiting_for_video(listing):
+                return Response({"detail": revisions.WAIT_FOR_VIDEO_MESSAGE}, status=400)
+            if settings.LISTING_AUTO_PUBLISH_ENABLED and autopublish.eligible(request.user, listing):
+                verdict = autopublish.evaluate(listing)
+                if verdict.outcome == autopublish.FIX:
+                    return Response(
+                        {"code": "needs_fixes", "detail": verdict.reasons[0], "reasons": verdict.reasons}, status=400,
+                    )
+                published = verdict.outcome == autopublish.PASS
+            if published:
                 listing.status = Listing.PUBLISHED
                 listing.rejection_reason = None
                 listing.reviewed_by = None
                 listing.reviewed_at = None
                 listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at", "updated_at"])
+            else:
+                listing.status = Listing.PENDING_REVIEW
+                listing.save(update_fields=["status", "updated_at"])
+        if published:
+            # The listing is live whatever happens to the notice, so a failure here never changes the answer.
+            try:
                 notify_business_owner(
                     listing.business_owner, "listing_approved", "Listing published",
                     body=f"“{listing.name}” is now live on AshantiHub.",
                     link="/business-dashboard", icon="✅",
                 )
-                autopublish.spot_check_first_listing(listing)
-                return Response({"id": listing.id, "status": listing.status})
-        listing.status = Listing.PENDING_REVIEW
-        listing.save(update_fields=["status", "updated_at"])
+            except Exception:  # noqa: BLE001
+                logger.exception("could not notify owner %s that listing %s was published", listing.business_owner_id, listing.pk)
+            autopublish.spot_check_first_listing(listing)
+            return Response({"id": listing.id, "status": listing.status})
         notify_staff_role(
             "listings.moderate", "listing_needs_moderation", "New listing for review",
             body=f"“{listing.name}” has been submitted for moderation.",
