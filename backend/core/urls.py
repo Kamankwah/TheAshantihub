@@ -4,6 +4,7 @@ from . import private_views, settings_views, views
 
 urlpatterns = [
     path("health/", views.health_check, name="health-check"),
+    path("readyz/", views.ready_check, name="ready-check"),
     path("core/site-settings/", views.SiteSettingsView.as_view(), name="site-settings"),
     path("core/site-settings/pickup-address/", views.PickupAddressView.as_view(), name="site-settings-pickup-address"),
     path("core/site-settings/history/", views.SiteSettingsHistoryView.as_view(), name="site-settings-history"),

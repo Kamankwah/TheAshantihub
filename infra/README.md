@@ -427,6 +427,16 @@ exim4 -Mrm <id>               # drop a frozen message
 tail -f /var/log/exim4/mainlog
 ```
 
+## Health and uptime
+
+- `GET /api/health/` is **liveness**: the process answers (Docker's healthcheck uses it). `GET /api/readyz/` is **readiness**:
+  200 only when the database answers, else 503 (Redis is reported but not required). `deploy.sh` waits on `readyz`, so a
+  deploy whose database is unreachable fails instead of reporting success.
+- `infra/scripts/uptime_probe.sh` is the external probe. Run it from a machine that is not the app server, every minute,
+  with `ALERT_WEBHOOK_URL` set; it alerts on the second consecutive failure and on recovery. **It is not installed
+  anywhere yet** - an uptime service of the owner's choice (or this script on a second host) must be set up; until then
+  nobody is told when the API is down.
+
 ## Error reporting
 
 Sentry receives every unhandled exception, tagged with the environment

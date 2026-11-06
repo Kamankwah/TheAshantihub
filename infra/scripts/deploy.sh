@@ -178,13 +178,13 @@ log "Starting the application"
 
 log "Waiting for the API to answer"
 for _ in $(seq 1 45); do
-	if curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$APP_PORT/api/health/" >/dev/null 2>&1; then
+	if curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$APP_PORT/api/readyz/" >/dev/null 2>&1; then
 		echo "  API healthy on 127.0.0.1:$APP_PORT"
 		break
 	fi
 	sleep 2
 done
-curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$APP_PORT/api/health/" >/dev/null || {
+curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$APP_PORT/api/readyz/" >/dev/null || {
 	echo "FATAL: API did not come up. Recent logs:" >&2
 	"${COMPOSE[@]}" logs --tail=60 web >&2
 	exit 1
@@ -236,13 +236,13 @@ log "Starting the realtime service, worker and scheduler"
 
 log "Waiting for the realtime service to answer"
 for _ in $(seq 1 45); do
-	if curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$REALTIME_PORT/api/health/" >/dev/null 2>&1; then
+	if curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$REALTIME_PORT/api/readyz/" >/dev/null 2>&1; then
 		echo "  realtime healthy on 127.0.0.1:$REALTIME_PORT"
 		break
 	fi
 	sleep 2
 done
-curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$REALTIME_PORT/api/health/" >/dev/null || {
+curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$REALTIME_PORT/api/readyz/" >/dev/null || {
 	echo "FATAL: the realtime service did not come up. Recent logs:" >&2
 	"${COMPOSE[@]}" logs --tail=60 realtime >&2
 	exit 1
