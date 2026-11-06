@@ -40,11 +40,73 @@ describe("email confirm banner", () => {
     expect(screen.getByRole("button", { name: "Resend" })).toBeTruthy();
   });
 
-  it("shows_the_server_sentence_and_no_resend_when_the_email_is_missing", async () => {
+  it("missing_email_shows_the_server_sentence_a_field_and_send_me_a_link_but_no_resend", async () => {
     await render(<EmailConfirmBanner goLive={missing} />);
     expect(screen.getByText("Add an email address so we can confirm it.")).toBeTruthy();
-    expect(screen.getByText("Add your email in Profile & Settings (Request a change) so we can send you a confirmation link.")).toBeTruthy();
+    expect(screen.getByLabelText("Email address")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send me a link" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Resend" })).toBeNull();
+    expect(screen.queryByText(/Request a change/)).toBeNull();
+  });
+
+  it("refuses_a_malformed_address_without_calling_the_server", async () => {
+    await render(<EmailConfirmBanner goLive={missing} />);
+    await fireEvent.changeText(screen.getByLabelText("Email address"), "not-an-email");
+    await fireEvent.press(screen.getByRole("button", { name: "Send me a link" }));
+    expect(await screen.findByText("Enter your email so we can send you a confirmation link.")).toBeTruthy();
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it("sends_the_trimmed_address_says_where_it_went_and_asks_for_a_refresh", async () => {
+    apiMock.mockResolvedValue({ email: "abena@example.com", sent: true });
+    const onSaved = jest.fn();
+    await render(<EmailConfirmBanner goLive={missing} onSaved={onSaved} />);
+    await fireEvent.changeText(screen.getByLabelText("Email address"), "  abena@example.com  ");
+    await fireEvent.press(screen.getByRole("button", { name: "Send me a link" }));
+    expect(await screen.findByText("Sent to abena@example.com")).toBeTruthy();
+    expect(apiMock).toHaveBeenCalledWith("/api/accounts/business-owners/me/email/", { body: { email: "abena@example.com" } });
+    expect(onSaved).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows_the_servers_email_message_on_a_400", async () => {
+    apiMock.mockRejectedValue(new ApiError(400, { email: ["A business owner with this email already exists."] }));
+    const onSaved = jest.fn();
+    await render(<EmailConfirmBanner goLive={missing} onSaved={onSaved} />);
+    await fireEvent.changeText(screen.getByLabelText("Email address"), "abena@example.com");
+    await fireEvent.press(screen.getByRole("button", { name: "Send me a link" }));
+    expect(await screen.findByText("A business owner with this email already exists.")).toBeTruthy();
+    expect(screen.queryByText(/^Sent to/)).toBeNull();
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("shows_the_servers_sentence_when_the_email_is_already_confirmed", async () => {
+    apiMock.mockRejectedValue(new ApiError(403, { detail: "Your email is confirmed. Change it in Profile & Settings, Request a change.", code: "email_confirmed" }));
+    await render(<EmailConfirmBanner goLive={missing} />);
+    await fireEvent.changeText(screen.getByLabelText("Email address"), "abena@example.com");
+    await fireEvent.press(screen.getByRole("button", { name: "Send me a link" }));
+    expect(await screen.findByText(/Request a change/)).toBeTruthy();
+  });
+
+  it("on_the_daily_limit_shows_the_servers_sentence_and_still_refreshes", async () => {
+    apiMock.mockRejectedValue(new ApiError(429, { detail: "Too many links today. Try Resend tomorrow.", code: "too_many_links" }));
+    const onSaved = jest.fn();
+    await render(<EmailConfirmBanner goLive={missing} onSaved={onSaved} />);
+    await fireEvent.changeText(screen.getByLabelText("Email address"), "abena@example.com");
+    await fireEvent.press(screen.getByRole("button", { name: "Send me a link" }));
+    expect(await screen.findByText("Too many links today. Try Resend tomorrow.")).toBeTruthy();
+    expect(onSaved).toHaveBeenCalledTimes(1);
+  });
+
+  it("unconfirmed_keeps_resend_and_offers_a_wrong_address_toggle_that_reveals_the_field", async () => {
+    apiMock.mockResolvedValue({ email: "new@example.com", sent: true });
+    await render(<EmailConfirmBanner goLive={unconfirmed} />);
+    expect(screen.getByRole("button", { name: "Resend" })).toBeTruthy();
+    expect(screen.queryByLabelText("Email address")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Wrong address? Change it" }));
+    await fireEvent.changeText(screen.getByLabelText("Email address"), "new@example.com");
+    await fireEvent.press(screen.getByRole("button", { name: "Send me a link" }));
+    expect(await screen.findByText("Sent to new@example.com")).toBeTruthy();
+    expect(apiMock).toHaveBeenCalledWith("/api/accounts/business-owners/me/email/", { body: { email: "new@example.com" } });
   });
 
   it("resend_posts_and_says_sent_without_naming_an_address", async () => {

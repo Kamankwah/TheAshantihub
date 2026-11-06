@@ -891,6 +891,7 @@ export const handlers = [
   })),
   // Email confirmation (go-live rule): the owner asks for a link (204, nothing in the body), and the emailed page confirms it.
   http.post('http://localhost:8000/api/accounts/business-owners/me/email-confirmation/', () => new HttpResponse(null, { status: 204 })),
+  http.post('http://localhost:8000/api/accounts/business-owners/me/email/', async ({ request }) => HttpResponse.json({ email: String((await request.json()).email || '').trim().toLowerCase(), sent: true })),
   http.post('http://localhost:8000/api/accounts/email-confirmation/confirm/', () => HttpResponse.json({ email_confirmed: true })),
   // What an account manager changed for the owner — nothing by default.
   http.get('http://localhost:8000/api/portfolio/owner/changes/', () => HttpResponse.json([])),

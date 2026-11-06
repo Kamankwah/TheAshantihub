@@ -302,6 +302,45 @@ describe("business listings", () => {
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith("/api/listings/mine/9/submit/", { method: "POST" }));
   });
 
+  const heldRows = [
+    listing({ id: 11, name: "Held mat", status: "pending_review", hold_notice: "We need to check this listing." }),
+    listing({ id: 12, name: "Plain mat", status: "pending_review", hold_notice: null }),
+  ];
+  const sentBack = [
+    listing({ id: 13, name: "Returned bag", status: "draft", fix_reasons: ["Add at least one photo.", "Add a price."] }),
+    listing({ id: 14, name: "Fresh bag", status: "draft", fix_reasons: [] }),
+  ];
+
+  it("the_list_shows_the_calm_hold_line_only_on_a_held_listing", async () => {
+    server({ "/api/listings/mine/": heldRows });
+    await render(client(<BusinessListings />));
+    await screen.findByText("Held mat");
+    expect(screen.getAllByText("We need to check this listing.")).toHaveLength(1);
+  });
+
+  it("a_held_listing_screen_shows_the_calm_hold_line", async () => {
+    mockParams = { id: "11" };
+    server({ "/api/listings/mine/": heldRows });
+    await render(client(<ListingManage />));
+    expect(await screen.findByText("We need to check this listing.")).toBeTruthy();
+  });
+
+  it("a_draft_sent_back_lists_what_to_fix", async () => {
+    mockParams = { id: "13" };
+    server({ "/api/listings/mine/": sentBack });
+    await render(client(<ListingManage />));
+    expect(await screen.findByText("• Add at least one photo.")).toBeTruthy();
+    expect(screen.getByText("• Add a price.")).toBeTruthy();
+  });
+
+  it("a_draft_with_no_fix_reasons_shows_no_fix_list", async () => {
+    mockParams = { id: "14" };
+    server({ "/api/listings/mine/": sentBack });
+    await render(client(<ListingManage />));
+    await screen.findByText("Fresh bag");
+    expect(screen.queryByText("To fix before you submit again")).toBeNull();
+  });
+
   it("live_listing_can_be_restocked_with_a_count", async () => {
     mockParams = { id: "7" };
     server({ "/api/listings/mine/": rows, "/api/listings/mine/7/restock/": { id: 7, stock_quantity: 15 } });

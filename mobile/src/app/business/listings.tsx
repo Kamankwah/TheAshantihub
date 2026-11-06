@@ -74,6 +74,7 @@ export default function BusinessListings() {
                 {l.stock_quantity != null ? <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>{`${l.stock_quantity} in stock`}</Text> : null}
               </View>
               <Pill tone={s.tone} icon={s.icon} label={s.label} />
+              {l.status === "pending_review" && l.hold_notice ? <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>{l.hold_notice}</Text> : null}
             </Pressable>
           );
         }}

@@ -101,6 +101,16 @@ export default function ListingManage() {
         </View>
       ) : null}
 
+      {l.status === "pending_review" && l.hold_notice ? <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 14, lineHeight: 20 }}>{l.hold_notice}</Text> : null}
+      {editable && l.fix_reasons && l.fix_reasons.length > 0 ? (
+        <View accessibilityRole="alert" style={{ backgroundColor: c.well, borderRadius: 12, padding: 14, gap: 4 }}>
+          <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, fontSize: 14 }}>To fix before you submit again</Text>
+          {l.fix_reasons.map((reason, i) => (
+            <Text key={i} style={{ color: c.ink, fontFamily: fonts.body, fontSize: 14, lineHeight: 20 }}>{`• ${reason}`}</Text>
+          ))}
+        </View>
+      ) : null}
+
       {editable ? (
         <View style={{ gap: 14 }}>
           <Field label="Name" value={name} onChangeText={setName} />

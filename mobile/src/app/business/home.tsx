@@ -72,7 +72,7 @@ export default function BusinessHome() {
       <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 30 }}>{first ? `Akwaaba, ${first}` : "Akwaaba"}</Text>
       {me.data?.identity_status === "verified" ? <VerifiedBadge /> : me.data ? <StatusPill kyc={me.data.kyc_status} live={me.data.go_live?.live} /> : null}
 
-      <EmailConfirmBanner goLive={me.data?.go_live} />
+      <EmailConfirmBanner goLive={me.data?.go_live} onSaved={() => void me.refetch()} />
       <GoLiveChecklist goLive={me.data?.go_live} kyc={me.data?.kyc_status} />
 
       {hours.data && !hours.data.has_hours ? (
