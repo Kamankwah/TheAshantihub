@@ -9,7 +9,7 @@ from django.utils.crypto import get_random_string
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
-from . import sessions
+from . import lockout, sessions
 from .authentication import ACCOUNT_MODELS
 from .emails import send_password_reset_email, send_staff_invite_email
 from .gps import validate_ashanti_gps
@@ -790,13 +790,16 @@ class CustomerLoginSerializer(serializers.Serializer):
     password = serializers.CharField()
 
     def validate(self, attrs):
+        lockout.check("customer", attrs["identifier"])
         account = Customer.objects.filter(
             Q(phone=attrs["identifier"]) | Q(email=attrs["identifier"])
         ).first()
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
         password_valid = check_password(attrs["password"], password_hash)
         if account is None or not password_valid or account.deleted_at:
+            lockout.record_failure("customer", attrs["identifier"])
             raise serializers.ValidationError("Invalid credentials")
+        lockout.clear("customer", attrs["identifier"])
         # Only surfaced after valid credentials — never leaks a suspension to
         # someone who couldn't otherwise sign in.
         if account.is_suspended:
@@ -811,6 +814,7 @@ class BusinessOwnerLoginSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         identifier = attrs["identifier"]
+        lockout.check("business_owner", identifier)
         account = BusinessOwner.objects.filter(
             Q(login_phone=identifier) | Q(email=identifier)
         ).first()
@@ -827,7 +831,9 @@ class BusinessOwnerLoginSerializer(serializers.Serializer):
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
         password_valid = check_password(attrs["password"], password_hash)
         if account is None or not password_valid or account.deleted_at:
+            lockout.record_failure("business_owner", identifier)
             raise serializers.ValidationError("Invalid credentials")
+        lockout.clear("business_owner", identifier)
         if account.is_suspended:
             raise serializers.ValidationError(SUSPENDED_LOGIN_MESSAGE)
         self.account = account
@@ -839,6 +845,7 @@ class StaffLoginSerializer(serializers.Serializer):
     password = serializers.CharField()
 
     def validate(self, attrs):
+        lockout.check("staff", attrs["identifier"])
         account = StaffUser.objects.filter(email=attrs["identifier"]).first()
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
         password_valid = check_password(attrs["password"], password_hash)
@@ -847,7 +854,9 @@ class StaffLoginSerializer(serializers.Serializer):
         self.refusal = ""
         if account is None or not password_valid:
             self.refusal = "Wrong password or unknown address"
+            lockout.record_failure("staff", attrs["identifier"])
             raise serializers.ValidationError("Invalid credentials")
+        lockout.clear("staff", attrs["identifier"])
         # Only surfaced after valid credentials — never leaks account state to
         # someone who couldn't otherwise sign in (punch-list item 10). Both a
         # temporary suspension and a "no longer works here" deactivation stop

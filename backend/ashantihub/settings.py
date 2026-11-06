@@ -396,7 +396,10 @@ REST_FRAMEWORK = {
     # Django's auth.models.AnonymousUser for DRF's IsAuthenticated checks.
     "UNAUTHENTICATED_USER": AnonymousUser,
     "EXCEPTION_HANDLER": "accounts.authentication.exception_handler",
-    "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
+    "DEFAULT_THROTTLE_CLASSES": ["core.throttling.ClusterScopedRateThrottle"],
+    # nginx appends the address it saw to any client-sent X-Forwarded-For, so the LAST entry is the only one a client
+    # cannot forge. One proxy (nginx) sits in front of gunicorn; raise this if a CDN or load balancer is ever added.
+    "NUM_PROXIES": 1,
     "DEFAULT_THROTTLE_RATES": {
         "vendor_statement_export": "6/min",
         # The native app's silent token refresh and sign-out: 30/min, not the login 5/min, because many phones
@@ -508,6 +511,19 @@ STAFF_BADGE_CACHE_SECONDS = 0 if TESTING else 60
 
 CACHES = {
     "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    # Throttle and sign-in lockout counters (core/throttling.py, accounts/lockout.py). Shared across gunicorn workers
+    # and restarts through Redis. Without Redis (local dev, tests) it is the same in-process store as "default", so
+    # `cache.clear()` in a test clears the counters too.
+    "throttle": (
+        {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": "ah-throttle",
+            "OPTIONS": {"socket_connect_timeout": 1, "socket_timeout": 2},
+        }
+        if USE_REDIS
+        else {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
+    ),
     "realtime": (
         {
             "BACKEND": "django.core.cache.backends.redis.RedisCache",
