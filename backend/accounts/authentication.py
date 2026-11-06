@@ -29,6 +29,15 @@ def issue_token(account, account_type, *, request=None, two_factor=False):
     return str(token)
 
 
+class AccountSuspended(exceptions.APIException):
+    """A live token of a suspended customer or business owner. 403 with ``code: "suspended"`` - the answer the wallet and
+    marketing views already gave - so the client can show the reason instead of treating it as a bad token (review BE-09)."""
+
+    status_code = status.HTTP_403_FORBIDDEN
+    default_detail = {"detail": "This account is suspended.", "code": "suspended"}
+    default_code = "suspended"
+
+
 class MultiAccountJWTAuthentication(authentication.BaseAuthentication):
     keyword = "Bearer"
 
@@ -66,7 +75,7 @@ class MultiAccountJWTAuthentication(authentication.BaseAuthentication):
                 raise exceptions.AuthenticationFailed("Your session has ended. Please sign in again.")
             # A suspended customer or business owner is cut off at once, as staff are, rather than at their next sign-in.
             if account.is_suspended:
-                raise exceptions.AuthenticationFailed("This account is suspended")
+                raise AccountSuspended()
 
         # A staffer suspended or deactivated mid-session still holds a valid,
         # unexpired token — refuse it here so the block takes effect
@@ -108,7 +117,7 @@ def exception_handler(exc, context):
 
     if (
         response is not None
-        and not isinstance(exc, view_as.ViewAsRefused)
+        and not isinstance(exc, (view_as.ViewAsRefused, AccountSuspended))
         and response.status_code == status.HTTP_403_FORBIDDEN
         and isinstance(context["request"].user, AnonymousUser)
     ):

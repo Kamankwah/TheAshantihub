@@ -622,6 +622,34 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **Two sponsored lists:** the public `storefront/sponsored/` feed (live, published, not hidden) versus the
   staff-only `listings/sponsored/` Marketing list; never swap their permissions.
 
+## Hardening from the 2026-11-06 review (what changed, so you don't undo it)
+
+- **Checkout (`orders/views.py` + `orders/checkout.py`).** The POST takes an optional client `request_id`
+  (`Order.request_id`, unique per customer) and a repeat returns the first order. The cart row is locked and re-read inside
+  the transaction (lock order: cart, listings by pk, variants by pk) and a changed cart answers 409 `cart_changed`. A moved
+  price answers 409 `price_changed` with the refreshed snapshots (this replaced "checkout prices from the snapshot"; add and
+  quantity-change still re-read the price, ruling R33). The step helpers in `checkout.py` **return** a refusal `Response`
+  rather than raise, because the view runs them inside `atomic()` and a raise would roll back the refreshed snapshots.
+- **Hubtel is called after the checkout transaction commits** (`process_payment(defer_provider_call=True)` then
+  `start_hubtel_checkout`); a failure there cancels the order and returns the stock (503 `payment_unavailable`). The other
+  `process_payment` callers (booking, tickets, events, top-ups, subscriptions) still call it inside their own transactions.
+- **A paid Hubtel order clears its cart lines in the finalizer**, not the view. A payment for a cancelled order raises
+  `PaidForCancelledOrder`: the session is failed (`not_applied=order_cancelled`, no second stock return) and flagged for a
+  manual refund. `payments.tasks.expire_stale_checkouts` closes PENDING sessions after `CHECKOUT_PENDING_TTL_MINUTES`; a
+  success reported on a closed session is logged `PAID LATE`. The webhook checks the signature **before** storing a payload.
+- **Tokens.** Customers and business owners carry a `tv` claim = `token_version`; a password reset, deletion or
+  `POST accounts/sign-out-everywhere/` bumps it and every older token is refused. A suspended customer/owner is refused at
+  authentication with 403 `{code: "suspended"}` (`accounts.authentication.AccountSuspended`, exempt from the 403-to-401
+  rewrite). Reset tokens are stored as SHA-256 (`accounts/reset_tokens.py`, the only issuer), links use a `#fragment`, only the
+  newest link works. New passwords go through `accounts.passwords.validate_new_password`. Not done: a shorter access token with a
+  refresh flow (needs the web and mobile clients).
+- **Staff 2-step** is required for `settings.STAFF_TWO_FACTOR_DEFAULT_ROLES` until a Super Admin saves a policy (empty under tests).
+- **Background jobs** route to `money` / `slow` / default queues (`CELERY_TASK_ROUTES`), each with its own worker in the
+  production compose; a new queue must be added to both, or its tasks never run. Tasks have a 10-minute limit.
+- **Migrations** must be safe while the previous release runs (`core/migration_lint.py` gates CI). Production `migrate` runs under
+  `lock_timeout=15s`; `core.E001-E003` and `payments.E001-E003` system checks stop a deploy with open CORS/hosts or a bad payment mode.
+- **Identity documents** live under `PRIVATE_MEDIA_ROOT` (`core/private_files.py`) and are served only by signed links.
+
 ## Test-fixture gotcha
 
 **KYC approval needs a map pin.** `kyc.approve_owner` (both doors) answers 400 `pin_required` before it looks at the

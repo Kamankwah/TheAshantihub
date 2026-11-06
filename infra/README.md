@@ -427,6 +427,13 @@ exim4 -Mrm <id>               # drop a frozen message
 tail -f /var/log/exim4/mainlog
 ```
 
+## Container secrets
+
+`deploy.sh` copies only `POSTGRES_*` into `infra/compose/db.env` and `REDIS_PASSWORD` into `infra/compose/redis.env`
+(mode 0600, untracked) for the `db` and `redis` containers; only the app containers read the full `backend/.env`. Run a
+deploy before any hand-written `docker compose` command on a checkout that predates this, or compose will not find the
+two files.
+
 ## Background job queues
 
 `worker` consumes the `celery` (default) and `slow` queues; `worker-money` consumes `money` only, so payment expiry,

@@ -22,7 +22,9 @@ def _send(subject, message, recipient):
             fail_silently=False,
         )
     except Exception:
-        logger.exception("Failed to send email to %s (subject: %s)", recipient, subject)
+        # The address is personal data and logs are shipped to Sentry and kept on disk: log it masked (review BE-18).
+        local, _, domain = (recipient or "").partition("@")
+        logger.exception("Failed to send email to %s•••@%s (subject: %s)", local[:1], domain, subject)
 
 
 def send_staff_invite_email(staff_user, invite_link):

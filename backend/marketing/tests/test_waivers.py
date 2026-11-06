@@ -318,9 +318,9 @@ class OwnerStanding(WaiverBase):
         self.owner.save(update_fields=["is_suspended"])
         self.as_owner(self.owner)
         r = self.client.post("/api/marketing/owner/delivery-promos/", self.body(), format="json")
-        self.assertEqual(r.status_code, 401)  # a suspended owner's live token is refused outright (review BE-09)
+        self.assertEqual(r.status_code, 403)  # refused at authentication now (review BE-09), same answer as before
         self.assertIn("suspended", r.json()["detail"])
-        self.assertEqual(self.client.post(f"/api/marketing/owner/delivery-promos/{paused.pk}/resume/").status_code, 401)
+        self.assertEqual(self.client.post(f"/api/marketing/owner/delivery-promos/{paused.pk}/resume/").status_code, 403)
         self.as_staff(self.akua)
         self.assertEqual(self.client.post(f"/api/marketing/delivery-promos/{pending.pk}/approve/").status_code, 403)
         self.assertEqual(self.client.post("/api/marketing/delivery-promos/", self.body(business_owner=self.owner.pk), format="json").status_code, 403)

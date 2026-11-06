@@ -89,6 +89,12 @@ GUNICORN_WORKERS=$GUNICORN_WORKERS
 APP_IMAGE=$PROJECT-app:${DEPLOY_PREVIOUS_TAG:-latest}
 REALTIME_PORT=$REALTIME_PORT
 ENVVARS
+# db and redis get only the few values they need, not the whole app .env (SECRET_KEY, payment and SMS credentials, ...):
+# a compromise of either container must not hand over every secret the app holds (review BE-18). Written 0600.
+umask 077
+grep -E '^(POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD)=' "$APP_DIR/backend/.env" > "$APP_DIR/infra/compose/db.env" || true
+grep -E '^REDIS_PASSWORD=' "$APP_DIR/backend/.env" > "$APP_DIR/infra/compose/redis.env" || true
+umask 022
 COMPOSE=(docker compose -p "$PROJECT" -f "$APP_DIR/infra/compose/docker-compose.yml")
 
 log() { printf '\n\033[1;33m==> %s\033[0m\n' "$*"; }
@@ -213,7 +219,7 @@ if [[ "${SERVE_FRONTEND:-no}" == "yes" ]]; then
 		-e "VITE_MAP_TILES_PROVIDER=${VITE_MAP_TILES_PROVIDER:-osm}" \
 		-v "$APP_DIR/frontend":/app \
 		-w /app \
-		node:20-alpine \
+		node:22-alpine \
 		sh -c "npm ci --no-audit --no-fund && npm run build"
 
 	log "Publishing the frontend to $WEB_ROOT"

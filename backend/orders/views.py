@@ -7,13 +7,11 @@ from django.db import IntegrityError, transaction as db_transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import generics, status
-from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.gps import validate_ashanti_gps
 from accounts.models import BusinessOwner, StaffUser
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner, IsCustomer
@@ -21,9 +19,7 @@ from cart import guard as cart_guard
 from cart.models import Cart
 from delivery.models import DeliveryEvent
 from disputes.models import Dispute
-from listings import variants as variants_module
 from listings.models import Listing, ListingVariant
-from listings.visibility import hidden_business_q
 from disputes.serializers import DisputeSerializer
 from notifications.services import notify_customer
 from payments.models import CheckoutSession
@@ -39,6 +35,7 @@ from payments.providers import get_provider
 from payments.services import process_payment, start_hubtel_checkout
 
 from . import hold, locks
+from .checkout import read_delivery, refuse_stale_prices, refuse_unavailable_listings, reserve_stock
 from .models import DeliveryAssignment, Order, OrderItem
 from .serializers import (
     DeliveryOrderSerializer,
@@ -144,20 +141,9 @@ class OrderCheckoutView(APIView):
         if not items:
             return Response({"detail": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
         read_signature = self._signature(items)
-        # A line whose listing was dropped, discontinued or unpublished, or whose business is hidden, is refused
-        # before any stock is touched; the cart is left as it is for the shopper to fix.
-        hidden_ids = set(
-            BusinessOwner.objects.filter(
-                pk__in={item.listing.business_owner_id for item in items}
-            ).filter(hidden_business_q("")).values_list("pk", flat=True)
-        )
-        for item in items:
-            if item.listing.status != Listing.PUBLISHED or item.listing.business_owner_id in hidden_ids:
-                return Response(
-                    {"detail": f"“{item.listing.name}” is no longer available. Remove it from your cart.",
-                     "code": "listing_unavailable"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        refusal = refuse_unavailable_listings(items)
+        if refusal is not None:
+            return refusal
 
         payment_method = request.data.get("payment_method") or MOMO
         if payment_method not in PAYMENT_METHODS:
@@ -181,32 +167,11 @@ class OrderCheckoutView(APIView):
             cart_guard.check_checkout(items, delivery_method)
         except cart_guard.GuardError as exc:
             return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
-        delivery_address = (request.data.get("delivery_address") or "").strip()
-        delivery_phone = (request.data.get("delivery_phone") or "").strip()
-        if delivery_method == Order.DOOR_TO_DOOR and (not delivery_address or not delivery_phone):
-            return Response(
-                {"detail": "Door-to-door delivery needs a delivery address and phone number."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        # A GhanaPost digital address (Ashanti only) and a landmark are required for door-to-door; checked before any
-        # routing call so a refusal costs no network round trip. Store pickup stores both blank.
-        delivery_gps_address = delivery_landmark = ""
-        if delivery_method == Order.DOOR_TO_DOOR:
-            try:
-                delivery_gps_address = validate_ashanti_gps(request.data.get("delivery_gps_address"))
-            except DRFValidationError as exc:
-                return Response({"delivery_gps_address": [str(m) for m in exc.detail]}, status=status.HTTP_400_BAD_REQUEST)
-            raw_landmark = request.data.get("delivery_landmark") or ""
-            delivery_landmark = raw_landmark.strip() if isinstance(raw_landmark, str) else ""  # a non-string reads as missing
-            if not delivery_landmark:
-                return Response(
-                    {"delivery_landmark": ["Add a landmark near your door so the rider can find you."]},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if len(delivery_landmark) > 200:
-                return Response(
-                    {"delivery_landmark": ["Keep the landmark under 200 characters."]}, status=status.HTTP_400_BAD_REQUEST,
-                )
+        delivery, refusal = read_delivery(request.data)
+        if refusal is not None:
+            return refusal
+        delivery_address, delivery_phone = delivery.address, delivery.phone
+        delivery_gps_address, delivery_landmark = delivery.gps_address, delivery.landmark
 
         if delivery_method == Order.DOOR_TO_DOOR:
             from routing import region
@@ -251,32 +216,9 @@ class OrderCheckoutView(APIView):
                     {"detail": "Your cart changed while you were checking out. Review it and try again.", "code": "cart_changed"},
                     status=status.HTTP_409_CONFLICT,
                 )
-            # Prices (review BE-11): a line keeps the price it was added at (ruling R33 re-reads it on add and on a
-            # quantity change), so a sale that ended or a price a seller raised since would still be charged at the old
-            # figure, and a sale that started would be missed. Compare with today's price before anything is written; if
-            # any line differs, refresh the snapshots and ask the shopper to look at the new total and confirm. Nothing but
-            # the snapshots is saved by this refusal.
-            changed = []
-            variant_listing_ids = set(
-                ListingVariant.objects.filter(listing_id__in={i.listing_id for i in items}, is_active=True).values_list("listing_id", flat=True)
-            )
-            for item in items:
-                if item.variant_id is None and item.listing_id in variant_listing_ids:
-                    continue  # a plain line on a listing that gained variants is refused (choose_variant) further down
-                current = item.variant.effective_price if item.variant_id else item.listing.effective_price
-                if current is not None and current != item.unit_price_snapshot:
-                    changed.append({
-                        "listing": item.listing_id, "name": item.listing.name,
-                        "was": str(item.unit_price_snapshot), "now": str(current),
-                    })
-                    item.unit_price_snapshot = current
-                    item.save(update_fields=["unit_price_snapshot"])
-            if changed:
-                return Response(
-                    {"detail": "Some prices changed since you added them. Check your cart total and confirm again.",
-                     "code": "price_changed", "changes": changed},
-                    status=status.HTTP_409_CONFLICT,
-                )
+            refusal = refuse_stale_prices(items)  # review BE-11; nothing but the refreshed snapshots is saved by a refusal
+            if refusal is not None:
+                return refusal
             # Checkout promotions (marketing): off unless settings.MARKETING_PROMOS_ENABLED, and
             # then priced here, before anything is reserved or written, under the flash-sale and
             # coupon row locks. With the switch off `promo` stays None and nothing below changes.
@@ -293,80 +235,10 @@ class OrderCheckoutView(APIView):
                     code_guard.record_failure(request)
                     return Response({"detail": exc.message}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Lock the tracked listings and check stock before creating
-            # anything. A listing with stock_quantity=None isn't inventory-
-            # tracked (services, or products the owner hasn't set a count on)
-            # and is never decremented. Mirrors the ticket flow's optimistic
-            # reserve-at-checkout, rolled back on payment failure below.
-            #
-            # Variant lines (listings.ListingVariant) reserve from the variant's own stock. Locks are taken in one global
-            # order, every Listing row by primary key and then every ListingVariant row by primary key, so two checkouts
-            # can never wait on each other; the stock is checked for the whole cart before anything is decremented.
-            locked = {
-                row.pk: row
-                for row in Listing.objects.select_for_update().filter(pk__in={i.listing_id for i in items}).order_by("pk")
-            }
-            locked_variants = {
-                row.pk: row
-                for row in ListingVariant.objects.select_for_update()
-                .filter(pk__in={i.variant_id for i in items if i.variant_id}).order_by("pk")
-            }
-            with_variants = set(
-                ListingVariant.objects.filter(listing_id__in=locked, is_active=True).values_list("listing_id", flat=True)
-            )
-            for item in items:
-                if item.variant_id is None and item.listing_id in with_variants:
-                    # A plain line from before the listing gained variants: its stock is the derived total, so refuse.
-                    return Response(
-                        {"detail": f"Choose an option for “{locked[item.listing_id].name}”: remove it from your cart and add it again.",
-                         "code": "choose_variant"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            for item in items:
-                listing = locked[item.listing_id]
-                if listing.status != Listing.PUBLISHED:  # taken down or dropped since the check above: re-read under the lock
-                    return Response(
-                        {"detail": f"“{listing.name}” is no longer available. Remove it from your cart.",
-                         "code": "listing_unavailable"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                if item.variant_id is None:
-                    if listing.stock_quantity is not None and listing.stock_quantity < item.quantity:
-                        return Response(
-                            {"detail": f"Only {listing.stock_quantity} of “{listing.name}” left in stock."},
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
-                    continue
-                variant = locked_variants.get(item.variant_id)
-                if variant is None or not variant.is_active:
-                    return Response(
-                        {"detail": f"“{listing.name} ({item.variant.label})” is no longer available. Remove it from your cart.",
-                         "code": "listing_unavailable"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                if variant.stock_quantity is not None and variant.stock_quantity < item.quantity:
-                    return Response(
-                        {"detail": f"Only {variant.stock_quantity} of “{listing.name} ({variant.label})” left in stock."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            reservations = []
-            touched = {}
-            for item in items:
-                listing = locked[item.listing_id]
-                if item.variant_id is None:
-                    if listing.stock_quantity is not None:
-                        listing.stock_quantity -= item.quantity
-                        listing.save(update_fields=["stock_quantity"])
-                        reservations.append({"listing_id": listing.id, "quantity": item.quantity})
-                    continue
-                variant = locked_variants[item.variant_id]
-                if variant.stock_quantity is not None:
-                    variant.stock_quantity -= item.quantity
-                    variant.save(update_fields=["stock_quantity"])
-                    reservations.append({"listing_id": listing.id, "variant_id": variant.id, "quantity": item.quantity})
-                touched[listing.pk] = listing
-            for listing in touched.values():
-                variants_module.sync_listing(listing)
+            # Lock the tracked listings and check stock before creating anything (orders/checkout.py: reserve_stock).
+            reservations, refusal = reserve_stock(items)
+            if refusal is not None:
+                return refusal
 
             total = sum(
                 (item.unit_price_snapshot * item.quantity for item in items), Decimal("0.00")

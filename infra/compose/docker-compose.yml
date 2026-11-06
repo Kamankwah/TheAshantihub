@@ -36,8 +36,8 @@ services:
   db:
     image: postgres:16
     restart: unless-stopped
-    # Same file the app reads, so POSTGRES_* can never drift between the two.
-    env_file: ../../backend/.env
+    # Only POSTGRES_* copied from the app's .env by deploy.sh (never the app's other secrets), so the two cannot drift.
+    env_file: ./db.env
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -57,7 +57,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    env_file: ../../backend/.env
+    env_file: ./redis.env  # REDIS_PASSWORD only, copied from the app's .env by deploy.sh
     command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --maxmemory 128mb --maxmemory-policy volatile-lru --save '' --appendonly yes --appendfsync everysec"]
     # AOF on a named volume: queued jobs (a pending refund, a text, an export) survive a Redis restart or a
     # container re-create instead of being lost with the process (review ARC-05).
