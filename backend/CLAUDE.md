@@ -236,6 +236,26 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   profile row, `record()` last (`identity-*` verbs refresh `kyc-queue`); notices reuse the `kyc_approved` /
   `kyc_rejected` kinds. KYC approval never touches `identity_status` and identity decisions never touch `kyc_status`.
   Migration `accounts/0068` backfilled every already KYC-verified business to identity `verified`, so no mark vanished.
+- **Going live is `accounts/golive.py`, not `kyc_status`.** `blockers(owner)` lists what still stops a business submitting
+  listings, in the order to fix them: `email_missing`/`email_unconfirmed`, `no_pin`, `no_business_kind`, `terms_missing`; no
+  staff decision is read. A KYC-verified business and the company owner are grandfathered live with no checks. The submit
+  door (403 `not_live`) and the staff approve (400 `not_live`) read it; `me` carries `go_live`. The `kyc_status` readers that
+  are not the listing doors (promo waivers, flash sales, offers, staff-made drafts, insights, the hero/promotion check lists)
+  were deliberately left alone, and `identity_status` still gates payouts; do not move them onto `golive`.
+  The self-registered step chain is `business_info` -> `shop_location` -> plan/type -> `terms`; `payment_info` is no longer in it
+  (the scout chain still has it).
+- **Email confirmation (`accounts/email_confirmation.py`)** is a bearer link made like the shop-location one: only the SHA-256 hash
+  is stored, single use, 48 h, 5 links per business per Accra day (429), a newer link revokes older live ones. The token
+  rides in the URL **fragment** (`/confirm-email#token=`), so it stays out of the frontend host's logs; the public confirm view
+  answers `no-store` + `no-referrer` and is `activity_exempt`. Confirming writes an `otp.VerifiedContact` for the address,
+  so a confirmed email would also satisfy OTP sign-up verification if `OTP_SIGNUP_VERIFICATION_ENFORCED` is ever turned on;
+  settle that intent first. A changed email is unconfirmed until a new link is opened.
+- **Phase 2 switches, all in `settings.py`:** `LISTING_AUTO_PUBLISH_ENABLED` (default off: every submit goes to the queue; on,
+  `listings/autopublish.py` publishes a clean listing of a live owner, returns 400 `needs_fixes` with reasons, or holds one
+  that trips a prohibited word or the daily limit), `LISTING_PROHIBITED_TERMS` (comma list, whole words only, default empty),
+  `UNVERIFIED_DAILY_LISTING_LIMIT` (20, only for a business whose location is not staff-verified; "submitted today" counts
+  `updated_at`, so it errs towards holding), `WRONG_LOCATION_HIDE_ENABLED` (off) and `WRONG_LOCATION_HIDE_DAYS` (7). Run
+  `manage.py list_wrong_location_businesses` before enabling the hide.
 - **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
   `PortfolioConfig.ready()`); only the business's account manager may submit them; each applied
   change writes a `portfolio.AppliedChange` the owner can undo for 7 days

@@ -206,3 +206,47 @@ enough to ship before it if the owner asks; the rest follows after.
 ## 10. Left to the builder
 Exact thresholds and defaults; Plus Code library choice; map and reverse-geocode provider calls and caching; queue UI layout; the data
 migration that retires `plan_selection`; wording of every refusal and tip; test fixtures; mobile parity for each web change.
+
+## 11. Phase 2 as built (branch feat/self-serve-phase2)
+
+What shipped, in the order it was built:
+- **Email confirmation.** Mailed bearer link (hashed token, single use, 48 h, 5 a day, in the URL fragment); `otp.VerifiedContact` marks the
+  confirmed address. Web page `/confirm-email`; a banner with Resend on the web dashboard and mobile home.
+- **Go-live rule** (`backend/accounts/golive.py`): confirmed email, shop pin, business type, accepted terms. KYC-verified businesses and the
+  company owner are grandfathered live. `me` carries `go_live`; listing submit answers 403 `not_live` and staff approve 400 `not_live`.
+  `kyc_status` readers other than those two doors (promo waivers, flash sales, offers, staff-made drafts, insights, hero/promotion
+  check lists) were left alone; `identity_status` still gates payouts.
+- **Shop pin step** at registration on web (`ShopLocationStep`) and mobile, with device location or a hand-placed pin (`manual`), an optional
+  landmark, a computed Plus Code (not stored) and a tier label. The self-registered chain is now business info, shop location, plan/type,
+  terms; `payment_info` left it.
+- **Co-location notice**: another business within 25 m raises a staff notice, never a refusal.
+- **Scout/address queue** already kept live, KYC-pending businesses; Task 5 only added tests.
+- **Minimal auto-publish** (`listings/autopublish.py`) behind `LISTING_AUTO_PUBLISH_ENABLED` (off), with `LISTING_PROHIBITED_TERMS` and
+  `UNVERIFIED_DAILY_LISTING_LIMIT` (20): pass publishes, fix returns 400 `needs_fixes`, hold goes to the queue; the first listing raises a
+  spot-check case. This is the small subset of section 6 only (size, description, category, contact details, prohibited terms, daily limit);
+  sharpness, white-background, duplicate-image and price-outlier checks, and the clean-up of 6a, are still Phase 3.
+- **Wrong location hides a business after 7 days** behind `WRONG_LOCATION_HIDE_ENABLED` (off), plus the read-only
+  `list_wrong_location_businesses` dry run, which must be read before the switch is turned on.
+
+Differences from the spec:
+- The 25 m co-location flag uses `FraudFlag.OTHER` (not reversing, not suspendable), not `SIMILAR_NEARBY`, so a shared market pin can never
+  reverse a scout's commission. Each pair is raised once ever, at most 3 per capture, and not when the pin did not move.
+- "Submitted today" for the daily limit counts listings by `updated_at` (there is no submitted-at column). It can hold a listing early for a
+  business that edits many published listings in one day; it never lets one through.
+- The mobile screen is `mobile/src/app/(auth)/register/shop-location.tsx`, beside the other `/register/*` steps.
+- Email is now required on web and mobile business sign-up (the spec had it optional at registration), because nothing in the app lets an
+  owner add one later.
+- The registration `payment_info` step is dropped from the self-registered chain only; the scout-registered chain keeps it.
+- Auto-publish is a subset of section 6 (above), not the Phase 3 engine.
+
+Known gaps:
+- A phone-only business owner (created through the web `AuthModal`, `frontend/App.jsx`, which still allows a business owner without an email)
+  sees `email_missing` and has no in-app way to add an email; they need staff help or a later "add email" endpoint. Owners registered
+  phone-only before this change are in the same position.
+- Staff screens show a wrong-location-hidden listing as hidden without saying why.
+- Nothing tells the owner when the 7 days elapse, and owners already marked wrong before the switch is turned on get no warning (the dry run is
+  the mitigation).
+- Device checks owed: marker drag inside the mobile `ScrollView`, the Android Google Maps key, and a real inbox for the confirmation email.
+- Backend, web and mobile must ship together: a pinless self-registered owner on a client without the `shop_location` step would be stuck.
+- Delivery is unchanged: "pin or code" for customers is Phase 4.
+
