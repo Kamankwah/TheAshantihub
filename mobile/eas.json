@@ -1,24 +1,56 @@
 {
-  "cli": { "version": ">= 16.0.0", "appVersionSource": "remote" },
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
   "build": {
     "preview": {
       "distribution": "internal",
-      "env": { "EXPO_PUBLIC_API_BASE_URL": "https://api-test.theashantihub.com" }
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-test.theashantihub.com"
+      }
     },
     "play-internal": {
       "distribution": "store",
       "autoIncrement": true,
-      "android": { "buildType": "app-bundle" },
-      "env": { "EXPO_PUBLIC_API_BASE_URL": "https://api-test.theashantihub.com" }
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-test.theashantihub.com"
+      }
     },
     "production": {
       "autoIncrement": true,
-      "android": { "buildType": "app-bundle" },
-      "env": { "EXPO_PUBLIC_API_BASE_URL": "https://api.theashantihub.com" }
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.theashantihub.com"
+      },
+      "ios": {}
+    },
+    "testflight": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-test.theashantihub.com"
+      }
     }
   },
   "submit": {
-    "play-internal": { "android": { "track": "internal", "releaseStatus": "draft" } },
-    "production": {}
+    "play-internal": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
+      }
+    },
+    "production": {},
+    "testflight": {
+      "ios": {}
+    }
   }
 }
