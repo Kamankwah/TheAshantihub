@@ -640,6 +640,27 @@ class LocationCapture(models.Model):
         return f"{self.source} location capture #{self.pk} for owner {self.business_owner_id}"
 
 
+class EmailConfirmationToken(models.Model):
+    """One mailed link that proves a business owner receives their email (self-serve onboarding, phase 2). A bearer token:
+    the raw value exists only in the email and the owner's browser, the row keeps its SHA-256 hash. `email` is the
+    normalised address the link went to, so a link never confirms an address it was not sent to. Rows are never deleted.
+    See `accounts.email_confirmation`."""
+
+    business_owner = models.ForeignKey(BusinessOwner, on_delete=models.CASCADE, related_name="email_confirmations")
+    email = models.CharField(max_length=254)
+    token_hash = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"email confirmation #{self.pk} for owner {self.business_owner_id}"
+
+
 class BusinessOwnerCategory(models.Model):
     """One category a business chose, in the order it chose them. Position 0 is the main one, mirrored in
     `BusinessOwnerProfile.business_category`. Write the list through `accounts.categories.set_categories` (API use); the

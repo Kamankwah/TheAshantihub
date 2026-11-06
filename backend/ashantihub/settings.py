@@ -432,6 +432,10 @@ REST_FRAMEWORK = {
         "location_link": "15/min",
         # The signed-in owner sharing the shop's location from the dashboard (accounts.views_location.MyLocationView POST).
         "owner_location": "10/min",
+        # Email confirmation (accounts.views_email_confirmation): the signed-in owner asking for a link, and the public
+        # page the mailed link opens.
+        "email_confirmation_send": "10/min",
+        "email_confirmation_confirm": "20/min",
         # A staff member emailing owners claim links (portfolio.views.ClaimLinkView).
         "claim_link": "5/hour",
         # A business asking to change its name, sign-in phone or email (portfolio.detail_changes).

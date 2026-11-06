@@ -27,7 +27,7 @@ from otp import step_up
 from staffsecurity import signin as signin_log
 from staffsecurity.models import StaffSignInRecord
 
-from . import categories, claims, files, hours, kyc, mobile_sessions, sessions, two_factor
+from . import categories, claims, email_confirmation, files, hours, kyc, mobile_sessions, sessions, two_factor
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
 from .models import (
@@ -198,6 +198,8 @@ class BusinessOwnerRegisterView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
         owner = BusinessOwner.objects.get(pk=response.data["id"])
+        if owner.email:  # the first confirmation email; a send failure never fails registration
+            transaction.on_commit(lambda: email_confirmation.send(owner), robust=True)
         if otp_flags.sign_up_enforced():
             response.data.update(otp_signin.code_challenge(owner, otp_signin.SIGN_UP))
             return response
