@@ -50,7 +50,9 @@
     },
     "production": {},
     "testflight": {
-      "ios": {}
+      "ios": {
+        "ascAppId": "6831307433"
+      }
     }
   }
 }
