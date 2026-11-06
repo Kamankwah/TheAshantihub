@@ -247,8 +247,20 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   (the go-live rule needs one and the confirmation link goes out at sign-up), and its duplicate-email refusal says "A business
   owner with this email already exists." The Ghana Post code is optional on the server (blank is stored null). A staff approve
   refused for `not_live` returns staff wording (`golive.staff_message`, which falls back to the owner sentence or the bare code
-  for a blocker with no staff phrase) plus `blockers`. A photo-storage failure in the auto-publish photo check holds the listing
-  for staff instead of refusing it.
+  for a blocker with no staff phrase) plus `blockers`. The auto-publish photo check tells opening the file from decoding it: a missing file or a Pillow decode failure
+  (unidentifiable, truncated, decompression bomb) is the owner's fix; any other failure, including a ConnectionError/TimeoutError
+  or botocore-style error raised by a storage read, holds the listing for staff with a logged warning (never a 500).
+  **Hold and fix reasons are stored:** `Listing.hold_reasons` is a list of `{code, message}` set by the submit door (a `fix` or a
+  `hold`) and cleared on publish, approve, reject, re-review, an undone scout listing and the next submit. Staff see it as
+  `hold_reasons` on the moderation queue (only while the listing is waiting for review, with the specific word or limit); the
+  owner's own listing carries `hold_notice` (one generic line for a hold, never the specifics) and `fix_reasons` (the plain
+  sentences for a draft or rejected listing sent back).
+  **Self-serve add or correct email:** `POST business-owners/me/email/` {email} (owner only, `owner_email_change` 5/hour,
+  `activity_exempt`) is allowed ONLY while the owner has no email or the current one is not confirmed; a confirmed email gets 403
+  `email_confirmed` pointing at Profile & Settings -> Request a change (the staff-verified path). It trims and lower-cases, refuses
+  another owner's address case-insensitively with the registration wording, saves, revokes the older live links and mails a fresh one
+  (`email_confirmation.set_email` then `send`; a daily-limit 429 still leaves the new address saved and the old links revoked).
+  Answers 200 `{"email", "sent": true}`; never a token.
   The self-registered step chain is `business_info` -> `shop_location` -> plan/type -> `terms`; `payment_info` is no longer in it
   (the scout chain still has it).
 - **Email confirmation (`accounts/email_confirmation.py`)** is a bearer link made like the shop-location one: only the SHA-256 hash

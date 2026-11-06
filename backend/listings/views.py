@@ -905,19 +905,29 @@ class ListingSubmitView(ScopedOwner, APIView):
             if settings.LISTING_AUTO_PUBLISH_ENABLED and autopublish.eligible(request.user, listing):
                 verdict = autopublish.evaluate(listing)
                 if verdict.outcome == autopublish.FIX:
+                    # Kept so the draft still says what to change after a reload; the listing itself stays as it was.
+                    listing.hold_reasons = verdict.details
+                    listing.save(update_fields=["hold_reasons"])
                     return Response(
                         {"code": "needs_fixes", "detail": verdict.reasons[0], "reasons": verdict.reasons}, status=400,
                     )
                 published = verdict.outcome == autopublish.PASS
+                held = verdict.details if verdict.outcome == autopublish.HOLD else []
+            else:
+                held = []
             if published:
                 listing.status = Listing.PUBLISHED
                 listing.rejection_reason = None
                 listing.reviewed_by = None
                 listing.reviewed_at = None
-                listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at", "updated_at"])
+                listing.hold_reasons = []
+                listing.save(update_fields=[
+                    "status", "rejection_reason", "reviewed_by", "reviewed_at", "hold_reasons", "updated_at",
+                ])
             else:
                 listing.status = Listing.PENDING_REVIEW
-                listing.save(update_fields=["status", "updated_at"])
+                listing.hold_reasons = held
+                listing.save(update_fields=["status", "hold_reasons", "updated_at"])
         if published:
             # The listing is live whatever happens to the notice, so a failure here never changes the answer.
             try:
@@ -1130,7 +1140,8 @@ class ModerationApproveView(APIView):
             listing.rejection_reason = None
             listing.reviewed_by = request.user
             listing.reviewed_at = timezone.now()
-            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+            listing.hold_reasons = []
+            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at", "hold_reasons"])
         notify_business_owner(
             listing.business_owner, "listing_approved", "Listing published",
             body=f"“{listing.name}” is now live on AshantiHub.",
@@ -1158,7 +1169,8 @@ class ModerationRejectView(APIView):
             listing.rejection_reason = reason
             listing.reviewed_by = request.user
             listing.reviewed_at = timezone.now()
-            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+            listing.hold_reasons = []
+            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at", "hold_reasons"])
             if taken_down:
                 revisions.close_for_take_down(listing, request.user)
         notify_business_owner(
@@ -1192,7 +1204,8 @@ class ModerationReReviewView(APIView):
             listing.rejection_reason = None
             listing.reviewed_by = None
             listing.reviewed_at = None
-            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+            listing.hold_reasons = []
+            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at", "hold_reasons"])
         notify_staff_role(
             "listings.moderate", "listing_needs_moderation", "Listing re-opened for review",
             body=f"“{listing.name}” has been re-opened and needs moderation again.",

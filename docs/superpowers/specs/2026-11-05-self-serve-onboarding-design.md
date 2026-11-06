@@ -239,19 +239,21 @@ Differences from the spec:
 - The registration `payment_info` step is dropped from the self-registered chain only; the scout-registered chain keeps it.
 - Auto-publish is a subset of section 6 (above), not the Phase 3 engine.
 
-Closed since: the web `AuthModal` phone-only gap. The web `AuthModal` and the server both require an email for a business owner now, so no
+Closed since (follow-up A, backend): legacy phone-only owners can now add an email themselves, and owners can correct a typo in an
+unconfirmed one, with `POST /api/accounts/business-owners/me/email/` (only while no email is on file or the current one is not
+confirmed; a confirmed email still goes through the staff-verified change path; 5 an hour per owner; it saves the normalised address,
+revokes older live links and mails a fresh one). Hold reasons are stored: `Listing.hold_reasons` is a list of `{code, message}` set at
+submit, cleared on publish, approve, reject, re-review and the next submit; staff see them in the moderation queue, the owner sees only
+a generic "We need to check this listing." for a hold (`hold_notice`) and the fix sentences for a fix (`fix_reasons`). The photo check
+now separates opening the file from decoding it: a missing file or a decode failure is the owner's to fix, and any other failure
+(storage connection or timeout, botocore-style or unexpected errors, during open or read) holds the listing for staff with a logged
+warning, never a 500. The web `AuthModal` phone-only gap was closed earlier: The web `AuthModal` and the server both require an email for a business owner now, so no
 new owner is created without one.
 
 Known gaps:
-- Legacy phone-only owners (created before this change) have no self-serve way to add an email: the only route is the scout-verified
-  detail-change path on web, and mobile has no screen for it. The mobile banner for `email_missing` therefore points to a web-only screen.
 - Staff screens show a wrong-location-hidden listing as hidden without saying why.
 - Nothing tells the owner when the 7 days elapse, and owners already marked wrong before the switch is turned on get no warning (the dry run is
   the mitigation).
-- M2 hold reasons are not stored: a held listing's reasons (prohibited word, daily limit, photo check unavailable) are computed at submit and
-  shown nowhere afterwards. Store them before `LISTING_AUTO_PUBLISH_ENABLED` is turned on.
-- The photo check's exception list (which read failures count as an unreadable image and which as a storage failure) is a judgement call and
-  should be revisited with real storage failures before the switch is turned on.
 - Device checks owed: marker drag inside the mobile `ScrollView`, the Android Google Maps key, and a real inbox for the confirmation email.
 - Backend, web and mobile must ship together: a pinless self-registered owner on a client without the `shop_location` step would be stuck.
 - Delivery is unchanged: "pin or code" for customers is Phase 4.

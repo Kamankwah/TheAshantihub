@@ -22,6 +22,7 @@ from otp.models import EMAIL, VerifiedContact
 
 from .claims import ClaimError, hash_token
 from .emails import send_email_confirmation_email
+from .serializers import EMAIL_TAKEN
 from .models import BusinessOwner, EmailConfirmationToken
 
 LINK_TTL = timedelta(hours=48)
@@ -34,6 +35,10 @@ REVOKED = "This link has been replaced by a newer one. Open the newest email fro
 EXPIRED = "This link has expired. Ask for a new one from your dashboard."
 TOO_MANY = "Five confirmation emails a day is the most one business can be sent. Try again tomorrow."
 NO_EMAIL = "Add an email address to your account first."
+EMAIL_CONFIRMED = (
+    "Your email address is already confirmed, so it can only be changed with our team's check. "
+    "Open Profile & Settings and choose Request a change."
+)
 
 
 def normalise(email):
@@ -67,6 +72,29 @@ def send(owner):
             business_owner=locked, email=email, token_hash=hash_token(raw), expires_at=now + LINK_TTL,
         )
     send_email_confirmation_email(locked.email, link_url(raw))
+
+
+def set_email(owner, address):
+    """Let the signed-in owner add or correct their own email, but ONLY while none is on file or the one on file has not
+    been confirmed (a confirmed address is the staff-verified change path: `portfolio.detail_changes`). Saves the
+    normalised address and revokes every live link, which was made for the old address, so none of them can be opened
+    afterwards. The caller then calls `send`, outside this transaction. Raises ClaimError `email_confirmed` (403), or
+    `email_taken` (400) when another owner (any letter case) already has the address.
+
+    The owner row is locked first, as in `send`, so a confirm and a correction cannot interleave."""
+    address = normalise(address)
+    with transaction.atomic():
+        locked = BusinessOwner.objects.select_for_update().get(pk=owner.pk)  # 1. the owner
+        if is_confirmed(locked):
+            raise ClaimError(EMAIL_CONFIRMED, code="email_confirmed", status_code=403)
+        if BusinessOwner.objects.filter(email__iexact=address).exclude(pk=locked.pk).exists():
+            raise ClaimError(EMAIL_TAKEN, code="email_taken", status_code=400)
+        locked.email = address
+        locked.save(update_fields=["email"])
+        EmailConfirmationToken.objects.filter(
+            business_owner=locked, used_at__isnull=True, revoked_at__isnull=True,
+        ).update(revoked_at=timezone.now())  # 2. the live links for the old address
+    return locked
 
 
 def _find(raw):

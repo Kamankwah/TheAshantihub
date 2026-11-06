@@ -341,20 +341,32 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         return self.account
 
 
+EMAIL_REQUIRED_ERRORS = {"required": EMAIL_REQUIRED, "blank": EMAIL_REQUIRED, "null": EMAIL_REQUIRED}
+EMAIL_TAKEN = "A business owner with this email already exists."
+
+
+class OwnerEmailSerializer(serializers.Serializer):
+    """The signed-in owner adding or correcting their own email (`business-owners/me/email/`): the registration form's
+    email rules (valid, 254 characters at most, not another owner's) with the address trimmed and lower-cased first, and
+    the duplicate check case-insensitive."""
+
+    email = serializers.EmailField(max_length=254, error_messages=EMAIL_REQUIRED_ERRORS)
+
+    def validate_email(self, value):
+        value = value.strip().lower()
+        if BusinessOwner.objects.filter(email__iexact=value).exclude(pk=self.context["owner"].pk).exists():
+            raise serializers.ValidationError(EMAIL_TAKEN)
+        return value
+
+
 class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     # Required: the go-live rule needs a confirmed email, and the confirmation link goes out at sign-up. The model
     # field is unique, so the unique validator is kept (as the model field would add it).
     email = serializers.EmailField(
         max_length=254,
-        error_messages={
-            "required": EMAIL_REQUIRED, "blank": EMAIL_REQUIRED, "null": EMAIL_REQUIRED,
-        },
-        validators=[
-            UniqueValidator(
-                queryset=BusinessOwner.objects.all(), message="A business owner with this email already exists.",
-            )
-        ],
+        error_messages=EMAIL_REQUIRED_ERRORS,
+        validators=[UniqueValidator(queryset=BusinessOwner.objects.all(), message=EMAIL_TAKEN)],
     )
     kyc_status = serializers.CharField(read_only=True)
     marketing_consent = serializers.JSONField(write_only=True, required=False)
