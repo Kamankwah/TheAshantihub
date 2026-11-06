@@ -167,6 +167,9 @@ chown -R 10001:10001 "$APP_DIR/backend/media" "$APP_DIR/backend/staticfiles" "$A
 log "Applying migrations"
 "${COMPOSE[@]}" run --rm --no-deps web python manage.py migrate --noinput
 
+log "Moving identity documents out of public media (idempotent; a no-op once done)"
+"${COMPOSE[@]}" run --rm --no-deps web python manage.py move_identity_files_private
+
 log "Collecting static files"
 "${COMPOSE[@]}" run --rm --no-deps web python manage.py collectstatic --noinput
 

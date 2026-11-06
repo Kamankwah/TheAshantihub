@@ -1,6 +1,8 @@
 from django.db import models
 from django.utils import timezone
 
+from core.private_files import ghana_card_path, kyc_storage, registration_certificate_path
+
 from .mixins import AuthenticatableAccountMixin
 from .validators import validate_document_content_type, validate_image_content_type
 
@@ -452,11 +454,12 @@ class BusinessOwnerProfile(models.Model):
         BusinessOwner, on_delete=models.CASCADE, related_name="profile"
     )
     ghana_card_number = models.CharField(max_length=30, unique=True, null=True, blank=True)
+    # Identity documents: private storage + signed links, never MEDIA_ROOT (core.private_files, review BE-01).
     ghana_card_front_image = models.ImageField(
-        upload_to="ghana_cards/", validators=[validate_image_content_type], null=True, blank=True
+        upload_to=ghana_card_path, storage=kyc_storage, validators=[validate_image_content_type], null=True, blank=True
     )
     ghana_card_back_image = models.ImageField(
-        upload_to="ghana_cards/", validators=[validate_image_content_type], null=True, blank=True
+        upload_to=ghana_card_path, storage=kyc_storage, validators=[validate_image_content_type], null=True, blank=True
     )
     gps_address = models.CharField(max_length=20, null=True, blank=True)
     business_contact_phone = models.CharField(max_length=20, null=True, blank=True)
@@ -474,7 +477,7 @@ class BusinessOwnerProfile(models.Model):
 
     is_formal = models.BooleanField(default=False)
     business_reg_certificate = models.FileField(
-        upload_to="business_reg_certificates/", null=True, blank=True,
+        upload_to=registration_certificate_path, storage=kyc_storage, null=True, blank=True,
         validators=[validate_document_content_type],
     )
     tin = models.CharField(max_length=30, null=True, blank=True)

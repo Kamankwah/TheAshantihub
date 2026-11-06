@@ -364,8 +364,12 @@ passed, so `osrm` keeps running through a normal `down`/`up` of the app.
   `access_log off` because the URL carries a single-use ticket. Clients obtain
   the ticket from `POST /api/realtime/ticket/`.
 - Job processes: `docker compose -p <project> logs -f worker beat`.
-- `backend/private/` holds report exports. It is bind-mounted into `web`
-  and `worker`, and only a permission-checked view serves it.
+- `backend/private/` holds report exports, rider papers and (under `kyc/`) the owners' Ghana Card photos and
+  registration certificates. It is bind-mounted into `web` and `worker`, and only a permission-checked view or a
+  15-minute signed link (`/api/core/private-file/`) serves it. nginx never serves it, and the API templates return 404
+  for the old `/media/ghana_cards/` and `/media/business_reg_certificates/` paths. `deploy.sh` runs
+  `manage.py move_identity_files_private` after migrating (moves any identity file still under `backend/media/` into
+  `backend/private/kyc/`; safe to repeat). **`backend/private/` must be in the backup** (see the backup section).
 - Env vars in `backend/.env`: `REDIS_PASSWORD`, `REDIS_URL`,
   `STAFF_SECRETS_KEY` (required: the app refuses to start without it when
   `DJANGO_DEBUG=False`) and `ACTIVITY_SEAL_EMAIL` (production `True`).
