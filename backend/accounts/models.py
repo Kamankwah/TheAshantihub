@@ -552,6 +552,8 @@ class BusinessOwnerProfile(models.Model):
     )
     location_set_at = models.DateTimeField(null=True, blank=True)
     location_is_manual = models.BooleanField(default=False)
+    # A line the owner writes so a rider or a visitor can find the shop ("opposite the Kejetia main gate").
+    landmark = models.CharField(max_length=200, blank=True, default="")
     # The staff member who last set the pin (registration, a scout's update); null when the owner set it themself
     # (location capture) or when nobody did. The address maker-checker rule reads it: whoever placed the pin cannot be
     # the one who verifies the address.

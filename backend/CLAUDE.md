@@ -131,6 +131,11 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   (`after` = accuracy and source only). The owner's own `me/location/` capture is refused once the address is verified
   **and has a pin** (409 `address_verified`; a pinless "verified" does not lock, and a capture clears it); a staff-sent link
   still works, which is how a verified address is reopened. `MyLocationView` POST is throttled (`owner_location`, 10/min).
+  Only the owner's own `POST me/location/` (`OwnerFixSerializer`) may send `manual` (hand-placed: no accuracy ceiling, none
+  stored, still inside the box, `location_is_manual`; never device evidence for an address decision) and `landmark`; the staff
+  link uses the base `FixSerializer`, which has neither field. Another business within 25 m raises a `similar_nearby` case
+  (`pin-near-<low>-<high>`), never a refusal. The Plus Code is computed (`accounts/pluscode.py`), never stored; the tier
+  (`accounts/location_tier.py`) is a label, not a gate.
 - **Background jobs and live updates run in-process under `manage.py test`** (eager Celery,
   in-memory channel layer, local-memory `realtime` cache). On-commit work needs
   `captureOnCommitCallbacks(execute=True)` in a `TestCase`; consumer tests that read the database

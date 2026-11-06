@@ -445,7 +445,10 @@ class OwnerOwnCaptureTests(Base):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json(),
-            {"pin": None, "address_status": "not_verified", "wrong_reason": None, "can_capture": True},
+            {
+                "pin": None, "plus_code": None, "landmark": "", "tier": "none", "tier_label": "", "is_manual": False,
+                "address_status": "not_verified", "wrong_reason": None, "can_capture": True,
+            },
         )
 
     def test_get_with_a_pin(self):
@@ -496,7 +499,10 @@ class OwnerOwnCaptureTests(Base):
         response = self.client.post(ME, KUMASI, format="json")
         self.assertEqual(response.status_code, 200, response.content)
         body = response.json()
-        self.assertEqual(set(body), {"pin", "address_status", "wrong_reason", "can_capture"})
+        self.assertEqual(
+            set(body),
+            {"pin", "plus_code", "landmark", "tier", "tier_label", "is_manual", "address_status", "wrong_reason", "can_capture"},
+        )
         self.assertEqual(body["pin"]["accuracy_m"], 12)
         self.assertEqual(body["pin"]["set_by"], "owner")
         profile = self.profile()
