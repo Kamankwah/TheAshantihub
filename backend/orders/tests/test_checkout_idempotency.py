@@ -102,3 +102,31 @@ class CheckoutIdempotencyTests(CheckoutTestsBase):
         self.assertEqual(response.json()["code"], "cart_changed")
         self.assertFalse(Order.objects.exists())
         self.assertFalse(OrderItem.objects.exists())
+
+
+class CheckoutPriceRevalidationTests(CheckoutTestsBase):
+    """Review BE-11: a price that moved since the line was added is shown to the shopper, never silently charged."""
+
+    def checkout(self):
+        return self.client.post("/api/orders/checkout/", {}, format="json")
+
+    def test_a_price_that_rose_is_refused_once_then_charged_at_the_new_price(self):
+        from listings.models import Listing
+
+        self._auth(self.customer)
+        self._add_to_cart(self.listing_a, 1)
+        Listing.objects.filter(pk=self.listing_a.pk).update(price_amount="200.00")
+        first = self.checkout()
+        self.assertEqual(first.status_code, 409, first.content)
+        body = first.json()
+        self.assertEqual(body["code"], "price_changed")
+        self.assertEqual((body["changes"][0]["was"], body["changes"][0]["now"]), ("150.00", "200.00"))
+        self.assertFalse(Order.objects.exists())
+        second = self.checkout()
+        self.assertEqual(second.status_code, 201, second.content)
+        self.assertEqual(str(Order.objects.get().total_amount), "200.00")
+
+    def test_an_unchanged_price_checks_out_straight_away(self):
+        self._auth(self.customer)
+        self._add_to_cart(self.listing_a, 2)
+        self.assertEqual(self.checkout().status_code, 201)

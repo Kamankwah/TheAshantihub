@@ -251,6 +251,32 @@ class OrderCheckoutView(APIView):
                     {"detail": "Your cart changed while you were checking out. Review it and try again.", "code": "cart_changed"},
                     status=status.HTTP_409_CONFLICT,
                 )
+            # Prices (review BE-11): a line keeps the price it was added at (ruling R33 re-reads it on add and on a
+            # quantity change), so a sale that ended or a price a seller raised since would still be charged at the old
+            # figure, and a sale that started would be missed. Compare with today's price before anything is written; if
+            # any line differs, refresh the snapshots and ask the shopper to look at the new total and confirm. Nothing but
+            # the snapshots is saved by this refusal.
+            changed = []
+            variant_listing_ids = set(
+                ListingVariant.objects.filter(listing_id__in={i.listing_id for i in items}, is_active=True).values_list("listing_id", flat=True)
+            )
+            for item in items:
+                if item.variant_id is None and item.listing_id in variant_listing_ids:
+                    continue  # a plain line on a listing that gained variants is refused (choose_variant) further down
+                current = item.variant.effective_price if item.variant_id else item.listing.effective_price
+                if current is not None and current != item.unit_price_snapshot:
+                    changed.append({
+                        "listing": item.listing_id, "name": item.listing.name,
+                        "was": str(item.unit_price_snapshot), "now": str(current),
+                    })
+                    item.unit_price_snapshot = current
+                    item.save(update_fields=["unit_price_snapshot"])
+            if changed:
+                return Response(
+                    {"detail": "Some prices changed since you added them. Check your cart total and confirm again.",
+                     "code": "price_changed", "changes": changed},
+                    status=status.HTTP_409_CONFLICT,
+                )
             # Checkout promotions (marketing): off unless settings.MARKETING_PROMOS_ENABLED, and
             # then priced here, before anything is reserved or written, under the flash-sale and
             # coupon row locks. With the switch off `promo` stays None and nothing below changes.
