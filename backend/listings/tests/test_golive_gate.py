@@ -75,6 +75,17 @@ class GoLiveGateTests(TestCase):
         listing.refresh_from_db()
         self.assertEqual(listing.status, Listing.REJECTED)
 
+    def test_kyc_rejected_owner_cannot_submit(self):
+        owner = make_owner("+233241450010", kyc=BusinessOwner.REJECTED)
+        listing = self.draft(owner)
+        response = self.submit(owner, listing)
+        self.assertEqual(response.status_code, 403, response.content)
+        body = response.json()
+        self.assertEqual(body["code"], "not_live")
+        self.assertEqual(body["blockers"], [{"code": "kyc_rejected", "message": golive.MESSAGES["kyc_rejected"]}])
+        listing.refresh_from_db()
+        self.assertEqual(listing.status, Listing.DRAFT)
+
     def test_confirmed_pinned_owner_submits_to_pending_review(self):
         owner = make_owner("+233241450003")
         self.assertEqual(owner.kyc_status, BusinessOwner.PENDING)
@@ -99,9 +110,28 @@ class GoLiveGateTests(TestCase):
         self.as_(self.admin, "staff")
         response = self.client.post(f"/api/listings/moderation/{listing.pk}/approve/")
         self.assertEqual(response.status_code, 400, response.content)
-        self.assertEqual(response.json()["detail"], golive.MESSAGES["email_unconfirmed"])
+        body = response.json()
+        self.assertEqual(body["code"], "not_live")
+        # Staff are told in staff words, not the owner's "Open the link we emailed you" sentence.
+        self.assertEqual(body["detail"], "This business is not live yet: email not confirmed.")
+        self.assertNotIn("emailed you", body["detail"])
+        self.assertEqual(body["blockers"], [{"code": "email_unconfirmed", "message": golive.MESSAGES["email_unconfirmed"]}])
         listing.refresh_from_db()
         self.assertEqual(listing.status, Listing.PENDING_REVIEW)
+
+    def test_staff_refusal_names_every_blocker_briefly(self):
+        owner = make_owner("+233241450011", kyc=BusinessOwner.REJECTED, confirmed=False)
+        listing = self.draft(owner, status=Listing.PENDING_REVIEW)
+        self.as_(self.admin, "staff")
+        response = self.client.post(f"/api/listings/moderation/{listing.pk}/approve/")
+        self.assertEqual(response.status_code, 400, response.content)
+        body = response.json()
+        self.assertEqual(body["code"], "not_live")
+        self.assertEqual(
+            body["detail"],
+            "This business is not live yet: email not confirmed; application rejected, waiting for the owner's changes.",
+        )
+        self.assertEqual([b["code"] for b in body["blockers"]], ["email_unconfirmed", "kyc_rejected"])
 
     def test_staff_can_approve_a_kyc_verified_owner_with_no_email(self):
         owner = BusinessOwner.objects.create(
@@ -131,8 +161,8 @@ class GoLiveGateTests(TestCase):
             self.assertEqual((kyc["label"], kyc["status"]), ("Business verified (KYC)", "fail"))
 
     def test_submit_and_approve_do_not_read_the_kyc_check(self):
-        # The doors go by golive alone: a live owner with KYC rejected-or-pending passes both; the KYC check
-        # (a display only) is never consulted.
+        # The doors go by golive alone: a live owner whose KYC is still pending passes both; the KYC check
+        # (a display only) is never consulted. (A KYC-rejected owner is not live, so it is refused at both doors.)
         owner = make_owner("+233241450008")
         with patch("listings.moderation_checks._kyc_check", side_effect=AssertionError("read the KYC check")):
             listing = self.draft(owner)

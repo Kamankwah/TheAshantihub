@@ -765,4 +765,4 @@ OTP_SMS_PROVIDER = "locmem" if TESTING else env("OTP_SMS_PROVIDER", default="sim
 # default: turn it on only after `manage.py list_wrong_location_businesses` has been read, since every business already
 # marked wrong more than 7 days ago would be hidden on the next request.
 WRONG_LOCATION_HIDE_ENABLED = env.bool("WRONG_LOCATION_HIDE_ENABLED", default=False)
-WRONG_LOCATION_HIDE_DAYS = env.int("WRONG_LOCATION_HIDE_DAYS", default=7)
+WRONG_LOCATION_HIDE_DAYS = max(1, env.int("WRONG_LOCATION_HIDE_DAYS", default=7))  # never 0: that hides a business at once

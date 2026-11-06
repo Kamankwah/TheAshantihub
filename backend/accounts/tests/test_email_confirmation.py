@@ -238,9 +238,11 @@ class RegistrationTests(Base):
         self.assertIn("/confirm-email#token=", mail.outbox[0].body)
         self.assertNotIn("token=", response.content.decode())
 
-    def test_registration_without_email_sends_nothing(self):
+    def test_registration_without_email_is_refused_and_sends_nothing(self):
         response = self.register()
-        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["email"], ["Enter your email so we can send you a confirmation link."])
+        self.assertFalse(BusinessOwner.objects.filter(login_phone="+233244990001").exists())
         self.assertEqual(mail.outbox, [])
         self.assertFalse(EmailConfirmationToken.objects.exists())
 

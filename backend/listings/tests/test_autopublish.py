@@ -117,6 +117,30 @@ class AutoPublishTests(TestCase):
             response = self.submit(row)
         self.assert_fix(response, row, autopublish.UNREADABLE_PHOTO)
 
+    def test_a_storage_outage_holds_the_listing_for_staff_and_never_blames_the_owner(self):
+        from unittest import mock
+
+        row = self.listing()
+        with mock.patch.object(row.main_photo.storage, "open", side_effect=ConnectionError("storage is down")):
+            verdict = autopublish.evaluate(row)
+            self.assertEqual(verdict.outcome, autopublish.HOLD)
+            self.assertEqual(verdict.reasons[0], autopublish.PHOTO_CHECK_UNAVAILABLE)
+            self.assertNotIn(autopublish.UNREADABLE_PHOTO, verdict.reasons)
+            with self.assertLogs("listings.autopublish", "WARNING"):
+                response = self.submit(row)
+        self.assertEqual((response.status_code, response.json()["status"]), (200, Listing.PENDING_REVIEW))
+        row.refresh_from_db()
+        self.assertEqual(row.status, Listing.PENDING_REVIEW)
+
+    def test_other_fixes_are_still_asked_for_during_a_storage_outage(self):
+        from unittest import mock
+
+        row = self.listing(name="Ab")
+        with mock.patch.object(row.main_photo.storage, "open", side_effect=ConnectionError("down")):
+            with self.assertLogs("listings.autopublish", "WARNING"):
+                verdict = autopublish.evaluate(row)
+        self.assertEqual((verdict.outcome, verdict.reasons), (autopublish.FIX, [autopublish.SHORT_NAME]))
+
     def test_short_name_is_a_fix(self):
         row = self.listing(name="Ab")
         self.assert_fix(self.submit(row), row, autopublish.SHORT_NAME)

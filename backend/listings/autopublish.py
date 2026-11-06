@@ -33,6 +33,7 @@ MIN_DESCRIPTION_LENGTH = 40
 
 NO_PHOTO = "Add a main photo that is at least 800 by 800 pixels."
 UNREADABLE_PHOTO = "We could not read your main photo. Upload it again as a JPEG or PNG."
+PHOTO_CHECK_UNAVAILABLE = "The main photo could not be checked because file storage failed. Look at the photo yourself."
 SHORT_NAME = "Give the listing a name of at least 3 characters."
 SHORT_DESCRIPTION = "Describe the listing in at least 40 characters so shoppers know what they are buying."
 NO_PRICE = "Set a price above zero."
@@ -52,19 +53,33 @@ def prohibited_terms():
     return [term.strip().lower() for term in getattr(settings, "LISTING_PROHIBITED_TERMS", []) if term and term.strip()]
 
 
+class PhotoCheckUnavailable(Exception):
+    """The photo could not be checked for a reason that is not the owner's: the storage itself failed."""
+
+
 def _photo_reason(listing):
     """None when the stored original of the main photo is at least 800 px each way. Only the image header is read,
-    so a huge file costs nothing, and any failure (missing file, corrupt, zero bytes) is a reason, never an error."""
-    from PIL import Image
+    so a huge file costs nothing. A file that is missing, empty or not an image is the owner's to fix (a reason). A
+    storage failure (the backend down or timing out) is not: it raises `PhotoCheckUnavailable`, so the listing goes to
+    staff instead of telling the owner to re-upload a fine photo."""
+    from PIL import Image, UnidentifiedImageError
 
     name = listing.main_photo.name if listing.main_photo else ""
     if not name:
         return NO_PHOTO
     try:
-        with listing.main_photo.storage.open(name, "rb") as handle:
+        handle = listing.main_photo.storage.open(name, "rb")
+    except FileNotFoundError:
+        logger.warning("main photo %r of listing %s is missing from storage", name, listing.pk)
+        return UNREADABLE_PHOTO
+    except Exception as exc:  # noqa: BLE001 - anything else is the storage failing, not a bad upload
+        logger.warning("storage failed reading main photo %r of listing %s", name, listing.pk, exc_info=True)
+        raise PhotoCheckUnavailable from exc
+    try:
+        with handle:
             with Image.open(handle) as image:
                 width, height = image.size
-    except Exception:  # noqa: BLE001 - a bad upload is the owner's to fix, never a server error
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError, Image.DecompressionBombError):
         logger.warning("could not read main photo %r of listing %s", name, listing.pk, exc_info=True)
         return UNREADABLE_PHOTO
     if width < MIN_PHOTO_SIDE or height < MIN_PHOTO_SIDE:
@@ -86,9 +101,14 @@ def _category_reason(listing):
     return None
 
 
-def fix_reasons(listing):
+def _fix_checks(listing):
+    """(fix reasons, photo_unavailable)."""
     reasons = []
-    photo = _photo_reason(listing)
+    photo_unavailable = False
+    try:
+        photo = _photo_reason(listing)
+    except PhotoCheckUnavailable:
+        photo, photo_unavailable = None, True
     if photo:
         reasons.append(photo)
     if len((listing.name or "").strip()) < MIN_NAME_LENGTH:
@@ -102,7 +122,11 @@ def fix_reasons(listing):
         reasons.append(category)
     if contact_details_in(listing.name) or contact_details_in(listing.description):
         reasons.append(CONTACT_IN_TEXT)
-    return reasons
+    return reasons, photo_unavailable
+
+
+def fix_reasons(listing):
+    return _fix_checks(listing)[0]
 
 
 def _prohibited_hit(listing):
@@ -141,10 +165,12 @@ def hold_reasons(listing):
 
 
 def evaluate(listing):
-    reasons = fix_reasons(listing)
+    reasons, photo_unavailable = _fix_checks(listing)
     if reasons:
         return Verdict(FIX, reasons)
     reasons = hold_reasons(listing)
+    if photo_unavailable:
+        return Verdict(HOLD, [PHOTO_CHECK_UNAVAILABLE, *reasons])
     if reasons:
         return Verdict(HOLD, reasons)
     return Verdict(PASS, [])

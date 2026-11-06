@@ -94,10 +94,31 @@ class BlockerTests(TestCase):
         )
 
     def test_every_code_has_an_owner_facing_message(self):
-        codes = {"email_missing", "email_unconfirmed", "no_pin", "no_business_kind", "terms_missing"}
+        codes = {"email_missing", "email_unconfirmed", "no_pin", "no_business_kind", "terms_missing", "kyc_rejected"}
         self.assertEqual(set(golive.MESSAGES), codes)
         for message in golive.MESSAGES.values():
             self.assertNotIn("KYC", message)
+
+    def test_a_kyc_rejected_owner_is_not_live_even_with_every_fact_in_place(self):
+        owner, _ = make_owner(kyc_status=BusinessOwner.REJECTED)
+        self.assertEqual(golive.blockers(fresh(owner)), ["kyc_rejected"])
+        self.assertFalse(golive.is_live(fresh(owner)))
+
+    def test_kyc_rejected_comes_after_the_other_blockers(self):
+        owner, _ = make_owner(email=None, pin=False, kind=None, terms=False, kyc_status=BusinessOwner.REJECTED)
+        self.assertEqual(
+            golive.blockers(fresh(owner)),
+            ["email_missing", "no_pin", "no_business_kind", "terms_missing", "kyc_rejected"],
+        )
+
+    def test_a_pending_kyc_owner_is_unaffected(self):
+        owner, _ = make_owner(kyc_status=BusinessOwner.PENDING)
+        self.assertEqual(golive.blockers(fresh(owner)), [])
+
+    def test_the_kyc_rejected_message_tells_the_owner_what_to_do(self):
+        self.assertEqual(
+            golive.MESSAGES["kyc_rejected"], "Your application needs changes. Open your profile to see what to fix.",
+        )
 
     def test_kyc_verified_owner_is_live_with_no_email(self):
         owner, _ = make_owner(email=None, confirmed=False, pin=False, kind=None, terms=False,
@@ -132,6 +153,14 @@ class MePayloadTests(TestCase):
                 {"code": "email_unconfirmed", "message": golive.MESSAGES["email_unconfirmed"]},
                 {"code": "no_pin", "message": golive.MESSAGES["no_pin"]},
             ],
+        )
+
+    def test_me_exposes_the_kyc_rejected_blocker(self):
+        owner, _ = make_owner(kyc_status=BusinessOwner.REJECTED)
+        body = self.get_me(owner)
+        self.assertEqual(
+            body["go_live"],
+            {"live": False, "blockers": [{"code": "kyc_rejected", "message": golive.MESSAGES["kyc_rejected"]}]},
         )
 
     def test_me_for_a_live_business(self):

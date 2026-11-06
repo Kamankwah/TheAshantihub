@@ -177,13 +177,13 @@ def _apply_fix(owner, fix, source, now, row=None, request=None):
     row.lat, row.lng, row.accuracy_m = fix["lat"], fix["lng"], fix["accuracy_m"]
     row.captured_at = row.used_at = now  # a link is used up by its capture; an owner_app row is done at once
     row.save()
+    if previous is None or distance_m(previous[0], previous[1], profile.lat, profile.lng) > SAME_PIN_M:
+        flag_close_pins(owner, profile)  # only a pin that moved; a re-share of the same spot is not news. Before record().
     record(
         owner, "address-location-captured", target=owner, summary="The owner shared the shop's location",
         after={"accuracy_m": fix["accuracy_m"], "source": source, **({"manual": True} if manual else {})},
         request=request,
     )
-    if previous is None or distance_m(previous[0], previous[1], profile.lat, profile.lng) > SAME_PIN_M:
-        flag_close_pins(owner, profile)  # only a pin that moved; a re-share of the same spot is not news
     return row
 
 

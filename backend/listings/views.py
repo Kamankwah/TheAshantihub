@@ -1117,7 +1117,13 @@ class ModerationApproveView(APIView):
                 return Response({"detail": "Only a listing waiting for review can be approved."}, status=400)
             codes = golive.blockers(listing.business_owner)
             if codes:
-                return Response({"detail": golive.MESSAGES[codes[0]], "code": "not_live"}, status=400)
+                return Response(
+                    {
+                        "detail": golive.staff_message(codes), "code": "not_live",
+                        "blockers": [{"code": code, "message": golive.MESSAGES[code]} for code in codes],
+                    },
+                    status=400,
+                )
             if media.waiting_for_video(listing):
                 return Response({"detail": "Wait for the video to finish converting before approving."}, status=400)
             listing.status = Listing.PUBLISHED
@@ -1174,16 +1180,19 @@ class ModerationReReviewView(APIView):
         return [HasRolePermission("listings.moderate")]
 
     def post(self, request, pk):
-        listing = generics.get_object_or_404(Listing, pk=pk)
-        if listing.status != Listing.REJECTED:
-            return Response(
-                {"detail": "Only a rejected listing can be sent back for re-review."}, status=400
-            )
-        listing.status = Listing.PENDING_REVIEW
-        listing.rejection_reason = None
-        listing.reviewed_by = None
-        listing.reviewed_at = None
-        listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+        # Read, check and write under one row lock (as ModerationApproveView does): a listing auto-published or
+        # decided in between is never pulled back to pending by this stale copy.
+        with db_transaction.atomic():
+            listing = generics.get_object_or_404(Listing.objects.select_for_update(of=("self",)), pk=pk)
+            if listing.status != Listing.REJECTED:
+                return Response(
+                    {"detail": "Only a rejected listing can be sent back for re-review."}, status=400
+                )
+            listing.status = Listing.PENDING_REVIEW
+            listing.rejection_reason = None
+            listing.reviewed_by = None
+            listing.reviewed_at = None
+            listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
         notify_staff_role(
             "listings.moderate", "listing_needs_moderation", "Listing re-opened for review",
             body=f"“{listing.name}” has been re-opened and needs moderation again.",
