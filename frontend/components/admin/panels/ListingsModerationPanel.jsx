@@ -82,6 +82,9 @@ export default function ListingsModerationPanel({ auth }) {
             <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{l.category?.label} • {l.zone?.name} • GHS {l.price_amount} • {l.contact_phone}</div>
             {(l.specs || []).length > 0 && <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{l.specs.map((x) => `${x.label}: ${x.value}`).join(" · ")}</div>}
             {state === "pending" && <ListingChips listing={l} />}
+            {state === "pending" && Array.isArray(l.hold_reasons) && l.hold_reasons.map((r, i) => (
+              <div key={r?.code || i} style={{ color: D.amber, fontSize: "0.7rem", fontWeight: 700, marginTop: 4 }}>{`Held: ${r?.message}`}</div>
+            ))}
             {state === "approved" && <ApprovedByLine name={l.reviewed_by_name} at={l.reviewed_at} verb="Published" />}
             {state === "rejected" && <RejectedReason reason={l.rejection_reason} />}
           </div>

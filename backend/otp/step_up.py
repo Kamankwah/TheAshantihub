@@ -5,7 +5,8 @@ transaction.atomic() block that makes the change: the token is spent only if the
 refused by validation leaves it usable for the retry.
 
 While settings.OTP_STEP_UP_ENFORCED is off, require() does nothing; force=True asks for it anyway: the authenticator
-settings, and - while LEDGER_ENABLED is on - adding a customer recovery contact and the wallet actions (withdrawal,
+settings, and - while LEDGER_ENABLED is on - adding a customer recovery contact, a business owner adding or correcting their
+own email (accounts.views_email_confirmation, contact_change) and the wallet actions (withdrawal,
 payout_destination, contact_change, and a business's detail_change request), so a code can be sent for those whatever the OTP switches say. Only customers,
 business owners and third-party riders (withdrawal and payout_destination) can get a token (otp.views_step_up); other
 staff use sudo. A rider's wrong wallet codes count toward the 15-minute account lock, which also blocks texted sign-in

@@ -100,6 +100,15 @@ export function saveShopLocation(input: { lat: number; lng: number; accuracy_m?:
 /** Ask the server to email the owner a fresh confirmation link (it refuses past five a day). */
 export const resendEmailConfirmation = () => api("/api/accounts/business-owners/me/email-confirmation/", { body: {} });
 
+/**
+ * Add or correct the owner's email (only while it is missing or unconfirmed) and mail a link to it. It needs the
+ * owner's current password and, when the server asks (403 step_up_required, action contact_change), the one-time
+ * step-up token. The server answers `{ email, sent }`; it refuses a confirmed email (403 email_confirmed), a wrong
+ * password (400 wrong_password) and past five links a day (429, address saved).
+ */
+export const setOwnerEmail = (email: string, password: string, stepUpToken?: string) =>
+  api<{ email: string; sent: boolean; side_effects?: { signed_out_phone?: boolean; payout_cooling?: boolean } }>("/api/accounts/business-owners/me/email/", { body: { email, password }, ...(stepUpToken ? { headers: { "X-Step-Up-Token": stepUpToken } } : {}) });
+
 export const acceptTerms = () => api("/api/accounts/business-owners/me/terms/", { body: {} });
 
 export async function signInAndResume(result: AuthResult) {

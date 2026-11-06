@@ -135,6 +135,7 @@ class ListingRevisionTests(TestCase):
         read_only = {
             "id", "variants", "has_variants", "pending_revision", "photos", "videos", "main_photo", "status", "rejection_reason",
             "dropped_at", "discontinued_at", "created_at", "updated_at", "sale_ends_at",
+            "hold_notice", "fix_reasons",
         }
         self.assertEqual(revisions.REVISABLE_FIELDS, fields - read_only - revisions.LIVE_FIELDS)
 

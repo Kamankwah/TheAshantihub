@@ -127,6 +127,7 @@ urlpatterns = [
         "business-owners/me/email-confirmation/", views_email_confirmation.SendEmailConfirmationView.as_view(),
         name="email-confirmation-send",
     ),
+    path("business-owners/me/email/", views_email_confirmation.OwnerEmailView.as_view(), name="business-owner-email"),
     path(
         "email-confirmation/confirm/", views_email_confirmation.ConfirmEmailView.as_view(),
         name="email-confirmation-confirm",

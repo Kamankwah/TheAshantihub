@@ -129,6 +129,18 @@ describe('Listings moderation (Operations canvas)', () => {
     expect(screen.getAllByText('Condition: new')).toHaveLength(4)
   })
 
+  it('shows why a listing is held, one line per reason, and nothing when there are none', async () => {
+    serve([
+      listing({ hold_reasons: [{ code: 'prohibited_term', message: 'The text has a word on the watch list: "cure".' }, { code: 'daily_limit', message: 'This is more than 5 new listings today.' }] }),
+      listing({ id: 2, name: 'Ankara fabric', business_owner_name: 'Adwoa Fabrics', hold_reasons: [] }),
+      listing({ id: 3, name: 'Sandals', business_owner_name: 'Kumasi Leather Works' }),
+    ])
+    wrap(<ListingsModerationPanel />)
+    expect(await screen.findByText('Held: The text has a word on the watch list: "cure".')).toBeInTheDocument()
+    expect(screen.getByText('Held: This is more than 5 new listings today.')).toBeInTheDocument()
+    expect(screen.getAllByText(/^Held:/)).toHaveLength(2)
+  })
+
   it('explains where scout listings go and states this week\'s decisions', async () => {
     serve([listing()])
     wrap(<ListingsModerationPanel />)

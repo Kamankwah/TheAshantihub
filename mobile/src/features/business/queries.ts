@@ -32,6 +32,10 @@ export type OwnerListing = {
   status: string;
   stock_quantity: number | null;
   rejection_reason?: string;
+  /** "We need to check this listing." while a pending listing is held; null otherwise. */
+  hold_notice?: string | null;
+  /** Plain sentences for a draft or rejected listing the last submit sent back. */
+  fix_reasons?: string[];
   photos?: { id: number }[];
   main_photo?: string | null;
 };

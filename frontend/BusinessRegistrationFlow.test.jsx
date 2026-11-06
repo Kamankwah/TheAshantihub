@@ -350,6 +350,28 @@ describe('BusinessRegistrationFlow', () => {
       expect(sentGps).toBeNull()
     })
 
+    it('shows the server message when the business-info PATCH refuses the Ghana Post address (400)', async () => {
+      server.use(http.patch('http://localhost:8000/api/accounts/business-owners/me/profile/', () =>
+        HttpResponse.json({ gps_address: ['Enter a valid Ghana Post GPS address, e.g. AK-039-5028.'] }, { status: 400 })
+      ))
+      const refreshUser = vi.fn()
+      const auth = makeAuth({
+        submitBusinessInfo: (fields) => {
+          const formData = new FormData()
+          Object.entries(fields).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') formData.append(k, v) })
+          return apiPatchForm('/api/accounts/business-owners/me/profile/', formData)
+        },
+        refreshUser,
+      })
+      renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="business_info" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+      fireEvent.change(screen.getByPlaceholderText('Business contact phone (AshantiHub support only, not shown to shoppers)'), { target: { value: '+233201112233' } })
+      fireEvent.change(screen.getByPlaceholderText('Ghana Post GPS address (e.g. AK-039-5028)'), { target: { value: 'AK-039-5028' } })
+      fireEvent.submit(screen.getByRole('button', { name: 'Continue' }).closest('form'))
+      expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid Ghana Post GPS address, e.g. AK-039-5028.')
+      expect(refreshUser).not.toHaveBeenCalled()
+      expect(screen.queryByRole('heading', { name: 'Where is your shop?' })).not.toBeInTheDocument()
+    })
+
     it('resumes at shop_location when the server says that is the next step', () => {
       renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={makeAuth()} initialStep="shop_location" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
       expect(screen.getByRole('heading', { name: 'Where is your shop?' })).toBeInTheDocument()
