@@ -1,0 +1,81 @@
+# Merge gate (review ARC-02). Make the "backend" and "dependency-audit" jobs required checks in branch protection for
+# `righteoushack`, `main` and `production`. The "frontend" test step is advisory until the two known-red Vitest files are
+# fixed (frontend track of the review); its build and typecheck steps already block.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [righteoushack, main, production]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ashantihub
+          POSTGRES_USER: ashantihub
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ashantihub" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # The project's own image (ffmpeg, pango, libmagic), so CI runs what production runs.
+      RUN: >-
+        docker run --rm --network host
+        -e DJANGO_DEBUG=True -e DJANGO_SECRET_KEY=ci-only-not-a-secret
+        -e POSTGRES_HOST=127.0.0.1 -e POSTGRES_PASSWORD=ci-only-not-a-secret
+        ah-backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the backend image
+        run: docker build -t ah-backend backend
+      - name: Django system checks
+        run: ${{ env.RUN }} python manage.py check
+      - name: No model change without a migration
+        run: ${{ env.RUN }} python manage.py makemigrations --check --dry-run
+      - name: Test suite
+        run: ${{ env.RUN }} python manage.py test --noinput --parallel 4
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: pip-audit (backend requirements)
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt --no-deps --disable-pip --progress-spinner off
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Vitest (advisory until the two known-red files are fixed)
+        run: npm run test
+        continue-on-error: true
