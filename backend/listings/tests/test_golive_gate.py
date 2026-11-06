@@ -2,7 +2,9 @@
 listings, and staff may approve them, whatever its KYC decision says. A business that is not live is refused at the
 submit door with the blockers named, and staff cannot approve its listing."""
 from decimal import Decimal
+from unittest.mock import patch
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -10,8 +12,8 @@ from rest_framework.test import APIClient
 from accounts import golive
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Role, StaffUser
-from listings.models import Category, Listing, Zone
-from listings.moderation_checks import promotion_checks
+from listings.models import Category, HeroMediaSubmission, Listing, Zone
+from listings.moderation_checks import hero_checks, promotion_checks
 from otp.models import EMAIL, VerifiedContact
 
 
@@ -109,18 +111,32 @@ class GoLiveGateTests(TestCase):
         self.as_(self.admin, "staff")
         self.assertEqual(self.client.post(f"/api/listings/moderation/{listing.pk}/approve/").status_code, 200)
 
-    def test_moderation_checks_show_live_check_not_kyc(self):
-        live = make_owner("+233241450007")
-        not_live = make_owner("+233241450008", email="kofi@example.com", confirmed=False)
-        for owner, status, detail in (
-            (live, "pass", None),
-            (not_live, "fail", golive.MESSAGES["email_unconfirmed"]),
-        ):
-            listing = self.draft(owner, status=Listing.PUBLISHED)
-            promotion = type("P", (), {"listing": listing})()
-            checks = promotion_checks(promotion)
-            self.assertNotIn("kyc", [c["key"] for c in checks])
-            check = next(c for c in checks if c["key"] == "live")
-            self.assertEqual((check["label"], check["status"]), ("Business ready to list", status))
-            if detail:
-                self.assertEqual(check["detail"], detail)
+    def test_hero_and_promotion_checks_still_carry_the_kyc_check(self):
+        # Promotions and hero slides still need the Verified (KYC) tier, so a business that is live but whose KYC is
+        # pending must read FAIL on "Business verified (KYC)" there; going live does not change that display.
+        owner = make_owner("+233241450007")
+        self.assertTrue(golive.is_live(owner))
+        self.assertEqual(owner.kyc_status, BusinessOwner.PENDING)
+        listing = self.draft(owner, status=Listing.PUBLISHED)
+        submission = HeroMediaSubmission.objects.create(
+            business_owner=owner, listing=listing, title="Lodge", caption="Lovely rooms",
+            media=SimpleUploadedFile("hero.jpg", b"x", content_type="image/jpeg"),
+        )
+        promotion = type("P", (), {"listing": listing})()
+        for checks in (hero_checks(submission), promotion_checks(promotion)):
+            keys = [c["key"] for c in checks]
+            self.assertIn("kyc", keys)
+            self.assertNotIn("live", keys)
+            kyc = next(c for c in checks if c["key"] == "kyc")
+            self.assertEqual((kyc["label"], kyc["status"]), ("Business verified (KYC)", "fail"))
+
+    def test_submit_and_approve_do_not_read_the_kyc_check(self):
+        # The doors go by golive alone: a live owner with KYC rejected-or-pending passes both; the KYC check
+        # (a display only) is never consulted.
+        owner = make_owner("+233241450008")
+        with patch("listings.moderation_checks._kyc_check", side_effect=AssertionError("read the KYC check")):
+            listing = self.draft(owner)
+            self.assertEqual(self.submit(owner, listing).status_code, 200)
+            self.as_(self.admin, "staff")
+            response = self.client.post(f"/api/listings/moderation/{listing.pk}/approve/")
+            self.assertEqual(response.status_code, 200, response.content)

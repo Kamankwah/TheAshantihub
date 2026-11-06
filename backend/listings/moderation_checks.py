@@ -68,13 +68,10 @@ def _photo_check(submission):
     return _check("photo", "Photo is from this listing", WARN, f"No photo on “{listing.name}” matches this file.")
 
 
-def _live_check(owner):
-    from accounts import golive
-
-    codes = golive.blockers(owner)
-    if not codes:
-        return _check("live", "Business ready to list", PASS, "Email confirmed and shop location shared.")
-    return _check("live", "Business ready to list", FAIL, golive.MESSAGES[codes[0]])
+def _kyc_check(owner):
+    if owner.kyc_status == owner.VERIFIED:
+        return _check("kyc", "Business verified (KYC)", PASS, "Identity checks are complete.")
+    return _check("kyc", "Business verified (KYC)", FAIL, f"KYC is {owner.kyc_status}.")
 
 
 def _subscription_check(owner):
@@ -112,7 +109,7 @@ def hero_checks(submission):
     now = timezone.now()
     caption = submission.caption or ""
     dated = submission.starts_at is not None  # a slide with its own dates (free slider)
-    checks = [_live_check(owner)]
+    checks = [_kyc_check(owner)]
     if not dated:  # dated slides are free: no photo-match, subscription or slot checks
         checks.insert(0, _photo_check(submission))
         checks.extend(_subscription_checks(owner))
@@ -161,7 +158,7 @@ def promotion_checks(promotion):
     owner = listing.business_owner
     live = listing.status == Listing.PUBLISHED and not owner.is_suspended
     return [
-        _live_check(owner),
+        _kyc_check(owner),
         *_subscription_checks(owner),
         _check(
             "listing_live", "Listing live",
