@@ -99,6 +99,16 @@ class BlockerTests(TestCase):
         for message in golive.MESSAGES.values():
             self.assertNotIn("KYC", message)
 
+    def test_every_code_has_a_staff_reason_too(self):
+        codes = {"email_missing", "email_unconfirmed", "no_pin", "no_business_kind", "terms_missing", "kyc_rejected"}
+        self.assertEqual(set(golive.STAFF_REASONS), codes)
+        self.assertEqual(set(golive.MESSAGES), set(golive.STAFF_REASONS))
+
+    def test_staff_message_never_raises_on_an_unknown_code(self):
+        self.assertEqual(
+            golive.staff_message(["no_pin", "brand_new"]), "This business is not live yet: no shop pin; brand_new.",
+        )
+
     def test_a_kyc_rejected_owner_is_not_live_even_with_every_fact_in_place(self):
         owner, _ = make_owner(kyc_status=BusinessOwner.REJECTED)
         self.assertEqual(golive.blockers(fresh(owner)), ["kyc_rejected"])

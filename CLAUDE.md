@@ -83,7 +83,8 @@ delivery** (Ashanti codes only); store pickup needs neither.
 Self-serve Phase 2 leaves that delivery rule **unchanged**; relaxing it to "pin or code" is Phase 4.
 
 **Businesses go live without a staff KYC decision (self-serve Phase 2).** A business may submit listings once its email is
-confirmed and it has shared a shop pin (plus business type and accepted terms); `kyc_status` no longer gates listing, and
+confirmed and it has shared a shop pin (plus business type and accepted terms); `kyc_status` no longer gates listing (except that a
+*rejected* application is never live until the owner fixes it; verified and company owners stay live), and
 identity (Ghana Card) is collected at payout. So a self-registered owner needs an email: it is required on web and mobile
 sign-up. See `backend/CLAUDE.md` for the rule and its switches.
 

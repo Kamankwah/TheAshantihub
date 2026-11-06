@@ -143,6 +143,26 @@ describe("business home", () => {
     expect(screen.queryByText("Verification in progress")).toBeNull();
   });
 
+  const pillCases: [string, Record<string, unknown>, string][] = [
+    ["verified", { kyc_status: "verified", go_live: { live: true, blockers: [] } }, "Verified"],
+    ["live_but_not_verified", { kyc_status: "pending", go_live: { live: true, blockers: [] } }, "Live"],
+    ["finishing_setup", { kyc_status: "pending", go_live: { live: false, blockers: [{ code: "no_pin", message: "Share your shop location." }] } }, "Finish setup"],
+    ["rejected", { kyc_status: "rejected", go_live: { live: false, blockers: [{ code: "kyc_rejected", message: "Fix it." }] } }, "Needs changes"],
+  ];
+  it.each(pillCases)("status_pill_matches_the_web_chip_%s", async (_name, over, label) => {
+    server({
+      "/api/accounts/me/": me({ identity_status: "not_submitted", ...over }),
+      "/api/orders/owner/": { results: [], next: null },
+      "/api/accounts/business/hours/": { has_hours: true, days: [] },
+      "/api/catalogue/stock/": stock(),
+    });
+    await render(client(<BusinessHome />));
+    await screen.findByText(/Akwaaba, Kwame/);
+    expect(screen.getByText(label)).toBeTruthy();
+    expect(screen.queryByText("Verification in progress")).toBeNull();
+    expect(screen.queryByText("Verification needs attention")).toBeNull();
+  });
+
   it("a_rejected_owner_gets_no_email_banner_or_checklist_just_the_servers_sentence_and_a_way_to_fix_it", async () => {
     server({
       "/api/accounts/me/": me({ kyc_status: "rejected", identity_status: "not_submitted", go_live: { live: false, blockers: [{ code: "email_unconfirmed", message: "Confirm your email." }, { code: "kyc_rejected", message: "Your application needs changes. Open your profile to see what to fix." }] } }),

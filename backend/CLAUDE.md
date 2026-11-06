@@ -242,6 +242,13 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   door (403 `not_live`) and the staff approve (400 `not_live`) read it; `me` carries `go_live`. The `kyc_status` readers that
   are not the listing doors (promo waivers, flash sales, offers, staff-made drafts, insights, the hero/promotion check lists)
   were deliberately left alone, and `identity_status` still gates payouts; do not move them onto `golive`.
+  `blockers` also includes `kyc_rejected` (last): a rejected owner is never live until they edit the profile and it goes back to
+  pending, while a verified or company owner is live regardless. The business-owner register serializer requires an email
+  (the go-live rule needs one and the confirmation link goes out at sign-up), and its duplicate-email refusal says "A business
+  owner with this email already exists." The Ghana Post code is optional on the server (blank is stored null). A staff approve
+  refused for `not_live` returns staff wording (`golive.staff_message`, which falls back to the owner sentence or the bare code
+  for a blocker with no staff phrase) plus `blockers`. A photo-storage failure in the auto-publish photo check holds the listing
+  for staff instead of refusing it.
   The self-registered step chain is `business_info` -> `shop_location` -> plan/type -> `terms`; `payment_info` is no longer in it
   (the scout chain still has it).
 - **Email confirmation (`accounts/email_confirmation.py`)** is a bearer link made like the shop-location one: only the SHA-256 hash

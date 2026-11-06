@@ -350,7 +350,11 @@ class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):
         error_messages={
             "required": EMAIL_REQUIRED, "blank": EMAIL_REQUIRED, "null": EMAIL_REQUIRED,
         },
-        validators=[UniqueValidator(queryset=BusinessOwner.objects.all())],
+        validators=[
+            UniqueValidator(
+                queryset=BusinessOwner.objects.all(), message="A business owner with this email already exists.",
+            )
+        ],
     )
     kyc_status = serializers.CharField(read_only=True)
     marketing_consent = serializers.JSONField(write_only=True, required=False)

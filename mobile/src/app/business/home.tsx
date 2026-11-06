@@ -14,11 +14,12 @@ import { Pill } from "../../ui/Pill";
 import { Screen } from "../../ui/Screen";
 import { VerifiedBadge } from "../../ui/VerifiedBadge";
 
-/** The server's go-live rule decides whether the shop can list; the pill only echoes it (staff review is separate). */
+/** Same words as the web profile chip. The server's go-live rule decides whether the shop can list; staff review is separate. */
 function StatusPill({ kyc, live }: { kyc?: string; live?: boolean }) {
-  if (kyc === "rejected") return <Pill tone="error" icon="alert-circle" label="Verification needs attention" />;
+  if (kyc === "verified") return <Pill tone="success" icon="check-circle" label="Verified" />;
+  if (kyc === "rejected") return <Pill tone="error" icon="alert-circle" label="Needs changes" />;
   if (live) return <Pill tone="success" icon="check-circle" label="Live" />;
-  return <Pill tone="warn" icon="clock" label={kyc === "verified" ? "Finish setup" : "Verification in progress"} />;
+  return <Pill tone="warn" icon="clock" label="Finish setup" />;
 }
 
 /**

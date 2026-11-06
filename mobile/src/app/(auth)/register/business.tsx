@@ -113,7 +113,7 @@ export default function BusinessInfo() {
       <Field label="Ghana Post GPS address" value={gps} onChangeText={setGps} autoCapitalize="characters" placeholder="AK-039-5028" helper="Optional. We use your shop pin." error={errors.gps} />
       <Field label="Business contact phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" />
       {errors.form ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 13 }}>{errors.form}</Text> : null}
-      <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>Our team verifies every business before it goes live.</Text>
+      <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>Confirm your email and share your shop pin to start listing. Verification later earns you the Verified mark.</Text>
       <Button label="Continue" onPress={submit} loading={busy} />
     </Screen>
   );

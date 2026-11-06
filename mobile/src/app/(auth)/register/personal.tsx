@@ -71,7 +71,7 @@ export default function Personal() {
       <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" error={errors.email || undefined} />
       <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete="password-new" textContentType="newPassword" helper="At least 8 characters." error={errors.password || undefined} />
       {errors.form ? <Text accessibilityRole="alert" style={{ color: c.red, fontFamily: fonts.bodySemi, fontSize: 13 }}>{errors.form}</Text> : null}
-      <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>Our team verifies every business before it goes live.</Text>
+      <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 13 }}>Confirm your email and share your shop pin to start listing. Verification later earns you the Verified mark.</Text>
       <Button label="Continue" onPress={submit} loading={busy} disabled={!first || !phone || !password} />
     </Screen>
   );

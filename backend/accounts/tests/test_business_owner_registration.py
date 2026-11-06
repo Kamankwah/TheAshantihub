@@ -93,3 +93,9 @@ class BusinessOwnerRegistrationEmailTests(TestCase):
     def test_a_valid_email_registers(self):
         self.assertEqual(self.register().status_code, 201)
         self.assertEqual(BusinessOwner.objects.get(login_phone="+233245551133").email, "abena2@example.com")
+
+    def test_a_duplicate_email_gets_the_friendly_message(self):
+        self.assertEqual(self.register().status_code, 201)
+        response = self.register(login_phone="+233245551144")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["email"], ["A business owner with this email already exists."])

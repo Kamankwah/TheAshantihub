@@ -38,7 +38,9 @@ STAFF_REASONS = {
 
 def staff_message(codes):
     """The sentence staff see when an approval is refused because the business is not live."""
-    return "This business is not live yet: " + "; ".join(STAFF_REASONS[code] for code in codes) + "."
+    # A blocker added without a staff phrase falls back to the owner's sentence, then the bare code, never a KeyError.
+    reasons = [STAFF_REASONS.get(code) or MESSAGES.get(code) or code for code in codes]
+    return "This business is not live yet: " + "; ".join(reasons) + "."
 
 
 def blockers(owner):

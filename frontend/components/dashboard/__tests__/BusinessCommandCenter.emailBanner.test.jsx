@@ -66,6 +66,12 @@ describe('BusinessCommandCenter go-live gate', () => {
     expect(await screen.findByRole('button', { name: /Products/ })).toBeDisabled()
   })
 
+  it('never shows an empty checklist when the go-live data is missing', async () => {
+    renderDashboard(undefined, 'pending')
+    expect(await screen.findByText("We couldn't load your setup steps. Refresh the page.")).toBeInTheDocument()
+    expect(screen.queryByText('To start listing, finish these:')).not.toBeInTheDocument()
+  })
+
   it('keeps the needs-changes presentation for a rejected application', async () => {
     renderDashboard({ live: false, blockers: [REJECTED] }, 'rejected')
     expect(await screen.findByText('Your application needs changes')).toBeInTheDocument()

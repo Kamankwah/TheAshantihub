@@ -239,13 +239,19 @@ Differences from the spec:
 - The registration `payment_info` step is dropped from the self-registered chain only; the scout-registered chain keeps it.
 - Auto-publish is a subset of section 6 (above), not the Phase 3 engine.
 
+Closed since: the web `AuthModal` phone-only gap. The web `AuthModal` and the server both require an email for a business owner now, so no
+new owner is created without one.
+
 Known gaps:
-- A phone-only business owner (created through the web `AuthModal`, `frontend/App.jsx`, which still allows a business owner without an email)
-  sees `email_missing` and has no in-app way to add an email; they need staff help or a later "add email" endpoint. Owners registered
-  phone-only before this change are in the same position.
+- Legacy phone-only owners (created before this change) have no self-serve way to add an email: the only route is the scout-verified
+  detail-change path on web, and mobile has no screen for it. The mobile banner for `email_missing` therefore points to a web-only screen.
 - Staff screens show a wrong-location-hidden listing as hidden without saying why.
 - Nothing tells the owner when the 7 days elapse, and owners already marked wrong before the switch is turned on get no warning (the dry run is
   the mitigation).
+- M2 hold reasons are not stored: a held listing's reasons (prohibited word, daily limit, photo check unavailable) are computed at submit and
+  shown nowhere afterwards. Store them before `LISTING_AUTO_PUBLISH_ENABLED` is turned on.
+- The photo check's exception list (which read failures count as an unreadable image and which as a storage failure) is a judgement call and
+  should be revisited with real storage failures before the switch is turned on.
 - Device checks owed: marker drag inside the mobile `ScrollView`, the Android Google Maps key, and a real inbox for the confirmation email.
 - Backend, web and mobile must ship together: a pinless self-registered owner on a client without the `shop_location` step would be stuck.
 - Delivery is unchanged: "pin or code" for customers is Phase 4.

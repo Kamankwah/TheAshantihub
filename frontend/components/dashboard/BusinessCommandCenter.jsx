@@ -253,15 +253,22 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                   </>
                 ) : (
                   <>
-                    <div style={{ fontWeight: 900, color: D.text, fontSize: "1.05rem", marginBottom: 12 }}>To start listing, finish these:</div>
-                    <ul style={{ listStyle: "none", margin: "0 auto", padding: 0, maxWidth: 460, textAlign: "left", display: "flex", flexDirection: "column", gap: 8 }}>
-                      {blockers.map((b, i) => (
-                        <li key={b?.code || i} style={{ color: D.textDim, fontSize: "0.85rem", lineHeight: 1.5, display: "flex", gap: 8 }}>
-                          <span aria-hidden="true" style={{ color: D.amber, fontWeight: 900 }}>•</span>
-                          <span>{typeof b === "string" ? b : b?.message}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    {blockers.length === 0 ? (
+                      // goLive missing (a failed /me merge or an older server): say so rather than show an empty checklist.
+                      <div style={{ color: D.textDim, fontSize: "0.9rem", lineHeight: 1.6 }}>We couldn't load your setup steps. Refresh the page.</div>
+                    ) : (
+                      <>
+                        <div style={{ fontWeight: 900, color: D.text, fontSize: "1.05rem", marginBottom: 12 }}>To start listing, finish these:</div>
+                        <ul style={{ listStyle: "none", margin: "0 auto", padding: 0, maxWidth: 460, textAlign: "left", display: "flex", flexDirection: "column", gap: 8 }}>
+                          {blockers.map((b, i) => (
+                            <li key={b?.code || i} style={{ color: D.textDim, fontSize: "0.85rem", lineHeight: 1.5, display: "flex", gap: 8 }}>
+                              <span aria-hidden="true" style={{ color: D.amber, fontWeight: 900 }}>•</span>
+                              <span>{typeof b === "string" ? b : b?.message}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
                     <div style={{ color: D.textDim, fontSize: "0.82rem", lineHeight: 1.6, marginTop: 14 }}>You can also add your Ghana Card for the verified check mark under Profile &amp; Settings → Get verified.</div>
                   </>
                 )}
