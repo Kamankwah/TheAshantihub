@@ -279,3 +279,20 @@ ads are Marketing's). Never hardcode `/api/listings/mine` in a panel.
   stored only on a tap; detection (`useDeliveryPlace`) only suggests: it asks the browser for the location once per session on arrival
   (the browser's own prompt; a blocked site is never asked) and again from "Use my current location". Door-to-door delivery is Ashanti only (`lib/deliveryPlace.js` `deliveryNote`); never add a delivery time or fee
   there. Reverse geocoding is `reverseGeocodePlace` (Nominatim, a suggestion).
+
+## Resilience and safety conventions (principal review FE track)
+
+- **Every lazy page sits in a `PageBoundary`** (`ErrorBoundary` + `Suspense`, defined in `App.jsx`), and the whole app sits in
+  `<ErrorBoundary fullPage>`. A render error shows "Something went wrong / Try again", never a white page. New `React.lazy`
+  imports use `lazyWithRetry` (`lib/lazyWithRetry.js`, aliased as `lazy` in `App.jsx`): one retry, then a single guarded reload
+  (30 s window, `sessionStorage` `ah_chunk_reload`) when a deploy has replaced the chunk. Do not add a bare `<Suspense>` around a page.
+- **Never assign `window.location` from an API value.** Hosted-checkout redirects go through `goToCheckout(url)` (`lib/safeRedirect.js`):
+  https `hubtel.com` hosts or same-origin only, otherwise it throws `UntrustedCheckoutUrlError` into the caller's existing `catch`.
+  Pass `"assign"` as the second argument where the call site used `location.assign`.
+- **`createQueryClient()` (`lib/queryClient.js`) owns the Query defaults**: 30 s `staleTime`, no retry on 4xx, mutations never retried.
+  A write must invalidate its keys explicitly (it already does by convention). `apiFetch(path, { signal })` takes the AbortSignal
+  React Query passes a `queryFn`; hooks adopt it one at a time.
+- **Map marker icons come from `lib/leafletIcons.js`** (bundled), never from a CDN.
+- **Security headers live in `infra/hestia/templates/ashantihub-spa.stpl` and `vercel.json`**; the CSP is *Report-Only* until the
+  console is clean. `__tests__/securityHeaders.test.js` keeps the copies identical and the inline-script hash current: editing the
+  inline script in `index.html` means updating the hash in both files.

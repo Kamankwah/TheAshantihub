@@ -625,3 +625,15 @@ yet.
   to that mailbox.
 - **Backups are on the same disk as the database.** A disk failure loses
   both. They should be copied to Hetzner Object Storage or a Storage Box.
+
+## Browser security headers (review FE-03)
+
+`ashantihub-spa.stpl` sends `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`
+(camera and geolocation for this origin only) and a **`Content-Security-Policy-Report-Only`**. nginx drops inherited
+`add_header` lines inside any location that sets its own, so the block is repeated in every location; keep the copies identical
+(`frontend/__tests__/securityHeaders.test.js` checks it). HSTS still comes from Hestia's `nginx.hsts.conf`.
+
+Rolling out: the new template reaches the server through the normal production deploy (`install-hestia-templates.sh` runs when the
+templates tree changed). Browse staging with the console open and note every CSP violation; once none remain, rename the header to
+`Content-Security-Policy` in both files and tighten `connect-src` from `https: wss:` to the API and realtime origins.
+Never add a `^~ /.well-known/` location to this file.
