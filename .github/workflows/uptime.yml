@@ -1,0 +1,38 @@
+# External uptime probe (review ARC-03). Runs on GitHub's machines, so it still works when the app server is down.
+# A failed run emails the repo's notification recipients; set the repository secret ALERT_WEBHOOK_URL (Slack / Discord /
+# ntfy) to be told there as well. GitHub only runs schedules from the default branch, and may delay them a few minutes.
+name: Uptime
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { name: production, url: "https://api.theashantihub.com/api/readyz/" }
+          - { name: staging, url: "https://api-test.theashantihub.com/api/readyz/" }
+    steps:
+      - name: ${{ matrix.target.name }} readiness (3 tries, 20 s apart)
+        env:
+          URL: ${{ matrix.target.url }}
+          NAME: ${{ matrix.target.name }}
+          WEBHOOK: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          if curl -fsS --max-time 10 --retry 2 --retry-delay 20 --retry-all-errors -o /dev/null "$URL"; then
+            echo "$NAME ready"; exit 0
+          fi
+          echo "::error::$NAME readiness failed: $URL"
+          if [ -n "$WEBHOOK" ]; then
+            curl -fsS --max-time 10 -H 'Content-Type: application/json' \
+              -d "{\"text\":\"AshantiHub $NAME is DOWN (readiness failing): $URL\"}" "$WEBHOOK" || true
+          fi
+          exit 1

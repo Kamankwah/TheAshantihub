@@ -462,10 +462,11 @@ after this change re-creates Redis (jobs queued at that instant are lost - deplo
 - `GET /api/health/` is **liveness**: the process answers (Docker's healthcheck uses it). `GET /api/readyz/` is **readiness**:
   200 only when the database answers, else 503 (Redis is reported but not required). `deploy.sh` waits on `readyz`, so a
   deploy whose database is unreachable fails instead of reporting success.
-- `infra/scripts/uptime_probe.sh` is the external probe. Run it from a machine that is not the app server, every minute,
-  with `ALERT_WEBHOOK_URL` set; it alerts on the second consecutive failure and on recovery. **It is not installed
-  anywhere yet** - an uptime service of the owner's choice (or this script on a second host) must be set up; until then
-  nobody is told when the API is down.
+- External probe: `.github/workflows/uptime.yml` checks `/api/readyz/` for production and staging every 5 minutes from
+  GitHub's machines (3 tries, 20 s apart); a failed run emails the repo's notification recipients, and the repository
+  secret `ALERT_WEBHOOK_URL` (Slack / Discord / ntfy) adds a chat alert. GitHub runs schedules only from the default
+  branch, so it starts once this is merged to `main`. `infra/scripts/uptime_probe.sh` is the same check as a cron job
+  for a second host (it also alerts on recovery).
 
 ## Error reporting
 

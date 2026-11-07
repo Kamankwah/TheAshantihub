@@ -7,18 +7,26 @@ and an exception would roll back work that a refusal must keep (the refreshed pr
 The order in which the view calls them, and the lock order inside ``reserve_stock`` (listings by pk, then variants by pk),
 are part of the contract - see backend/CLAUDE.md."""
 from dataclasses import dataclass
+from decimal import Decimal
+from typing import Any
 
+from django.conf import settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from accounts.gps import validate_ashanti_gps
 from accounts.models import BusinessOwner
+from cart import guard as cart_guard
 from listings import variants as variants_module
 from listings.models import Listing, ListingVariant
 from listings.visibility import hidden_business_q
+from marketing import checkout as promo_checkout
+from marketing import code_guard, promos, waivers
 
-from .models import Order
+from . import hold
+from .models import Order, OrderItem
 
 
 def _refuse(body, code=status.HTTP_400_BAD_REQUEST):
@@ -166,3 +174,113 @@ def reserve_stock(items):
     for listing in touched.values():
         variants_module.sync_listing(listing)
     return reservations, None
+
+
+@dataclass
+class Route:
+    """The door-to-door route plan and the delivery fee quoted for it (both ``None`` for store pickup / fees off)."""
+
+    plan: Any = None
+    quoted: Any = None  # (rate card, fee breakdown) from delivery.rates.checkout_fee
+
+
+def plan_route(items, data, delivery_method):
+    """Door-to-door only: the service-area and pin checks, the pickup route and the delivery fee: ``(Route, None)`` or
+    ``(None, refusal)``. The route and fee may call the road-routing service (a network round trip), so the view runs this
+    before the transaction opens: it needs no row lock and must not hold a database transaction open while it waits."""
+    if delivery_method != Order.DOOR_TO_DOOR:
+        return Route(), None
+    from delivery.rates import PIN_REQUIRED_MESSAGE, checkout_fee, pin_required
+    from delivery.stops import plan_with_distances
+    from routing import region
+
+    lat, lng = data.get("delivery_lat"), data.get("delivery_lng")
+    if lat not in (None, "") and lng not in (None, "") and not region.in_service_area(lat, lng):
+        return None, _refuse({"detail": region.OUT_OF_AREA_MESSAGE, "code": "out_of_area"})
+    if pin_required(lat, lng):
+        return None, _refuse({"delivery_lat": [PIN_REQUIRED_MESSAGE]})
+    plan, distances = plan_with_distances(items, lat, lng)
+    try:
+        # The food radius from the planner's own table: no second routing call (cart.guard.check_food_radius).
+        cart_guard.check_food_radius(items, distances=distances)
+    except cart_guard.GuardError as exc:
+        return None, _refuse(exc.body())
+    quoted = checkout_fee(items, lat, lng, plan=plan) if settings.DELIVERY_FEE_ENABLED else None
+    return Route(plan, quoted), None
+
+
+def price_promotions(request, items, delivery):
+    """Checkout promotions (marketing): off unless ``settings.MARKETING_PROMOS_ENABLED``; then priced before anything is
+    reserved or written, under the flash-sale and coupon row locks. Returns ``(promo, None)`` (``promo`` is ``None`` with
+    the switch off) or ``(None, refusal)``. Must be called inside ``transaction.atomic``."""
+    if not promos.enabled():
+        return None, None
+    if promo_checkout.normalise_code(request.data.get("coupon_code")) and code_guard.blocked(request):
+        return None, _refuse({"detail": code_guard.TOO_MANY}, status.HTTP_429_TOO_MANY_REQUESTS)
+    try:
+        promo = promo_checkout.price(
+            request.user, items, request.data.get("coupon_code"), lock=True,
+            delivery_phone=delivery.phone if delivery.method == Order.DOOR_TO_DOOR else "",
+        )
+    except promo_checkout.PromoError as exc:
+        code_guard.record_failure(request)
+        return None, _refuse({"detail": exc.message})
+    return promo, None
+
+
+@dataclass
+class Pricing:
+    total: Decimal
+    fee_card: Any = None
+    fee_quote: Any = None  # the breakdown stored on the order, net of any waiver
+    charged: Any = None  # the delivery fee actually charged
+    waiver: Any = None
+
+
+def price_order(items, promo, route):
+    """The order total: the cart (or the promo's total, net of any coupon) plus the delivery fee from the rate card in
+    force. The fee is fixed here, on the order; later card changes never touch it. A live free-delivery promo covering
+    every line waives the fee (the original amount stays in the breakdown); an AshantiHub-funded promo waives it only when
+    the fee fits in its budget cap, decided under the promo's row lock (a hard cap: concurrent checkouts wait)."""
+    total = promo.total if promo else sum((i.unit_price_snapshot * i.quantity for i in items), Decimal("0.00"))
+    pricing = Pricing(total)
+    if route.quoted is not None:
+        pricing.fee_card, fee_quote = route.quoted
+        pricing.waiver = waivers.covering_waiver([i.listing for i in items], timezone.now(), fee=fee_quote["total"], lock=True)
+        pricing.charged, pricing.fee_quote = waivers.apply_to_fee(pricing.waiver, fee_quote)
+        pricing.total += pricing.charged
+    return pricing
+
+
+def create_order(user, data, items, delivery, route, pricing, promo, request_id):
+    """Write the order, its lines, any fee-waiver charge and any coupon redemption. Must be called inside
+    ``transaction.atomic``, after ``reserve_stock``."""
+    door = delivery.method == Order.DOOR_TO_DOOR
+    fee_quote = pricing.fee_quote
+    order = Order.objects.create(
+        customer=user, status=Order.PENDING, total_amount=pricing.total, ready_not_before=hold.for_items(items),
+        delivery_fee=pricing.charged if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=pricing.fee_card,
+        route_plan=route.plan,
+        **(promo.order_extras() if promo else {}),
+        delivery_method=delivery.method,
+        delivery_address=delivery.address if door else "",
+        delivery_phone=delivery.phone if door else "",
+        delivery_gps_address=delivery.gps_address, delivery_landmark=delivery.landmark,
+        delivery_lat=data.get("delivery_lat") if door else None,
+        delivery_lng=data.get("delivery_lng") if door else None,
+        request_id=request_id,
+    )
+    if pricing.waiver is not None and fee_quote and fee_quote.get("waived"):
+        waivers.record_charge(order, pricing.waiver, Decimal(fee_quote["waived"]["amount"]))
+    if promo:
+        promo_checkout.create_lines(order, promo)
+        promo_checkout.record_redemption(order, promo, user)
+    else:
+        for item in items:
+            OrderItem.objects.create(
+                order=order, listing=item.listing, variant=item.variant,
+                variant_label=item.variant.label if item.variant_id else "",
+                quantity=item.quantity, unit_price=item.unit_price_snapshot,
+                line_total=item.unit_price_snapshot * item.quantity,
+            )
+    return order

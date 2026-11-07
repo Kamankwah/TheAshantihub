@@ -1,6 +1,5 @@
 import logging
 
-from django.conf import settings
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction as db_transaction
@@ -23,10 +22,6 @@ from disputes.serializers import DisputeSerializer
 from notifications.services import notify_customer
 from payments.models import CheckoutSession
 from storefront.permissions import MarketplaceOpen
-from marketing import checkout as promo_checkout
-from marketing import code_guard
-from marketing import promos
-from marketing import waivers
 from ledger import escrow, posting
 from ledger.models import Account
 from ledger.money import from_pesewas, to_pesewas
@@ -34,7 +29,10 @@ from payments.providers import get_provider
 from payments.services import process_payment, start_hubtel_checkout
 
 from . import hold, locks
-from .checkout import read_delivery, refuse_stale_prices, refuse_unavailable_listings, reserve_stock
+from .checkout import (
+    create_order, plan_route, price_order, price_promotions, read_delivery, refuse_stale_prices, refuse_unavailable_listings,
+    reserve_stock,
+)
 from .models import DeliveryAssignment, Order, OrderItem
 from .serializers import (
     DeliveryOrderSerializer,
@@ -169,37 +167,9 @@ class OrderCheckoutView(APIView):
         delivery, refusal = read_delivery(request.data)
         if refusal is not None:
             return refusal
-        delivery_address, delivery_phone = delivery.address, delivery.phone
-        delivery_gps_address, delivery_landmark = delivery.gps_address, delivery.landmark
-
-        if delivery_method == Order.DOOR_TO_DOOR:
-            from routing import region
-
-            lat, lng = request.data.get("delivery_lat"), request.data.get("delivery_lng")
-            if lat not in (None, "") and lng not in (None, "") and not region.in_service_area(lat, lng):
-                return Response({"detail": region.OUT_OF_AREA_MESSAGE, "code": "out_of_area"}, status=status.HTTP_400_BAD_REQUEST)
-            from delivery.rates import PIN_REQUIRED_MESSAGE, pin_required
-
-            if pin_required(lat, lng):
-                return Response({"delivery_lat": [PIN_REQUIRED_MESSAGE]}, status=status.HTTP_400_BAD_REQUEST)
-
-        # The pickup route and the fee may call the road-routing service (a network round trip), so both are worked out
-        # before the transaction opens: they need no row lock and must not hold a database transaction open while they wait.
-        plan = None
-        if delivery_method == Order.DOOR_TO_DOOR:
-            from delivery.stops import plan_with_distances
-
-            plan, distances = plan_with_distances(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
-            try:
-                # The food radius from the planner's own table: no second routing call (cart.guard.check_food_radius).
-                cart_guard.check_food_radius(items, distances=distances)
-            except cart_guard.GuardError as exc:
-                return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
-        quoted = None
-        if settings.DELIVERY_FEE_ENABLED and delivery_method == Order.DOOR_TO_DOOR:
-            from delivery.rates import checkout_fee
-
-            quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"), plan=plan)
+        route, refusal = plan_route(items, request.data, delivery_method)  # may call the routing service: before the transaction
+        if refusal is not None:
+            return refusal
 
         with db_transaction.atomic():
             # Lock the cart row and read it again: the cart above was read before this transaction, so a second tab, a
@@ -218,72 +188,15 @@ class OrderCheckoutView(APIView):
             refusal = refuse_stale_prices(items)  # review BE-11; nothing but the refreshed snapshots is saved by a refusal
             if refusal is not None:
                 return refusal
-            # Checkout promotions (marketing): off unless settings.MARKETING_PROMOS_ENABLED, and
-            # then priced here, before anything is reserved or written, under the flash-sale and
-            # coupon row locks. With the switch off `promo` stays None and nothing below changes.
-            promo = None
-            if promos.enabled():
-                if promo_checkout.normalise_code(request.data.get("coupon_code")) and code_guard.blocked(request):
-                    return Response({"detail": code_guard.TOO_MANY}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-                try:
-                    promo = promo_checkout.price(
-                        request.user, items, request.data.get("coupon_code"), lock=True,
-                        delivery_phone=delivery_phone if delivery_method == Order.DOOR_TO_DOOR else "",
-                    )
-                except promo_checkout.PromoError as exc:
-                    code_guard.record_failure(request)
-                    return Response({"detail": exc.message}, status=status.HTTP_400_BAD_REQUEST)
-
-            # Lock the tracked listings and check stock before creating anything (orders/checkout.py: reserve_stock).
+            promo, refusal = price_promotions(request, items, delivery)
+            if refusal is not None:
+                return refusal
             reservations, refusal = reserve_stock(items)
             if refusal is not None:
                 return refusal
-
-            total = sum(
-                (item.unit_price_snapshot * item.quantity for item in items), Decimal("0.00")
-            )
-            if promo:
-                total = promo.total  # net of any coupon
-            # Delivery fee from the rate card in force, only when switched on (settings.DELIVERY_FEE_ENABLED,
-            # default off). Fixed here, on the order; later card changes never touch it.
-            fee_card, fee_quote, charged, waiver = None, None, None, None
-            if quoted is not None:
-                fee_card, fee_quote = quoted
-                # A live free-delivery promo covering every line waives the fee (marketing.waivers);
-                # the original amount stays in the breakdown. An AshantiHub-funded promo waives it only when the fee
-                # fits in its budget cap, decided under the promo's row lock (a hard cap: concurrent checkouts wait).
-                waiver = waivers.covering_waiver([i.listing for i in items], timezone.now(), fee=fee_quote["total"], lock=True)
-                charged, fee_quote = waivers.apply_to_fee(waiver, fee_quote)
-                total += charged
-            order = Order.objects.create(
-                customer=request.user, status=Order.PENDING, total_amount=total, ready_not_before=hold.for_items(items),
-                delivery_fee=charged if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card, route_plan=plan,
-                **(promo.order_extras() if promo else {}),
-                delivery_method=delivery_method,
-                delivery_address=delivery_address if delivery_method == Order.DOOR_TO_DOOR else "",
-                delivery_phone=delivery_phone if delivery_method == Order.DOOR_TO_DOOR else "",
-                delivery_gps_address=delivery_gps_address, delivery_landmark=delivery_landmark,
-                delivery_lat=request.data.get("delivery_lat") if delivery_method == Order.DOOR_TO_DOOR else None,
-                delivery_lng=request.data.get("delivery_lng") if delivery_method == Order.DOOR_TO_DOOR else None,
-                request_id=request_id,
-            )
-            if waiver is not None and fee_quote and fee_quote.get("waived"):
-                waivers.record_charge(order, waiver, Decimal(fee_quote["waived"]["amount"]))
-            if promo:
-                promo_checkout.create_lines(order, promo)
-                promo_checkout.record_redemption(order, promo, request.user)
-            else:
-                for item in items:
-                    line_total = item.unit_price_snapshot * item.quantity
-                    OrderItem.objects.create(
-                        order=order,
-                        listing=item.listing,
-                        variant=item.variant,
-                        variant_label=item.variant.label if item.variant_id else "",
-                        quantity=item.quantity,
-                        unit_price=item.unit_price_snapshot,
-                        line_total=line_total,
-                    )
+            pricing = price_order(items, promo, route)
+            total = pricing.total
+            order = create_order(request.user, request.data, items, delivery, route, pricing, promo, request_id)
 
             # The provider's collection charge ("payment processing", spec §1 row 14) is paid on top of a MoMo payment
             # while the ledger is on; a wallet payment carries none. With the ledger off nothing is added.
