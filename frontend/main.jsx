@@ -1,12 +1,13 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import StepUpPrompt from './components/StepUpPrompt.jsx'
 import './index.css'
 import { ensureStaffHead, isStaffPathname, startStaffPwa } from './lib/staffPwa.js'
 import { applyInitialTheme } from './hooks/useTheme.js'
+import { createQueryClient } from './lib/queryClient.js'
 
 // Light/dark before the first paint (useTheme keeps it in sync afterwards).
 applyInitialTheme()
@@ -20,7 +21,7 @@ if (isStaffPathname(window.location.pathname)) {
   startStaffPwa()
 }
 
-const queryClient = new QueryClient()
+const queryClient = createQueryClient()
 
 // BrowserRouter wraps App so AshantiHub (App.jsx's default export) can read
 // the current URL via useLocation()/useNavigate() — see

@@ -257,8 +257,10 @@ async function handleResponse(response, path, { session = true } = {}) {
   return response.json()
 }
 
-export async function apiFetch(path) {
-  const response = await send(path, () => ({ headers: authHeaders(path) }))
+// `options.signal` (optional) is the AbortSignal React Query hands a queryFn, so a query that is
+// unmounted or superseded cancels its in-flight request instead of finishing it for nobody.
+export async function apiFetch(path, options = {}) {
+  const response = await send(path, () => ({ headers: authHeaders(path), ...(options.signal ? { signal: options.signal } : {}) }))
   return handleResponse(response, path)
 }
 
