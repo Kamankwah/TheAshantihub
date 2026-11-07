@@ -257,7 +257,7 @@ const ROLE_MENUS = {
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
     ["communication", "Communication", ["notification-center", "staff-announcements"]],
-    ["settings", "Settings", ["approval-rules", "money-rules", "commission-policy", "delivery-pricing", "subscription-plans-approval", "targets", "tax-tables", "categories-zones", "integrations", "system-health", "opening"]],
+    ["settings", "Settings", ["approval-rules", "money-rules", "commission-policy", "delivery-pricing", "subscription-plans-approval", "targets", "tax-tables", "categories-zones", "site-settings", "integrations", "system-health", "opening"]],
   ],
   // General Manager: Super Admin's menu minus (a) every screen that edits or approves money (Money rules, Payouts &
   // payroll, Refunds, Reconciliation, Delivery pricing, Tax tables, Plans & prices, Approval rules, Disputes & returns),

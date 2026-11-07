@@ -543,7 +543,7 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
       ['Security & audit', ['Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings']],
       ['Communication', ['Notification center', 'Staff announcements']],
-      ['Settings', ['Approval rules & timers', 'Money rules', 'Commission policy', 'Delivery pricing', 'Plans & prices', 'Target limits', 'Tax tables', 'Categories & zones', 'Integrations', 'System health', 'Marketplace opening']],
+      ['Settings', ['Approval rules & timers', 'Money rules', 'Commission policy', 'Delivery pricing', 'Plans & prices', 'Target limits', 'Tax tables', 'Categories & zones', 'Site Settings', 'Integrations', 'System health', 'Marketplace opening']],
     ])
   })
 
@@ -558,7 +558,8 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
   it('is exhaustive: no More tools, and dropped screens keep their permission', () => {
     expect(groups.some((g) => g.id === 'more')).toBe(false)
     const ids = groups.flatMap((g) => g.items.map((i) => i.id))
-    for (const gone of ['reviews', 'escrow', 'credit', 'messaging', 'tasks', 'calls', 'reports', 'at-risk', 'scout-assignments', 'site-settings']) expect(ids).not.toContain(gone)
+    for (const gone of ['reviews', 'escrow', 'credit', 'messaging', 'tasks', 'calls', 'reports', 'at-risk', 'scout-assignments']) expect(ids).not.toContain(gone)
+    expect(ids).toContain('site-settings') // added back 2026-11-07 at the owner's request: the WhatsApp support number and footer contacts are edited here
     expect(ids).toContain('kyc') // added back 2026-10-29: Super Admin must be able to approve a newly signed-up business
     expect(NAV_ITEMS.find((i) => i.id === 'kyc').show(auth)).toBe(true)
   })
