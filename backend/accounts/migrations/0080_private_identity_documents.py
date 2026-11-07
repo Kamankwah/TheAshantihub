@@ -12,16 +12,19 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # lint-migrations: ok only the file storage, upload path and validators change; no column type or length changes, so no DDL runs
         migrations.AlterField(
             model_name='businessownerprofile',
             name='business_reg_certificate',
             field=models.FileField(blank=True, null=True, storage=core.private_files.kyc_storage, upload_to=core.private_files.registration_certificate_path, validators=[accounts.validators.validate_document_content_type]),
         ),
+        # lint-migrations: ok only the file storage, upload path and validators change; no column type or length changes, so no DDL runs
         migrations.AlterField(
             model_name='businessownerprofile',
             name='ghana_card_back_image',
             field=models.ImageField(blank=True, null=True, storage=core.private_files.kyc_storage, upload_to=core.private_files.ghana_card_path, validators=[accounts.validators.validate_image_content_type]),
         ),
+        # lint-migrations: ok only the file storage, upload path and validators change; no column type or length changes, so no DDL runs
         migrations.AlterField(
             model_name='businessownerprofile',
             name='ghana_card_front_image',

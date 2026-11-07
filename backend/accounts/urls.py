@@ -1,12 +1,13 @@
 from django.urls import path
 
 from . import (
-    view_as_views, views, views_address, views_deletion, views_email_confirmation, views_location, views_mobile_session,
+    view_as_views, views, views_address, views_deletion, views_export, views_email_confirmation, views_location, views_mobile_session,
 )
 
 urlpatterns = [
     path("me/", views.me, name="accounts-me"),
     path("me/delete/", views_deletion.AccountDeleteView.as_view(), name="account-delete"),
+    path("me/export/", views_export.AccountExportView.as_view(), name="account-export"),
     path("session/refresh/", views_mobile_session.MobileSessionRefreshView.as_view(), name="mobile-session-refresh"),
     path("session/logout/", views_mobile_session.MobileSessionLogoutView.as_view(), name="mobile-session-logout"),
     # Shop location capture. The public pair are POST-only: the link's token travels in the body, never in a URL.

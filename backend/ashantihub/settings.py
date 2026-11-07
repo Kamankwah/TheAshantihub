@@ -57,6 +57,12 @@ if not PII_ENCRYPTION_KEYS or not PII_INDEX_KEY:
     # Development and tests: keys derived from SECRET_KEY, so a local database keeps working and nothing is ever deployed on them.
     PII_ENCRYPTION_KEYS = PII_ENCRYPTION_KEYS or [base64.urlsafe_b64encode(hashlib.sha256(b"pii-enc:" + SECRET_KEY.encode()).digest()).decode()]
     PII_INDEX_KEY = PII_INDEX_KEY or base64.urlsafe_b64encode(hashlib.sha256(b"pii-idx:" + SECRET_KEY.encode()).digest()).decode()
+# How long personal data stays once the money records no longer need it (review DB-04; accounts.retention). These are the dev's
+# defaults pending the owner's and counsel's decision: 6 years matches the usual tax record-keeping period; the grace period
+# after an account is deleted covers refunds and disputes.
+PII_DELETED_ACCOUNT_GRACE_DAYS = env.int("PII_DELETED_ACCOUNT_GRACE_DAYS", default=90)
+PII_ORDER_RETENTION_DAYS = env.int("PII_ORDER_RETENTION_DAYS", default=6 * 365)
+NOTIFICATION_RETENTION_DAYS = env.int("NOTIFICATION_RETENTION_DAYS", default=365)
 for _key in PII_ENCRYPTION_KEYS:
     try:
         Fernet(_key.encode())
@@ -782,6 +788,10 @@ CELERY_BEAT_SCHEDULE = {
     "otp-purge-old-rows": {
         "task": "otp.tasks.purge_old_otp_rows",
         "schedule": crontab(hour=3, minute=55),
+    },
+    "accounts-scrub-expired-personal-data": {
+        "task": "accounts.tasks.scrub_expired_personal_data",
+        "schedule": crontab(hour=3, minute=15),  # blanks delivery details and support text past retention (review DB-04)
     },
     "ledger-verify-integrity": {
         "task": "ledger.tasks.verify_ledger_integrity",

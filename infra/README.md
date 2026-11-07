@@ -290,6 +290,15 @@ phone already used as a payout number) run on HMAC "blind indexes" in `*_idx` co
 - **Not covered:** phone numbers and e-mail addresses (they are the sign-in identifiers and are searched constantly), names, delivery
   addresses, and uploaded images (those are private files, `core/private_files.py`).
 
+## Retention and data requests
+
+Review DB-04. `accounts.tasks.scrub_expired_personal_data` runs daily at 03:15: delivery details on orders and support-conversation
+text are blanked once the account has been deleted for `PII_DELETED_ACCOUNT_GRACE_DAYS` (default 90) or the order is older than
+`PII_ORDER_RETENTION_DAYS` (default 6 years); notifications older than `NOTIFICATION_RETENTION_DAYS` (default 365) are deleted. Money
+records are untouched. These periods are the dev's defaults - the owner and counsel set the real ones in `backend/.env`. A person's
+own data comes from `GET /api/accounts/me/export/`. Customer and owner IPs in the activity log are stored truncated; rows written
+before this change keep the full address (the hash chain covers them), and the lawful basis for the log is for counsel to document.
+
 ## Backups
 
 **Targets (set by the owner, review DB-01):** lose at most **24 hours** of data today (nightly dump) - **15 minutes** once

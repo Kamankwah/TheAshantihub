@@ -661,6 +661,11 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   add a `*_idx` column kept by `pii.sync_indexes` in `save()` and query it with `pii.blind_index(purpose, value)`; use
   `queryset.update()` only through the field (it encrypts) and remember `update()` skips `save()`, so it skips the index. A new
   encrypted column also goes in `core/management/commands/encrypt_pii.py` `TARGETS`. Never log or serialize the ciphertext.
+- **Retention and erasure (DB-04).** `accounts/deletion.py` erases the person; `accounts/retention.py` (daily beat task) blanks delivery
+  details and support text once the grace period (`PII_DELETED_ACCOUNT_GRACE_DAYS`) or retention (`PII_ORDER_RETENTION_DAYS`) passes.
+  New personal data on an order, message or notification model must be added to one of the two. The activity log is hash-chained,
+  so customers' and owners' IPs are truncated at write (`activity.services._event_ip`), never edited later. `accounts/export.py`
+  builds the data export: a new personal field belongs in it (masked if it is an ID or payout number).
 - **Ledger integrity (DB-06).** A deferred constraint trigger (ledger migration 0015) refuses a commit that leaves a journal with
   credits != debits, so a test that inserts a lone `JournalLine` must add its other side (or disable `ledger_journal_balanced` in
   that test). `ledger.tasks.verify_ledger_integrity` (02:00) re-derives balances from the lines and alerts; it corrects nothing.

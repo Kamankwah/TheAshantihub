@@ -1,7 +1,8 @@
 """A customer or business owner deleting their own account from the app (Apple and Google both require it).
 
 The row stays so orders, ledger entries and disputes keep their foreign keys; what is erased is the person: name,
-contacts, address book, avatar, identity and payout details, payout numbers, verified contacts and marketing consent.
+contacts, address book, avatar, identity and payout details, payout numbers, verified contacts, notifications and marketing
+consent. Delivery details on past orders and support-conversation text follow after a grace period (accounts.retention).
 Deletion is refused while money or work is still open."""
 from datetime import timedelta
 
@@ -93,13 +94,17 @@ def _opt_out_everywhere(account):
 
 def _erase_traces(account, account_type):
     """What lives in other apps and still names the person: payout numbers, verified contacts, consent."""
+    from notifications.models import Notification
     from otp.models import VerifiedContact
     from wallets.models import PayoutDestination
 
     now = timezone.now()
-    PayoutDestination.objects.filter(holder_type=account_type, holder_id=account.pk, removed_at__isnull=True).update(
-        removed_at=now
-    )
+    # Every destination the person ever saved, removed or not (review DB-04): the number and the names go, the row stays so a
+    # past withdrawal keeps its foreign key. A removed row has no live-destination uniqueness left to protect.
+    mine = PayoutDestination.objects.filter(holder_type=account_type, holder_id=account.pk)
+    mine.filter(removed_at__isnull=True).update(removed_at=now)
+    mine.update(account_number="", account_number_idx=None, account_name=DELETED_NAME, matched_name=DELETED_NAME)
+    Notification.objects.filter(**{"customer" if account_type == "customer" else "business_owner": account}).delete()
     VerifiedContact.objects.filter(account_type=account_type, account_id=account.pk).delete()
     _opt_out_everywhere(account)
 
