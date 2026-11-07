@@ -191,7 +191,10 @@ CORS_ALLOW_ALL_ORIGINS = env.bool("DJANGO_CORS_ALLOW_ALL_ORIGINS", default=True)
 CORS_ALLOWED_ORIGINS = env.list("DJANGO_CORS_ALLOWED_ORIGINS", default=[])
 # The Super Admin's step-in sends two extra headers (accounts/view_as.py).
 # X-Step-Up-Token carries a one-time step-up permission (otp/step_up.py).
-CORS_ALLOW_HEADERS = (*cors_default_headers, "x-view-as", "x-view-as-screen", "x-step-up-token")
+CORS_ALLOW_HEADERS = (*cors_default_headers, "x-view-as", "x-view-as-screen", "x-step-up-token", "x-client")
+# The web app's refresh token is an HttpOnly cookie (accounts/mobile_sessions.py), so its refresh call is made with credentials.
+# django-cors-headers then answers with the caller's own origin (never "*"), and only origins in the allow list.
+CORS_ALLOW_CREDENTIALS = True
 
 # Email — defaults to Django's console backend so nothing breaks locally
 # without SMTP configured; set EMAIL_BACKEND (and the SMTP vars below) in
@@ -492,8 +495,11 @@ SPECTACULAR_SETTINGS = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": __import__("datetime").timedelta(hours=12),
+    "ACCESS_TOKEN_LIFETIME": __import__("datetime").timedelta(hours=12),  # staff; customers/owners: see below
 }
+# A customer's or business owner's access token (review BE-09). Clients refresh it silently with their refresh token
+# (30 days, accounts/mobile_sessions.py), so this is how long a stolen token works, not how long a person stays signed in.
+CUSTOMER_ACCESS_TOKEN_MINUTES = env.int("DJANGO_ACCESS_TOKEN_MINUTES", default=30)
 
 # ── Live updates and background jobs (staff foundations F2) ─────────────────
 # One Redis per environment (infra/compose/docker-compose.yml) carries the

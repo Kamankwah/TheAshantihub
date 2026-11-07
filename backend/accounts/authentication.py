@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+from django.conf import settings
 from rest_framework import authentication, exceptions, status
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
@@ -26,6 +29,9 @@ def issue_token(account, account_type, *, request=None, two_factor=False):
         sessions.start(account, token["jti"], request, two_factor=two_factor)
     else:
         token["tv"] = account.token_version
+        # Short-lived: the client trades its refresh token for a new one, so a stolen token is good for minutes, not hours
+        # (review BE-09). Staff keep the 12-hour token because their server-side session can be revoked at any moment.
+        token.set_exp(lifetime=timedelta(minutes=settings.CUSTOMER_ACCESS_TOKEN_MINUTES))
     return str(token)
 
 

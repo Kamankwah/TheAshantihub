@@ -62,8 +62,10 @@ async function parse(res: { status: number; text: () => Promise<string> }) {
 export async function api<T = unknown>(path: string, init: Init = {}): Promise<T> {
   let res = await send(path, init);
   if (res.status === 401 && init.auth !== false && session.refreshToken) {
-    if (await session.refresh()) res = await send(path, init);
-    else onSessionLost();
+    const renewed = await session.refresh();
+    if (renewed === "renewed") res = await send(path, init);
+    else if (renewed === "ended") onSessionLost();
+    // "unavailable": the 401 stays as the answer for this call, and the session is kept for the next one
   }
   const body = await parse(res);
   if (!res.ok) {

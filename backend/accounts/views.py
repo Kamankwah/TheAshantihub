@@ -138,7 +138,7 @@ def me(request):
 
 
 def _with_refresh_token(body, request, account, account_type):
-    """Adds `refresh_token` to a sign-in body when the request comes from the mobile app (X-Client: mobile)."""
+    """Adds `refresh_token` to a sign-in body when the request says it is the mobile or web app (X-Client); `mobile_sessions.deliver` then moves the web app's into a cookie."""
     refresh_token = mobile_sessions.issue(request, account, account_type)
     if refresh_token:
         body["refresh_token"] = refresh_token
@@ -159,7 +159,7 @@ class CustomerRegisterView(generics.CreateAPIView):
             return response
         response.data["token"] = issue_token(customer, "customer")
         _with_refresh_token(response.data, request, customer, "customer")
-        return response
+        return mobile_sessions.deliver(request, response)
 
 
 class StaffInviteView(generics.CreateAPIView):
@@ -206,7 +206,7 @@ class BusinessOwnerRegisterView(generics.CreateAPIView):
             return response
         response.data["token"] = issue_token(owner, "business_owner")
         _with_refresh_token(response.data, request, owner, "business_owner")
-        return response
+        return mobile_sessions.deliver(request, response)
 
 
 class StaffResendInviteView(APIView):
@@ -304,7 +304,7 @@ class CustomerLoginView(generics.GenericAPIView):
             "full_name": account.full_name,
         }
         _with_refresh_token(body, request, account, "customer")
-        return Response(body)
+        return mobile_sessions.deliver(request, Response(body))
 
 
 class BusinessOwnerLoginView(generics.GenericAPIView):
@@ -326,7 +326,7 @@ class BusinessOwnerLoginView(generics.GenericAPIView):
             "full_name": account.full_name,
         }
         _with_refresh_token(body, request, account, "business_owner")
-        return Response(body)
+        return mobile_sessions.deliver(request, Response(body))
 
 
 def _truthy(value):

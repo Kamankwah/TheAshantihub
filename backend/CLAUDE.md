@@ -641,8 +641,14 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `POST accounts/sign-out-everywhere/` bumps it and every older token is refused. A suspended customer/owner is refused at
   authentication with 403 `{code: "account_suspended"}` (`accounts.authentication.AccountSuspended`, exempt from the 403-to-401
   rewrite). Reset tokens are stored as SHA-256 (`accounts/reset_tokens.py`, the only issuer), links use a `#fragment`, only the
-  newest link works. New passwords go through `accounts.passwords.validate_new_password`. Not done: a shorter access token with a
-  refresh flow (needs the web and mobile clients).
+  newest link works. New passwords go through `accounts.passwords.validate_new_password`.
+- **Short tokens + refresh (BE-09).** A customer's or owner's access token lives `CUSTOMER_ACCESS_TOKEN_MINUTES` (30; env
+  `DJANGO_ACCESS_TOKEN_MINUTES`); staff keep 12 h because their server-side session is revocable. The refresh token is a
+  `MobileSession` row (30 days, rotated, reuse revokes the family). The app sends/receives it in the body (`X-Client: mobile`);
+  the web app never sees it: `X-Client: web` makes sign-in set the HttpOnly `ah_refresh` cookie (SameSite=Lax, path
+  `/api/accounts/session/`, Secure unless DEBUG) via `mobile_sessions.deliver`, and a cookie refresh also needs that header.
+  Every sign-in response that can carry a refresh token goes through `mobile_sessions.deliver`. CORS allows credentials, so the
+  origin list must stay explicit. A client must treat only a 401 from the refresh call as "signed out" (an outage must not).
 - **Staff 2-step** is required for `settings.STAFF_TWO_FACTOR_DEFAULT_ROLES` until a Super Admin saves a policy (empty under tests).
 - **Background jobs** route to `money` / `slow` / default queues (`CELERY_TASK_ROUTES`), each with its own worker in the
   production compose; a new queue must be added to both, or its tasks never run. Tasks have a 10-minute limit.
