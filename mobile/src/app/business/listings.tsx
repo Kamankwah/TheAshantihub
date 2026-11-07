@@ -43,7 +43,7 @@ export default function BusinessListings() {
                     accessibilityState={{ selected: on }}
                     hitSlop={{ top: 2, bottom: 2 }}
                     onPress={() => setFilter(f.key)}
-                    style={{ height: 44, paddingHorizontal: 16, borderRadius: 999, justifyContent: "center", backgroundColor: on ? c.gold : c.surface, borderWidth: 1, borderColor: on ? c.gold : c.line }}
+                    style={{ height: 48, paddingHorizontal: 16, borderRadius: 999, justifyContent: "center", backgroundColor: on ? c.gold : c.surface, borderWidth: 1, borderColor: on ? c.gold : c.line }}
                   >
                     <Text style={{ color: on ? c.onGold : c.ink, fontFamily: fonts.bodySemi, fontSize: 14 }}>{f.label}</Text>
                   </Pressable>

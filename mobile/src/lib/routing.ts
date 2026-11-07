@@ -42,3 +42,24 @@ export function routeFor(
 export function canEnter(area: "customer" | "business", status: Status, type?: AccountType): boolean {
   return status === "signedIn" && type === (area === "customer" ? "customer" : "business_owner");
 }
+
+/** Top-level screens that make no sense without a signed-in person (browsing stays open to guests). */
+const SIGNED_IN_ONLY = new Set([
+  "manage", "checkout", "bookings", "booking", "tickets", "ticket", "inbox", "notifications", "order", "order-confirmed",
+  "review", "support", "security", "delete-account",
+]);
+/** Screens for business owners only; a customer who reaches one (a stale link, a shared URL) is sent home. */
+const BUSINESS_ONLY = new Set(["manage"]);
+
+/**
+ * Where to send someone who has landed on a screen they should not be on, or null to let them stay (review MOB-12).
+ * The server still enforces every permission; this keeps the screens from rendering errors for the wrong person.
+ * While the session is still being read (`loading`) or the network is down (`offline`) nothing is redirected.
+ */
+export function guardRedirect(segments: string[], status: Status, type?: AccountType): string | null {
+  const first = segments.find((s) => !s.startsWith("("));
+  if (!first) return null;
+  if (status === "signedOut" && SIGNED_IN_ONLY.has(first)) return "/welcome";
+  if (status === "signedIn" && type === "customer" && BUSINESS_ONLY.has(first)) return "/customer/home";
+  return null;
+}

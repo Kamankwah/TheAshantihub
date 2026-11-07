@@ -9,6 +9,7 @@
     "@expo/ui": "~58.0.26",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-community/datetimepicker": "9.2.1",
+    "@sentry/react-native": "~8.28.0",
     "@tanstack/react-query": "^5.105.1",
     "expo": "~58.0.22",
     "expo-build-properties": "~58.0.12",
