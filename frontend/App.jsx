@@ -363,7 +363,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose,
                   <div style={{ background:C.surface2, borderRadius:20, height:8, marginBottom:8, overflow:"hidden" }}>
                     <div style={{ height:"100%", borderRadius:20, background:`linear-gradient(90deg,${C.kente2},${C.gold})`, width:`${((30-countdown)/30)*100}%`, transition:"width 0.1s" }}/>
                   </div>
-                  <div style={{ fontSize:"0.68rem", color:C.inkFaint }}>Waiting for approval... {countdown}s</div>
+                  <div style={{ fontSize:"0.78rem", color:C.inkDim }}>Waiting for approval... {countdown}s</div>
                   <div style={{ marginTop:16, background:tint(selectedNetwork?.color, "15"), border:`1px solid ${tint(selectedNetwork?.color, "33")}`, borderRadius:12, padding:"10px 14px" }}>
                     <div style={{ fontSize:"0.72rem", color:C.inkDim }}>📱 Check your phone for the {selectedNetwork?.name} payment prompt</div>
                     <div style={{ fontSize:"0.68rem", color:C.inkDim, marginTop:3 }}>Ref: <strong>{txnRef}</strong></div>
@@ -444,15 +444,15 @@ function WABtn({phone,name,style={}}) {
 
 // ─── Cookie Consent ───────────────────────────────────────────────────────────
 function CookieBanner({onAccept,onDecline}) {
-  return <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.darkBrown,color:"white",padding:"16px 20px",zIndex:9999,boxShadow:"0 -4px 20px rgba(0,0,0,0.3)"}}>
+  return <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.darkBrown,color:"white",padding:"16px 20px",zIndex:2500,boxShadow:"0 -4px 20px rgba(0,0,0,0.3)"}}>
     <div style={{maxWidth:900,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-      <div style={{flex:1}}>
-        <div style={{fontWeight:800,color:C.gold,marginBottom:4,fontSize:"0.85rem"}}>🍪 AshantiHub uses cookies</div>
-        <div style={{fontSize:"0.74rem",opacity:0.85,lineHeight:1.5}}>We use essential cookies to run the platform and analytics cookies to improve your experience. By accepting, you also agree to our <span style={{color:C.gold,textDecoration:"underline",cursor:"pointer"}}>Privacy Policy</span>.</div>
+      <div style={{flex:"1 1 280px"}}>
+        <div style={{fontWeight:800,color:C.gold,marginBottom:4,fontSize:"0.9rem"}}>🍪 AshantiHub uses cookies</div>
+        <div style={{fontSize:"0.8rem",opacity:0.9,lineHeight:1.5}}>We use essential cookies to run the platform and analytics cookies to improve your experience. By accepting, you also agree to our <span style={{color:C.gold,textDecoration:"underline",cursor:"pointer"}}>Privacy Policy</span>.</div>
       </div>
       <div style={{display:"flex",gap:8}}>
-        <button onClick={onDecline} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"8px 16px",fontSize:"0.74rem",fontWeight:700,cursor:"pointer"}}>Essential Only</button>
-        <button onClick={onAccept} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"8px 18px",fontSize:"0.74rem",fontWeight:900,cursor:"pointer"}}>Accept All</button>
+        <button onClick={onDecline} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:22,padding:"0 16px",minHeight:44,fontSize:"0.8rem",fontWeight:700,cursor:"pointer"}}>Essential Only</button>
+        <button onClick={onAccept} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:22,padding:"0 18px",minHeight:44,fontSize:"0.8rem",fontWeight:900,cursor:"pointer"}}>Accept All</button>
       </div>
     </div>
   </div>;
@@ -1097,7 +1097,12 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
 
 
 
-const authInputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.line}`,marginBottom:10,fontSize:"0.82rem",fontFamily:"inherit"};
+const authInputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",minHeight:44,borderRadius:10,border:`1.5px solid ${C.line}`,marginBottom:10,fontSize:"0.9rem",fontFamily:"inherit"};
+// Sign in / Sign up tabs and the Customer / Business Owner choice: 44px targets, text colour set on both states
+// (the fill flips to gold, so the text must be the dark brown on it in both themes), state also carried by aria-pressed.
+const authTabStyle=(on)=>({flex:1,minHeight:44,borderRadius:22,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.85rem",fontFamily:"inherit",background:on?C.gold:C.surface2,color:on?C.darkBrown:C.ink});
+const authTypeStyle=(on)=>({flex:1,minHeight:44,padding:"6px",borderRadius:22,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.8rem",fontFamily:"inherit",background:on?C.gold:C.surface,color:on?C.darkBrown:C.ink});
+const authLinkStyle={background:"none",border:"none",color:C.ink,fontSize:"0.82rem",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit",minHeight:44,padding:"0 8px"};
 const authSubmitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"12px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",marginTop:4};
 
 // `onGoToMarketplace` is passed only for the required /staff sign-in in a
@@ -1136,6 +1141,9 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   const [resetSubmitting,setResetSubmitting]=useState(false);
   const [resetSubmitted,setResetSubmitted]=useState(false);
   const [offers,setOffers]=useState({});
+  // The message sits above the fields while the submit button is at the bottom of a scrolling modal: bring it into view.
+  const errorRef=useRef(null);
+  useEffect(()=>{ if(error) errorRef.current?.scrollIntoView?.({block:"nearest"}); },[error]);
 
   const handleLogin=async(e)=>{
     e.preventDefault();
@@ -1220,37 +1228,38 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
 
   return <div data-testid="auth-modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="auth-modal-title" style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
-      <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,borderRadius:"22px 22px 0 0",padding:"20px 24px",position:"relative"}}>
-        <button type="button" onClick={onClose} aria-label="Close" style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
+      <div style={{background:C.darkBrown,borderRadius:"22px 22px 0 0",padding:"22px 64px 18px 24px",position:"relative",overflow:"hidden"}}>
+        <div aria-hidden="true" style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
+        <button type="button" onClick={onClose} aria-label="Close" style={{position:"absolute",top:8,right:8,width:44,height:44,background:"none",border:"none",color:C.lightGold,fontSize:"1.3rem",cursor:"pointer"}}>✕</button>
         <h2 id="auth-modal-title" style={{margin:0,color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>{mode==="forgot"?"Reset your password":lockedAccountType==="staff"?"Staff Sign In":mode==="login"?"Welcome back":"Create your account"}</h2>
       </div>
       <div style={{padding:"20px 24px"}}>
         {!lockedAccountType && mode!=="forgot" && !otp && <div style={{display:"flex",gap:8,marginBottom:16}}>
-          <button type="button" onClick={()=>setMode("login")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="login"?C.gold:C.surface2,color:mode==="login"?C.darkBrown:C.inkDim}}>Sign In</button>
-          <button type="button" onClick={()=>setMode("signup")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="signup"?C.gold:C.surface2,color:mode==="signup"?C.darkBrown:C.inkDim}}>Sign Up</button>
+          <button type="button" aria-pressed={mode==="login"} onClick={()=>setMode("login")} style={authTabStyle(mode==="login")}>Sign In</button>
+          <button type="button" aria-pressed={mode==="signup"} onClick={()=>setMode("signup")} style={authTabStyle(mode==="signup")}>Sign Up</button>
         </div>}
 
         {signedOutNotice && <div role="status" style={{background:C.canvas,border:`1px solid ${C.gold}`,color:C.ink,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{signedOutNotice}</div>}
-        {error && <div role="alert" style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+        {error && <div ref={errorRef} role="alert" style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.85rem",lineHeight:1.5}}>{error}</div>}
 
         {otp && <OtpSignIn challenge={otp.challenge} accountType={otp.accountType} purpose={otp.purpose} auth={auth} onSuccess={onSuccess} onCancel={cancelOtp}/>}
         {mode==="login" && twoStep && <PageBoundary><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/></PageBoundary>}
         {mode==="login" && !twoStep && !otp && twoStepNotice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{twoStepNotice}</div>}
         {mode==="login" && !twoStep && !otp && <form onSubmit={handleLogin}>
           {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:12}}>
-            <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
-            <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
+            <button type="button" aria-pressed={accountType==="customer"} onClick={()=>setAccountType("customer")} style={authTypeStyle(accountType==="customer")}>Customer</button>
+            <button type="button" aria-pressed={accountType==="business_owner"} onClick={()=>setAccountType("business_owner")} style={authTypeStyle(accountType==="business_owner")}>Business Owner</button>
           </div>}
           <input value={identifier} onChange={e=>setIdentifier(e.target.value)} placeholder="Phone or email" aria-label="Phone or email" autoComplete="username" required style={authInputStyle}/>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password" aria-label="Password" autoComplete="current-password" required style={authInputStyle}/>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Signing in…":"Sign In"}</button>
           <div style={{textAlign:"center",marginTop:10}}>
-            <button type="button" onClick={()=>{setMode("forgot");setError(null);setResetSubmitted(false);}} style={{background:"none",border:"none",color:C.deepGold,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}>Forgot password?</button>
+            <button type="button" onClick={()=>{setMode("forgot");setError(null);setResetSubmitted(false);}} style={authLinkStyle}>Forgot password?</button>
           </div>
         </form>}
 
         {mode==="forgot" && <div>
-          <button type="button" onClick={()=>{setMode("login");setResetSubmitted(false);}} style={{background:"none",border:"none",color:C.deepGold,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",marginBottom:14,padding:0,fontFamily:"inherit"}}>← Back to Sign In</button>
+          <button type="button" onClick={()=>{setMode("login");setResetSubmitted(false);}} style={{...authLinkStyle,textDecoration:"none",marginBottom:6,paddingLeft:0}}>← Back to Sign In</button>
           {resetSubmitted ? (
             <div style={{background:C.okBg,color:C.okInk,borderRadius:10,padding:"12px 14px",fontSize:"0.8rem",lineHeight:1.6}}>
               If an account exists for that email, we've sent a password reset link. Please check your inbox (and spam folder).
@@ -1270,8 +1279,8 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
 
         {mode==="signup" && !otp && <form onSubmit={handleSignup}>
           <div style={{display:"flex",gap:8,marginBottom:12}}>
-            <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
-            <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
+            <button type="button" aria-pressed={accountType==="customer"} onClick={()=>setAccountType("customer")} style={authTypeStyle(accountType==="customer")}>Customer</button>
+            <button type="button" aria-pressed={accountType==="business_owner"} onClick={()=>setAccountType("business_owner")} style={authTypeStyle(accountType==="business_owner")}>Business Owner</button>
           </div>
           <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" aria-label="Full name" autoComplete="name" required style={authInputStyle}/>
           <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" aria-label="Phone" type="tel" autoComplete="tel" style={authInputStyle}/>

@@ -209,6 +209,9 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
   const [defaultFailed, setDefaultFailed] = useState(false);
   const [cartError, setCartError] = useState(null);
   const [pendingId, setPendingId] = useState(null);
+  // A refusal appears in the summary, below the button; on a phone that can be off screen, so bring it into view.
+  const checkoutErrorRef = useRef(null);
+  useEffect(() => { if (checkoutError) checkoutErrorRef.current?.scrollIntoView?.({ block: "center" }); }, [checkoutError]);
 
   const regionOk = !door || (!outOfArea && !needsPin && !regionUnchecked);
   const ready = canBuy && !staffGate.isStaff && items.length > 0 && !guardAny && !guardUnchecked && addressFilled && regionOk
@@ -317,11 +320,11 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
   const card = { background: C.surface, border: `1px solid ${C.line}`, borderRadius: 16, padding: phoneLayout ? 16 : 20, boxSizing: "border-box" };
   const h2 = { margin: "0 0 12px", fontFamily: HEADING_FONT, fontWeight: 600, fontSize: "1.1rem", lineHeight: 1.2, color: C.ink };
   const note = { fontSize: "0.8rem", color: C.inkDim, lineHeight: 1.5 };
-  const linkBtn = { background: "none", border: "none", padding: "6px 0", color: C.trust, fontSize: "0.85rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", minHeight: 32 };
+  const linkBtn = { background: "none", border: "none", padding: "6px 0", color: C.trust, fontSize: "0.85rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", minHeight: phoneLayout ? 44 : 32 };
   const alertBox = { background: C.errBg, color: C.errInk, borderRadius: 10, padding: "8px 12px", fontSize: "0.8rem", lineHeight: 1.5 };
   const radioRow = (disabled) => ({ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0", minHeight: 44, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.6 : 1 });
   const stepBtn = (disabled) => ({
-    width: 32, height: 32, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.surface, color: C.ink,
+    width: phoneLayout ? 44 : 32, height: phoneLayout ? 44 : 32, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.surface, color: C.ink,
     fontSize: "1rem", fontWeight: 800, cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit", lineHeight: 1, opacity: disabled ? 0.5 : 1,
   });
   const row = { display: "flex", justifyContent: "space-between", gap: 12, fontSize: "0.9rem", color: C.ink, padding: "4px 0" };
@@ -623,7 +626,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
           </div>
         )}
         {checkoutError && (
-          <div data-testid="checkout-error" role="alert" style={{ ...alertBox, marginTop: 10 }}>
+          <div ref={checkoutErrorRef} data-testid="checkout-error" role="alert" style={{ ...alertBox, marginTop: 10 }}>
             <div>{checkoutError.text}</div>
             {checkoutError.ref && <div>Your order was not placed. Payment reference: {checkoutError.ref}.</div>}
           </div>
