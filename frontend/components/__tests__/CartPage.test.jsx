@@ -237,6 +237,7 @@ describe('CartPage', () => {
     serve(TWO())
     renderPage({ user: null, authLoading: true, onSignIn: vi.fn() })
     expect(screen.getByText(/Loading your cart/)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(/Loading your cart/) // the placeholders are one live region carrying the words
     expect(screen.queryByText('Sign in to see your cart.')).not.toBeInTheDocument()
   })
 
