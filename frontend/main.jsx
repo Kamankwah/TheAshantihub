@@ -1,9 +1,8 @@
-import React from 'react'
+import React, { Suspense, lazy } from 'react'
 import ReactDOM from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
-import StepUpPrompt from './components/StepUpPrompt.jsx'
 import './index.css'
 import { ensureStaffHead, isStaffPathname, startStaffPwa } from './lib/staffPwa.js'
 import { applyInitialTheme } from './hooks/useTheme.js'
@@ -12,6 +11,9 @@ import { initTelemetry } from './lib/telemetry.js'
 
 // Error reporting is a no-op unless VITE_SENTRY_DSN is set; failing to start it must never stop the app.
 initTelemetry().catch(() => {})
+
+// The step-up prompt only appears when the server asks for a fresh code, so it loads on demand.
+const StepUpPrompt = lazy(() => import('./components/StepUpPrompt.jsx'))
 
 // Light/dark before the first paint (useTheme keeps it in sync afterwards).
 applyInitialTheme()
@@ -37,7 +39,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <App />
-        <StepUpPrompt />
+        <Suspense fallback={null}><StepUpPrompt /></Suspense>
       </QueryClientProvider>
     </BrowserRouter>
   </React.StrictMode>,

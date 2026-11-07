@@ -78,7 +78,7 @@ describe('UserPanel', () => {
       const updateProfile = vi.fn().mockResolvedValue({})
       const refreshUser = vi.fn().mockResolvedValue({})
       renderPanel({ at: SECTION.security, auth: { updateProfile, refreshUser } })
-      fireEvent.change(screen.getByDisplayValue('Ama Boateng'), { target: { value: 'Ama Owusu' } })
+      fireEvent.change(await screen.findByDisplayValue('Ama Boateng'), { target: { value: 'Ama Owusu' } })
       fireEvent.click(screen.getByText('Save Changes'))
       await waitFor(() => expect(updateProfile).toHaveBeenCalledWith(
         expect.objectContaining({ full_name: 'Ama Owusu', avatar: null }),

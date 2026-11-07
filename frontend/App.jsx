@@ -7,7 +7,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
-import CartTieredResults from "./components/CartTieredResults.jsx";
 import { addGhs } from "./components/wallet/walletMoney.js";
 import { useListing } from "./hooks/useListing.js";
 import { useEvents } from "./hooks/useEvents.js";
@@ -28,7 +27,6 @@ import ServiceAcceptBar from "./components/ServiceAcceptBar.jsx";
 import BookingTermsNote from "./components/BookingTermsNote.jsx";
 import ServiceRequestPay from "./components/ServiceRequestPay.jsx";
 import BookingMoneyBar from "./components/bookings/BookingMoneyBar.jsx";
-import CancelBookingDialog from "./components/bookings/CancelBookingDialog.jsx";
 import { groupTicketsByPurchase } from "./components/bookings/bookingMoney.js";
 import { useMyServiceRequests } from "./hooks/useMyServiceRequests.js";
 import { useMyBookings } from "./hooks/useMyBookings.js";
@@ -52,22 +50,15 @@ import FeaturedRow from "./components/FeaturedRow.jsx";
 import BrowseRail from "./components/storefront/BrowseRail.jsx";
 import { arrivalPatch } from "./components/storefront/browseRailSections.js";
 import ChatLauncher from "./components/ChatLauncher.jsx";
-import ChatIntake from "./components/storefront/ChatIntake.jsx";
 import { Footer2 } from "./components/ui/footer-2.tsx";
 import { BusinessCtaBand } from "./components/ui/business-cta-band.tsx";
 import { EventsCtaBand } from "./components/ui/events-cta-band.tsx";
 import { AboutCtaBand } from "./components/ui/about-cta-band.tsx";
 import { ContactCtaBand } from "./components/ui/contact-cta-band.tsx";
-import { AccountProfileCard } from "./components/ui/account-profile-card.tsx";
 import { AboutFaqSection } from "./components/ui/about-faq-section.tsx";
-import MarketingConsentCard from "./components/MarketingConsentCard.jsx";
-import AccountSecurityCard from "./components/security/AccountSecurityCard.jsx";
-import CartDrawer from "./components/CartDrawer.jsx";
 import FlashPriceTag from "./components/FlashPriceTag.jsx";
 import PriceLine from "./components/PriceLine.jsx";
-import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
 import EventCard, { formatEventDate } from "./components/EventCard.jsx";
-import OtpSignIn from "./components/OtpSignIn.jsx";
 import { isOtpChallenge, otpCode } from "./lib/otp.js";
 import { apiErrorMessage } from "./lib/apiErrorMessage.js";
 import { D, glassCard, ghs, tint } from "./components/dashboard/theme.js";
@@ -82,6 +73,8 @@ import TicketQr from "./components/TicketQr.jsx";
 import StaffGateNotice from "./components/StaffGateNotice.jsx";
 import StaffViewOnlyBar, { STAFF_VIEW_ONLY_BAR_HEIGHT } from "./components/StaffViewOnlyBar.jsx";
 import { isStaffSession } from "./lib/staffSession.js";
+import CancelBookingDialog from "./components/bookings/CancelBookingDialog.jsx";
+import OtpSignIn from "./components/OtpSignIn.jsx";
 import { useStaffGate } from "./hooks/useStaffGate.js";
 import { useFavourites } from "./hooks/useFavourites.js";
 
@@ -92,6 +85,14 @@ import { useFavourites } from "./hooks/useFavourites.js";
 // registration flows (the single bundle was ~3.6 MB / ~970 KB gzipped, over a
 // 200 ms+ link to the server). The default export below wraps the app in a
 // Suspense boundary; in-page screens add their own <Suspense> with InlineFallback.
+// Rendered only on demand (a drawer, a prompt, one account tab), so kept out of the entry bundle (review FE-06).
+const CartDrawer = lazy(() => import("./components/CartDrawer.jsx"));
+const ChatIntake = lazy(() => import("./components/storefront/ChatIntake.jsx"));
+const AccountProfileCard = lazy(() => import("./components/ui/account-profile-card.tsx").then((m) => ({ default: m.AccountProfileCard })));
+const AccountSecurityCard = lazy(() => import("./components/security/AccountSecurityCard.jsx"));
+const MarketingConsentCard = lazy(() => import("./components/MarketingConsentCard.jsx"));
+const EventHeroCarousel = lazy(() => import("./components/EventHeroCarousel.jsx"));
+const CartTieredResults = lazy(() => import("./components/CartTieredResults.jsx"));
 const BusinessCommandCenter = lazy(() => import("./components/dashboard/BusinessCommandCenter.jsx"));
 const AdminCommandCenter = lazy(() => import("./components/admin/AdminCommandCenter.jsx"));
 const StaffInstallPage = lazy(() => import("./components/admin/StaffInstallPage.jsx"));
@@ -1636,7 +1637,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     ),
     events: () => <MyEventsTab user={user} categories={categories} zones={zones}/>,
     tickets: (searchQuery) => <TicketsTab searchQuery={searchQuery} onContactSupport={contactSupport}/>,
-    profile: () => <AccountProfileCard user={user} auth={auth}/>,
+    profile: () => <PageBoundary><AccountProfileCard user={user} auth={auth}/></PageBoundary>,
     settings: () => <SettingsTab user={user} auth={auth} lang={lang} setLang={setLang} onSignOut={signOut}/>,
   };
 
@@ -2013,7 +2014,7 @@ function SettingsTab({ user, auth, lang, setLang, onSignOut }) {
       </div>
     </div>
 
-    <AccountSecurityCard accountType="customer"/>
+    <PageBoundary><AccountSecurityCard accountType="customer"/></PageBoundary>
 
     <div style={{...glassCard,padding:18}}>
       <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:10}}>Language</div>
@@ -2036,7 +2037,7 @@ function SettingsTab({ user, auth, lang, setLang, onSignOut }) {
       )}
     </div>
 
-    <MarketingConsentCard/>
+    <PageBoundary><MarketingConsentCard/></PageBoundary>
 
     <div style={{...glassCard,padding:18}}>
       <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:10}}>Session</div>
@@ -2951,10 +2952,10 @@ function AshantiHubApp() {
       <OfflineBanner/>
       {shownAuthModal&&<AuthModal key={shownAuthModal} authState={shownAuthModal} auth={auth} onClose={()=>{setAuthModal(null);setAuthReturn(null);}} onSuccess={handleAuthSuccess} onGoToMarketplace={leaveStaffSignInForMarketplace}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
-      {showIntake&&<ChatIntake user={user} onClose={()=>setShowIntake(false)} onContinue={()=>{setShowIntake(false);setShowMessaging(true);}}/>}
+      {showIntake&&<ModalBoundary><ChatIntake user={user} onClose={()=>setShowIntake(false)} onContinue={()=>{setShowIntake(false);setShowMessaging(true);}}/></ModalBoundary>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
-      {showCart&&isCustomer&&<CartDrawer onClose={()=>setShowCart(false)} onGoToCart={()=>{setShowCart(false);navigate("/cart");}}/>}
+      {showCart&&isCustomer&&<ModalBoundary><CartDrawer onClose={()=>setShowCart(false)} onGoToCart={()=>{setShowCart(false);navigate("/cart");}}/></ModalBoundary>}
       {/* Referral feature hidden until it's built properly (see note below). */}
       {/* One header for the whole site: the marketplace StorefrontHeader. On "/"
           it is passed into StorefrontHome (below) so it sits under the
@@ -3178,7 +3179,7 @@ function AshantiHubApp() {
                     {(()=>{
                       const renderCard=(item)=><Card key={item.id} item={item} accentColor={activeCatObj?.color||C.gold} user={user} favourites={favourites} onFavourite={toggleFav} favFailed={favFailedId===item.id} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>;
                       return listings.some((l)=>"cart_tier" in l)
-                        ? <CartTieredResults listings={listings} renderCard={renderCard}/>
+                        ? <PageBoundary><CartTieredResults listings={listings} renderCard={renderCard}/></PageBoundary>
                         : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>{listings.map(renderCard)}</div>;
                     })()}
                     {hasNextPage&&(
@@ -3219,7 +3220,7 @@ function AshantiHubApp() {
               detail is open, so it isn't pushed down below the full hero. */}
           {!selectedEventId && (<>
           <SiteBanner slot="events_top" onNavigate={navigate}/>
-          <EventHeroCarousel onOpen={(id)=>setSelectedEventId(id)}/>
+          <PageBoundary><EventHeroCarousel onOpen={(id)=>setSelectedEventId(id)}/></PageBoundary>
 
           <div style={{background:C.void,borderBottom:`1.5px solid ${C.gold}30`,padding:"10px 16px",textAlign:"center"}}>
             <span style={{fontSize:"0.72rem",color:C.lightGold,fontWeight:600}}>
