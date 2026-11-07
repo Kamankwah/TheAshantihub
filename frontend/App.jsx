@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef, useId, Suspense } from "react";
 import { lazyWithRetry as lazy } from "./lib/lazyWithRetry.js";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import FeedbackEcho from "./components/FeedbackEcho.jsx";
@@ -119,6 +119,7 @@ const OrdersPanel = lazy(() => import("./components/account/OrdersPanel.jsx"));
 const SpendAreaChart = lazy(() => import("./components/dashboard/charts/SpendAreaChart.jsx"));
 const ListingsDonut = lazy(() => import("./components/dashboard/charts/ListingsDonut.jsx"));
 const AboutPage = lazy(() => import("./components/ui/about-page.tsx").then(m => ({ default: m.AboutPage })));
+const PrivacyNoticePage = lazy(() => import("./components/legal/PrivacyNoticePage.jsx"));
 const ContactPage = lazy(() => import("./components/ui/contact-page.tsx").then(m => ({ default: m.ContactPage })));
 // A lazy screen with its own error boundary (review FE-01): a chunk that cannot load shows "Try again" in place, the rest of the page stays.
 function PageBoundary({ children }) {
@@ -443,12 +444,12 @@ function WABtn({phone,name,style={}}) {
 }
 
 // ─── Cookie Consent ───────────────────────────────────────────────────────────
-function CookieBanner({onAccept,onDecline}) {
+function CookieBanner({onAccept,onDecline,onOpenPrivacy}) {
   return <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.darkBrown,color:"white",padding:"16px 20px",zIndex:2500,boxShadow:"0 -4px 20px rgba(0,0,0,0.3)"}}>
     <div style={{maxWidth:900,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap"}}>
       <div style={{flex:"1 1 280px"}}>
         <div style={{fontWeight:800,color:C.gold,marginBottom:4,fontSize:"0.9rem"}}>🍪 AshantiHub uses cookies</div>
-        <div style={{fontSize:"0.8rem",opacity:0.9,lineHeight:1.5}}>We use essential cookies to run the platform and analytics cookies to improve your experience. By accepting, you also agree to our <span style={{color:C.gold,textDecoration:"underline",cursor:"pointer"}}>Privacy Policy</span>.</div>
+        <div style={{fontSize:"0.8rem",opacity:0.9,lineHeight:1.5}}>We use your browser’s storage to keep you signed in and remember your settings, and we count which listings are viewed. We run no advertising trackers. Read our <a href="/privacy" onClick={(e)=>{ if(e.metaKey||e.ctrlKey||e.shiftKey||e.button===1) return; e.preventDefault(); if(onOpenPrivacy) onOpenPrivacy(); }} style={{color:C.gold,textDecoration:"underline",fontWeight:700}}>Privacy Notice</a>.</div>
       </div>
       <div style={{display:"flex",gap:8}}>
         <button onClick={onDecline} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:22,padding:"0 16px",minHeight:44,fontSize:"0.8rem",fontWeight:700,cursor:"pointer"}}>Essential Only</button>
@@ -1097,11 +1098,30 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
 
 
 
-const authInputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",minHeight:44,borderRadius:10,border:`1.5px solid ${C.line}`,marginBottom:10,fontSize:"0.9rem",fontFamily:"inherit"};
+const authInputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",minHeight:44,borderRadius:10,border:`1.5px solid ${C.line}`,fontSize:"0.9rem",fontFamily:"inherit"};
 // Sign in / Sign up tabs and the Customer / Business Owner choice: 44px targets, text colour set on both states
 // (the fill flips to gold, so the text must be the dark brown on it in both themes), state also carried by aria-pressed.
 const authTabStyle=(on)=>({flex:1,minHeight:44,borderRadius:22,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.85rem",fontFamily:"inherit",background:on?C.gold:C.surface2,color:on?C.darkBrown:C.ink});
 const authTypeStyle=(on)=>({flex:1,minHeight:44,padding:"6px",borderRadius:22,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.8rem",fontFamily:"inherit",background:on?C.gold:C.surface,color:on?C.darkBrown:C.ink});
+const authLabelStyle={display:"block",fontSize:"0.82rem",fontWeight:700,color:C.ink,marginBottom:4};
+// A visible label above the control (placeholders vanish while typing and are not a label), wired with htmlFor.
+// `render(id)` returns the control so it can take the generated id.
+function AuthField({label,hint,render}) {
+  const id=useId();
+  return <div style={{marginBottom:12}}>
+    <label htmlFor={id} style={authLabelStyle}>{label}</label>
+    {render(id)}
+    {hint&&<div style={{fontSize:"0.78rem",color:C.inkDim,marginTop:4,lineHeight:1.4}}>{hint}</div>}
+  </div>;
+}
+// Password box with a Show / Hide control (it starts hidden and resets whenever the form is left).
+function AuthPasswordInput({id,value,onChange,placeholder,ariaLabel,autoComplete,minLength}) {
+  const [shown,setShown]=useState(false);
+  return <div style={{position:"relative"}}>
+    <input id={id} value={value} onChange={onChange} type={shown?"text":"password"} placeholder={placeholder} aria-label={ariaLabel} autoComplete={autoComplete} required minLength={minLength} style={{...authInputStyle,paddingRight:64}}/>
+    <button type="button" onClick={()=>setShown(v=>!v)} aria-label={shown?"Hide password":"Show password"} style={{position:"absolute",top:0,right:2,height:44,minWidth:56,background:"none",border:"none",color:C.ink,fontSize:"0.8rem",fontWeight:700,fontFamily:"inherit",cursor:"pointer",textDecoration:"underline"}}>{shown?"Hide":"Show"}</button>
+  </div>;
+}
 const authLinkStyle={background:"none",border:"none",color:C.ink,fontSize:"0.82rem",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit",minHeight:44,padding:"0 8px"};
 const authSubmitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"12px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",marginTop:4};
 
@@ -1250,8 +1270,8 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
             <button type="button" aria-pressed={accountType==="customer"} onClick={()=>setAccountType("customer")} style={authTypeStyle(accountType==="customer")}>Customer</button>
             <button type="button" aria-pressed={accountType==="business_owner"} onClick={()=>setAccountType("business_owner")} style={authTypeStyle(accountType==="business_owner")}>Business Owner</button>
           </div>}
-          <input value={identifier} onChange={e=>setIdentifier(e.target.value)} placeholder="Phone or email" aria-label="Phone or email" autoComplete="username" required style={authInputStyle}/>
-          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password" aria-label="Password" autoComplete="current-password" required style={authInputStyle}/>
+          <AuthField label="Phone or email" render={id=><input id={id} value={identifier} onChange={e=>setIdentifier(e.target.value)} placeholder="Phone or email" aria-label="Phone or email" autoComplete="username" required style={authInputStyle}/>}/>
+          <AuthField label="Password" render={id=><AuthPasswordInput id={id} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Password" ariaLabel="Password" autoComplete="current-password"/>}/>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Signing in…":"Sign In"}</button>
           <div style={{textAlign:"center",marginTop:10}}>
             <button type="button" onClick={()=>{setMode("forgot");setError(null);setResetSubmitted(false);}} style={authLinkStyle}>Forgot password?</button>
@@ -1271,7 +1291,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
                   the type; a visible "Staff" option on a public form would
                   advertise which account classes exist. */}
               <div style={{fontSize:"0.76rem",color:C.inkDim,marginBottom:12,lineHeight:1.5}}>Enter your account email and we'll send you a link to reset your password.</div>
-              <input value={resetEmail} onChange={e=>setResetEmail(e.target.value)} type="email" placeholder="Email" aria-label="Email" autoComplete="email" required style={authInputStyle}/>
+              <AuthField label="Email" render={id=><input id={id} value={resetEmail} onChange={e=>setResetEmail(e.target.value)} type="email" placeholder="Email" aria-label="Email" autoComplete="email" required style={authInputStyle}/>}/>
               <button type="submit" disabled={resetSubmitting} style={authSubmitStyle}>{resetSubmitting?"Sending…":"Send Reset Link"}</button>
             </form>
           )}
@@ -1282,10 +1302,10 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
             <button type="button" aria-pressed={accountType==="customer"} onClick={()=>setAccountType("customer")} style={authTypeStyle(accountType==="customer")}>Customer</button>
             <button type="button" aria-pressed={accountType==="business_owner"} onClick={()=>setAccountType("business_owner")} style={authTypeStyle(accountType==="business_owner")}>Business Owner</button>
           </div>
-          <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" aria-label="Full name" autoComplete="name" required style={authInputStyle}/>
-          <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" aria-label="Phone" type="tel" autoComplete="tel" style={authInputStyle}/>
-          <input value={email} onChange={e=>setEmail(e.target.value)} type={accountType==="business_owner"?"text":"email"} inputMode="email" aria-required={accountType==="business_owner"} placeholder="Email" aria-label="Email" autoComplete="email" style={authInputStyle}/>
-          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" aria-label="Password, at least 8 characters" autoComplete="new-password" required minLength={8} style={authInputStyle}/>
+          <AuthField label="Full name" render={id=><input id={id} value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" aria-label="Full name" autoComplete="name" required style={authInputStyle}/>}/>
+          <AuthField label="Phone" render={id=><input id={id} value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" aria-label="Phone" type="tel" autoComplete="tel" style={authInputStyle}/>}/>
+          <AuthField label={accountType==="business_owner"?"Email (required)":"Email"} hint={accountType==="business_owner"?"We send your confirmation link here.":undefined} render={id=><input id={id} value={email} onChange={e=>setEmail(e.target.value)} type={accountType==="business_owner"?"text":"email"} inputMode="email" aria-required={accountType==="business_owner"} placeholder="Email" aria-label="Email" autoComplete="email" style={authInputStyle}/>}/>
+          <AuthField label="Password" hint="At least 8 characters." render={id=><AuthPasswordInput id={id} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Password (min 8 characters)" ariaLabel="Password, at least 8 characters" autoComplete="new-password" minLength={8}/>}/>
           <fieldset style={{border:`1px solid ${C.line}`,borderRadius:10,padding:"8px 12px",margin:"0 0 12px"}}>
             <legend style={{fontSize:"0.72rem",fontWeight:800,padding:"0 4px"}}>Offers from AshantiHub (optional)</legend>
             {[["sms","SMS"],["whatsapp","WhatsApp"],["email","Email"],["inapp","In the app"]].map(([key,label])=>(
@@ -2284,6 +2304,8 @@ const PATH_TO_PAGE = {
   "/business": "business",
   "/events": "events",
   "/about": "about",
+  // The Privacy Notice (Act 843): public, linked from the footer and the cookie banner.
+  "/privacy": "privacy",
   "/contact": "contact",
   "/register": "register",
   // Staff onboarding + account-recovery work: two more standalone pages,
@@ -2327,6 +2349,7 @@ const PAGE_TO_PATH = {
   business: "/business",
   events: "/events",
   about: "/about",
+  privacy: "/privacy",
   contact: "/contact",
   register: "/register",
   "staff-activate": "/staff/activate",
@@ -2449,6 +2472,8 @@ function AshantiHubApp() {
   // business, staff and account top bars.
   const {theme,toggleTheme} = useTheme();
   const [legalDoc,setLegalDoc]=useState(null);
+  // The Privacy Notice is a real page; the other footer documents still only set `legalDoc`.
+  const openLegalDoc=(doc)=>{ if(doc==="privacy") setPage("privacy"); else setLegalDoc(doc); };
   // showBizDash/showPayments/showCredit — same "derive from the URL, wrap the
   // setter in a navigate() closure" pattern as `page`/`setPage` above, so
   // Navbar.jsx/BusinessRegistrationFlow.jsx/the inline CTA buttons in this
@@ -2719,7 +2744,7 @@ function AshantiHubApp() {
   useEffect(()=>{ if(!isLoading) Analytics.track("page_view",{page}); },[page,isLoading]);
 
   useEffect(()=>{
-    const handler=(e)=>setLegalDoc(e.detail);
+    const handler=(e)=>openLegalDoc(e.detail);
     window.addEventListener("openLegal",handler);
     return()=>window.removeEventListener("openLegal",handler);
   },[]);
@@ -2974,7 +2999,7 @@ function AshantiHubApp() {
       ...(showStaffBar ? {"--ah-top-offset":`${STAFF_VIEW_ONLY_BAR_HEIGHT}px`,paddingTop:STAFF_VIEW_ONLY_BAR_HEIGHT} : {})}}>
       {showStaffBar&&<StaffViewOnlyBar onBackToDashboard={()=>navigate("/staff")} onSignOut={staffSignOut}/>}
       {appStaffGate.shownFor&&<StaffGateNotice floating onDismiss={appStaffGate.dismiss}/>}
-      {!cookieDismissed&&<CookieBanner onAccept={()=>{saveCookieConsent("accepted");setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{saveCookieConsent("essential");setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
+      {!cookieDismissed&&<CookieBanner onOpenPrivacy={()=>setPage("privacy")} onAccept={()=>{saveCookieConsent("accepted");setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{saveCookieConsent("essential");setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
       <OfflineBanner/>
       {shownAuthModal&&<AuthModal key={shownAuthModal} authState={shownAuthModal} auth={auth} onClose={()=>{setAuthModal(null);setAuthReturn(null);}} onSuccess={handleAuthSuccess} onGoToMarketplace={leaveStaffSignInForMarketplace}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
@@ -3355,6 +3380,11 @@ function AshantiHubApp() {
         <AboutCtaBand user={user} onCreateAccount={()=>setAuthModal("signup")} onRegister={openRegister}/>
       )}
 
+      {/* Privacy Notice */}
+      {page==="privacy"&&(
+        <PageBoundary><PrivacyNoticePage onNavigate={(path)=>navigate(path)}/></PageBoundary>
+      )}
+
       {/* Contact page */}
       {page==="contact"&&(
         <PageBoundary><ContactPage user={user} onCreateAccount={()=>setAuthModal("signup")} WhatsAppButton={WABtn}/></PageBoundary>
@@ -3371,7 +3401,7 @@ function AshantiHubApp() {
       )}
 
       {/* Footer — every public page, home included: Support, About us, Contact + legal */}
-      <Footer2 setPage={setPage} setLegalDoc={setLegalDoc} onSupport={()=>setShowIntake(true)}/>
+      <Footer2 setPage={setPage} setLegalDoc={openLegalDoc} onSupport={()=>setShowIntake(true)}/>
 
       {/* Floating chat launcher — opens the Support intake (name, email, phone,
           issue -> a messaging.Conversation for AshantiHub Support, never a

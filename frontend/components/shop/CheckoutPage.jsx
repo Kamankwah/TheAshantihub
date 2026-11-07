@@ -28,6 +28,7 @@ import { walletMessage } from "../wallet/walletErrors.js";
 import { addGhs, formatGhs, ghsToPesewas, isPlausibleAmount } from "../wallet/walletMoney.js";
 import { walletStyles } from "../wallet/walletStyles.js";
 import { BODY_FONT, HEADING_FONT, TABULAR } from "../storefront/storefrontType.js";
+import { Skeleton, SkeletonCard, SkeletonStatus } from "../Skeleton.jsx";
 import { OPENS_SOON, PIN_YOUR_DOOR, atStockCap, guardUncheckedText } from "./shopCopy.js";
 import { goToCheckout } from "../../lib/safeRedirect.js";
 import { newRequestId } from "../wallet/walletMoney.js";
@@ -330,7 +331,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
   const row = { display: "flex", justifyContent: "space-between", gap: 12, fontSize: "0.9rem", color: C.ink, padding: "4px 0" };
   const amount = { color: C.price, ...TABULAR, textAlign: "right" };
   const shell = { background: C.canvas, minHeight: "100vh", fontFamily: BODY_FONT, color: C.ink };
-  const inner = { maxWidth: 1120, margin: "0 auto", padding: phoneLayout ? "16px 16px 40px" : "24px 16px 56px", boxSizing: "border-box" };
+  const inner = { maxWidth: 1120, margin: "0 auto", padding: phoneLayout ? "16px 16px 150px" : "24px 16px 56px", boxSizing: "border-box" };
 
   const header = (
     <header style={{ background: C.surface, borderBottom: `1px solid ${C.line}` }}>
@@ -365,7 +366,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
     return page(<StaffGateNotice passive />);
   }
   if (!user && authLoading) {
-    return page(<p style={{ color: C.inkDim }}>Loading your checkout{"…"}</p>);
+    return page(<SkeletonStatus label={"Loading your checkout…"} style={{ display: "grid", gap: 16 }}><SkeletonCard lines={3} /><SkeletonCard lines={4} /><SkeletonCard lines={2} /></SkeletonStatus>);
   }
   if (!user) {
     return page(
@@ -379,7 +380,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
     return page(<div style={card}><p style={{ margin: 0, color: C.inkDim }}>Checkout is for customer accounts.</p></div>);
   }
   if (cartQuery.isPending) {
-    return page(<p style={{ color: C.inkDim }}>Loading your checkout{"…"}</p>);
+    return page(<SkeletonStatus label={"Loading your checkout…"} style={{ display: "grid", gap: 16 }}><SkeletonCard lines={3} /><SkeletonCard lines={4} /><SkeletonCard lines={2} /></SkeletonStatus>);
   }
   // The order is accepted: a failed refetch of the (now emptied) cart must not replace the placed note.
   if (placedNext && (cartQuery.isError || items.length === 0)) {
@@ -446,6 +447,15 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
     </div>
   );
 
+  // One "Place your order" button and one reason line. On a phone they live in a fixed bar at the bottom of the screen
+  // (the total beside them), so the action is always in reach; elsewhere they sit under the summary.
+  const placeButton = (
+    <button type="button" disabled={!ready} onClick={placeOrder} aria-describedby={reason ? "checkout-reason" : undefined} style={{ ...s.button, width: "100%", marginTop: phoneLayout ? 0 : 16, borderRadius: 24, background: ready ? C.gold : C.surface3, color: ready ? C.darkBrown : C.inkDim, cursor: ready ? "pointer" : "not-allowed", fontWeight: 900 }}>
+      Place your order in GHS
+    </button>
+  );
+  const reasonLine = reason && <div id="checkout-reason" data-testid="checkout-reason" style={{ ...note, marginTop: phoneLayout ? 6 : 10, fontWeight: 600 }}>{reason}</div>;
+
   return page(
     <div style={{ display: "grid", gridTemplateColumns: phoneLayout ? "minmax(0, 1fr)" : "minmax(0, 1fr) 340px", gap: 20, alignItems: "start" }}>
       <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
@@ -479,7 +489,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
         {door && (
           <section style={card} aria-label="Delivering to">
             <h2 style={h2}>Delivering to</h2>
-            {!addressesSettled && <div style={note}>Loading your addresses{"…"}</div>}
+            {!addressesSettled && <SkeletonStatus label={"Loading your addresses…"} style={{ display: "grid", gap: 10 }}><Skeleton width="60%" height={14} /><Skeleton width="85%" height={14} /></SkeletonStatus>}
             {addressesSettled && !typing && addr && !changing && (
               <div style={{ display: "grid", gap: 8 }}>
                 <AddressCard address={addr} />
@@ -615,10 +625,8 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
         </div>
         {!feeWait && <ProcessingLine amount={shownTotal} tone="light" method={payMethod} />}
 
-        <button type="button" disabled={!ready} onClick={placeOrder} style={{ ...s.button, width: "100%", marginTop: 16, borderRadius: 24, background: ready ? C.gold : C.surface3, color: ready ? C.darkBrown : C.inkDim, cursor: ready ? "pointer" : "not-allowed", fontWeight: 900 }}>
-          Place your order in GHS
-        </button>
-        {reason && <div data-testid="checkout-reason" style={{ ...note, marginTop: 10, fontWeight: 600 }}>{reason}</div>}
+        {!phoneLayout && placeButton}
+        {!phoneLayout && reasonLine}
         {placedNext && defaultFailed && (
           <div data-testid="checkout-default-note" role="status" style={{ ...note, marginTop: 10 }}>
             <div>Your order is placed, but we could not make this your default address.</div>
@@ -632,6 +640,16 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
           </div>
         )}
       </aside>
+      {phoneLayout && (
+        <div data-testid="checkout-sticky-bar" style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 2400, background: C.surface, borderTop: `1px solid ${C.line}`, boxShadow: "0 -6px 20px rgba(44,24,16,0.12)", padding: "10px 16px calc(10px + env(safe-area-inset-bottom, 0px))", boxSizing: "border-box" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 8 }}>
+            <span style={{ fontSize: "0.85rem", fontWeight: 700 }}>Order total</span>
+            <span data-amount style={{ ...amount, fontSize: "1.05rem", fontWeight: 800 }}>{formatGhs(shownTotal)}</span>
+          </div>
+          {placeButton}
+          {reasonLine}
+        </div>
+      )}
     </div>,
   );
 }

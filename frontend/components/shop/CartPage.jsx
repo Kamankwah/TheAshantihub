@@ -14,6 +14,7 @@ import StaffGateNotice from "../StaffGateNotice.jsx";
 import { BODY_FONT, HEADING_FONT, TABULAR } from "../storefront/storefrontType.js";
 import PriceTag from "./PriceTag.jsx";
 import { LOW_STOCK_AT, OPENS_SOON, atStockCap, guardUncheckedText } from "./shopCopy.js";
+import { SkeletonRow, SkeletonStatus } from "../Skeleton.jsx";
 import ProductCarousel, { AlsoViewedCarousel } from "./ProductCarousel.jsx";
 
 function stockText(line) {
@@ -104,7 +105,7 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn,
   const sponsoredRow = <ProductCarousel title="Sponsored products" items={sponsored} sponsored currency={currency} onOpen={(id) => go(`/business/${id}`)} />;
 
   if (!user && authLoading) {
-    return <main style={shell}><h1 style={h1}>Shopping Cart</h1><p style={{ color: C.inkDim }}>Loading your cart{"…"}</p></main>;
+    return <main style={shell} aria-busy="true"><h1 style={h1}>Shopping Cart</h1><SkeletonStatus label={"Loading your cart…"} style={{ marginTop: 12 }}><SkeletonRow photo={phone ? 84 : 120} /><SkeletonRow photo={phone ? 84 : 120} /></SkeletonStatus></main>;
   }
   if (!user) {
     return (
@@ -117,7 +118,7 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn,
   }
 
   if (cartQuery.isPending) {
-    return <main style={shell}><h1 style={h1}>Shopping Cart</h1><p style={{ color: C.inkDim }}>Loading your cart{"…"}</p></main>;
+    return <main style={shell} aria-busy="true"><h1 style={h1}>Shopping Cart</h1><SkeletonStatus label={"Loading your cart…"} style={{ marginTop: 12 }}><SkeletonRow photo={phone ? 84 : 120} /><SkeletonRow photo={phone ? 84 : 120} /></SkeletonStatus></main>;
   }
   if (cartQuery.isError) {
     // Only the server's 403 for a non-customer account means "not for you"; any other failure is just a failed read.
