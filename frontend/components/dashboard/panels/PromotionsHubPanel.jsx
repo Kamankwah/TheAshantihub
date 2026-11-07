@@ -6,6 +6,7 @@ import { D, glassCard, tint } from "../theme.js";
 import HeroSlideForm from "../HeroSlideForm.jsx";
 import DiscountsPanel from "./DiscountsPanel.jsx";
 import DeliveryPromosPanel from "./DeliveryPromosPanel.jsx";
+import { goToCheckout } from "../../../lib/safeRedirect.js";
 
 // ─── Promotion hub — every promotion tool in one place ───
 // Cards open the existing tools: Discount, Hero ad (Plan 1's slide form), Sponsored ad (featured/boost request),
@@ -40,7 +41,7 @@ function SponsoredAd({ listings, listingId, promoteBase, PaymentComponent, user,
       const body = { kind, days };
       if (kind === "boost") body.keywords = keywords.trim();
       const res = await apiPost(`${promoteBase}/${target}/promote/`, body);
-      if (res?.mode === "redirect") { window.location.href = res.checkout_url; return; }
+      if (res?.mode === "redirect") { goToCheckout(res.checkout_url); return; }
       if (res?.free) {
         // Nothing to pay: the request goes straight to staff review.
         setNotice("Sent for review. It costs nothing for now and goes live once our team approves it.");

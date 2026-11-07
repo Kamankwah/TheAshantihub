@@ -29,6 +29,7 @@ import { addGhs, formatGhs, ghsToPesewas, isPlausibleAmount } from "../wallet/wa
 import { walletStyles } from "../wallet/walletStyles.js";
 import { BODY_FONT, HEADING_FONT, TABULAR } from "../storefront/storefrontType.js";
 import { OPENS_SOON, PIN_YOUR_DOOR, atStockCap, guardUncheckedText } from "./shopCopy.js";
+import { goToCheckout } from "../../lib/safeRedirect.js";
 
 const num = (v) => (v == null || v === "" ? null : Number(v));
 
@@ -238,7 +239,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
       // Hubtel (docs/HUBTEL_INTEGRATION.md): the order is pending until the webhook confirms, so go to the hosted checkout.
       if (response?.mode === "redirect") {
         await applyDefault(); // the page is about to leave, so a failure here has nowhere to be shown
-        window.location.assign(response.checkout_url);
+        goToCheckout(response.checkout_url, "assign");
         return;
       }
       queryClient.invalidateQueries({ queryKey: ["cart"] });

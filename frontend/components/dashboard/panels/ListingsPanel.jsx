@@ -14,6 +14,7 @@ import BarcodeField from "../../catalogue/BarcodeField.jsx";
 import { displayBarcode, isGoodsCategory } from "../../catalogue/catalogueFormat.js";
 import { DecisionFields, inputStyle, labelStyle, textareaStyle, fieldGrid2, policyHint } from "./listingFormFields.jsx";
 import { D, glassCard, LISTING_STATUS_META, HERO_STATUS_META, tint } from "../theme.js";
+import { goToCheckout } from "../../../lib/safeRedirect.js";
 
 // Listings & Prices panel — ported from App.jsx's BusinessDashboard "listings"
 // tab, re-themed dark. Owns its own listing create / edit / hero-submit /
@@ -289,7 +290,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       // a "mode" field. Left here so a future conversion of that endpoint
       // doesn't also require frontend surgery.
       if (response?.mode === "redirect") {
-        window.location.href = response.checkout_url;
+        goToCheckout(response.checkout_url);
         return;
       }
       toast(); refetchHeroSubmission();

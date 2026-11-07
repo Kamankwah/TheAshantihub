@@ -26,6 +26,7 @@ import { ReviewsList, ReviewWriteForm, starString } from "./ReviewComponents.jsx
 import SellerRatingBadge from "./SellerRatingBadge.jsx";
 import ProductPage from "./shop/ProductPage.jsx";
 import { attributeRows } from "../lib/listingFacts.js";
+import { goToCheckout } from "../lib/safeRedirect.js";
 
 // ─── ListingDetailPage ──────────────────────────────────────────────────────
 // The listing detail route's chooser (Marketplace Plan 4). Goods — what the
@@ -221,7 +222,7 @@ function ServiceListingDetail({
       if (created?.mode === "redirect") {
         redirecting = true;
         setMomoOpen(false);
-        window.location.href = created.checkout_url;
+        goToCheckout(created.checkout_url);
         return;
       }
       setMomoOpen(false);

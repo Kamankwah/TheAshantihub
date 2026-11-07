@@ -156,7 +156,7 @@ describe('ServiceRequestsTab — paying by method with the server charge', () =>
   it('a redirect answer goes to checkout_url', async () => {
     server.use(
       ledgerOn(), listAccepted(),
-      http.post(`${API}/api/services/requests/:id/pay/`, () => HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.example/c/9' })),
+      http.post(`${API}/api/services/requests/:id/pay/`, () => HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.hubtel.com/c/9' })),
     )
     const original = window.location
     Object.defineProperty(window, 'location', { configurable: true, value: { href: 'http://localhost/' } })
@@ -164,7 +164,7 @@ describe('ServiceRequestsTab — paying by method with the server charge', () =>
       renderTab()
       fireEvent.click(await screen.findByLabelText(/AshantiHub wallet/))
       fireEvent.click(await screen.findByRole('button', { name: /from your AshantiHub wallet/ }))
-      await waitFor(() => expect(window.location.href).toBe('https://pay.example/c/9'))
+      await waitFor(() => expect(window.location.href).toBe('https://pay.hubtel.com/c/9'))
     } finally {
       Object.defineProperty(window, 'location', { configurable: true, value: original })
     }
@@ -174,7 +174,7 @@ describe('ServiceRequestsTab — paying by method with the server charge', () =>
     let posts = 0
     server.use(
       ledgerOn(), listAccepted(), quote('1.80'),
-      http.post(`${API}/api/services/requests/:id/pay/`, () => { posts += 1; return HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.example/c/9' }) }),
+      http.post(`${API}/api/services/requests/:id/pay/`, () => { posts += 1; return HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.hubtel.com/c/9' }) }),
     )
     const original = window.location
     Object.defineProperty(window, 'location', { configurable: true, value: { href: 'http://localhost/' } })
@@ -184,7 +184,7 @@ describe('ServiceRequestsTab — paying by method with the server charge', () =>
       await waitFor(() => expect(btn).toBeEnabled())
       fireEvent.click(btn)
       fireEvent.click(screen.getByText('Simulate paid'))
-      await waitFor(() => expect(window.location.href).toBe('https://pay.example/c/9'))
+      await waitFor(() => expect(window.location.href).toBe('https://pay.hubtel.com/c/9'))
       expect(screen.queryByText('Simulate paid')).not.toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: /Pay GHS 120.00 to start/ }))
       await new Promise((r) => setTimeout(r, 60))

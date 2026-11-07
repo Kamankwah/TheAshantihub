@@ -89,14 +89,14 @@ describe('WalletOverview', () => {
   })
 
   it('test_redirect_top_up_navigates_to_checkout_url', async () => {
-    server.use(http.post(`${API}/api/wallet/top-up/`, () => HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.example/c/1' }, { status: 201 })))
+    server.use(http.post(`${API}/api/wallet/top-up/`, () => HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.hubtel.com/c/1' }, { status: 201 })))
     const loc = { href: 'http://localhost/' }
     vi.spyOn(window, 'location', 'get').mockReturnValue(loc)
     renderAt(OV)
     await openTopUp()
     type('50')
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Top up' }))
-    await waitFor(() => expect(loc.href).toBe('https://pay.example/c/1'))
+    await waitFor(() => expect(loc.href).toBe('https://pay.hubtel.com/c/1'))
   })
 
   it('test_server_refusal_text_is_shown_verbatim', async () => {
