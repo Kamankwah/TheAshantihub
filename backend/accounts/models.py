@@ -100,11 +100,11 @@ class Customer(AuthenticatableAccountMixin, models.Model):
     # its response rather than pretending to send it silently.
     secondary_email = models.EmailField(null=True, blank=True)
     secondary_email_verified = models.BooleanField(default=False)
-    secondary_email_verify_code = models.CharField(max_length=6, null=True, blank=True)
+    secondary_email_verify_code = models.CharField(max_length=64, null=True, blank=True)
     secondary_email_verify_expires_at = models.DateTimeField(null=True, blank=True)
     secondary_phone = models.CharField(max_length=20, null=True, blank=True)
     secondary_phone_verified = models.BooleanField(default=False)
-    secondary_phone_verify_code = models.CharField(max_length=6, null=True, blank=True)
+    secondary_phone_verify_code = models.CharField(max_length=64, null=True, blank=True)
     secondary_phone_verify_expires_at = models.DateTimeField(null=True, blank=True)
 
     # Notification preferences — real, persisted opt-in flags (no delivery

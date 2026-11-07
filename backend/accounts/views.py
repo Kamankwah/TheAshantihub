@@ -52,6 +52,7 @@ from .permissions import (
     general_manager_manager_problem,
 )
 from storefront import opening
+from . import invite_tokens
 from .phones import filter_by_phone, phone_key
 from .serializers import (
     BusinessHoursSerializer,
@@ -223,13 +224,13 @@ class StaffResendInviteView(APIView):
                 {"detail": "Cannot resend invite for an already-activated account."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        staff.invite_token = get_random_string(43)
+        raw_token, staff.invite_token = invite_tokens.new_invite_token()
         staff.invite_expires_at = timezone.now() + INVITE_TOKEN_LIFETIME
         staff.invite_sent_at = timezone.now()
         staff.invite_opened_at = None  # the new link has not been opened yet
         staff.save(update_fields=["invite_token", "invite_expires_at", "invite_sent_at", "invite_opened_at"])
         send_staff_invite_email(
-            staff, f"{settings.FRONTEND_BASE_URL}/staff/activate?token={staff.invite_token}"
+            staff, f"{settings.FRONTEND_BASE_URL}/staff/activate?token={raw_token}"
         )
         return Response({"status": "invite resent"})
 
@@ -274,7 +275,7 @@ class StaffInviteOpenedView(APIView):
 
     def post(self, request):
         token = str(request.data.get("token", "")) if isinstance(request.data, dict) else ""
-        staff = StaffUser.objects.filter(invite_token=token).first() if token else None
+        staff = StaffUser.objects.filter(invite_token=invite_tokens.stored_invite_token(token)).first() if token else None
         if staff is None:
             return Response({"state": "invalid"})
         if staff.invite_expires_at is None or staff.invite_expires_at < timezone.now():
@@ -1875,7 +1876,7 @@ class CustomerSecondaryEmailRequestView(generics.GenericAPIView):
             step_up.require(request, step_up.CONTACT_CHANGE, force=escrow.enabled())
             serializer.is_valid(raise_exception=True)
             customer = serializer.save()
-        send_verification_code_email(customer.secondary_email, customer.secondary_email_verify_code)
+        send_verification_code_email(customer.secondary_email, serializer.raw_code)
         return Response({
             "secondary_email": customer.secondary_email,
             "expires_in_minutes": 10,
@@ -1906,7 +1907,7 @@ class CustomerSecondaryPhoneRequestView(generics.GenericAPIView):
             customer = serializer.save()
         return Response({
             "secondary_phone": customer.secondary_phone,
-            "demo_code": customer.secondary_phone_verify_code,
+            "demo_code": serializer.raw_code,
             "expires_in_minutes": 10,
         })
 

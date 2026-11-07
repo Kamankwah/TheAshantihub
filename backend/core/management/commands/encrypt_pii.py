@@ -13,6 +13,7 @@ TARGETS = (
     ("accounts", "Customer", "date_of_birth"),
     ("wallets", "PayoutDestination", "account_number"),
     ("delivery", "RiderDocument", "number"),
+    ("ledger", "FulfilmentCheck", "collection_code"),
 )
 
 

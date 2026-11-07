@@ -208,3 +208,43 @@ class ExportTests(TestCase):
         self.assertEqual(self.client.get("/api/accounts/me/export/").status_code, 401)
         staff = make_staff("support", "s2@example.com")
         self.assertEqual(self._get(staff, "staff").status_code, 403)
+
+
+class HashedCodesTests(TestCase):
+    """Review DB-14: invite tokens and secondary-contact codes are not stored in the clear."""
+
+    def test_the_secondary_phone_code_is_stored_as_an_hmac_and_still_confirms(self):
+        customer = _customer()
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(customer, 'customer')}")
+        sent = client.post("/api/accounts/customers/me/secondary-phone/", {"secondary_phone": "+233201112233"}, format="json")
+        self.assertEqual(sent.status_code, 200, sent.content)
+        code = sent.json()["demo_code"]
+        customer.refresh_from_db()
+        self.assertNotEqual(customer.secondary_phone_verify_code, code)
+        self.assertEqual(len(customer.secondary_phone_verify_code), 64)
+        wrong = client.post("/api/accounts/customers/me/secondary-phone/confirm/", {"code": "000000" if code != "000000" else "111111"}, format="json")
+        self.assertEqual(wrong.status_code, 400)
+        right = client.post("/api/accounts/customers/me/secondary-phone/confirm/", {"code": code}, format="json")
+        self.assertEqual(right.status_code, 200, right.content)
+
+    def test_a_legacy_plaintext_code_still_matches_until_it_expires(self):
+        from accounts import invite_tokens
+
+        self.assertTrue(invite_tokens.verify_code_matches("123456", "123456"))
+        self.assertFalse(invite_tokens.verify_code_matches("123456", "654321"))
+        self.assertFalse(invite_tokens.verify_code_matches(None, "123456"))
+
+    def test_the_pickup_collection_code_is_encrypted_in_the_column(self):
+        from django.db import connection
+
+        from ledger.models import FulfilmentCheck
+
+        order = _order(_customer())
+        check = FulfilmentCheck.objects.create(order=order, collection_code="123456")
+        with connection.cursor() as cursor:
+            cursor.execute("select collection_code from ledger_fulfilmentcheck where id = %s", [check.pk])
+            stored = cursor.fetchone()[0]
+        self.assertTrue(stored.startswith("enc1:"))
+        check.refresh_from_db()
+        self.assertEqual(check.collection_code, "123456")

@@ -32,6 +32,7 @@ from delivery.models import VEHICLE_TYPES as VEHICLE_TYPE_CHOICES, DeliveryZone,
 from listings.models import Zone
 
 from .permissions import can_lead_team, can_manage_staff, general_manager_manager_problem
+from . import invite_tokens
 from .phones import filter_by_phone, mask_phone
 
 # Used to pay the same check_password() cost when no account is found, so that
@@ -205,7 +206,7 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         rider_profile = {k: validated_data.pop(k) for k in ("vehicle_type", "home_zone", "first_shift_date", "invite_note") if k in validated_data}
         validated_data["password_hash"] = make_password(get_random_string(32))
         validated_data["invited_by"] = self.context["request"].user
-        validated_data["invite_token"] = get_random_string(43)
+        raw_token, validated_data["invite_token"] = invite_tokens.new_invite_token()
         validated_data["invite_expires_at"] = timezone.now() + INVITE_TOKEN_LIFETIME
         validated_data["invite_sent_at"] = timezone.now()
         staff = StaffUser.objects.create(**validated_data)
@@ -219,7 +220,7 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         # this token — a hardcoded domain here once sent staging invites to
         # the production site, where the token doesn't exist.
         send_staff_invite_email(
-            staff, f"{settings.FRONTEND_BASE_URL}/staff/activate?token={staff.invite_token}"
+            staff, f"{settings.FRONTEND_BASE_URL}/staff/activate?token={raw_token}"
         )
         return staff
 
@@ -230,7 +231,7 @@ class StaffActivateSerializer(serializers.Serializer):
 
     def validate_token(self, value):
         try:
-            staff = StaffUser.objects.get(invite_token=value)
+            staff = StaffUser.objects.get(invite_token=invite_tokens.stored_invite_token(value))
         except StaffUser.DoesNotExist as exc:
             raise serializers.ValidationError("Invalid invite token") from exc
         if staff.invite_expires_at is None or staff.invite_expires_at < timezone.now():
@@ -909,7 +910,7 @@ class CustomerSecondaryEmailRequestSerializer(serializers.Serializer):
         return value
 
     def save(self):
-        code = get_random_string(6, allowed_chars="0123456789")
+        self.raw_code, code = invite_tokens.new_verify_code()
         customer = self.context["request"].user
         customer.secondary_email = self.validated_data["secondary_email"]
         customer.secondary_email_verified = False
@@ -931,7 +932,7 @@ class CustomerSecondaryEmailConfirmSerializer(serializers.Serializer):
             raise serializers.ValidationError("No verification in progress. Request a new code.")
         if customer.secondary_email_verify_expires_at < timezone.now():
             raise serializers.ValidationError("This code has expired. Request a new one.")
-        if attrs["code"] != customer.secondary_email_verify_code:
+        if not invite_tokens.verify_code_matches(customer.secondary_email_verify_code, attrs["code"]):
             raise serializers.ValidationError("Incorrect code.")
         return attrs
 
@@ -956,7 +957,7 @@ class CustomerSecondaryPhoneRequestSerializer(serializers.Serializer):
         return value
 
     def save(self):
-        code = get_random_string(6, allowed_chars="0123456789")
+        self.raw_code, code = invite_tokens.new_verify_code()
         customer = self.context["request"].user
         customer.secondary_phone = self.validated_data["secondary_phone"]
         customer.secondary_phone_verified = False
@@ -978,7 +979,7 @@ class CustomerSecondaryPhoneConfirmSerializer(serializers.Serializer):
             raise serializers.ValidationError("No verification in progress. Request a new code.")
         if customer.secondary_phone_verify_expires_at < timezone.now():
             raise serializers.ValidationError("This code has expired. Request a new one.")
-        if attrs["code"] != customer.secondary_phone_verify_code:
+        if not invite_tokens.verify_code_matches(customer.secondary_phone_verify_code, attrs["code"]):
             raise serializers.ValidationError("Incorrect code.")
         return attrs
 

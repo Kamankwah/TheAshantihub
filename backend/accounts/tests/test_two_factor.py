@@ -325,7 +325,7 @@ class ChallengeBindingTests(TwoFactorBase):
 class ActivationTwoFactorTests(TwoFactorBase):
     def invitee(self, role, email):
         return _make_staff(
-            role, email, password_hash="", invite_token=f"inv-{role}",
+            role, email, password_hash="", invite_token=hash_token(f"inv-{role}"),
             invite_expires_at=timezone.now() + timedelta(days=1),
         )
 
