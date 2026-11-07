@@ -656,6 +656,12 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   (`core.E004` fails the deploy if it is a superuser). Code must not need DDL, `TRUNCATE` or ownership at runtime; to prove a change
   doesn't, run `manage.py test --testrunner core.role_test_runner.RuntimeRoleRunner` (the suite as the restricted role;
   `TransactionTestCase` classes fail there by design because their flush uses `TRUNCATE`).
+- **Ledger integrity (DB-06).** A deferred constraint trigger (ledger migration 0015) refuses a commit that leaves a journal with
+  credits != debits, so a test that inserts a lone `JournalLine` must add its other side (or disable `ledger_journal_balanced` in
+  that test). `ledger.tasks.verify_ledger_integrity` (02:00) re-derives balances from the lines and alerts; it corrects nothing.
+- **DB connection settings (DB-09).** Deployed processes reuse connections and set `statement_timeout` (60 s; workers 600 s),
+  `lock_timeout` and `idle_in_transaction_session_timeout`; the owner tasks and tests get none. A new `TransactionTestCase` needs
+  `serialized_rollback = True` (see the existing ones), or the classes after it collide on content types.
 - **Staff 2-step** is required for `settings.STAFF_TWO_FACTOR_DEFAULT_ROLES` until a Super Admin saves a policy (empty under tests).
 - **Background jobs** route to `money` / `slow` / default queues (`CELERY_TASK_ROUTES`), each with its own worker in the
   production compose; a new queue must be added to both, or its tasks never run. Tasks have a 10-minute limit.

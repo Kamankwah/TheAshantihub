@@ -19,6 +19,8 @@ DENIED = "42501"  # insufficient_privilege
 class RuntimeRoleTests(TransactionTestCase):
     """The restricted runtime role (review DB-05): it works the application, and nothing more."""
 
+    serialized_rollback = True  # flushes recreate content types; later serialized-rollback classes would then collide
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -123,6 +125,8 @@ class RuntimeRoleTests(TransactionTestCase):
 
 class RuntimeRoleCheckTests(TransactionTestCase):
     """core.E004: a production process connected as a superuser stops the deploy."""
+
+    serialized_rollback = True
 
     def test_a_superuser_connection_is_an_error_outside_debug(self):
         with override_settings(DEBUG=False, TESTING=False):

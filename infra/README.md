@@ -243,6 +243,34 @@ Rotating the runtime password: change it in `backend/.env`, deploy (`provision_d
 Still true after this change: the owner is the container's bootstrap superuser (Postgres will not demote it), so the protection is
 that no running application process holds its password. The staging database must use its own pair of passwords.
 
+## Database behaviour and visibility
+
+Review DB-09. In a deployed process (not DEBUG, not tests, not the owner tasks) `settings.py` gives every connection:
+
+- a **reused connection** (`DB_CONN_MAX_AGE`, default 60 s; `realtime` sets 0 because ASGI threads would leak persistent
+  connections) that is health-checked before reuse;
+- **`statement_timeout` 60 s** (`DB_STATEMENT_TIMEOUT_MS`; Celery workers and beat run with 600 s, the task limit),
+  **`lock_timeout` 20 s** (`DB_LOCK_TIMEOUT_MS`; workers 60 s) and **`idle_in_transaction_session_timeout` 60 s**
+  (`DB_IDLE_IN_TRANSACTION_TIMEOUT_MS`). A request that hits one gets a 500 and a log line instead of holding a worker and its
+  locks indefinitely; a *money* request that times out on a lock did not move money (it is in a transaction), so the client retries
+  with the same `request_id`;
+- no development password fallback: a process without `POSTGRES_PASSWORD` refuses to start.
+
+The `db` container runs with `pg_stat_statements` preloaded, `log_min_duration_statement=500` (anything slower than half a second
+is in `docker logs <project>-db-1`), `log_lock_waits=on`, and modest memory settings for the shared server (`shared_buffers=256MB`,
+`work_mem=8MB`, ...). Changing any of those flags restarts Postgres, so **the deploy that first ships this recreates the `db`
+container: do it at a quiet time**. See what is slow: as the owner,
+`docker compose -p ashantihub -f infra/compose/docker-compose.yml exec db psql -U ashantihub -c "select calls, round(total_exec_time) ms, left(query,90) from pg_stat_statements order by total_exec_time desc limit 15"`.
+Not done: pinning the Postgres minor version. Check `select version()` on each server and set `image: postgres:16.x` to what is
+running now (never to an older minor).
+
+**Ledger integrity (review DB-06).** The database refuses, at commit, any transaction that leaves a ledger journal with credits
+different from debits (ledger migration 0015, a deferred constraint trigger). Every night at 02:00 `ledger.tasks.verify_ledger_integrity`
+re-derives each journal, each cached account balance and the trial balance from the journal lines
+(`ledger/integrity.py`); a difference is logged at ERROR (Sentry), opens one fraud case for the day and notifies `wallets.view`
+holders. It corrects nothing: investigate, and do not post to the ledger until it is understood. It runs whether or not the
+ledger switch is on.
+
 ## Backups
 
 **Targets (set by the owner, review DB-01):** lose at most **24 hours** of data today (nightly dump) - **15 minutes** once

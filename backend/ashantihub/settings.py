@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import os
 from pathlib import Path
 import sys
 import environ
@@ -161,14 +162,41 @@ TEMPLATES = [
 WSGI_APPLICATION = "ashantihub.wsgi.application"
 ASGI_APPLICATION = "ashantihub.asgi.application"
 
+# Database (review DB-09). Under `manage.py test` and in DEBUG the connection is plain. In a deployed process:
+#  - the password has no development fallback;
+#  - connections are reused for DB_CONN_MAX_AGE seconds (default 60; 0 for the ASGI realtime service, where a per-thread
+#    persistent connection would leak) and checked before reuse;
+#  - every statement is bounded: statement_timeout (DB_STATEMENT_TIMEOUT_MS, default 60 s, just above gunicorn's --timeout so a
+#    runaway query is stopped by Postgres, not left running after the worker is killed; the Celery workers raise it to the task
+#    limit), lock_timeout (a request waits at most 20 s for a row lock instead of queueing forever) and
+#    idle_in_transaction_session_timeout (a transaction that stalls holding locks is ended after 60 s).
+# The OWNER tasks (DJANGO_DB_ROLE=owner: migrate, provisioning) get none of the timeouts, so a long index build is not cut off and
+# deploy.sh's PGOPTIONS lock_timeout still applies.
+_RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
+_DEPLOYED_APP = not DEBUG and not _RUNNING_TESTS and os.environ.get("DJANGO_DB_ROLE") != "owner"
+_POSTGRES_PASSWORD = env("POSTGRES_PASSWORD", default="")
+if not _POSTGRES_PASSWORD:
+    if not (DEBUG or _RUNNING_TESTS):
+        raise ImproperlyConfigured("POSTGRES_PASSWORD must be set when DJANGO_DEBUG=False")
+    _POSTGRES_PASSWORD = "ashantihub_dev"
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": env("POSTGRES_DB", default="ashantihub"),
         "USER": env("POSTGRES_USER", default="ashantihub"),
-        "PASSWORD": env("POSTGRES_PASSWORD", default="ashantihub_dev"),
+        "PASSWORD": _POSTGRES_PASSWORD,
         "HOST": env("POSTGRES_HOST", default="localhost"),
         "PORT": env("POSTGRES_PORT", default="5432"),
+        "CONN_MAX_AGE": env.int("DB_CONN_MAX_AGE", default=60) if _DEPLOYED_APP else 0,
+        "CONN_HEALTH_CHECKS": _DEPLOYED_APP,
+        "OPTIONS": {
+            "options": (
+                f"-c statement_timeout={env.int('DB_STATEMENT_TIMEOUT_MS', default=60000)} "
+                f"-c lock_timeout={env.int('DB_LOCK_TIMEOUT_MS', default=20000)} "
+                f"-c idle_in_transaction_session_timeout={env.int('DB_IDLE_IN_TRANSACTION_TIMEOUT_MS', default=60000)}"
+            ),
+        } if _DEPLOYED_APP else {},
     }
 }
 
@@ -734,6 +762,10 @@ CELERY_BEAT_SCHEDULE = {
     "otp-purge-old-rows": {
         "task": "otp.tasks.purge_old_otp_rows",
         "schedule": crontab(hour=3, minute=55),
+    },
+    "ledger-verify-integrity": {
+        "task": "ledger.tasks.verify_ledger_integrity",
+        "schedule": crontab(hour=2, minute=0),  # re-derives every balance from the journal lines (review DB-06); read-only
     },
     "ledger-refund-uncollected-pickups": {
         "task": "ledger.tasks.refund_uncollected_pickups",

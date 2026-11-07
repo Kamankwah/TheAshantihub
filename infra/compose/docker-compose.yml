@@ -17,6 +17,11 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "5"
 
+# The restricted runtime database role (review DB-05), shared by every app container; see x-app.
+x-db-env: &db-env
+  POSTGRES_USER: ${DB_USER:?DB_USER is written by deploy.sh from POSTGRES_APP_USER}
+  POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is written by deploy.sh from POSTGRES_APP_PASSWORD}
+
 # Shared by web, realtime, worker and beat. Only `web` builds; realtime, worker and beat run the
 # very image web just built (the same APP_IMAGE tag, written per environment
 # by deploy.sh), so the three can never run different code.
@@ -27,9 +32,7 @@ x-app: &app
   # The application connects as the restricted runtime role (review DB-05). `environment` wins over env_file, so the owner's
   # POSTGRES_USER / POSTGRES_PASSWORD from backend/.env never reach these containers; deploy.sh writes DB_* from
   # POSTGRES_APP_USER / POSTGRES_APP_PASSWORD, and passes the owner's explicitly only to its one-off migrate task.
-  environment:
-    POSTGRES_USER: ${DB_USER:?DB_USER is written by deploy.sh from POSTGRES_APP_USER}
-    POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is written by deploy.sh from POSTGRES_APP_PASSWORD}
+  environment: *db-env
   extra_hosts:
     # Django sends mail through the host's Exim, which queues, signs with
     # DKIM and relays onward. The bridge gateway IP differs per environment
@@ -42,6 +45,26 @@ services:
   db:
     image: postgres:16
     restart: unless-stopped
+    # Query visibility and sane memory (review DB-09). Sized for the single shared server: edit here, deploy at a quiet time
+    # (changing a server flag restarts Postgres). pg_stat_statements needs the preload and `CREATE EXTENSION` (core migration).
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - log_min_duration_statement=500
+      - -c
+      - log_lock_waits=on
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
     # Only POSTGRES_* copied from the app's .env by deploy.sh (never the app's other secrets), so the two cannot drift.
     env_file: ./db.env
     volumes:
@@ -126,6 +149,10 @@ services:
   # One worker is plenty for staff-only sockets; nginx proxies /ws/ here.
   realtime:
     <<: *app
+    # ASGI runs database work in threads; a persistent connection per thread would never be closed (review DB-09).
+    environment:
+      <<: *db-env
+      DB_CONN_MAX_AGE: "0"
     command:
       - gunicorn
       - ashantihub.asgi:application
@@ -153,6 +180,10 @@ services:
   # session cleanup, the nightly activity check (see CELERY_BEAT_SCHEDULE).
   worker:
     <<: *app
+    environment:
+      <<: *db-env
+      DB_STATEMENT_TIMEOUT_MS: "600000"   # the Celery task limit (ARC-05); the web default is 60 s
+      DB_LOCK_TIMEOUT_MS: "60000"
     command: ["celery", "-A", "ashantihub", "worker", "--loglevel=INFO", "--concurrency=2", "-Q", "celery,slow", "-n", "general@%h"]
     volumes:
       - ../../backend/media:/app/media
@@ -167,6 +198,10 @@ services:
   # videos or bulk texts in `worker` cannot delay them.
   worker-money:
     <<: *app
+    environment:
+      <<: *db-env
+      DB_STATEMENT_TIMEOUT_MS: "600000"   # the Celery task limit (ARC-05); the web default is 60 s
+      DB_LOCK_TIMEOUT_MS: "60000"
     command: ["celery", "-A", "ashantihub", "worker", "--loglevel=INFO", "--concurrency=2", "-Q", "money", "-n", "money@%h"]
     volumes:
       - ../../backend/media:/app/media
@@ -180,6 +215,10 @@ services:
   # Exactly one scheduler per environment, or every job would run twice.
   beat:
     <<: *app
+    environment:
+      <<: *db-env
+      DB_STATEMENT_TIMEOUT_MS: "600000"   # the Celery task limit (ARC-05); the web default is 60 s
+      DB_LOCK_TIMEOUT_MS: "60000"
     command: ["celery", "-A", "ashantihub", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
     depends_on:
       redis:
