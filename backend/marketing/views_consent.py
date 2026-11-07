@@ -18,7 +18,9 @@ from marketplace.common import csv_export
 from . import consent
 from .models_consent import BUSINESS, CHANNEL_LABELS, CUSTOMER, ConsentRecord, ConsentWording
 
-RETENTION_YEARS = 2
+# Owner ruling 2026-11-07: keep consent proof 5 years. The ledger is append-only (a database trigger forbids edits and deletes),
+# so this figure only counts what would be due; no purge is built, and one needs a counsel-approved, audited deletion path first.
+RETENTION_YEARS = 5
 
 
 class LedgerPagination(PageNumberPagination):
