@@ -136,7 +136,8 @@ install_templates() {
 log "Deploying $ENV_NAME from origin/$BRANCH ($APP_DIR)"
 
 log "Backing up the database"
-bash "$APP_DIR/infra/scripts/backup-db.sh"
+# A deploy is never blocked by the off-site service or by a first deploy with no database yet (review DB-01).
+BACKUP_ALLOW_MISSING_DB=1 BACKUP_OFFSITE_OPTIONAL=1 bash "$APP_DIR/infra/scripts/backup-db.sh"
 
 log "Fetching origin/$BRANCH"
 git -C "$APP_DIR" fetch --prune origin

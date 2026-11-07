@@ -43,7 +43,8 @@ connections stay capped.
 | `backend/Dockerfile.prod` | Production image: gunicorn, non-root. (`backend/Dockerfile` remains the dev image.) |
 | `infra/compose/docker-compose.yml` | The `db`, `redis`, `web`, `realtime`, `worker`, `worker-money` and `beat` stack, parameterised per environment; all but `db` and `redis` share one image (`APP_IMAGE`, no default). |
 | `infra/scripts/deploy.sh` | The deploy. Backs up, pulls, builds, migrates, publishes; on production also reinstalls the nginx templates when they changed. |
-| `infra/scripts/backup-db.sh` | Verified gzipped `pg_dump`. Runs before every deploy and nightly. |
+| `infra/scripts/backup-db.sh` | Verified private `pg_dump` + encrypted off-site copy (dump, media, private). Before every deploy and nightly. |
+| `infra/scripts/restore-drill.sh` | Restores a dump into a throwaway Postgres and checks it (monthly). |
 | `infra/scripts/install-hestia-templates.sh` | Installs the nginx templates below into HestiaCP. |
 | `infra/hestia/templates/` | nginx vhost templates (SPA + API, plain and SSL). |
 | `infra/env/backend.env.example` | Every environment variable the server needs, documented. |
@@ -216,18 +217,61 @@ and the site 502s. Re-run `deploy.sh` rather than recreating it by hand.
 
 ## Backups
 
-`backup-db.sh` writes verified, gzipped dumps to `<checkout>/backups/` and
-keeps 14 days. It runs before every deploy, and nightly at 02:30 by cron.
+**Targets (set by the owner, review DB-01):** lose at most **24 hours** of data today (nightly dump) - **15 minutes** once
+WAL archiving is added (below); be serving again within **4 hours**. The restore drill measures the real figure.
+
+`backup-db.sh` runs before every deploy and nightly at 02:30 by cron. Each run:
+
+1. writes a verified, gzipped dump to `<checkout>/backups/` (directory `0700`, files `0600`; kept 14 days). The dump holds
+   every payout number and Ghana Card number, so it is never world-readable;
+2. copies that dump **and** `backend/media` and `backend/private` (ID photos, listing photos) to an **encrypted off-site
+   restic repository**, keeping 14 daily, 8 weekly and 12 monthly snapshots;
+3. pings `BACKUP_PING_URL` when all of that worked, and `<url>/fail` when it did not. Make the URL a dead-man's-switch
+   check (healthchecks.io or similar, period 1 day, grace 2 hours): a backup that silently stops running then alerts too.
+
+A nightly run fails (non-zero, `/fail` ping) when the db container is down, the dump is bad, or the off-site copy fails.
+`deploy.sh` runs it with `BACKUP_OFFSITE_OPTIONAL=1`, so the off-site service being down warns but never blocks a deploy.
+
+**One-time setup per server (owner action - this is what makes the backup real):**
 
 ```bash
-# restore a dump into the running database (destructive — take a dump first)
-gunzip -c /opt/ashantihub/backups/production-YYYYMMDD-HHMMSS.sql.gz \
-  | docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml \
-    exec -T db psql -U ashantihub -d ashantihub
+apt install restic
+install -d -m 700 /etc/ashantihub
+cat > /etc/ashantihub/backup.env <<'ENV'      # root-only; shared by production and staging, which use separate tags
+RESTIC_REPOSITORY=sftp:u123456@u123456.your-storagebox.de:ashantihub   # a Hetzner Storage Box / another provider or region
+RESTIC_PASSWORD=<long random string>      # ALSO store this in the owner's password manager: without it the copies are unreadable
+BACKUP_PING_URL=https://hc-ping.com/<uuid>
+DRILL_PING_URL=https://hc-ping.com/<another-uuid>   # monthly drill check, period 35 days
+ENV
+chmod 600 /etc/ashantihub/backup.env
+# SFTP target: add root's public key to the Storage Box, then `ssh -p 23 u123456@... ls` once to accept the host key.
+bash /opt/ashantihub/infra/scripts/backup-db.sh        # first run creates the repository
 ```
 
-These dumps sit on the same disk as the database. Copying them off the server
-is still outstanding — see below.
+An S3-style target needs `RESTIC_REPOSITORY=s3:https://...` plus `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the same file.
+Until `RESTIC_REPOSITORY` is set, every run prints `OFF-SITE BACKUP IS NOT CONFIGURED` and pings `/fail`.
+
+**Restoring.** Always into an empty database; never pipe a dump into a populated one.
+
+```bash
+cd /opt/ashantihub && C="docker compose -p ashantihub -f infra/compose/docker-compose.yml"
+$C stop web realtime worker worker-money beat               # nothing may write while we restore
+$C exec -T db psql -U ashantihub -d postgres -c 'DROP DATABASE ashantihub' -c 'CREATE DATABASE ashantihub OWNER ashantihub'
+gunzip -c backups/production-YYYYMMDD-HHMMSS.sql.gz | $C exec -T db psql -U ashantihub -d ashantihub -v ON_ERROR_STOP=1 --single-transaction
+$C up -d                                                    # then check /api/readyz/
+# From the off-site copy instead (new server, lost disk):
+#   restic restore latest --tag production --host ashantihub --target /restore     # dump, backend/media, backend/private
+```
+
+**Restore drill.** `infra/scripts/restore-drill.sh [offsite|<dump>]` restores a dump into a throwaway Postgres container on
+its own network (the live database is never touched), checks that every ledger journal balances, runs `manage.py check`
+against the restored data with the release image, and logs the result and the time taken to `backups/restore-drill.log`.
+`offsite` restores the newest dump out of the encrypted repository and runs `restic check` on a sample, so it proves the
+off-site copy too. Cron runs it monthly on production. Record the first real run in `backups/restore-drill.log` and compare
+its time with the 4-hour target.
+
+**Still outstanding:** point-in-time recovery. It needs WAL archiving (`archive_mode=on`, pgBackRest or WAL-G shipping to the
+same off-site target) and a change to the `db` service; until then the worst case is the 24 hours since the last dump.
 
 ## Scheduled jobs
 
