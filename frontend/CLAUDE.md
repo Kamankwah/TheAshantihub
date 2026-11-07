@@ -296,3 +296,6 @@ ads are Marketing's). Never hardcode `/api/listings/mine` in a panel.
 - **Security headers live in `infra/hestia/templates/ashantihub-spa.stpl` and `vercel.json`**; the CSP is *Report-Only* until the
   console is clean. `__tests__/securityHeaders.test.js` keeps the copies identical and the inline-script hash current: editing the
   inline script in `index.html` means updating the hash in both files.
+- **Browser error reporting is `lib/telemetry.js`**: off unless `VITE_SENTRY_DSN` is set at build time, SDK loaded lazily, and every event
+  passes `scrub()` (no user, cookies, headers, bodies, query strings, e-mails, phone numbers or tokens). `ErrorBoundary` reports through it.
+  Never call `Sentry.setUser` or attach customer data; add a field to the scrubber's tests before sending anything new.

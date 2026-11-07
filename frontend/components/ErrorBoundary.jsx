@@ -1,6 +1,7 @@
 import { Component } from "react";
 import { C } from "../theme.js";
 import { isChunkLoadError } from "../lib/lazyWithRetry.js";
+import { reportError } from "../lib/telemetry.js";
 
 // Catches a render error or a failed lazy chunk anywhere below it and shows a way out instead of a blank page (review FE-01).
 // "Try again" re-renders the children (a transient failure usually passes); "Reload" fetches a fresh build.
@@ -12,6 +13,7 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
+    reportError(error, info);
     if (typeof this.props.onError === "function") this.props.onError(error, info);
   }
 

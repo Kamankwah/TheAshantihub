@@ -8,6 +8,10 @@ import './index.css'
 import { ensureStaffHead, isStaffPathname, startStaffPwa } from './lib/staffPwa.js'
 import { applyInitialTheme } from './hooks/useTheme.js'
 import { createQueryClient } from './lib/queryClient.js'
+import { initTelemetry } from './lib/telemetry.js'
+
+// Error reporting is a no-op unless VITE_SENTRY_DSN is set; failing to start it must never stop the app.
+initTelemetry().catch(() => {})
 
 // Light/dark before the first paint (useTheme keeps it in sync afterwards).
 applyInitialTheme()
