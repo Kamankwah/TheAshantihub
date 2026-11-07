@@ -3,8 +3,22 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from django.conf import settings
+
 from . import mobile_sessions
 from .authentication import issue_token
+
+
+def _foreign_origin(request):
+    """A cookie-based call (the web app) from a page whose origin is not on the CORS allow-list. The cookie is SameSite=Lax
+    and the call needs a custom header, but the origin is checked here as well (defence in depth; skipped only while the
+    dev default allows every origin, which the core system checks refuse outside DEBUG)."""
+    if mobile_sessions.client_kind(request) != "web" or settings.CORS_ALLOW_ALL_ORIGINS:
+        return None
+    origin = request.headers.get("Origin")
+    if origin and origin not in settings.CORS_ALLOWED_ORIGINS:
+        return Response({"detail": "This site may not renew a session."}, status=status.HTTP_403_FORBIDDEN)
+    return None
 
 
 class MobileSessionRefreshView(APIView):
@@ -16,6 +30,9 @@ class MobileSessionRefreshView(APIView):
     throttle_scope = "mobile_refresh"
 
     def post(self, request):
+        refused = _foreign_origin(request)
+        if refused is not None:
+            return refused
         try:
             account, account_type, refresh_token = mobile_sessions.rotate(mobile_sessions.token_from(request))
         except mobile_sessions.InvalidRefresh:
@@ -39,6 +56,9 @@ class MobileSessionLogoutView(APIView):
     throttle_scope = "mobile_refresh"
 
     def post(self, request):
+        refused = _foreign_origin(request)
+        if refused is not None:
+            return refused
         mobile_sessions.revoke(mobile_sessions.token_from(request))
         response = Response(status=status.HTTP_204_NO_CONTENT)
         if mobile_sessions.client_kind(request) == "web":

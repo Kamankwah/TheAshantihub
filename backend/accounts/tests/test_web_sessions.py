@@ -97,6 +97,25 @@ class WebRefreshCookieTests(TestCase):
             self.assertTrue(self._login(**WEB).cookies[mobile_sessions.WEB_COOKIE]["secure"])
 
 
+@override_settings(CORS_ALLOW_ALL_ORIGINS=False, CORS_ALLOWED_ORIGINS=["https://theashantihub.com"])
+class WebRefreshOriginTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        make_customer()
+        self.client.post(LOGIN, CREDS, format="json", **WEB)
+
+    def test_a_page_on_another_origin_cannot_renew_or_end_the_session(self):
+        for path in (REFRESH, "/api/accounts/session/logout/"):
+            response = self.client.post(path, {}, format="json", HTTP_ORIGIN="https://evil.example", **WEB)
+            self.assertEqual(response.status_code, 403, path)
+        self.assertIsNone(MobileSession.objects.get().revoked_at)
+
+    def test_the_apps_own_origin_and_a_call_with_no_origin_work(self):
+        self.assertEqual(self.client.post(REFRESH, {}, format="json", HTTP_ORIGIN="https://theashantihub.com", **WEB).status_code, 200)
+        self.assertEqual(self.client.post(REFRESH, {}, format="json", **WEB).status_code, 200)
+
+
 class AccessTokenLifetimeTests(TestCase):
     def _lifetime(self, token):
         decoded = AccessToken(token)
