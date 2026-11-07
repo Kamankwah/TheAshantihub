@@ -8,6 +8,7 @@ import { fonts } from "../../theme/fonts";
 import { useTheme } from "../../theme/useTheme";
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
+import { ForgotPasswordLink } from "../../ui/ForgotPasswordLink";
 import { Screen } from "../../ui/Screen";
 
 export default function BusinessSignIn() {
@@ -57,6 +58,7 @@ export default function BusinessSignIn() {
         For your safety we may ask for a one-time code when you sign in, and before you withdraw or change payout numbers.
       </Text>
       <Button label="Sign in" onPress={submit} loading={busy} disabled={!identifier || !password} />
+      <ForgotPasswordLink />
       <Pressable accessibilityRole="link" onPress={() => router.push("/register/personal")} style={{ minHeight: 48, justifyContent: "center" }}>
         <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, textDecorationLine: "underline", textAlign: "center" }}>Register your business</Text>
       </Pressable>

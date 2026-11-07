@@ -251,6 +251,10 @@ class Listing(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(price_amount__gte=0), name="listings_listing_price_amount_gte0"),  # review DB-07
+            models.CheckConstraint(condition=models.Q(sale_price__gte=0), name="listings_listing_sale_price_gte0"),  # review DB-07
+        ]
         indexes = [
             # Only barcoded rows: most listings have none, and the matcher and the grouping check look up by code.
             models.Index(fields=["barcode"], name="listing_barcode_idx", condition=~models.Q(barcode="")),
@@ -304,6 +308,9 @@ class ListingPriceHistory(models.Model):
     ended_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(price__gte=0), name="listings_listingpricehistory_price_gte0"),  # review DB-07
+        ]
         indexes = [
             models.Index(fields=["listing", "ended_at"], name="listing_price_open_idx"),
             models.Index(fields=["variant", "ended_at"], name="listing_vprice_open_idx"),
@@ -335,6 +342,8 @@ class ListingVariant(models.Model):
     class Meta:
         ordering = ["position", "pk"]
         constraints = [
+            models.CheckConstraint(condition=models.Q(price_amount__gte=0), name="listings_listingvariant_price_amount_gte0"),  # review DB-07
+            models.CheckConstraint(condition=models.Q(sale_price__gte=0), name="listings_listingvariant_sale_price_gte0"),  # review DB-07
             models.UniqueConstraint(
                 fields=["listing", "label"], condition=models.Q(is_active=True), name="listing_variant_label_active_uniq",
             ),
@@ -640,6 +649,9 @@ class Promotion(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(amount_paid__gte=0), name="listings_promotion_amount_paid_gte0"),  # review DB-07
+        ]
         ordering = ["-starts_at"]
 
     def __str__(self):

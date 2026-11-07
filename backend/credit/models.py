@@ -127,7 +127,7 @@ class LoanApplication(models.Model):
     FINAL_STATUSES = (APPROVED, DECLINED)
 
     business_owner = models.ForeignKey(
-        BusinessOwner, on_delete=models.CASCADE, related_name="loan_applications"
+        BusinessOwner, on_delete=models.PROTECT, related_name="loan_applications"
     )
     # SET_NULL, not CASCADE: deleting a partner must not erase the borrower's
     # application history.

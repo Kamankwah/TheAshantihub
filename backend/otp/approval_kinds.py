@@ -6,13 +6,11 @@ password-reset link to a contact the account already has - never to a new one: a
 existing staff edit. Staff sign-ins are not recovered here; a Super Admin resets their 2-step sign-in."""
 import json
 
-from django.conf import settings
 from django.db import transaction
-from django.utils import timezone
-from django.utils.crypto import get_random_string, salted_hmac
+from django.utils.crypto import salted_hmac
 
-from accounts.models import BusinessOwner, PasswordResetToken
-from accounts.serializers import PASSWORD_RESET_TOKEN_LIFETIME
+from accounts import reset_tokens
+from accounts.models import BusinessOwner
 from activity.services import record
 from approvals.models import ApprovalRequest
 from approvals.registry import ApprovalKind
@@ -118,11 +116,7 @@ def apply(request):
     had_authenticator = authenticator.disable(account)
     ended = devices.revoke_all(account, TrustedDevice.STAFF_RECOVERY)
     audit.log(OtpEvent.RECOVERED, account=account, purpose=RECOVERY, note=f"Approval {request.pk}")
-    raw = get_random_string(43)
-    PasswordResetToken.objects.create(
-        account_type=account_type, account_id=account_id, token=raw, expires_at=timezone.now() + PASSWORD_RESET_TOKEN_LIFETIME,
-    )
-    link = f"{settings.FRONTEND_BASE_URL}/reset-password?token={raw}&type={account_type}"
+    link = reset_tokens.link_for(reset_tokens.issue(account_type, account_id), account_type)
     # After commit, so a decision that rolls back sends nothing.
     transaction.on_commit(lambda: _send_link(account, channel, destination, link, others), robust=True)
     # Last: record() holds the activity chain lock until commit. The link and its token never go in it.

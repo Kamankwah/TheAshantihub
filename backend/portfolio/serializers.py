@@ -46,6 +46,12 @@ class FiniteFloatField(serializers.FloatField):
     floats) before its min/max validators run."""
 
     def to_internal_value(self, data):
+        # DRF 3.18 itself refuses nan/inf with "A valid number is required."; check first so this form keeps its wording.
+        try:
+            if not math.isfinite(float(data)):
+                raise serializers.ValidationError("Enter a number.")
+        except (TypeError, ValueError, OverflowError):
+            pass  # not a number at all: the base class gives its usual message
         value = super().to_internal_value(data)
         if not math.isfinite(value):
             raise serializers.ValidationError("Enter a number.")

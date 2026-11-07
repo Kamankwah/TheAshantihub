@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
 import { C } from "../theme.js";
 
 // ─── TicketQr ───────────────────────────────────────────────────────────────
@@ -14,7 +13,8 @@ export default function TicketQr({ code, size = 120 }) {
 
   useEffect(() => {
     let live = true;
-    QRCode.toString(code, { ...QR_OPTIONS, type: "svg" })
+    // qrcode is ~25 kB gzipped and only tickets need it, so it loads on demand rather than with the entry bundle.
+    import("qrcode").then(({ default: QRCode }) => QRCode.toString(code, { ...QR_OPTIONS, type: "svg" }))
       .then((svg) => { if (live) setSrc(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`); })
       .catch(() => { if (live) setSrc(null); });
     return () => { live = false; };

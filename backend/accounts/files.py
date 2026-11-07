@@ -8,6 +8,8 @@ import logging
 from django.core.files.storage import default_storage
 from django.db import transaction
 
+from core.private_files import kyc_storage
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,12 +27,14 @@ def replaced_names(instance, fields, new_values):
 
 
 def delete_files(names):
-    """Delete these stored files now; a failure is logged and the rest are still tried."""
+    """Delete these stored files now from the public and the private (identity-document) storage; deleting a name that is
+    not in one of them is a no-op. A failure is logged and the rest are still tried."""
     for name in names:
-        try:
-            default_storage.delete(name)
-        except Exception:
-            logger.exception("Couldn't delete replaced file %s", name)
+        for storage in (default_storage, kyc_storage()):
+            try:
+                storage.delete(name)
+            except Exception:
+                logger.exception("Couldn't delete replaced file %s", name)
 
 
 def delete_after_commit(names):

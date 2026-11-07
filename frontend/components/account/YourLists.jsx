@@ -11,6 +11,7 @@ import { D, glassCard } from "../dashboard/theme.js";
 import { HEADING_FONT } from "../storefront/storefrontType.js";
 import PriceTag from "../shop/PriceTag.jsx";
 import StaffGateNotice from "../StaffGateNotice.jsx";
+import { cardPhoto, pictureProps } from "../../lib/responsiveImage.js";
 
 const SORTS = [
   { id: "recent", label: "Most recently added" },
@@ -33,13 +34,13 @@ const primary = { ...action, background: D.gold, color: D.darkBrown, border: "no
 
 function Item({ row, grid, canBuy, buyLabel, busy, note, onAdd, onRemove }) {
   const { listing } = row;
-  const photo = listing.main_photo || listing.photos?.[0]?.image || null;
+  const photo = cardPhoto(listing);
   const price = listing.effective_price ?? listing.price_amount ?? null;
   const date = addedOn(row.added_at);
   return (
     <li data-testid="list-item" style={{ ...glassCard, padding: 14, display: "flex", flexDirection: grid ? "column" : "row", gap: 14, listStyle: "none" }}>
       <Link to={`/business/${listing.id}`} aria-label={listing.name} style={{ flex: "0 0 auto", width: grid ? "100%" : 110, aspectRatio: grid ? "4 / 3" : "1 / 1", background: D.panelBg2, border: `1px solid ${D.divider}`, borderRadius: 12, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        {photo ? <img src={photo} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span aria-hidden="true" style={{ fontSize: "2rem" }}>{listing.category?.icon}</span>}
+        {photo ? <img {...pictureProps(photo.variants, photo.url, { sizes: grid ? "(min-width: 900px) 280px, 90vw" : "110px" })} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span aria-hidden="true" style={{ fontSize: "2rem" }}>{listing.category?.icon}</span>}
       </Link>
       <div style={{ display: "grid", gap: 6, alignContent: "start", flex: 1, minWidth: 0 }}>
         <Link to={`/business/${listing.id}`} data-testid="list-item-name" style={{ color: D.text, fontWeight: 700, fontSize: "0.92rem", textDecoration: "none" }}>{listing.name}</Link>

@@ -17,6 +17,7 @@ from accounts.testing import make_staff, staff_token
 from activity.services import record
 from approvals.models import ApprovalRequest
 from billing.models import Subscription
+from core.testing import drop_index
 from fraud.models import FraudFlag
 from listings.models import Category, Listing, Zone
 from portfolio import health
@@ -382,6 +383,7 @@ class BusinessReviewTests(PortfolioApiBase):
         self.assertNotIn("cert.pdf", str(sheet))
 
     def test_operations_gets_the_review_sheet_with_checks_run_now(self):
+        drop_index("accounts_businessowner_phone_key_unique")  # models legacy rows the index now refuses (review DB-13)
         duplicate = make_business("Other Shop", phone="0241112223")  # the same phone, written the other way
         similar = make_business("Asafo Hair Studios")
         similar.profile.lat, similar.profile.lng = Decimal("6.690100"), Decimal("-1.620100")

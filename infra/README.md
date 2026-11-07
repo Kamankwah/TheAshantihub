@@ -23,7 +23,7 @@ cannot reach production data.
 
 Each environment's stack: `db`, `redis` (no host port), `web` (sync gunicorn, WSGI: all HTTP),
 `realtime` (gunicorn with one uvicorn worker on `ashantihub.asgi:application`: `/ws/` only),
-`worker` and `beat`. `web` stays WSGI so a hung view is still killed by `--timeout` and Postgres
+`worker`, `worker-money` and `beat`. `web` stays WSGI so a hung view is still killed by `--timeout` and Postgres
 connections stay capped.
 
 | | Production | Staging |
@@ -41,9 +41,10 @@ connections stay capped.
 | Path | Purpose |
 |---|---|
 | `backend/Dockerfile.prod` | Production image: gunicorn, non-root. (`backend/Dockerfile` remains the dev image.) |
-| `infra/compose/docker-compose.yml` | The `db`, `redis`, `web`, `realtime`, `worker` and `beat` stack, parameterised per environment; all but `db` and `redis` share one image (`APP_IMAGE`, no default). |
+| `infra/compose/docker-compose.yml` | The `db`, `redis`, `web`, `realtime`, `worker`, `worker-money` and `beat` stack, parameterised per environment; all but `db` and `redis` share one image (`APP_IMAGE`, no default). |
 | `infra/scripts/deploy.sh` | The deploy. Backs up, pulls, builds, migrates, publishes; on production also reinstalls the nginx templates when they changed. |
-| `infra/scripts/backup-db.sh` | Verified gzipped `pg_dump`. Runs before every deploy and nightly. |
+| `infra/scripts/backup-db.sh` | Verified private `pg_dump` + encrypted off-site copy (dump, media, private). Before every deploy and nightly. |
+| `infra/scripts/restore-drill.sh` | Restores a dump into a throwaway Postgres and checks it (monthly). |
 | `infra/scripts/install-hestia-templates.sh` | Installs the nginx templates below into HestiaCP. |
 | `infra/hestia/templates/` | nginx vhost templates (SPA + API, plain and SSL). |
 | `infra/env/backend.env.example` | Every environment variable the server needs, documented. |
@@ -214,20 +215,154 @@ it is missing, a manual `up -d` falls back to the built-in defaults and
 publishes the wrong port — staging lands on production's, or on nothing at all
 and the site 502s. Re-run `deploy.sh` rather than recreating it by hand.
 
+## Database roles
+
+The application does **not** connect to Postgres as the owner (review DB-05). Two roles:
+
+| Role | Used by | Can |
+|---|---|---|
+| `POSTGRES_USER` (owner, the container's bootstrap superuser) | `migrate`, `provision_db_roles`, backups; only ever passed to those one-off tasks | everything |
+| `POSTGRES_APP_USER` (runtime) | gunicorn, realtime, both Celery workers, beat, cron jobs, `compose run web ...` | read/write rows. Not a superuser; owns nothing; cannot create objects, drop or disable the append-only triggers, `TRUNCATE`, `DELETE` from the ledger / activity log / consent tables, or run `COPY ... PROGRAM` |
+
+How it fits together: `deploy.sh` reads both pairs from `backend/.env`, writes the runtime pair into `infra/compose/.env`
+(`DB_USER`, `DB_PASSWORD`, mode 0600), and `docker-compose.yml` sets `POSTGRES_USER` / `POSTGRES_PASSWORD` for every app
+container from them - `environment` outranks `env_file`, so the owner's password in `backend/.env` never reaches a container.
+Each deploy then runs, in order: `migrate` as the owner (`DJANGO_DB_ROLE=owner`), `provision_db_roles` as the owner
+(idempotent; default privileges make tables a later migration creates usable by the runtime role), and
+`manage.py check --database default` **as the runtime role**, which fails the deploy (`core.E004`) if that role can connect as a
+superuser. All of this happens before the new containers start.
+
+**One-time setup per server:** add `POSTGRES_APP_USER=ashantihub_app` and `POSTGRES_APP_PASSWORD=$(openssl rand -hex 24)` to
+`backend/.env` (see `infra/env/backend.env.example`) and deploy. Until you do, `deploy.sh` stops at the start with the missing keys
+named. Between writing `infra/compose/.env` and the role being created (a few minutes, first deploy only) the host cron's
+`expire_events` run would fail to connect and be retried the next hour.
+
+**A one-off task that needs DDL** (rare - normally a migration does it) runs as the owner:
+`POSTGRES_USER=<owner> POSTGRES_PASSWORD=<owner pw> docker compose -p <project> -f infra/compose/docker-compose.yml run --rm -e POSTGRES_USER -e POSTGRES_PASSWORD -e DJANGO_DB_ROLE=owner web python manage.py <command>`.
+Rotating the runtime password: change it in `backend/.env`, deploy (`provision_db_roles` applies it, the containers restart with it).
+Still true after this change: the owner is the container's bootstrap superuser (Postgres will not demote it), so the protection is
+that no running application process holds its password. The staging database must use its own pair of passwords.
+
+## Database behaviour and visibility
+
+Review DB-09. In a deployed process (not DEBUG, not tests, not the owner tasks) `settings.py` gives every connection:
+
+- a **reused connection** (`DB_CONN_MAX_AGE`, default 60 s; `realtime` sets 0 because ASGI threads would leak persistent
+  connections) that is health-checked before reuse;
+- **`statement_timeout` 60 s** (`DB_STATEMENT_TIMEOUT_MS`; Celery workers and beat run with 600 s, the task limit),
+  **`lock_timeout` 20 s** (`DB_LOCK_TIMEOUT_MS`; workers 60 s) and **`idle_in_transaction_session_timeout` 60 s**
+  (`DB_IDLE_IN_TRANSACTION_TIMEOUT_MS`). A request that hits one gets a 500 and a log line instead of holding a worker and its
+  locks indefinitely; a *money* request that times out on a lock did not move money (it is in a transaction), so the client retries
+  with the same `request_id`;
+- no development password fallback: a process without `POSTGRES_PASSWORD` refuses to start.
+
+The `db` container runs with `pg_stat_statements` preloaded, `log_min_duration_statement=500` (anything slower than half a second
+is in `docker logs <project>-db-1`), `log_lock_waits=on`, and modest memory settings for the shared server (`shared_buffers=256MB`,
+`work_mem=8MB`, ...). Changing any of those flags restarts Postgres, so **the deploy that first ships this recreates the `db`
+container: do it at a quiet time**. See what is slow: as the owner,
+`docker compose -p ashantihub -f infra/compose/docker-compose.yml exec db psql -U ashantihub -c "select calls, round(total_exec_time) ms, left(query,90) from pg_stat_statements order by total_exec_time desc limit 15"`.
+Not done: pinning the Postgres minor version. Check `select version()` on each server and set `image: postgres:16.x` to what is
+running now (never to an older minor).
+
+**Ledger integrity (review DB-06).** The database refuses, at commit, any transaction that leaves a ledger journal with credits
+different from debits (ledger migration 0015, a deferred constraint trigger). Every night at 02:00 `ledger.tasks.verify_ledger_integrity`
+re-derives each journal, each cached account balance and the trial balance from the journal lines
+(`ledger/integrity.py`); a difference is logged at ERROR (Sentry), opens one fraud case for the day and notifies `wallets.view`
+holders. It corrects nothing: investigate, and do not post to the ledger until it is understood. It runs whether or not the
+ledger switch is on.
+
+## Personal data encryption
+
+Review DB-03. Ghana Card and TIN numbers, bank and mobile-money numbers (business profiles and payout destinations), customers'
+dates of birth and rider document numbers are stored as `enc1:<Fernet token>` (`core/pii.py`); the application sees plain values, a
+dump or a read-only SQL account sees ciphertext. Duplicate checks (one Ghana Card per business, one payout account per holder, a
+phone already used as a payout number) run on HMAC "blind indexes" in `*_idx` columns.
+
+- **Keys.** `PII_ENCRYPTION_KEYS` (Fernet, newest first) and `PII_INDEX_KEY` in each server's `backend/.env`; `deploy.sh` refuses to
+  run without them. **Keep both in the owner's password manager, outside the server and outside the backups.** Without them the
+  encrypted columns and every backup of them are unreadable. Staging and production use different keys. The restore drill needs the
+  production keys (it reads them from `backend/.env`), and so does any restore onto a new server: restore `backend/.env` first.
+- **First deploy.** Migrations change the columns to `text` (existing values stay readable as legacy plaintext); `deploy.sh` then
+  runs `manage.py encrypt_pii`, which encrypts the rest and fills the indexes. It is idempotent and safe to interrupt; run it by
+  hand with `--dry-run` first if you want the counts. Take the pre-deploy dump (automatic) - it is the way back.
+- **Rotating a key.** Put the new key first in `PII_ENCRYPTION_KEYS` (keep the old one after it), deploy, run
+  `manage.py encrypt_pii --reencrypt`, then remove the old key. Test the order on staging.
+- **Not covered:** phone numbers and e-mail addresses (they are the sign-in identifiers and are searched constantly), names, delivery
+  addresses, and uploaded images (those are private files, `core/private_files.py`).
+
+## Retention and data requests
+
+Review DB-04. `accounts.tasks.scrub_expired_personal_data` runs daily at 03:15: delivery details on orders and support-conversation
+text are blanked once the account has been deleted for `PII_DELETED_ACCOUNT_GRACE_DAYS` (default 90) or the order is older than
+`PII_ORDER_RETENTION_DAYS` (default 6 years); notifications older than `NOTIFICATION_RETENTION_DAYS` (default 365) are deleted. Money
+records are untouched. These periods are the dev's defaults - the owner and counsel set the real ones in `backend/.env`. A person's
+own data comes from `GET /api/accounts/me/export/`. Customer and owner IPs in the activity log are stored truncated; rows written
+before this change keep the full address (the hash chain covers them), and the lawful basis for the log is for counsel to document.
+
+## Duplicate accounts
+
+Review DB-13. Two accounts cannot share an e-mail that differs only by case, or a phone that is the same number written two ways.
+The migration that creates those unique indexes skips one (with a `WARNING ... NOT created` line in the `migrate` output) when old
+rows already collide. After a deploy, run `manage.py find_identity_duplicates`: if it lists anything, merge or fix those accounts, then
+re-run `migrate` after unapplying that migration (`migrate accounts 0083` then `migrate`) to create the index.
+
 ## Backups
 
-`backup-db.sh` writes verified, gzipped dumps to `<checkout>/backups/` and
-keeps 14 days. It runs before every deploy, and nightly at 02:30 by cron.
+**Targets (set by the owner, review DB-01):** lose at most **24 hours** of data today (nightly dump) - **15 minutes** once
+WAL archiving is added (below); be serving again within **4 hours**. The restore drill measures the real figure.
+
+`backup-db.sh` runs before every deploy and nightly at 02:30 by cron. Each run:
+
+1. writes a verified, gzipped dump to `<checkout>/backups/` (directory `0700`, files `0600`; kept 14 days). The dump holds
+   every payout number and Ghana Card number, so it is never world-readable;
+2. copies that dump **and** `backend/media` and `backend/private` (ID photos, listing photos) to an **encrypted off-site
+   restic repository**, keeping 14 daily, 8 weekly and 12 monthly snapshots;
+3. pings `BACKUP_PING_URL` when all of that worked, and `<url>/fail` when it did not. Make the URL a dead-man's-switch
+   check (healthchecks.io or similar, period 1 day, grace 2 hours): a backup that silently stops running then alerts too.
+
+A nightly run fails (non-zero, `/fail` ping) when the db container is down, the dump is bad, or the off-site copy fails.
+`deploy.sh` runs it with `BACKUP_OFFSITE_OPTIONAL=1`, so the off-site service being down warns but never blocks a deploy.
+
+**One-time setup per server (owner action - this is what makes the backup real):**
 
 ```bash
-# restore a dump into the running database (destructive — take a dump first)
-gunzip -c /opt/ashantihub/backups/production-YYYYMMDD-HHMMSS.sql.gz \
-  | docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml \
-    exec -T db psql -U ashantihub -d ashantihub
+apt install restic
+install -d -m 700 /etc/ashantihub
+cat > /etc/ashantihub/backup.env <<'ENV'      # root-only; shared by production and staging, which use separate tags
+RESTIC_REPOSITORY=sftp:u123456@u123456.your-storagebox.de:ashantihub   # a Hetzner Storage Box / another provider or region
+RESTIC_PASSWORD=<long random string>      # ALSO store this in the owner's password manager: without it the copies are unreadable
+BACKUP_PING_URL=https://hc-ping.com/<uuid>
+DRILL_PING_URL=https://hc-ping.com/<another-uuid>   # monthly drill check, period 35 days
+ENV
+chmod 600 /etc/ashantihub/backup.env
+# SFTP target: add root's public key to the Storage Box, then `ssh -p 23 u123456@... ls` once to accept the host key.
+bash /opt/ashantihub/infra/scripts/backup-db.sh        # first run creates the repository
 ```
 
-These dumps sit on the same disk as the database. Copying them off the server
-is still outstanding — see below.
+An S3-style target needs `RESTIC_REPOSITORY=s3:https://...` plus `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the same file.
+Until `RESTIC_REPOSITORY` is set, every run prints `OFF-SITE BACKUP IS NOT CONFIGURED` and pings `/fail`.
+
+**Restoring.** Always into an empty database; never pipe a dump into a populated one.
+
+```bash
+cd /opt/ashantihub && C="docker compose -p ashantihub -f infra/compose/docker-compose.yml"
+$C stop web realtime worker worker-money beat               # nothing may write while we restore
+$C exec -T db psql -U ashantihub -d postgres -c 'DROP DATABASE ashantihub' -c 'CREATE DATABASE ashantihub OWNER ashantihub'
+gunzip -c backups/production-YYYYMMDD-HHMMSS.sql.gz | $C exec -T db psql -U ashantihub -d ashantihub -v ON_ERROR_STOP=1 --single-transaction
+$C up -d                                                    # then check /api/readyz/
+# From the off-site copy instead (new server, lost disk):
+#   restic restore latest --tag production --host ashantihub --target /restore     # dump, backend/media, backend/private
+```
+
+**Restore drill.** `infra/scripts/restore-drill.sh [offsite|<dump>]` restores a dump into a throwaway Postgres container on
+its own network (the live database is never touched), checks that every ledger journal balances, runs `manage.py check`
+against the restored data with the release image, and logs the result and the time taken to `backups/restore-drill.log`.
+`offsite` restores the newest dump out of the encrypted repository and runs `restic check` on a sample, so it proves the
+off-site copy too. Cron runs it monthly on production. Record the first real run in `backups/restore-drill.log` and compare
+its time with the 4-hour target.
+
+**Still outstanding:** point-in-time recovery. It needs WAL archiving (`archive_mode=on`, pgBackRest or WAL-G shipping to the
+same off-site target) and a change to the `db` service; until then the worst case is the 24 hours since the last dump.
 
 ## Scheduled jobs
 
@@ -323,7 +458,7 @@ keeps the container's old environment and does not re-read `env_file`, so use
 `up -d --force-recreate` (or re-run `deploy.sh`):
 
 ```bash
-docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml up -d --force-recreate web realtime worker beat
+docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml up -d --force-recreate web realtime worker worker-money beat
 ```
 
 **Service area.** `routing/region.py` refuses checkouts outside an approximate
@@ -364,8 +499,12 @@ passed, so `osrm` keeps running through a normal `down`/`up` of the app.
   `access_log off` because the URL carries a single-use ticket. Clients obtain
   the ticket from `POST /api/realtime/ticket/`.
 - Job processes: `docker compose -p <project> logs -f worker beat`.
-- `backend/private/` holds report exports. It is bind-mounted into `web`
-  and `worker`, and only a permission-checked view serves it.
+- `backend/private/` holds report exports, rider papers and (under `kyc/`) the owners' Ghana Card photos and
+  registration certificates. It is bind-mounted into `web` and `worker`, and only a permission-checked view or a
+  15-minute signed link (`/api/core/private-file/`) serves it. nginx never serves it, and the API templates return 404
+  for the old `/media/ghana_cards/` and `/media/business_reg_certificates/` paths. `deploy.sh` runs
+  `manage.py move_identity_files_private` after migrating (moves any identity file still under `backend/media/` into
+  `backend/private/kyc/`; safe to repeat). **`backend/private/` must be in the backup** (see the backup section).
 - Env vars in `backend/.env`: `REDIS_PASSWORD`, `REDIS_URL`,
   `STAFF_SECRETS_KEY` (required: the app refuses to start without it when
   `DJANGO_DEBUG=False`) and `ACTIVITY_SEAL_EMAIL` (production `True`).
@@ -423,6 +562,47 @@ exim4 -Mrm <id>               # drop a frozen message
 tail -f /var/log/exim4/mainlog
 ```
 
+## Container secrets
+
+`deploy.sh` copies only `POSTGRES_*` into `infra/compose/db.env` and `REDIS_PASSWORD` into `infra/compose/redis.env`
+(mode 0600, untracked) for the `db` and `redis` containers; only the app containers read the full `backend/.env`. Run a
+deploy before any hand-written `docker compose` command on a checkout that predates this, or compose will not find the
+two files.
+
+## Background job queues
+
+`worker` consumes the `celery` (default) and `slow` queues; `worker-money` consumes `money` only, so payment expiry,
+refunds, withdrawals, ledger postings and the subscription clock never wait behind report exports, video conversions or
+bulk texts. The routing is `CELERY_TASK_ROUTES` in `backend/ashantihub/settings.py`; a new queue must be added there
+and to a worker's `-Q` list, or its tasks silently never run. Every task has a 10-minute soft / 11-minute hard time
+limit. Redis keeps an append-only file on the `redis-data` volume, so queued jobs survive a restart. The first deploy
+after this change re-creates Redis (jobs queued at that instant are lost - deploy at a quiet time) and starts
+`worker-money` (about 150 MB more memory per environment).
+
+## Releases and rollback
+
+- Each deploy builds `<project>-app:<git sha>` (web, realtime, worker and beat all run that one image); the five most
+  recent stay on the server. `bash infra/scripts/rollback.sh` lists them and `rollback.sh <sha>` restarts the four
+  services on an earlier one in about a minute, without a rebuild. It swaps code only - the database is not touched.
+- That is safe because migrations must work for both the new and the previous release: `core/migration_lint.py` (run
+  by CI on every pull request) rejects a migration that removes or renames a column or table, rewrites a column, adds a
+  NOT NULL column with no default, or builds an index under a lock, unless a reviewer marks it
+  `# lint-migrations: ok <reason>`. Remove a column in a *later* release than the one that stops using it.
+- `deploy.sh` runs `migrate` with `lock_timeout=15s` while the old containers still serve: a migration that cannot get
+  its lock fails the deploy and the site stays up on the previous release.
+- If a bad release damaged data, restoring the pre-deploy dump (`Backups`, below) is a separate, deliberate step.
+
+## Health and uptime
+
+- `GET /api/health/` is **liveness**: the process answers (Docker's healthcheck uses it). `GET /api/readyz/` is **readiness**:
+  200 only when the database answers, else 503 (Redis is reported but not required). `deploy.sh` waits on `readyz`, so a
+  deploy whose database is unreachable fails instead of reporting success.
+- External probe: `.github/workflows/uptime.yml` checks `/api/readyz/` for production and staging every 5 minutes from
+  GitHub's machines (3 tries, 20 s apart); a failed run emails the repo's notification recipients, and the repository
+  secret `ALERT_WEBHOOK_URL` (Slack / Discord / ntfy) adds a chat alert. GitHub runs schedules only from the default
+  branch, so it starts once this is merged to `main`. `infra/scripts/uptime_probe.sh` is the same check as a cron job
+  for a second host (it also alerts on recovery).
+
 ## Error reporting
 
 Sentry receives every unhandled exception, tagged with the environment
@@ -445,3 +625,21 @@ yet.
   to that mailbox.
 - **Backups are on the same disk as the database.** A disk failure loses
   both. They should be copied to Hetzner Object Storage or a Storage Box.
+
+## Browser security headers (review FE-03)
+
+`ashantihub-spa.stpl` sends `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`
+(camera and geolocation for this origin only) and a **`Content-Security-Policy-Report-Only`**. nginx drops inherited
+`add_header` lines inside any location that sets its own, so the block is repeated in every location; keep the copies identical
+(`frontend/__tests__/securityHeaders.test.js` checks it). HSTS still comes from Hestia's `nginx.hsts.conf`.
+
+Rolling out: the new template reaches the server through the normal production deploy (`install-hestia-templates.sh` runs when the
+templates tree changed). Browse staging with the console open and note every CSP violation; once none remain, rename the header to
+`Content-Security-Policy` in both files and tighten `connect-src` from `https: wss:` to the API and realtime origins.
+Never add a `^~ /.well-known/` location to this file.
+
+## Mobile minimum version (review MOB-01)
+
+`MOBILE_MIN_VERSION` (blank = off) and `MOBILE_STORE_URL` in the server `.env` make the API answer a too-old mobile build with
+`426 upgrade_required` (`core/app_version.py`; `/api/core/health/`, webhooks and web/staff traffic are exempt). Procedure and the
+OTA rollback steps: `docs/mobile-release/UPDATES_AND_ROLLBACK.md`.

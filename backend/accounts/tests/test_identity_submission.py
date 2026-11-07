@@ -513,7 +513,7 @@ class IdentitySubmissionTests(TestCase):
                                  profile.business_reg_certificate) if f]
 
     def test_resubmitting_after_rejection_deletes_the_old_files(self):
-        from django.core.files.storage import default_storage
+        from core.private_files import kyc_storage
 
         owner = self._owner()
         client = self._client(owner)
@@ -522,7 +522,7 @@ class IdentitySubmissionTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         old = self._stored(owner)
         self.assertEqual(len(old), 3)
-        self.assertTrue(all(default_storage.exists(name) for name in old))
+        self.assertTrue(all(kyc_storage().exists(name) for name in old))
         BusinessOwnerProfile.objects.filter(business_owner=owner).update(identity_status="rejected")
         with self.captureOnCommitCallbacks(execute=True):
             response = client.post(URL, self._payload(number="GHA-760000001-1", business_reg_certificate=_pdf("c2.pdf")),
@@ -530,28 +530,28 @@ class IdentitySubmissionTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         new = self._stored(owner)
         self.assertEqual(len(new), 3)
-        self.assertFalse(any(default_storage.exists(name) for name in old))
-        self.assertTrue(all(default_storage.exists(name) for name in new))
+        self.assertFalse(any(kyc_storage().exists(name) for name in old))
+        self.assertTrue(all(kyc_storage().exists(name) for name in new))
 
     def test_profile_patch_deletes_a_replaced_card_photo(self):
-        from django.core.files.storage import default_storage
+        from core.private_files import kyc_storage
 
         owner = self._owner()
         client = self._client(owner)
         self.assertEqual(client.patch(PROFILE_URL, {"ghana_card_front_image": _image("f1.jpg")},
                                       format="multipart").status_code, 200)
         old = self._profile(owner).ghana_card_front_image.name
-        self.assertTrue(default_storage.exists(old))
+        self.assertTrue(kyc_storage().exists(old))
         with self.captureOnCommitCallbacks(execute=True):
             response = client.patch(PROFILE_URL, {"ghana_card_front_image": _image("f2.jpg")}, format="multipart")
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertFalse(default_storage.exists(old))
-        self.assertTrue(default_storage.exists(self._profile(owner).ghana_card_front_image.name))
+        self.assertFalse(kyc_storage().exists(old))
+        self.assertTrue(kyc_storage().exists(self._profile(owner).ghana_card_front_image.name))
 
     def test_a_rolled_back_resubmission_deletes_nothing(self):
         from unittest import mock
 
-        from django.core.files.storage import default_storage
+        from core.private_files import kyc_storage
         from django.db import IntegrityError
 
         owner = self._owner()
@@ -565,7 +565,7 @@ class IdentitySubmissionTests(TestCase):
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(callbacks, [])
         self.assertEqual(self._stored(owner), old)
-        self.assertTrue(all(default_storage.exists(name) for name in old))
+        self.assertTrue(all(kyc_storage().exists(name) for name in old))
 
 
 class SubmitIdentityServiceTests(TestCase):

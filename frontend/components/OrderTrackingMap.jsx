@@ -6,6 +6,7 @@ import { useOrderTracking } from "../hooks/useTracking.js";
 import TrackMap from "./maps/TrackMap.jsx";
 import EtaLine from "./maps/EtaLine.jsx";
 import { D } from "./dashboard/theme.js";
+import { goToCheckout } from "../lib/safeRedirect.js";
 
 // The customer's live view of their delivery (backend OrderTrackingView). Before pickup it is
 // TEXT ONLY and the tracking hook is never enabled, so no rider position is requested or shown.
@@ -80,7 +81,7 @@ function RedeliveryNotice({ orderId, redelivery }) {
     setError(null); setBusy(true);
     try {
       const res = await apiPost(`/api/orders/${orderId}/redelivery/pay/`, { method });
-      if (res?.mode === "redirect" && res.checkout_url) { window.location.assign(res.checkout_url); return; }
+      if (res?.mode === "redirect" && res.checkout_url) { goToCheckout(res.checkout_url, "assign"); return; }
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     } catch (err) { setError(apiErrorMessage(err, "Could not take the payment. Please try again.")); }
     setBusy(false);

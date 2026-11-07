@@ -14,6 +14,7 @@ import BarcodeField from "../../catalogue/BarcodeField.jsx";
 import { displayBarcode, isGoodsCategory } from "../../catalogue/catalogueFormat.js";
 import { DecisionFields, inputStyle, labelStyle, textareaStyle, fieldGrid2, policyHint } from "./listingFormFields.jsx";
 import { D, glassCard, LISTING_STATUS_META, HERO_STATUS_META, tint } from "../theme.js";
+import { goToCheckout } from "../../../lib/safeRedirect.js";
 
 // Listings & Prices panel — ported from App.jsx's BusinessDashboard "listings"
 // tab, re-themed dark. Owns its own listing create / edit / hero-submit /
@@ -289,7 +290,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       // a "mode" field. Left here so a future conversion of that endpoint
       // doesn't also require frontend surgery.
       if (response?.mode === "redirect") {
-        window.location.href = response.checkout_url;
+        goToCheckout(response.checkout_url);
         return;
       }
       toast(); refetchHeroSubmission();
@@ -311,7 +312,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         <h2 style={{ margin: 0, color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>🏷️ Listings &amp; Prices</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={() => { setShowCreate(s => !s); setCreateError(null); setCreateBarcodeError(null); }} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "7px 16px", fontSize: "0.72rem", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>{createButtonLabel}</button>
-          {!direct && <a href="https://wa.me/233244000000?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>}
+          {!direct && <a href="https://wa.me/233502481685?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>}
         </div>
       </div>
 

@@ -88,6 +88,35 @@ confirmed and it has shared a shop pin (plus business type and accepted terms); 
 identity (Ghana Card) is collected at payout. So a self-registered owner needs an email: it is required on web and mobile
 sign-up. See `backend/CLAUDE.md` for the rule and its switches.
 
+## Engineering standards (from the 2026-11-06 principal engineer review)
+
+The review (`docs/reviews/2026-11-06-principal-review.md`, tracker `docs/reviews/remediation-arc-be.md`) found 63 issues
+and fixes them in this order: **architecture + backend → database → frontend → mobile**. Finish a track's P0/P1 items before
+starting another track's P2s. These rules hold for all new work, not just the fixes:
+
+- **Money paths fail closed.** An unknown, ambiguous or unverifiable provider answer leaves the order unpaid and logged;
+  it never counts as success. Status words are matched **exactly**, never by substring ("unpaid" contains "paid").
+  A payment mode is named explicitly (`PAYMENTS_PROVIDER` in every server `.env`); the `payments.*` system checks run on
+  every `migrate`, so a mis-set mode stops the deploy. Never call a payment provider or any network service inside
+  `transaction.atomic()` while row locks are held.
+- **Every POST that moves money or stock is idempotent.** It takes a client `request_id` backed by a unique constraint and
+  returns the first result on a repeat (copy `wallets.withdrawals` and the frontend `WithdrawForm`). Cart and stock are
+  re-read **inside** the transaction that uses them.
+- **Identity documents never live under `MEDIA_ROOT`** (nginx serves that to anyone). Use private storage with short-lived
+  signed URLs; anything new that holds a national ID, certificate, payout proof or dispute evidence follows the same rule.
+- **Throttle and lock with the shared pieces.** Views use `core.throttling.ClusterScopedRateThrottle` (the project default;
+  Redis-backed, fails open) and take the caller's address from DRF `NUM_PROXIES` (one proxy: nginx), never from raw
+  `X-Forwarded-For`. Sign-in goes through `accounts.lockout`. A new unauthenticated endpoint needs a `throttle_scope`.
+- **Dependencies stay clean.** `pip-audit -r backend/requirements.txt` must report nothing before a merge; bump, run the
+  full suite, commit. Pin exact versions.
+- **Fix with evidence.** Reproduce with a failing test first, run the focused suite, then the whole suite
+  (`docker compose run --rm web python manage.py test --parallel 4`) before a commit that touches money, auth or storage.
+  Do not edit `backend/` while a long test run is going (the compose service bind-mounts it).
+- **Settings fail closed.** In a non-`DEBUG` process a missing or permissive security setting (secret key, Redis, allowed hosts,
+  CORS origins, payment mode) must raise or fail a system check, not default to open.
+- The review's remaining database, frontend and mobile findings are listed in its report; check it before touching those
+  areas, and update the tracker when an item is fixed.
+
 ## Area guidance
 
 - `frontend/CLAUDE.md` — the no-`useMutation` mutation convention, the

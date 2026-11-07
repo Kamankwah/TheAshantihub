@@ -2,19 +2,10 @@ import { useMemo } from "react";
 import { MapContainer, Marker, Popup, Polyline } from "react-leaflet";
 import BaseTileLayers from "./maps/BaseTileLayers.jsx";
 import L from "leaflet";
+import "../lib/leafletIcons.js";
 import "leaflet/dist/leaflet.css";
 import { C } from "../theme.js";
 
-// Leaflet's default marker icon references image files by relative path, which
-// break under Vite's bundler. Point them at the CDN copies so markers render
-// without shipping the assets. (This is the app, not a CSP-locked artifact, so
-// external tiles/images are fine.)
-const iconBase = "https://unpkg.com/leaflet@1.9.4/dist/images/";
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: `${iconBase}marker-icon-2x.png`,
-  iconUrl: `${iconBase}marker-icon.png`,
-  shadowUrl: `${iconBase}marker-shadow.png`,
-});
 
 // A coloured marker so pickup (business) and drop-off (customer) are told apart
 // at a glance without extra assets — a small divIcon pin.

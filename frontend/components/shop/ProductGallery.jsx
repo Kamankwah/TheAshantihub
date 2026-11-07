@@ -4,6 +4,7 @@ import { lensRect, paneOffset } from "../../lib/zoomMath.js";
 import useBreakpoint from "../../hooks/useBreakpoint.js";
 import GalleryLightbox from "./GalleryLightbox.jsx";
 import MobileGallery from "./MobileGallery.jsx";
+import { pictureProps } from "../../lib/responsiveImage.js";
 
 const ZOOM = 2.5;
 const CAN_HOVER = "(hover: hover) and (pointer: fine)";
@@ -83,7 +84,7 @@ export default function ProductGallery({ media = [], title = "", activeVariantIm
           style={{ display: "flex", overflowX: "auto", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", borderRadius: 12, border: `1px solid ${C.line}`, background: C.surface2 }}>
           {slides.map(({ m, src }, i) => (
             <div key={m?.id ?? "variant"} style={{ flex: "0 0 100%", scrollSnapAlign: "center", aspectRatio: "1 / 1", position: "relative" }}>
-              <img data-testid="gallery-main-image" src={src} alt={title} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+              <img data-testid="gallery-main-image" {...(m && src === m.url ? pictureProps(m.variants, m.url, { sizes: "100vw", eager: i === 0 }) : { src })} alt={title} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
               <button aria-label={`Open photo ${i + 1} full screen`} onClick={() => open(Math.min(i, images.length - 1))}
                 style={{ position: "absolute", inset: 0, width: "100%", height: "100%", background: "transparent", border: 0, cursor: "zoom-in" }} />
             </div>
@@ -113,7 +114,7 @@ export default function ProductGallery({ media = [], title = "", activeVariantIm
           {images.map((m, i) => (
             <button key={m.id} data-testid="gallery-thumb" aria-label={`Show photo ${i + 1}`} aria-current={i === idx && !activeVariantImage}
               onClick={() => setIdx(i)} style={{ ...railTile, border: `2px solid ${i === idx ? C.gold : C.line}` }}>
-              <img src={m.thumb_url || m.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <img src={m.thumb_url || m.url} loading="lazy" decoding="async" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             </button>
           ))}
           {videos.length > 0 && (
@@ -129,7 +130,7 @@ export default function ProductGallery({ media = [], title = "", activeVariantIm
           style={{ position: "relative", aspectRatio: "1 / 1", background: C.surface2, border: `1px solid ${C.line}`, borderRadius: 12, overflow: "hidden" }}>
           {mainSrc ? (
             <>
-              <img data-testid="gallery-main-image" src={mainSrc} alt={title} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+              <img data-testid="gallery-main-image" {...(current && mainSrc === current.url ? pictureProps(current.variants, current.url, { sizes: "(min-width: 900px) 520px, 90vw", eager: true }) : { src: mainSrc })} alt={title} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
               <button aria-label="Click to see full view" onClick={() => open(Math.min(idx, images.length - 1))}
                 style={{ position: "absolute", inset: 0, width: "100%", height: "100%", background: "transparent", border: 0, cursor: hovering ? "crosshair" : "zoom-in" }} />
               {zoom && (

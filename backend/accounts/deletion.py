@@ -1,12 +1,14 @@
 """A customer or business owner deleting their own account from the app (Apple and Google both require it).
 
 The row stays so orders, ledger entries and disputes keep their foreign keys; what is erased is the person: name,
-contacts, address book, avatar, identity and payout details, payout numbers, verified contacts and marketing consent.
+contacts, address book, avatar, identity and payout details, payout numbers, verified contacts, notifications and marketing
+consent. Delivery details on past orders and support-conversation text follow after a grace period (accounts.retention).
 Deletion is refused while money or work is still open."""
 from datetime import timedelta
 
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
 from . import files, mobile_sessions
@@ -92,13 +94,17 @@ def _opt_out_everywhere(account):
 
 def _erase_traces(account, account_type):
     """What lives in other apps and still names the person: payout numbers, verified contacts, consent."""
+    from notifications.models import Notification
     from otp.models import VerifiedContact
     from wallets.models import PayoutDestination
 
     now = timezone.now()
-    PayoutDestination.objects.filter(holder_type=account_type, holder_id=account.pk, removed_at__isnull=True).update(
-        removed_at=now
-    )
+    # Every destination the person ever saved, removed or not (review DB-04): the number and the names go, the row stays so a
+    # past withdrawal keeps its foreign key. A removed row has no live-destination uniqueness left to protect.
+    mine = PayoutDestination.objects.filter(holder_type=account_type, holder_id=account.pk)
+    mine.filter(removed_at__isnull=True).update(removed_at=now)
+    mine.update(account_number="", account_number_idx=None, account_name=DELETED_NAME, matched_name=DELETED_NAME)
+    Notification.objects.filter(**{"customer" if account_type == "customer" else "business_owner": account}).delete()
     VerifiedContact.objects.filter(account_type=account_type, account_id=account.pk).delete()
     _opt_out_everywhere(account)
 
@@ -134,14 +140,14 @@ def delete_account(account, account_type):
             date_of_birth=None, secondary_email=None, secondary_email_verified=False,
             secondary_email_verify_code=None, secondary_email_verify_expires_at=None, secondary_phone=None,
             secondary_phone_verified=False, secondary_phone_verify_code=None, secondary_phone_verify_expires_at=None,
-            password_hash=unusable, deleted_at=now,
+            password_hash=unusable, deleted_at=now, token_version=F("token_version") + 1,
         )
         account.addresses.all().delete()
     else:
         _close_business(account)
         BusinessOwner.objects.filter(pk=account.pk).update(
             full_name=DELETED_NAME, login_phone=f"deleted-{account.pk}", email=None, password_hash=unusable,
-            deleted_at=now,
+            deleted_at=now, token_version=F("token_version") + 1,
         )
         profile = getattr(account, "profile", None)
         if profile is not None:

@@ -13,6 +13,7 @@ from otp.models import EMAIL, SIGN_IN, SMS, STEP_UP, OtpChallenge, OtpEvent, Ver
 from otp.service import OtpError
 
 from .helpers import SIX_DIGITS, last_email_code, last_sms_code, make_customer, make_owner, wrong_code
+from core.testing import drop_index
 
 
 class ServiceBase(TestCase):
@@ -191,6 +192,7 @@ class ResendAndLimitTests(ServiceBase):
         self.send(ticket="b", request=RequestFactory().post("/", REMOTE_ADDR="154.160.24.92"))
 
     def test_another_accounts_codes_to_my_number_do_not_use_up_my_allowance(self):
+        drop_index("accounts_customer_phone_key_unique")  # models legacy rows the index now refuses (review DB-13)
         # Final review F3: an account registered with someone else's number (typed another way) cannot lock them out.
         attacker = make_customer(phone="0241234567", email="kofi@example.com")
         for ticket in "abcde":
@@ -200,6 +202,7 @@ class ResendAndLimitTests(ServiceBase):
         self.assertEqual(senders.sms_outbox[-1].to, "+233241234567")
 
     def test_one_number_gets_at_most_twenty_codes_an_hour_from_every_account_together(self):
+        drop_index("accounts_customer_phone_key_unique")  # models legacy rows the index now refuses (review DB-13)
         for n in range(19):
             OtpEvent.objects.create(
                 kind=OtpEvent.SENT if n % 2 else OtpEvent.SEND_FAILED, account_type="customer", account_id=100000 + n,

@@ -43,6 +43,7 @@ from accounts.models import (
     StaffUser,
 )
 from billing.models import Subscription, SubscriptionPlan, Transaction
+from accounts.reset_tokens import hash_token
 from contact.models import ContactMessage
 from credit.models import CreditScore, LendingPartner, LoanApplication
 from credit.scoring import compute_naive_credit_score
@@ -233,13 +234,13 @@ class Command(BaseCommand):
         self._staff(
             "marketing.invite.seed@theashantihub.com",
             "Abenaa Akyiaa Oforiwaa-Kumi (Marketing & Partnerships Lead)", Role.MARKETING,
-            invite_token="seed-invite-marketing-0001",
+            invite_token=hash_token("seed-invite-marketing-0001"),
             invite_expires_at=self.now + timedelta(days=5),
         )
         # Invite that lapsed.
         self._staff(
             "accountant.invite.seed@theashantihub.com", "Kwaku Duah", Role.ACCOUNTANT,
-            invite_token="seed-invite-accountant-0002",
+            invite_token=hash_token("seed-invite-accountant-0002"),
             invite_expires_at=self.now - timedelta(days=2),
         )
         self._staff(

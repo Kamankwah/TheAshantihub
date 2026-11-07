@@ -23,6 +23,17 @@ server {
 
 	include %home%/%user%/conf/web/%domain%/nginx.hsts.conf*;
 
+	# Security headers (review FE-03). nginx drops every inherited add_header in a location that sets its
+	# own, so this block is repeated in each location below; keep the copies identical (a Vitest checks it).
+	# The CSP is Report-Only: watch the browser console / reports for violations before enforcing it.
+	# The sha256 is the inline theme script in frontend/index.html (a Vitest checks it matches).
+	add_header X-Content-Type-Options "nosniff" always;
+	add_header X-Frame-Options "DENY" always;
+	add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+	add_header Permissions-Policy "camera=(self), geolocation=(self), microphone=(), payment=()" always;
+	add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'sha256-4xOn9Nvw4KDG49qa3HOUTDiJ68PNFbnIi7A7Aa5Rkd8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+
+
 	# See the note in ashantihub-spa.tpl about .well-known and renewals.
 	location ~ /\.(?!well-known\/) {
 		deny all;
@@ -30,15 +41,30 @@ server {
 	}
 
 	location / {
+		add_header X-Content-Type-Options "nosniff" always;
+		add_header X-Frame-Options "DENY" always;
+		add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+		add_header Permissions-Policy "camera=(self), geolocation=(self), microphone=(), payment=()" always;
+		add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'sha256-4xOn9Nvw4KDG49qa3HOUTDiJ68PNFbnIi7A7Aa5Rkd8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
 		try_files $uri $uri/ /index.html;
 	}
 
 	location /assets/ {
+		add_header X-Content-Type-Options "nosniff" always;
+		add_header X-Frame-Options "DENY" always;
+		add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+		add_header Permissions-Policy "camera=(self), geolocation=(self), microphone=(), payment=()" always;
+		add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'sha256-4xOn9Nvw4KDG49qa3HOUTDiJ68PNFbnIi7A7Aa5Rkd8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
 		expires    max;
 		add_header Cache-Control "public, immutable";
 	}
 
 	location = /index.html {
+		add_header X-Content-Type-Options "nosniff" always;
+		add_header X-Frame-Options "DENY" always;
+		add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+		add_header Permissions-Policy "camera=(self), geolocation=(self), microphone=(), payment=()" always;
+		add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'sha256-4xOn9Nvw4KDG49qa3HOUTDiJ68PNFbnIi7A7Aa5Rkd8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
 		expires   -1;
 		add_header Cache-Control "no-cache, must-revalidate";
 	}
@@ -50,11 +76,21 @@ server {
 	# make the manifest revalidate on every deploy. Like every edit here, they
 	# take effect only after re-running infra/scripts/install-hestia-templates.sh.
 	location = /sw.js {
+		add_header X-Content-Type-Options "nosniff" always;
+		add_header X-Frame-Options "DENY" always;
+		add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+		add_header Permissions-Policy "camera=(self), geolocation=(self), microphone=(), payment=()" always;
+		add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'sha256-4xOn9Nvw4KDG49qa3HOUTDiJ68PNFbnIi7A7Aa5Rkd8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
 		expires   -1;
 		add_header Cache-Control "no-cache, must-revalidate";
 	}
 
 	location = /staff.webmanifest {
+		add_header X-Content-Type-Options "nosniff" always;
+		add_header X-Frame-Options "DENY" always;
+		add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+		add_header Permissions-Policy "camera=(self), geolocation=(self), microphone=(), payment=()" always;
+		add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'sha256-4xOn9Nvw4KDG49qa3HOUTDiJ68PNFbnIi7A7Aa5Rkd8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
 		default_type application/manifest+json;
 		expires   -1;
 		add_header Cache-Control "no-cache, must-revalidate";

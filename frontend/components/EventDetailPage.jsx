@@ -18,6 +18,7 @@ import { lineTotalGhs } from "../lib/bookingPay.js";
 import { apiErrorMessage } from "../lib/apiErrorMessage.js";
 import PaymentMethodPicker from "./wallet/PaymentMethodPicker.jsx";
 import { walletStyles } from "./wallet/walletStyles.js";
+import { goToCheckout } from "../lib/safeRedirect.js";
 
 // ─── EventDetailPage ────────────────────────────────────────────────────────
 // Event detail page for the Events tab (docs/BUSINESS_EVENTS_ROADMAP.md
@@ -484,7 +485,7 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, inLed
       if (response?.mode === "redirect") {
         redirecting = true;
         closePay();
-        window.location.href = response.checkout_url;
+        goToCheckout(response.checkout_url);
         return;
       }
       setPurchasedByType((p) => ({ ...p, [payTarget.ticketType.id]: response }));

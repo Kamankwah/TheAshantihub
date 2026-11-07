@@ -9,7 +9,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { canPay, checkoutBody, fieldErrors, waitForPayment, type CheckoutForm } from "../features/cart/checkout";
 import { useCart, useDeliveryPreview } from "../features/cart/queries";
 import { useCanBuy } from "../features/listing/queries";
-import { useWallet, walletChoice } from "../features/wallet/api";
+import { newRequestId, useWallet, walletChoice } from "../features/wallet/api";
 import { api } from "../lib/api";
 import { apiMessage } from "../lib/errors";
 import { fonts } from "../theme/fonts";
@@ -47,6 +47,7 @@ export default function CheckoutScreen() {
   const [waiting, setWaiting] = useState(false);
   const [locating, setLocating] = useState(false);
   const stop = useRef(false);
+  const requestId = useRef<string | null>(null);
   const [stopped, setStopped] = useState(false);
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
@@ -91,7 +92,11 @@ export default function CheckoutScreen() {
     setErrors({});
     stop.current = false;
     try {
-      const res = await api<{ id?: number; mode?: string; checkout_url?: string; reference?: string }>("/api/orders/checkout/", { body: checkoutBody({ ...form, payment }) });
+      // One id per order attempt, so a double tap or a retry after a dropped connection returns the first order instead of making a second.
+      if (!requestId.current) requestId.current = newRequestId();
+      const res = await api<{ id?: number; mode?: string; checkout_url?: string; reference?: string }>("/api/orders/checkout/", {
+        body: { ...checkoutBody({ ...form, payment }), request_id: requestId.current },
+      });
       if (res.mode === "redirect" && res.reference) {
         setWaiting(true);
         if (res.checkout_url) void WebBrowser.openBrowserAsync(res.checkout_url);
@@ -101,6 +106,7 @@ export default function CheckoutScreen() {
         if (settled.status === "paid") {
           router.replace({ pathname: "/order-confirmed", params: { id: String(settled.orderId ?? "") } } as never);
         } else if (settled.status === "failed") {
+          requestId.current = null; // a failed payment closes that order; the next try is a new one
           setError("Your payment didn’t go through. Nothing was taken and your cart is unchanged.");
         } else if (settled.status === "stopped") {
           if (!mounted.current) return;

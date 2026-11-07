@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { apiFetch, apiPatch, apiPatchForm, apiPost, getStoredAuth, setStoredAuth } from '../apiClient.js'
+import { apiFetch, apiPatch, apiPatchForm, apiPost, endWebSession, getStoredAuth, setStoredAuth } from '../apiClient.js'
 import { clearDeviceToken, getDeviceToken, isOtpChallenge, setDeviceToken } from '../lib/otp.js'
 import { getNetworkStatus, subscribeNetworkStatus } from '../lib/networkStatus.js'
 
@@ -117,6 +117,9 @@ export function useAuth() {
   }, [])
 
   const logout = useCallback(() => {
+    // A customer's or owner's browser holds a refresh cookie: end it on the server too (staff have none).
+    const account = getStoredAuth()
+    if (account && account.account_type !== 'staff') endWebSession()
     setStoredAuth(null)
     setUser(null)
   }, [])

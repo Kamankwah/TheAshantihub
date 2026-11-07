@@ -13,6 +13,11 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 30 2 * * * root bash /opt/ashantihub/infra/scripts/backup-db.sh >> /var/log/ashantihub-cron.log 2>&1
 0 3 * * * root bash /opt/ashantihub-staging/infra/scripts/backup-db.sh >> /var/log/ashantihub-cron.log 2>&1
 
+# Monthly restore drill (review DB-01): restores the newest OFF-SITE dump into a throwaway Postgres, checks the ledger balances
+# and times it. A failure pings DRILL_PING_URL/fail and is logged in backups/restore-drill.log. Production only; staging is
+# drilled by hand after any change to backups.
+0 5 2 * * root bash /opt/ashantihub/infra/scripts/restore-drill.sh offsite >> /var/log/ashantihub-cron.log 2>&1
+
 # Expire events whose paid visibility window has elapsed. Hourly in
 # production so a finished event stops showing within the hour; once a day is
 # plenty for staging.

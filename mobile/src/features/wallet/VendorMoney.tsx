@@ -24,7 +24,7 @@ export function Segments<T extends string>({ items, value, onChange }: { items: 
           accessibilityLabel={t}
           accessibilityState={{ selected: value === t }}
           onPress={() => onChange(t)}
-          style={{ minHeight: 44, paddingHorizontal: 14, justifyContent: "center", borderRadius: radius.pill, borderWidth: value === t ? 2 : 1, borderColor: value === t ? c.ink : c.line, backgroundColor: c.surface }}
+          style={{ minHeight: 48, paddingHorizontal: 14, justifyContent: "center", borderRadius: radius.pill, borderWidth: value === t ? 2 : 1, borderColor: value === t ? c.ink : c.line, backgroundColor: c.surface }}
         >
           <Text style={{ color: c.ink, fontFamily: value === t ? fonts.bodyBold : fonts.body, fontSize: 14 }}>{t}</Text>
         </Pressable>

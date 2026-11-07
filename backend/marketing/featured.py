@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from billing import clock
 from fraud.models import FraudFlag
+from listings import image_variants
 from listings.models import Category, Listing, Promotion
 from listings.visibility import hidden_business_q
 
@@ -320,7 +321,9 @@ def public_listings(category_slug=None, request=None):
         if request is not None and photo:
             photo = request.build_absolute_uri(photo)
         out.append({
-            "id": listing.pk, "name": listing.name, "main_photo": photo, "price_amount": listing.price_amount, "price_unit": listing.price_unit,
+            "id": listing.pk, "name": listing.name, "main_photo": photo,
+            "main_photo_variants": image_variants.urls(request, listing.main_photo_variants, listing.main_photo) if listing.main_photo else None,
+            "price_amount": listing.price_amount, "price_unit": listing.price_unit,
             "category": listing.category.slug, "business": listing.business_owner.display_name,
             "verified": listing.business_owner.identity_verified,
         })

@@ -40,6 +40,28 @@ beforeAll(() => import('./components/admin/AdminCommandCenter.jsx'), 30000)
 
 describe('AshantiHub routing', () => {
   it(
+    'forgot_deep_link: "/?auth=forgot" opens the reset form and clears the param (review MOB-13)',
+    async () => {
+      function Probe() {
+        const l = useLocation()
+        return <div data-testid="loc">{l.pathname + l.search}</div>
+      }
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={['/?auth=forgot']}>
+            <AshantiHub />
+            <Probe />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      )
+      expect(await screen.findByText('Reset your password', {}, { timeout: 5000 })).toBeInTheDocument()
+      expect(screen.getByTestId('loc').textContent).toBe('/')
+    },
+    10000,
+  )
+
+  it(
     'cart_path_renders_the_cart_page: "/cart" is a real page (signed out it asks for sign-in)',
     async () => {
       renderAtPath('/cart')

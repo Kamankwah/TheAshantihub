@@ -175,7 +175,8 @@ class BusinessOwnerProfileUpdateTests(TestCase):
         self.assertEqual(
             BusinessOwnerProfile.objects.filter(ghana_card_number__isnull=True).count(), 2
         )
-        self.assertFalse(BusinessOwnerProfile.objects.filter(ghana_card_number="").exists())
+        # a blank card is stored as NULL (the column is encrypted, so it cannot be searched for "")
+        self.assertFalse(any(p.ghana_card_number == "" for p in BusinessOwnerProfile.objects.all()))
 
     def test_a_given_card_number_must_still_be_unique(self):
         self._make_owner(BusinessOwner.PENDING)

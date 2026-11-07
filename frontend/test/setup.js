@@ -1,9 +1,13 @@
 import '@testing-library/jest-dom'
 import { configure } from '@testing-library/react'
 import { createElement } from 'react'
-import { afterAll, afterEach, beforeAll, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, expect, vi } from 'vitest'
+import { toHaveNoViolations } from 'jest-axe'
 import { server } from '../mocks/server.js'
 import { resetNetworkStatusForTests } from '../lib/networkStatus.js'
+
+// Accessibility assertions (review FE-07): expect(await axe(container)).toHaveNoViolations()
+expect.extend(toHaveNoViolations)
 
 // findBy*/waitFor poll up to 5 s (the default 1 s is too tight when the whole suite
 // runs in parallel); they still return the moment the element is there.

@@ -24,6 +24,9 @@ class AppendOnlyTests(TestCase):
         self.journal = Journal.objects.create(key="k1", kind="test")
         self.account = Account.objects.create(kind=Account.PROVIDER_CLEARING)
         self.line = JournalLine.objects.create(journal=self.journal, account=self.account, side=JournalLine.DEBIT, amount=100)
+        # The journal must balance by commit (ledger migration 0015), so give it its other side.
+        JournalLine.objects.create(journal=self.journal, account=Account.objects.create(kind=Account.CUSTOMER_WALLET),
+                                   side=JournalLine.CREDIT, amount=100)
 
     def test_orm_save_of_an_existing_journal_is_refused(self):
         self.journal.memo = "changed"

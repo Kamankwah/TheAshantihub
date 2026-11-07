@@ -45,7 +45,27 @@ def _redis_state():
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health_check(request):
+    """Liveness (``/api/health/``): the process is up and answering. Deliberately touches nothing but Redis state, so a
+    database blip does not make an orchestrator restart a healthy process."""
     return Response({"status": "ok", "redis": _redis_state()})
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def ready_check(request):
+    """Readiness (``/api/readyz/``, review ARC-03): can this instance do real work? The database must answer, else 503, so
+    a deploy or an uptime probe notices an API that is up but cannot serve. Redis is reported, not required: the API
+    fails open without it (throttles, channel layer). Reveals only ok/down, never versions or hostnames."""
+    from django.db import connection
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception:
+        return Response({"status": "unavailable", "database": "down", "redis": _redis_state()}, status=503)
+    redis_state = _redis_state()
+    return Response({"status": "ok", "database": "ok", "redis": redis_state})
 
 
 SITE_SETTINGS_FIELDS = {

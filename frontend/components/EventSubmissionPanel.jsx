@@ -9,6 +9,7 @@ import EventTicketTypesPanel from "./EventTicketTypesPanel.jsx";
 import EventCheckinPanel from "./EventCheckinPanel.jsx";
 import StaffGateNotice from "./StaffGateNotice.jsx";
 import { isStaffSession } from "../lib/staffSession.js";
+import { goToCheckout } from "../lib/safeRedirect.js";
 
 // The 5 fixed visibility-window durations (event pricing tiers work) —
 // duration set is fixed by product decision (EventPricingTier.DURATION_CHOICES
@@ -177,7 +178,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
       // this as already published — the event only goes live once the
       // webhook confirms payment.
       if (response?.mode === "redirect") {
-        window.location.href = response.checkout_url;
+        goToCheckout(response.checkout_url);
         return;
       }
       setPayTargetId(null);
@@ -235,7 +236,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
     setPayError(null);
     try {
       const response = await apiPost(`/api/events/${renewId}/renew/`, { additional_days: renewDays });
-      if (response?.mode === "redirect") { window.location.href = response.checkout_url; return; }
+      if (response?.mode === "redirect") { goToCheckout(response.checkout_url); return; }
       refetch();
     } catch (err) {
       setPayError("Payment was confirmed but we couldn't extend your event. Please contact support.");

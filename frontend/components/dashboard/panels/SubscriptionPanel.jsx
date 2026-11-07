@@ -4,6 +4,7 @@ import { useSubscriptionPlans } from "../../../hooks/useSubscriptionPlans.js";
 import { noPlansOffered } from "../../../lib/plansOffered.js";
 import { useMySubscription } from "../../../hooks/useMySubscription.js";
 import { D, glassCard, tint } from "../theme.js";
+import { goToCheckout } from "../../../lib/safeRedirect.js";
 
 // Cycle-length options a business owner can pick — SubscriptionPlan no longer
 // has a separate annual_price, so every cycle's price is a flat multiple of
@@ -61,7 +62,7 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast, b
         metadata: { plan: selectedPlan.tier, cycle_months: cycleMonths },
       });
       if (response?.mode === "redirect") {
-        window.location.href = response.checkout_url;
+        goToCheckout(response.checkout_url);
         return;
       }
       // Same endpoint handles both "change plan" and "renew" — always sets

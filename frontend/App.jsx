@@ -1,15 +1,17 @@
-import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { lazyWithRetry as lazy } from "./lib/lazyWithRetry.js";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import FeedbackEcho from "./components/FeedbackEcho.jsx";
 import { useLocation, useNavigate, useMatch } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
-import CartTieredResults from "./components/CartTieredResults.jsx";
 import { addGhs } from "./components/wallet/walletMoney.js";
 import { useListing } from "./hooks/useListing.js";
 import { useEvents } from "./hooks/useEvents.js";
 import { useAuth } from "./hooks/useAuth.js";
+import { useDialogFocus } from "./hooks/useDialogFocus.js";
 import { useTheme } from "./hooks/useTheme.js";
 import { useMyListings } from "./hooks/useMyListings.js";
 import { useMyHeroSubmission } from "./hooks/useMyHeroSubmission.js";
@@ -26,7 +28,6 @@ import ServiceAcceptBar from "./components/ServiceAcceptBar.jsx";
 import BookingTermsNote from "./components/BookingTermsNote.jsx";
 import ServiceRequestPay from "./components/ServiceRequestPay.jsx";
 import BookingMoneyBar from "./components/bookings/BookingMoneyBar.jsx";
-import CancelBookingDialog from "./components/bookings/CancelBookingDialog.jsx";
 import { groupTicketsByPurchase } from "./components/bookings/bookingMoney.js";
 import { useMyServiceRequests } from "./hooks/useMyServiceRequests.js";
 import { useMyBookings } from "./hooks/useMyBookings.js";
@@ -50,23 +51,15 @@ import FeaturedRow from "./components/FeaturedRow.jsx";
 import BrowseRail from "./components/storefront/BrowseRail.jsx";
 import { arrivalPatch } from "./components/storefront/browseRailSections.js";
 import ChatLauncher from "./components/ChatLauncher.jsx";
-import ChatIntake from "./components/storefront/ChatIntake.jsx";
 import { Footer2 } from "./components/ui/footer-2.tsx";
 import { BusinessCtaBand } from "./components/ui/business-cta-band.tsx";
 import { EventsCtaBand } from "./components/ui/events-cta-band.tsx";
 import { AboutCtaBand } from "./components/ui/about-cta-band.tsx";
 import { ContactCtaBand } from "./components/ui/contact-cta-band.tsx";
-import { AccountProfileCard } from "./components/ui/account-profile-card.tsx";
-import { AboutTestimonialsSection } from "./components/ui/about-testimonials-section.tsx";
 import { AboutFaqSection } from "./components/ui/about-faq-section.tsx";
-import MarketingConsentCard from "./components/MarketingConsentCard.jsx";
-import AccountSecurityCard from "./components/security/AccountSecurityCard.jsx";
-import CartDrawer from "./components/CartDrawer.jsx";
 import FlashPriceTag from "./components/FlashPriceTag.jsx";
 import PriceLine from "./components/PriceLine.jsx";
-import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
 import EventCard, { formatEventDate } from "./components/EventCard.jsx";
-import OtpSignIn from "./components/OtpSignIn.jsx";
 import { isOtpChallenge, otpCode } from "./lib/otp.js";
 import { apiErrorMessage } from "./lib/apiErrorMessage.js";
 import { D, glassCard, ghs, tint } from "./components/dashboard/theme.js";
@@ -81,8 +74,11 @@ import TicketQr from "./components/TicketQr.jsx";
 import StaffGateNotice from "./components/StaffGateNotice.jsx";
 import StaffViewOnlyBar, { STAFF_VIEW_ONLY_BAR_HEIGHT } from "./components/StaffViewOnlyBar.jsx";
 import { isStaffSession } from "./lib/staffSession.js";
+import CancelBookingDialog from "./components/bookings/CancelBookingDialog.jsx";
+import OtpSignIn from "./components/OtpSignIn.jsx";
 import { useStaffGate } from "./hooks/useStaffGate.js";
 import { useFavourites } from "./hooks/useFavourites.js";
+import { cardPhoto as pickCardPhoto, pictureProps } from "./lib/responsiveImage.js";
 
 
 // ─── Code splitting ───────────────────────────────────────────────────────────
@@ -91,6 +87,14 @@ import { useFavourites } from "./hooks/useFavourites.js";
 // registration flows (the single bundle was ~3.6 MB / ~970 KB gzipped, over a
 // 200 ms+ link to the server). The default export below wraps the app in a
 // Suspense boundary; in-page screens add their own <Suspense> with InlineFallback.
+// Rendered only on demand (a drawer, a prompt, one account tab), so kept out of the entry bundle (review FE-06).
+const CartDrawer = lazy(() => import("./components/CartDrawer.jsx"));
+const ChatIntake = lazy(() => import("./components/storefront/ChatIntake.jsx"));
+const AccountProfileCard = lazy(() => import("./components/ui/account-profile-card.tsx").then((m) => ({ default: m.AccountProfileCard })));
+const AccountSecurityCard = lazy(() => import("./components/security/AccountSecurityCard.jsx"));
+const MarketingConsentCard = lazy(() => import("./components/MarketingConsentCard.jsx"));
+const EventHeroCarousel = lazy(() => import("./components/EventHeroCarousel.jsx"));
+const CartTieredResults = lazy(() => import("./components/CartTieredResults.jsx"));
 const BusinessCommandCenter = lazy(() => import("./components/dashboard/BusinessCommandCenter.jsx"));
 const AdminCommandCenter = lazy(() => import("./components/admin/AdminCommandCenter.jsx"));
 const StaffInstallPage = lazy(() => import("./components/admin/StaffInstallPage.jsx"));
@@ -116,6 +120,11 @@ const SpendAreaChart = lazy(() => import("./components/dashboard/charts/SpendAre
 const ListingsDonut = lazy(() => import("./components/dashboard/charts/ListingsDonut.jsx"));
 const AboutPage = lazy(() => import("./components/ui/about-page.tsx").then(m => ({ default: m.AboutPage })));
 const ContactPage = lazy(() => import("./components/ui/contact-page.tsx").then(m => ({ default: m.ContactPage })));
+// A lazy screen with its own error boundary (review FE-01): a chunk that cannot load shows "Try again" in place, the rest of the page stays.
+function PageBoundary({ children }) {
+  return <ErrorBoundary><Suspense fallback={InlineFallback}>{children}</Suspense></ErrorBoundary>;
+}
+
 const InlineFallback = <div role="status" aria-label="Loading" style={{minHeight:"40vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.gold,fontSize:"0.9rem"}}>Loading…</div>;
 
 // ─── Payment System ───────────────────────────────────────────────────────────
@@ -142,6 +151,8 @@ const MOMO_NETWORKS = [
 // `processing` (optional): the server's payment-processing charge as a GH₵ string. When given, it replaces the
 // simulated 1.5% fee everywhere in the modal; left undefined, the modal behaves exactly as before the ledger.
 export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose, processing: serverProcessing }) {
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, onClose);
   const [step, setStep] = useState(1);
   const [network, setNetwork] = useState(null);
   const [phone, setPhone] = useState("");
@@ -223,12 +234,12 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose,
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
       onClick={e => { if(e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background:C.surface, borderRadius:24, width:"100%", maxWidth:400, boxShadow:"0 24px 64px rgba(0,0,0,0.4)", overflow:"hidden" }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="momo-title" style={{ background:C.surface, borderRadius:24, width:"100%", maxWidth:400, boxShadow:"0 24px 64px rgba(0,0,0,0.4)", overflow:"hidden" }}>
 
         {/* Header */}
         <div style={{ background:`linear-gradient(135deg,${C.darkBrown},${C.kente2})`, padding:"20px 24px", position:"relative" }}>
-          <button onClick={onClose} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", color:"white", fontSize:"1.4rem", cursor:"pointer", opacity:0.7 }}>✕</button>
-          <div style={{ color:C.gold, fontWeight:900, fontSize:"0.9rem", marginBottom:2 }}>💰 Mobile Money Payment</div>
+          <button type="button" onClick={onClose} aria-label="Close" style={{ position:"absolute", top:14, right:16, background:"none", border:"none", color:"white", fontSize:"1.4rem", cursor:"pointer", opacity:0.7 }}>✕</button>
+          <h2 id="momo-title" style={{ margin:"0 0 2px", color:C.gold, fontWeight:900, fontSize:"0.9rem" }}>💰 Mobile Money Payment</h2>
           <div style={{ color:"white", fontSize:"0.78rem", opacity:0.85 }}>{purpose}</div>
           {businessName && <div style={{ color:C.lightGold, fontSize:"0.72rem", opacity:0.75, marginTop:2 }}>{businessName}</div>}
           {/* Progress */}
@@ -970,75 +981,6 @@ function ReviewsModal({item,user,onClose}) {
   </div>;
 }
 
-// ─── MoMo Payment Modal ───────────────────────────────────────────────────────
-function MoMoModal({item,user,onClose}) {
-  const [step,setStep]=useState(1);
-  const [network,setNetwork]=useState("MTN");
-  const [momoNum,setMomoNum]=useState(user?.phone||"");
-  const [pin,setPin]=useState("");
-  const [processing,setProcessing]=useState(false);
-  const [done,setDone]=useState(false);
-
-  const pay = () => {
-    if(!momoNum||momoNum.length<10)return;
-    setProcessing(true);
-    setTimeout(()=>{setProcessing(false);setDone(true);},2500);
-  };
-
-  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
-      <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente2})`,borderRadius:"22px 22px 0 0",padding:"20px 24px",position:"relative"}}>
-        <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"0.95rem"}}>💰 Mobile Money Payment</div>
-        <div style={{color:"white",fontSize:"0.78rem",opacity:0.85,marginTop:4}}>{item.name}</div>
-      </div>
-      <div style={{padding:"22px 24px"}}>
-        {done ? (
-          <div style={{textAlign:"center",padding:"20px 0"}}>
-            <div style={{fontSize:"3.5rem",marginBottom:12}}>✅</div>
-            <div style={{fontWeight:900,color:C.trust,fontSize:"1rem",marginBottom:6}}>Payment Successful!</div>
-            <div style={{fontSize:"0.78rem",color:C.inkDim,lineHeight:1.6,marginBottom:16}}>Your booking for <strong>{item.name}</strong> is confirmed. A receipt has been sent to your WhatsApp.</div>
-            <div style={{background:`${C.gold}15`,border:`1px solid ${C.gold}33`,borderRadius:12,padding:"12px",fontSize:"0.74rem",color:C.inkDim,marginBottom:16,lineHeight:1.7}}>
-              <div>📋 <strong>Booking Ref:</strong> AH-{Math.floor(Math.random()*90000+10000)}</div>
-              <div>💳 <strong>Network:</strong> {network} MoMo</div>
-              <div>📱 <strong>Number:</strong> {momoNum}</div>
-            </div>
-            <button onClick={onClose} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"10px 24px",fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Done</button>
-          </div>
-        ) : (
-          <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            {/* Network selector */}
-            <div>
-              <label style={lStyle}>Select Network</label>
-              <div style={{display:"flex",gap:8}}>
-                {["MTN","Telecel","AirtelTigo"].map(n=>(
-                  <button key={n} onClick={()=>setNetwork(n)} style={{flex:1,background:network===n?(n==="MTN"?"#FCD116":n==="Telecel"?"#e31837":"#e87722"):C.surface2,color:network===n?"white":C.ink,border:"none",borderRadius:12,padding:"10px 6px",fontWeight:800,fontSize:"0.72rem",cursor:"pointer"}}>{n}</button>
-                ))}
-              </div>
-            </div>
-            {/* Amount */}
-            <div style={{background:`${C.gold}12`,borderRadius:12,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{fontSize:"0.78rem",color:C.inkDim}}>Amount to Pay</div>
-              <div style={{fontWeight:900,color:C.ink,fontSize:"1.1rem"}}>{item.price}</div>
-            </div>
-            {/* MoMo Number */}
-            <div>
-              <label style={lStyle}>📱 {network} MoMo Number</label>
-              <input style={iStyle} placeholder="0244 000 000" value={momoNum} onChange={e=>setMomoNum(e.target.value)}/>
-            </div>
-            <div style={{background:tint(C.info, "14"),border:`1px solid ${tint(C.info, "40")}`,borderRadius:10,padding:"10px 12px",fontSize:"0.72rem",color:C.info,lineHeight:1.6}}>
-              📲 You will receive a <strong>prompt on your phone</strong> to approve this payment. Enter your {network} MoMo PIN when prompted.
-            </div>
-            <button onClick={pay} style={{...btnP(momoNum.length>=10),background:processing?"#aaa":C.kente2,color:"white"}}>
-              {processing?"⏳ Processing...":"Pay Now →"}
-            </button>
-            <div style={{fontSize:"0.68rem",color:C.inkFaint,textAlign:"center"}}>🔒 Secured by AshantiHub • Powered by Hubtel</div>
-          </div>
-        )}
-      </div>
-    </div>
-  </div>;
-}
 
 // ─── Category strip grouping (Business tab, Phase 3) ──────────────────────
 // Splits the flat `useCategories()` list into Products/Services rows by
@@ -1067,7 +1009,8 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
   // so images uploaded via the owner's Products/Services photo manager (which
   // create ListingPhoto rows, not main_photo) still show on the marketplace
   // grid, not just on the detail page.
-  const cardPhoto = item.main_photo || item.photos?.[0]?.image || null;
+  const photo = pickCardPhoto(item);
+  const cardPhoto = photo?.url || null;
 
   return <>
     {showReviews&&<ReviewsModal item={item} user={user} onClose={()=>setShowReviews(false)}/>}
@@ -1079,7 +1022,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
       <div onClick={()=>onOpen&&onOpen(item.id)} style={{height:140,position:"relative",overflow:"hidden",background:`linear-gradient(135deg,${tint(accentColor, "22")},${tint(accentColor, "44")})`,cursor:onOpen?"pointer":"default"}}>
         {/* Real photo if available (main_photo or first gallery photo), fallback to category emoji */}
         {cardPhoto ? (
-          <img src={cardPhoto} alt={item.name}
+          <img {...pictureProps(photo.variants, photo.url, { sizes: "(min-width: 900px) 280px, 50vw" })} alt={item.name}
             style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}
             onError={e=>{e.target.style.display="none";e.target.nextSibling.style.display="flex";}}
           />
@@ -1094,7 +1037,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
         {item.photos?.length>1&&(
           <div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:2}}>
             {item.photos.map((p,i)=>(
-              <img key={p.id} src={p.image} alt="" onClick={(e)=>{e.stopPropagation();setPhotoIdx(i);}}
+              <img key={p.id} src={p.variants?.thumb || p.image} loading="lazy" decoding="async" alt="" onClick={(e)=>{e.stopPropagation();setPhotoIdx(i);}}
                 style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",border:photoIdx===i?`2px solid ${C.surface}`:"1px solid rgba(255,255,255,0.6)",cursor:"pointer"}}/>
             ))}
           </div>
@@ -1153,55 +1096,6 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
 }
 
 
-// ─── Referral Modal ───────────────────────────────────────────────────────────
-function ReferralModal({user,onClose}) {
-  const code = user?`AH-${user.fullName?.slice(0,3).toUpperCase()}${Math.floor(Math.random()*1000)}`:"AH-GUEST";
-  const [copied,setCopied]=useState(false);
-  const copy = ()=>{navigator.clipboard?.writeText(code);setCopied(true);setTimeout(()=>setCopied(false),2000);};
-
-  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
-      <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,borderRadius:"22px 22px 0 0",padding:"24px",textAlign:"center",position:"relative"}}>
-        <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
-        <div style={{fontSize:"2.5rem",marginBottom:8}}>🎁</div>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem",marginBottom:4}}>Refer a Friend</div>
-        <div style={{color:"white",fontSize:"0.78rem",opacity:0.85}}>Earn GHS 10 credit for every friend who signs up</div>
-      </div>
-      <div style={{padding:"24px"}}>
-        <div style={{background:`${C.gold}15`,border:`1.5px solid ${C.gold}33`,borderRadius:14,padding:"16px",marginBottom:16,textAlign:"center"}}>
-          <div style={{fontSize:"0.72rem",color:C.inkDim,marginBottom:6}}>Your Referral Code</div>
-          <div style={{fontWeight:900,fontSize:"1.4rem",color:C.ink,letterSpacing:3,marginBottom:10}}>{code}</div>
-          <button onClick={copy} style={{background:copied?C.kente2:C.gold,color:copied?"white":C.darkBrown,border:"none",borderRadius:20,padding:"8px 20px",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem"}}>
-            {copied?"✓ Copied!":"Copy Code"}
-          </button>
-        </div>
-        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-          {[["👥","Your friend signs up with your code","They get GHS 5 welcome credit"],["💰","They make their first booking","You earn GHS 10 MoMo credit"],["🔁","No limit on referrals","Keep earning with every friend"]].map(([icon,step,reward])=>(
-            <div key={step} style={{display:"flex",gap:12,alignItems:"flex-start",background:C.surface2,borderRadius:10,padding:"10px 12px"}}>
-              <span style={{fontSize:"1.2rem"}}>{icon}</span>
-              <div>
-                <div style={{fontWeight:700,fontSize:"0.78rem",color:C.ink}}>{step}</div>
-                <div style={{fontSize:"0.68rem",color:C.trust,fontWeight:600}}>{reward}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={{display:"flex",gap:8}}>
-          <a href={`https://wa.me/?text=${encodeURIComponent(`Join me on AshantiHub — the best platform for Kumasi and the Ashanti Region! Use my code ${code} when you sign up and get GHS 5 off your first booking. 🇬🇭👑 ashantihub.com`)}`}
-            target="_blank" rel="noopener noreferrer"
-            style={{flex:1,background:C.whatsapp,color:"white",border:"none",borderRadius:20,padding:"10px",fontWeight:700,textDecoration:"none",textAlign:"center",fontSize:"0.78rem"}}>
-            📱 Share on WhatsApp
-          </a>
-          <a href={`https://www.facebook.com/sharer/sharer.php?u=ashantihub.com&quote=Join AshantiHub with code ${code}`}
-            target="_blank" rel="noopener noreferrer"
-            style={{flex:1,background:"#1877f2",color:"white",border:"none",borderRadius:20,padding:"10px",fontWeight:700,textDecoration:"none",textAlign:"center",fontSize:"0.78rem"}}>
-            📘 Share on Facebook
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>;
-}
 
 const authInputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.line}`,marginBottom:10,fontSize:"0.82rem",fontFamily:"inherit"};
 const authSubmitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"12px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",marginTop:4};
@@ -1211,6 +1105,8 @@ const authSubmitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"
 // it carries one plain link out to the marketplace instead. The installed
 // staff app has no marketplace and never gets it.
 export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) {
+  const dialogRef=useRef(null);
+  useDialogFocus(dialogRef,onClose);
   const lockedAccountType = authState==="staff-login" ? "staff" : null;
   const [mode,setMode]=useState(authState==="staff-login" ? "login" : authState);
   const [accountType,setAccountType]=useState(lockedAccountType || "customer");
@@ -1323,10 +1219,10 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   };
 
   return <div data-testid="auth-modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="auth-modal-title" style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,borderRadius:"22px 22px 0 0",padding:"20px 24px",position:"relative"}}>
-        <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>{mode==="forgot"?"Reset your password":lockedAccountType==="staff"?"Staff Sign In":mode==="login"?"Welcome back":"Create your account"}</div>
+        <button type="button" onClick={onClose} aria-label="Close" style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
+        <h2 id="auth-modal-title" style={{margin:0,color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>{mode==="forgot"?"Reset your password":lockedAccountType==="staff"?"Staff Sign In":mode==="login"?"Welcome back":"Create your account"}</h2>
       </div>
       <div style={{padding:"20px 24px"}}>
         {!lockedAccountType && mode!=="forgot" && !otp && <div style={{display:"flex",gap:8,marginBottom:16}}>
@@ -1338,15 +1234,15 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
         {error && <div role="alert" style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
         {otp && <OtpSignIn challenge={otp.challenge} accountType={otp.accountType} purpose={otp.purpose} auth={auth} onSuccess={onSuccess} onCancel={cancelOtp}/>}
-        {mode==="login" && twoStep && <Suspense fallback={InlineFallback}><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/></Suspense>}
+        {mode==="login" && twoStep && <PageBoundary><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/></PageBoundary>}
         {mode==="login" && !twoStep && !otp && twoStepNotice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{twoStepNotice}</div>}
         {mode==="login" && !twoStep && !otp && <form onSubmit={handleLogin}>
           {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:12}}>
             <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
             <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
           </div>}
-          <input value={identifier} onChange={e=>setIdentifier(e.target.value)} placeholder="Phone or email" required style={authInputStyle}/>
-          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password" required style={authInputStyle}/>
+          <input value={identifier} onChange={e=>setIdentifier(e.target.value)} placeholder="Phone or email" aria-label="Phone or email" autoComplete="username" required style={authInputStyle}/>
+          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password" aria-label="Password" autoComplete="current-password" required style={authInputStyle}/>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Signing in…":"Sign In"}</button>
           <div style={{textAlign:"center",marginTop:10}}>
             <button type="button" onClick={()=>{setMode("forgot");setError(null);setResetSubmitted(false);}} style={{background:"none",border:"none",color:C.deepGold,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}>Forgot password?</button>
@@ -1366,7 +1262,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
                   the type; a visible "Staff" option on a public form would
                   advertise which account classes exist. */}
               <div style={{fontSize:"0.76rem",color:C.inkDim,marginBottom:12,lineHeight:1.5}}>Enter your account email and we'll send you a link to reset your password.</div>
-              <input value={resetEmail} onChange={e=>setResetEmail(e.target.value)} type="email" placeholder="Email" required style={authInputStyle}/>
+              <input value={resetEmail} onChange={e=>setResetEmail(e.target.value)} type="email" placeholder="Email" aria-label="Email" autoComplete="email" required style={authInputStyle}/>
               <button type="submit" disabled={resetSubmitting} style={authSubmitStyle}>{resetSubmitting?"Sending…":"Send Reset Link"}</button>
             </form>
           )}
@@ -1377,10 +1273,10 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
             <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
             <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
           </div>
-          <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={authInputStyle}/>
-          <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" style={authInputStyle}/>
-          <input value={email} onChange={e=>setEmail(e.target.value)} type={accountType==="business_owner"?"text":"email"} inputMode="email" aria-required={accountType==="business_owner"} placeholder="Email" style={authInputStyle}/>
-          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
+          <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" aria-label="Full name" autoComplete="name" required style={authInputStyle}/>
+          <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" aria-label="Phone" type="tel" autoComplete="tel" style={authInputStyle}/>
+          <input value={email} onChange={e=>setEmail(e.target.value)} type={accountType==="business_owner"?"text":"email"} inputMode="email" aria-required={accountType==="business_owner"} placeholder="Email" aria-label="Email" autoComplete="email" style={authInputStyle}/>
+          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" aria-label="Password, at least 8 characters" autoComplete="new-password" required minLength={8} style={authInputStyle}/>
           <fieldset style={{border:`1px solid ${C.line}`,borderRadius:10,padding:"8px 12px",margin:"0 0 12px"}}>
             <legend style={{fontSize:"0.72rem",fontWeight:800,padding:"0 4px"}}>Offers from AshantiHub (optional)</legend>
             {[["sms","SMS"],["whatsapp","WhatsApp"],["email","Email"],["inapp","In the app"]].map(([key,label])=>(
@@ -1453,7 +1349,7 @@ function StaffActivatePage({auth,onSuccess}) {
         <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Activate Your Staff Account</div>
       </div>
       <div style={{padding:"20px 24px"}}>
-        {twoStep && <Suspense fallback={InlineFallback}><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setConfirmPassword("");if(typeof message==="string"){setNotice(message);}else{setAccountActive(true);}}}/></Suspense>}
+        {twoStep && <PageBoundary><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setConfirmPassword("");if(typeof message==="string"){setNotice(message);}else{setAccountActive(true);}}}/></PageBoundary>}
         {!twoStep && accountActive && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",fontSize:"0.78rem"}}>Your account is active. Sign in at the <a href="/staff" style={{color:"inherit",fontWeight:700}}>staff sign-in</a> to finish setting up 2-step sign-in.</div>}
         {!twoStep && !accountActive && notice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{notice}</div>}
         {!twoStep && error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
@@ -1479,7 +1375,9 @@ function StaffActivatePage({auth,onSuccess}) {
 // token to store.
 function ResetPasswordPage({auth,setPage,setAuthModal}) {
   const location=useLocation();
-  const params=new URLSearchParams(location.search);
+  // The emailed link carries the token in the #fragment (it stays out of server logs and Referer headers); a link
+  // from before that change used the query string, so both are read.
+  const params=new URLSearchParams(location.hash.replace(/^#/,"")||location.search);
   const token=params.get("token")||"";
   const accountType=params.get("type")||"customer";
   const [password,setPassword]=useState("");
@@ -1735,7 +1633,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
   // App-owned pieces, handed to the hub as render functions (components/** never import App.jsx).
   const render = {
     overview: () => <OverviewPanel favourites={favourites} user={user}/>,
-    orders: () => <Suspense fallback={InlineFallback}><OrdersPanel user={user}/></Suspense>,
+    orders: () => <PageBoundary><OrdersPanel user={user}/></PageBoundary>,
     requests: () => <ServiceRequestsTab PaymentComponent={PaymentComponent} onContactSupport={contactSupport}/>,
     bookings: () => <MyBookingsTab onContactSupport={contactSupport}/>,
     messages: () => (
@@ -1746,7 +1644,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     ),
     events: () => <MyEventsTab user={user} categories={categories} zones={zones}/>,
     tickets: (searchQuery) => <TicketsTab searchQuery={searchQuery} onContactSupport={contactSupport}/>,
-    profile: () => <AccountProfileCard user={user} auth={auth}/>,
+    profile: () => <PageBoundary><AccountProfileCard user={user} auth={auth}/></PageBoundary>,
     settings: () => <SettingsTab user={user} auth={auth} lang={lang} setLang={setLang} onSignOut={signOut}/>,
   };
 
@@ -1791,7 +1689,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     </div>
 
     <div style={{padding:"22px 20px 60px",flex:1,width:"100%",maxWidth:1100,margin:"0 auto",boxSizing:"border-box"}}>
-      <Suspense fallback={InlineFallback}><AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport(null,{startNew:true})} onOpenPage={onOpenPage} onStartRegistration={onStartRegistration}/></Suspense>
+      <PageBoundary><AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport(null,{startNew:true})} onOpenPage={onOpenPage} onStartRegistration={onStartRegistration}/></PageBoundary>
     </div>
   </div>;
 }
@@ -1869,11 +1767,11 @@ function OverviewPanel({ user, favourites }) {
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:14}}>
         <ChartFrame title="Your spend over time" icon="💸">
-          <Suspense fallback={InlineFallback}><SpendAreaChart data={spendSeries}/></Suspense>
+          <PageBoundary><SpendAreaChart data={spendSeries}/></PageBoundary>
         </ChartFrame>
         <ChartFrame title="Orders by status" icon="📦">
           <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-            <Suspense fallback={InlineFallback}><ListingsDonut data={donutData} centerLabel="Orders" emptyMessage="You haven't placed any orders yet."/></Suspense>
+            <PageBoundary><ListingsDonut data={donutData} centerLabel="Orders" emptyMessage="You haven't placed any orders yet."/></PageBoundary>
             <div style={{display:"flex",flexWrap:"wrap",gap:"6px 14px",justifyContent:"center",marginTop:8}}>
               {donutData.filter(d=>d.value>0).map(d=>(
                 <span key={d.name} style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:"0.64rem",color:D.textDim}}>
@@ -1993,7 +1891,7 @@ function MyBookingsTab({ onContactSupport }) {
 // fixed-dark styling sits on the account shell, which follows the site
 // theme (in light mode it reads as a dark card on cream).
 function MyEventsTab({ user, categories, zones }) {
-  return <Suspense fallback={InlineFallback}><EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/></Suspense>;
+  return <PageBoundary><EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/></PageBoundary>;
 }
 
 // Full-width, D-styled ticket list — replaces the old MyTicketsDrawer overlay
@@ -2123,7 +2021,7 @@ function SettingsTab({ user, auth, lang, setLang, onSignOut }) {
       </div>
     </div>
 
-    <AccountSecurityCard accountType="customer"/>
+    <PageBoundary><AccountSecurityCard accountType="customer"/></PageBoundary>
 
     <div style={{...glassCard,padding:18}}>
       <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:10}}>Language</div>
@@ -2146,7 +2044,7 @@ function SettingsTab({ user, auth, lang, setLang, onSignOut }) {
       )}
     </div>
 
-    <MarketingConsentCard/>
+    <PageBoundary><MarketingConsentCard/></PageBoundary>
 
     <div style={{...glassCard,padding:18}}>
       <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:10}}>Session</div>
@@ -2235,7 +2133,7 @@ function NotFoundPage({ onHome, user }) {
           </button>
           {/* WhatsApp support is an account-holder channel — guests use the
               in-app chat (open to everyone) instead. */}
-          {user && <a href="https://wa.me/233244000000?text=Hello AshantiHub, I need help." target="_blank" rel="noopener noreferrer"
+          {user && <a href="https://wa.me/233502481685?text=Hello AshantiHub, I need help." target="_blank" rel="noopener noreferrer"
             style={{display:"block",background:C.whatsapp,color:"white",border:"none",borderRadius:30,padding:"11px 28px",fontWeight:700,fontSize:"0.82rem",textDecoration:"none"}}>
             📱 Contact Support on WhatsApp
           </a>}
@@ -2461,7 +2359,7 @@ const KNOWN_PATHS = new Set([...Object.keys(PATH_TO_PAGE), ...Object.keys(DASH_P
 const STAFF_STANDALONE_PAGES = new Set(["activate", "install"]);
 
 export default function AshantiHub() {
-  return <><Suspense fallback={<LoadingScreen/>}><AshantiHubApp/></Suspense><FeedbackEcho/></>;
+  return <><ErrorBoundary fullPage><Suspense fallback={<LoadingScreen/>}><AshantiHubApp/></Suspense></ErrorBoundary><FeedbackEcho/></>;
 }
 
 function AshantiHubApp() {
@@ -2521,6 +2419,16 @@ function AshantiHubApp() {
   const [authModal,setAuthModal]=useState(null);
   // Where to go once the sign-in modal succeeds (checkout sends the shopper home to show the modal, then back).
   const [authReturn,setAuthReturn]=useState(null);
+  // "/?auth=forgot" opens the password-reset form directly: the mobile app's "Forgot password?" link points here (review MOB-13).
+  useEffect(()=>{
+    const params=new URLSearchParams(location.search);
+    if(params.get("auth")!=="forgot")return;
+    setAuthModal("forgot");
+    params.delete("auth");
+    const rest=params.toString();
+    navigate(`${location.pathname}${rest?`?${rest}`:""}`,{replace:true});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[location.search]);
   const auth=useAuth();
   const queryClient=useQueryClient();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,goLive:auth.user.go_live,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;
@@ -3061,10 +2969,10 @@ function AshantiHubApp() {
       <OfflineBanner/>
       {shownAuthModal&&<AuthModal key={shownAuthModal} authState={shownAuthModal} auth={auth} onClose={()=>{setAuthModal(null);setAuthReturn(null);}} onSuccess={handleAuthSuccess} onGoToMarketplace={leaveStaffSignInForMarketplace}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
-      {showIntake&&<ChatIntake user={user} onClose={()=>setShowIntake(false)} onContinue={()=>{setShowIntake(false);setShowMessaging(true);}}/>}
+      {showIntake&&<ModalBoundary><ChatIntake user={user} onClose={()=>setShowIntake(false)} onContinue={()=>{setShowIntake(false);setShowMessaging(true);}}/></ModalBoundary>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
-      {showCart&&isCustomer&&<CartDrawer onClose={()=>setShowCart(false)} onGoToCart={()=>{setShowCart(false);navigate("/cart");}}/>}
+      {showCart&&isCustomer&&<ModalBoundary><CartDrawer onClose={()=>setShowCart(false)} onGoToCart={()=>{setShowCart(false);navigate("/cart");}}/></ModalBoundary>}
       {/* Referral feature hidden until it's built properly (see note below). */}
       {/* One header for the whole site: the marketplace StorefrontHeader. On "/"
           it is passed into StorefrontHome (below) so it sits under the
@@ -3074,7 +2982,7 @@ function AshantiHubApp() {
       {/* A staff session can't register a business — same notice the
           "Register Your Business" CTAs show, for a direct /register visit. */}
       {page==="cart"&&(
-        <Suspense fallback={InlineFallback}><CartPage user={user} currency={currency} onNavigate={navigate} authLoading={auth.isLoading} onSignIn={()=>setAuthModal("login")}/></Suspense>
+        <PageBoundary><CartPage user={user} currency={currency} onNavigate={navigate} authLoading={auth.isLoading} onSignIn={()=>setAuthModal("login")}/></PageBoundary>
       )}
 
       {page==="register"&&staffSession&&(
@@ -3151,7 +3059,7 @@ function AshantiHubApp() {
           </>)}
 
           {selectedListingId ? (
-            <Suspense fallback={InlineFallback}><ListingDetailPage
+            <PageBoundary><ListingDetailPage
               id={selectedListingId}
               onBack={()=>setSelectedListingId(null)}
               user={user}
@@ -3169,7 +3077,7 @@ function AshantiHubApp() {
               onShowDirect={()=>{setFilters({directOnly:true});setSearchInput("");setMinPriceInput("");setMaxPriceInput("");setSelectedListingId(null);}}
               CardComponent={Card}
               PaymentComponent={MoMoPayment}
-            /></Suspense>
+            /></PageBoundary>
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>
           {/* The old top PRODUCTS/SERVICES category-tab strips were removed at
@@ -3288,7 +3196,7 @@ function AshantiHubApp() {
                     {(()=>{
                       const renderCard=(item)=><Card key={item.id} item={item} accentColor={activeCatObj?.color||C.gold} user={user} favourites={favourites} onFavourite={toggleFav} favFailed={favFailedId===item.id} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>;
                       return listings.some((l)=>"cart_tier" in l)
-                        ? <CartTieredResults listings={listings} renderCard={renderCard}/>
+                        ? <PageBoundary><CartTieredResults listings={listings} renderCard={renderCard}/></PageBoundary>
                         : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>{listings.map(renderCard)}</div>;
                     })()}
                     {hasNextPage&&(
@@ -3329,7 +3237,7 @@ function AshantiHubApp() {
               detail is open, so it isn't pushed down below the full hero. */}
           {!selectedEventId && (<>
           <SiteBanner slot="events_top" onNavigate={navigate}/>
-          <EventHeroCarousel onOpen={(id)=>setSelectedEventId(id)}/>
+          <PageBoundary><EventHeroCarousel onOpen={(id)=>setSelectedEventId(id)}/></PageBoundary>
 
           <div style={{background:C.void,borderBottom:`1.5px solid ${C.gold}30`,padding:"10px 16px",textAlign:"center"}}>
             <span style={{fontSize:"0.72rem",color:C.lightGold,fontWeight:600}}>
@@ -3362,13 +3270,13 @@ function AshantiHubApp() {
           {showEventSubmit&&(
             <div style={{background:C.void}}>
               <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px"}}>
-                <Suspense fallback={InlineFallback}><EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/></Suspense>
+                <PageBoundary><EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/></PageBoundary>
               </div>
             </div>
           )}
 
           {selectedEventId ? (
-            <Suspense fallback={InlineFallback}><EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)} user={user} PaymentComponent={MoMoPayment}/></Suspense>
+            <PageBoundary><EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)} user={user} PaymentComponent={MoMoPayment}/></PageBoundary>
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>
             {/* Event category strips removed — filtering lives in the BrowseRail
@@ -3430,8 +3338,7 @@ function AshantiHubApp() {
 
       {/* About page */}
       {page==="about"&&(<>
-        <Suspense fallback={InlineFallback}><AboutPage/></Suspense>
-        <AboutTestimonialsSection/>
+        <PageBoundary><AboutPage/></PageBoundary>
         <AboutFaqSection/>
       </>)}
 
@@ -3441,14 +3348,14 @@ function AshantiHubApp() {
 
       {/* Contact page */}
       {page==="contact"&&(
-        <Suspense fallback={InlineFallback}><ContactPage user={user} onCreateAccount={()=>setAuthModal("signup")} WhatsAppButton={WABtn}/></Suspense>
+        <PageBoundary><ContactPage user={user} onCreateAccount={()=>setAuthModal("signup")} WhatsAppButton={WABtn}/></PageBoundary>
       )}
 
       {page==="contact"&&(
         <ContactCtaBand
           user={user}
           onCreateAccount={()=>setAuthModal("signup")}
-          whatsappPhone="233244000000"
+          whatsappPhone="233502481685"
           whatsappName="AshantiHub Support"
           WhatsAppButton={WABtn}
         />
@@ -3469,7 +3376,7 @@ function AshantiHubApp() {
 
       {/* Floating WhatsApp — an account-holder channel only; guests use the
           in-app chat (ChatLauncher above, open to everyone) instead. */}
-      {user && <div onClick={()=>window.open("https://wa.me/233244000000","_blank")}
+      {user && <div onClick={()=>window.open("https://wa.me/233502481685","_blank")}
         style={{position:"fixed",bottom:cookieDismissed?24:100,right:20,background:C.whatsapp,color:"white",borderRadius:"50%",width:50,height:50,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 20px rgba(37,211,102,0.5)",zIndex:998,cursor:"pointer"}}>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
       </div>}

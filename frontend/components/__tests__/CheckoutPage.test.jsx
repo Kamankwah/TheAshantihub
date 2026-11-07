@@ -153,7 +153,7 @@ describe('CheckoutPage: address and delivery method', () => {
     await waitFor(() => expect(placeButton()).toBeEnabled())
     fireEvent.click(placeButton())
     await waitFor(() => expect(seen.checkout).toHaveLength(1))
-    expect(seen.checkout[0]).toEqual({ payment_method: 'wallet', delivery_method: 'store_pickup' })
+    expect(seen.checkout[0]).toEqual({ payment_method: 'wallet', delivery_method: 'store_pickup', request_id: expect.any(String) })
   })
 
   test('test_default_address_is_preselected', async () => {
@@ -403,7 +403,7 @@ describe('CheckoutPage: placing the order', () => {
     await waitFor(() => expect(onNavigate).toHaveBeenCalled())
     expect(seen.checkout).toEqual([{
       payment_method: 'wallet', delivery_method: 'door_to_door', delivery_address: '12 Adum Road, Kumasi', delivery_phone: '0241234567',
-      delivery_lat: 6.6882, delivery_lng: -1.6244, delivery_gps_address: 'AK-039-5028', delivery_landmark: 'Opposite Total filling station',
+      delivery_lat: 6.6882, delivery_lng: -1.6244, delivery_gps_address: 'AK-039-5028', delivery_landmark: 'Opposite Total filling station', request_id: expect.any(String),
     }])
     expect(screen.queryByText('Simulate Pay')).not.toBeInTheDocument() // the wallet never opens the mobile money modal
   })
@@ -419,7 +419,7 @@ describe('CheckoutPage: placing the order', () => {
     await waitFor(() => expect(seen.checkout).toHaveLength(1))
     expect(seen.checkout[0]).toEqual({
       payment_method: 'wallet', delivery_method: 'door_to_door', delivery_address: 'KNUST Ave, Kumasi', delivery_phone: '0241234567',
-      delivery_lat: 6.7, delivery_lng: -1.62, delivery_gps_address: 'AK-039-5028', delivery_landmark: 'Blue gate, behind the church',
+      delivery_lat: 6.7, delivery_lng: -1.62, delivery_gps_address: 'AK-039-5028', delivery_landmark: 'Blue gate, behind the church', request_id: expect.any(String),
     })
   })
 
@@ -460,6 +460,30 @@ describe('CheckoutPage: placing the order', () => {
     fireEvent.click(screen.getByText('Simulate Pay'))
     await waitFor(() => expect(seen.checkout).toHaveLength(1))
     expect(seen.checkout[0]).not.toHaveProperty('payment_method')
+  })
+
+  test('test_checkout_sends_a_request_id_and_a_retry_reuses_it', async () => {
+    let calls = 0
+    const seen = serve({
+      addresses: [addr(1, { is_default: true })],
+      checkout: (body) => {
+        calls += 1
+        if (calls === 1) return HttpResponse.json({ detail: 'Something went wrong. Try again.' }, { status: 500 })
+        return HttpResponse.json({ ...ORDER, payment_method: body.payment_method }, { status: 201 })
+      },
+    })
+    renderPage()
+    await screen.findByText('AK-039-5028')
+    await waitFor(() => expect(placeButton()).toBeEnabled())
+    fireEvent.click(placeButton())
+    fireEvent.click(await screen.findByText('Simulate Pay'))
+    await waitFor(() => expect(seen.checkout).toHaveLength(1))
+    await waitFor(() => expect(placeButton()).toBeEnabled())
+    fireEvent.click(placeButton())
+    fireEvent.click(await screen.findByText('Simulate Pay'))
+    await waitFor(() => expect(seen.checkout).toHaveLength(2))
+    expect(typeof seen.checkout[0].request_id).toBe('string')
+    expect(seen.checkout[1].request_id).toBe(seen.checkout[0].request_id)
   })
 
   test('test_redirect_answer_navigates_to_checkout_url', async () => {

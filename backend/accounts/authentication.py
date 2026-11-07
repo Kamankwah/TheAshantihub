@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+from django.conf import settings
 from rest_framework import authentication, exceptions, status
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
@@ -24,7 +27,21 @@ def issue_token(account, account_type, *, request=None, two_factor=False):
     token["account_type"] = account_type
     if account_type == "staff":
         sessions.start(account, token["jti"], request, two_factor=two_factor)
+    else:
+        token["tv"] = account.token_version
+        # Short-lived: the client trades its refresh token for a new one, so a stolen token is good for minutes, not hours
+        # (review BE-09). Staff keep the 12-hour token because their server-side session can be revoked at any moment.
+        token.set_exp(lifetime=timedelta(minutes=settings.CUSTOMER_ACCESS_TOKEN_MINUTES))
     return str(token)
+
+
+class AccountSuspended(exceptions.APIException):
+    """A live token of a suspended customer or business owner. 403 with ``code: "account_suspended"`` (the code the catalogue clients read; the wallet and
+    marketing views also refuse with 403), so the client shows the reason instead of treating it as a bad token (review BE-09)."""
+
+    status_code = status.HTTP_403_FORBIDDEN
+    default_detail = {"detail": "This account is suspended.", "code": "account_suspended"}
+    default_code = "account_suspended"
 
 
 class MultiAccountJWTAuthentication(authentication.BaseAuthentication):
@@ -55,6 +72,16 @@ class MultiAccountJWTAuthentication(authentication.BaseAuthentication):
         # still unexpired; refuse it so the deletion takes effect at once.
         if getattr(account, "deleted_at", None):
             raise exceptions.AuthenticationFailed("This account has been deleted")
+
+        if not isinstance(account, StaffUser):
+            # A token is only good while the account's token_version is the one it was issued under: a password reset,
+            # a deletion or "sign out everywhere" ends every older token at once (review BE-09). A token from before
+            # the field existed has no claim and counts as version 0.
+            if token.get("tv", 0) != account.token_version:
+                raise exceptions.AuthenticationFailed("Your session has ended. Please sign in again.")
+            # A suspended customer or business owner is cut off at once, as staff are, rather than at their next sign-in.
+            if account.is_suspended:
+                raise AccountSuspended()
 
         # A staffer suspended or deactivated mid-session still holds a valid,
         # unexpired token — refuse it here so the block takes effect
@@ -96,7 +123,7 @@ def exception_handler(exc, context):
 
     if (
         response is not None
-        and not isinstance(exc, view_as.ViewAsRefused)
+        and not isinstance(exc, (view_as.ViewAsRefused, AccountSuspended))
         and response.status_code == status.HTTP_403_FORBIDDEN
         and isinstance(context["request"].user, AnonymousUser)
     ):

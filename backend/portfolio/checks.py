@@ -9,6 +9,7 @@ from django.contrib.postgres.search import TrigramSimilarity
 from accounts.gps import normalize_gps
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
 from accounts.phones import filter_by_phone, phone_key
+from core import pii
 
 EARTH_RADIUS_M = 6_371_000
 METRES_PER_DEGREE_LAT = 2 * math.pi * EARTH_RADIUS_M / 360  # about 111 195 m
@@ -42,7 +43,7 @@ def exact_duplicates(*, phone=None, gps_address=None, ghana_card_number=None, ex
         if (
             filter_by_phone(owners, "login_phone", phone).exists()
             or filter_by_phone(profiles, "business_contact_phone", phone).exists()
-            or filter_by_phone(profiles, "payout_momo_number", phone).exists()
+            or profiles.filter(payout_momo_number_idx=pii.blind_index("momo", phone)).exists()  # ciphertext: blind index
         ):
             matched.append("phone")
     code = normalize_gps(gps_address)
@@ -55,7 +56,8 @@ def exact_duplicates(*, phone=None, gps_address=None, ghana_card_number=None, ex
     card = (ghana_card_number or "").strip()
     if card:
         profiles = _excluding(
-            BusinessOwnerProfile.objects.filter(ghana_card_number__iexact=card), "business_owner_id", exclude_owner_id,
+            BusinessOwnerProfile.objects.filter(ghana_card_number_idx=pii.blind_index("ghana_card", card)),
+            "business_owner_id", exclude_owner_id,
         )
         if profiles.exists():
             matched.append("ghana_card")

@@ -160,7 +160,7 @@ describe('Teams (step in)', () => {
     expect(await screen.findByText(/Viewing as Operations \(read-only\) · logged/)).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'Operations overview' })).toBeInTheDocument()
     expect(screen.getByText('Approvals inbox')).toBeInTheDocument() // her menu, in her words
-    expect(calls.me).toContainEqual({ overview: '5' })
+    await waitFor(() => expect(calls.me).toContainEqual({ overview: '5' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Set targets' })).toBeDisabled())
     expect(screen.getByRole('button', { name: 'Set targets' })).toHaveAttribute('title', expect.stringMatching(/Switched off/))
     expect(screen.getByRole('button', { name: 'All measures' })).toBeEnabled()
