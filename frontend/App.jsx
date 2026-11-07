@@ -1,4 +1,6 @@
-import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { lazyWithRetry as lazy } from "./lib/lazyWithRetry.js";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import FeedbackEcho from "./components/FeedbackEcho.jsx";
 import { useLocation, useNavigate, useMatch } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -57,7 +59,6 @@ import { EventsCtaBand } from "./components/ui/events-cta-band.tsx";
 import { AboutCtaBand } from "./components/ui/about-cta-band.tsx";
 import { ContactCtaBand } from "./components/ui/contact-cta-band.tsx";
 import { AccountProfileCard } from "./components/ui/account-profile-card.tsx";
-import { AboutTestimonialsSection } from "./components/ui/about-testimonials-section.tsx";
 import { AboutFaqSection } from "./components/ui/about-faq-section.tsx";
 import MarketingConsentCard from "./components/MarketingConsentCard.jsx";
 import AccountSecurityCard from "./components/security/AccountSecurityCard.jsx";
@@ -116,6 +117,11 @@ const SpendAreaChart = lazy(() => import("./components/dashboard/charts/SpendAre
 const ListingsDonut = lazy(() => import("./components/dashboard/charts/ListingsDonut.jsx"));
 const AboutPage = lazy(() => import("./components/ui/about-page.tsx").then(m => ({ default: m.AboutPage })));
 const ContactPage = lazy(() => import("./components/ui/contact-page.tsx").then(m => ({ default: m.ContactPage })));
+// A lazy screen with its own error boundary (review FE-01): a chunk that cannot load shows "Try again" in place, the rest of the page stays.
+function PageBoundary({ children }) {
+  return <ErrorBoundary><Suspense fallback={InlineFallback}>{children}</Suspense></ErrorBoundary>;
+}
+
 const InlineFallback = <div role="status" aria-label="Loading" style={{minHeight:"40vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.gold,fontSize:"0.9rem"}}>Loading…</div>;
 
 // ─── Payment System ───────────────────────────────────────────────────────────
@@ -970,75 +976,6 @@ function ReviewsModal({item,user,onClose}) {
   </div>;
 }
 
-// ─── MoMo Payment Modal ───────────────────────────────────────────────────────
-function MoMoModal({item,user,onClose}) {
-  const [step,setStep]=useState(1);
-  const [network,setNetwork]=useState("MTN");
-  const [momoNum,setMomoNum]=useState(user?.phone||"");
-  const [pin,setPin]=useState("");
-  const [processing,setProcessing]=useState(false);
-  const [done,setDone]=useState(false);
-
-  const pay = () => {
-    if(!momoNum||momoNum.length<10)return;
-    setProcessing(true);
-    setTimeout(()=>{setProcessing(false);setDone(true);},2500);
-  };
-
-  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
-      <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente2})`,borderRadius:"22px 22px 0 0",padding:"20px 24px",position:"relative"}}>
-        <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"0.95rem"}}>💰 Mobile Money Payment</div>
-        <div style={{color:"white",fontSize:"0.78rem",opacity:0.85,marginTop:4}}>{item.name}</div>
-      </div>
-      <div style={{padding:"22px 24px"}}>
-        {done ? (
-          <div style={{textAlign:"center",padding:"20px 0"}}>
-            <div style={{fontSize:"3.5rem",marginBottom:12}}>✅</div>
-            <div style={{fontWeight:900,color:C.trust,fontSize:"1rem",marginBottom:6}}>Payment Successful!</div>
-            <div style={{fontSize:"0.78rem",color:C.inkDim,lineHeight:1.6,marginBottom:16}}>Your booking for <strong>{item.name}</strong> is confirmed. A receipt has been sent to your WhatsApp.</div>
-            <div style={{background:`${C.gold}15`,border:`1px solid ${C.gold}33`,borderRadius:12,padding:"12px",fontSize:"0.74rem",color:C.inkDim,marginBottom:16,lineHeight:1.7}}>
-              <div>📋 <strong>Booking Ref:</strong> AH-{Math.floor(Math.random()*90000+10000)}</div>
-              <div>💳 <strong>Network:</strong> {network} MoMo</div>
-              <div>📱 <strong>Number:</strong> {momoNum}</div>
-            </div>
-            <button onClick={onClose} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"10px 24px",fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Done</button>
-          </div>
-        ) : (
-          <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            {/* Network selector */}
-            <div>
-              <label style={lStyle}>Select Network</label>
-              <div style={{display:"flex",gap:8}}>
-                {["MTN","Telecel","AirtelTigo"].map(n=>(
-                  <button key={n} onClick={()=>setNetwork(n)} style={{flex:1,background:network===n?(n==="MTN"?"#FCD116":n==="Telecel"?"#e31837":"#e87722"):C.surface2,color:network===n?"white":C.ink,border:"none",borderRadius:12,padding:"10px 6px",fontWeight:800,fontSize:"0.72rem",cursor:"pointer"}}>{n}</button>
-                ))}
-              </div>
-            </div>
-            {/* Amount */}
-            <div style={{background:`${C.gold}12`,borderRadius:12,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{fontSize:"0.78rem",color:C.inkDim}}>Amount to Pay</div>
-              <div style={{fontWeight:900,color:C.ink,fontSize:"1.1rem"}}>{item.price}</div>
-            </div>
-            {/* MoMo Number */}
-            <div>
-              <label style={lStyle}>📱 {network} MoMo Number</label>
-              <input style={iStyle} placeholder="0244 000 000" value={momoNum} onChange={e=>setMomoNum(e.target.value)}/>
-            </div>
-            <div style={{background:tint(C.info, "14"),border:`1px solid ${tint(C.info, "40")}`,borderRadius:10,padding:"10px 12px",fontSize:"0.72rem",color:C.info,lineHeight:1.6}}>
-              📲 You will receive a <strong>prompt on your phone</strong> to approve this payment. Enter your {network} MoMo PIN when prompted.
-            </div>
-            <button onClick={pay} style={{...btnP(momoNum.length>=10),background:processing?"#aaa":C.kente2,color:"white"}}>
-              {processing?"⏳ Processing...":"Pay Now →"}
-            </button>
-            <div style={{fontSize:"0.68rem",color:C.inkFaint,textAlign:"center"}}>🔒 Secured by AshantiHub • Powered by Hubtel</div>
-          </div>
-        )}
-      </div>
-    </div>
-  </div>;
-}
 
 // ─── Category strip grouping (Business tab, Phase 3) ──────────────────────
 // Splits the flat `useCategories()` list into Products/Services rows by
@@ -1153,55 +1090,6 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
 }
 
 
-// ─── Referral Modal ───────────────────────────────────────────────────────────
-function ReferralModal({user,onClose}) {
-  const code = user?`AH-${user.fullName?.slice(0,3).toUpperCase()}${Math.floor(Math.random()*1000)}`:"AH-GUEST";
-  const [copied,setCopied]=useState(false);
-  const copy = ()=>{navigator.clipboard?.writeText(code);setCopied(true);setTimeout(()=>setCopied(false),2000);};
-
-  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
-      <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,borderRadius:"22px 22px 0 0",padding:"24px",textAlign:"center",position:"relative"}}>
-        <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
-        <div style={{fontSize:"2.5rem",marginBottom:8}}>🎁</div>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem",marginBottom:4}}>Refer a Friend</div>
-        <div style={{color:"white",fontSize:"0.78rem",opacity:0.85}}>Earn GHS 10 credit for every friend who signs up</div>
-      </div>
-      <div style={{padding:"24px"}}>
-        <div style={{background:`${C.gold}15`,border:`1.5px solid ${C.gold}33`,borderRadius:14,padding:"16px",marginBottom:16,textAlign:"center"}}>
-          <div style={{fontSize:"0.72rem",color:C.inkDim,marginBottom:6}}>Your Referral Code</div>
-          <div style={{fontWeight:900,fontSize:"1.4rem",color:C.ink,letterSpacing:3,marginBottom:10}}>{code}</div>
-          <button onClick={copy} style={{background:copied?C.kente2:C.gold,color:copied?"white":C.darkBrown,border:"none",borderRadius:20,padding:"8px 20px",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem"}}>
-            {copied?"✓ Copied!":"Copy Code"}
-          </button>
-        </div>
-        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-          {[["👥","Your friend signs up with your code","They get GHS 5 welcome credit"],["💰","They make their first booking","You earn GHS 10 MoMo credit"],["🔁","No limit on referrals","Keep earning with every friend"]].map(([icon,step,reward])=>(
-            <div key={step} style={{display:"flex",gap:12,alignItems:"flex-start",background:C.surface2,borderRadius:10,padding:"10px 12px"}}>
-              <span style={{fontSize:"1.2rem"}}>{icon}</span>
-              <div>
-                <div style={{fontWeight:700,fontSize:"0.78rem",color:C.ink}}>{step}</div>
-                <div style={{fontSize:"0.68rem",color:C.trust,fontWeight:600}}>{reward}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={{display:"flex",gap:8}}>
-          <a href={`https://wa.me/?text=${encodeURIComponent(`Join me on AshantiHub — the best platform for Kumasi and the Ashanti Region! Use my code ${code} when you sign up and get GHS 5 off your first booking. 🇬🇭👑 ashantihub.com`)}`}
-            target="_blank" rel="noopener noreferrer"
-            style={{flex:1,background:C.whatsapp,color:"white",border:"none",borderRadius:20,padding:"10px",fontWeight:700,textDecoration:"none",textAlign:"center",fontSize:"0.78rem"}}>
-            📱 Share on WhatsApp
-          </a>
-          <a href={`https://www.facebook.com/sharer/sharer.php?u=ashantihub.com&quote=Join AshantiHub with code ${code}`}
-            target="_blank" rel="noopener noreferrer"
-            style={{flex:1,background:"#1877f2",color:"white",border:"none",borderRadius:20,padding:"10px",fontWeight:700,textDecoration:"none",textAlign:"center",fontSize:"0.78rem"}}>
-            📘 Share on Facebook
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>;
-}
 
 const authInputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.line}`,marginBottom:10,fontSize:"0.82rem",fontFamily:"inherit"};
 const authSubmitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"12px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",marginTop:4};
@@ -1338,7 +1226,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
         {error && <div role="alert" style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
         {otp && <OtpSignIn challenge={otp.challenge} accountType={otp.accountType} purpose={otp.purpose} auth={auth} onSuccess={onSuccess} onCancel={cancelOtp}/>}
-        {mode==="login" && twoStep && <Suspense fallback={InlineFallback}><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/></Suspense>}
+        {mode==="login" && twoStep && <PageBoundary><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/></PageBoundary>}
         {mode==="login" && !twoStep && !otp && twoStepNotice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{twoStepNotice}</div>}
         {mode==="login" && !twoStep && !otp && <form onSubmit={handleLogin}>
           {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:12}}>
@@ -1453,7 +1341,7 @@ function StaffActivatePage({auth,onSuccess}) {
         <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Activate Your Staff Account</div>
       </div>
       <div style={{padding:"20px 24px"}}>
-        {twoStep && <Suspense fallback={InlineFallback}><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setConfirmPassword("");if(typeof message==="string"){setNotice(message);}else{setAccountActive(true);}}}/></Suspense>}
+        {twoStep && <PageBoundary><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setConfirmPassword("");if(typeof message==="string"){setNotice(message);}else{setAccountActive(true);}}}/></PageBoundary>}
         {!twoStep && accountActive && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",fontSize:"0.78rem"}}>Your account is active. Sign in at the <a href="/staff" style={{color:"inherit",fontWeight:700}}>staff sign-in</a> to finish setting up 2-step sign-in.</div>}
         {!twoStep && !accountActive && notice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{notice}</div>}
         {!twoStep && error && <div style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
@@ -1737,7 +1625,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
   // App-owned pieces, handed to the hub as render functions (components/** never import App.jsx).
   const render = {
     overview: () => <OverviewPanel favourites={favourites} user={user}/>,
-    orders: () => <Suspense fallback={InlineFallback}><OrdersPanel user={user}/></Suspense>,
+    orders: () => <PageBoundary><OrdersPanel user={user}/></PageBoundary>,
     requests: () => <ServiceRequestsTab PaymentComponent={PaymentComponent} onContactSupport={contactSupport}/>,
     bookings: () => <MyBookingsTab onContactSupport={contactSupport}/>,
     messages: () => (
@@ -1793,7 +1681,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     </div>
 
     <div style={{padding:"22px 20px 60px",flex:1,width:"100%",maxWidth:1100,margin:"0 auto",boxSizing:"border-box"}}>
-      <Suspense fallback={InlineFallback}><AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport(null,{startNew:true})} onOpenPage={onOpenPage} onStartRegistration={onStartRegistration}/></Suspense>
+      <PageBoundary><AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport(null,{startNew:true})} onOpenPage={onOpenPage} onStartRegistration={onStartRegistration}/></PageBoundary>
     </div>
   </div>;
 }
@@ -1871,11 +1759,11 @@ function OverviewPanel({ user, favourites }) {
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:14}}>
         <ChartFrame title="Your spend over time" icon="💸">
-          <Suspense fallback={InlineFallback}><SpendAreaChart data={spendSeries}/></Suspense>
+          <PageBoundary><SpendAreaChart data={spendSeries}/></PageBoundary>
         </ChartFrame>
         <ChartFrame title="Orders by status" icon="📦">
           <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-            <Suspense fallback={InlineFallback}><ListingsDonut data={donutData} centerLabel="Orders" emptyMessage="You haven't placed any orders yet."/></Suspense>
+            <PageBoundary><ListingsDonut data={donutData} centerLabel="Orders" emptyMessage="You haven't placed any orders yet."/></PageBoundary>
             <div style={{display:"flex",flexWrap:"wrap",gap:"6px 14px",justifyContent:"center",marginTop:8}}>
               {donutData.filter(d=>d.value>0).map(d=>(
                 <span key={d.name} style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:"0.64rem",color:D.textDim}}>
@@ -1995,7 +1883,7 @@ function MyBookingsTab({ onContactSupport }) {
 // fixed-dark styling sits on the account shell, which follows the site
 // theme (in light mode it reads as a dark card on cream).
 function MyEventsTab({ user, categories, zones }) {
-  return <Suspense fallback={InlineFallback}><EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/></Suspense>;
+  return <PageBoundary><EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/></PageBoundary>;
 }
 
 // Full-width, D-styled ticket list — replaces the old MyTicketsDrawer overlay
@@ -2463,7 +2351,7 @@ const KNOWN_PATHS = new Set([...Object.keys(PATH_TO_PAGE), ...Object.keys(DASH_P
 const STAFF_STANDALONE_PAGES = new Set(["activate", "install"]);
 
 export default function AshantiHub() {
-  return <><Suspense fallback={<LoadingScreen/>}><AshantiHubApp/></Suspense><FeedbackEcho/></>;
+  return <><ErrorBoundary fullPage><Suspense fallback={<LoadingScreen/>}><AshantiHubApp/></Suspense></ErrorBoundary><FeedbackEcho/></>;
 }
 
 function AshantiHubApp() {
@@ -3076,7 +2964,7 @@ function AshantiHubApp() {
       {/* A staff session can't register a business — same notice the
           "Register Your Business" CTAs show, for a direct /register visit. */}
       {page==="cart"&&(
-        <Suspense fallback={InlineFallback}><CartPage user={user} currency={currency} onNavigate={navigate} authLoading={auth.isLoading} onSignIn={()=>setAuthModal("login")}/></Suspense>
+        <PageBoundary><CartPage user={user} currency={currency} onNavigate={navigate} authLoading={auth.isLoading} onSignIn={()=>setAuthModal("login")}/></PageBoundary>
       )}
 
       {page==="register"&&staffSession&&(
@@ -3153,7 +3041,7 @@ function AshantiHubApp() {
           </>)}
 
           {selectedListingId ? (
-            <Suspense fallback={InlineFallback}><ListingDetailPage
+            <PageBoundary><ListingDetailPage
               id={selectedListingId}
               onBack={()=>setSelectedListingId(null)}
               user={user}
@@ -3171,7 +3059,7 @@ function AshantiHubApp() {
               onShowDirect={()=>{setFilters({directOnly:true});setSearchInput("");setMinPriceInput("");setMaxPriceInput("");setSelectedListingId(null);}}
               CardComponent={Card}
               PaymentComponent={MoMoPayment}
-            /></Suspense>
+            /></PageBoundary>
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>
           {/* The old top PRODUCTS/SERVICES category-tab strips were removed at
@@ -3364,13 +3252,13 @@ function AshantiHubApp() {
           {showEventSubmit&&(
             <div style={{background:C.void}}>
               <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px"}}>
-                <Suspense fallback={InlineFallback}><EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/></Suspense>
+                <PageBoundary><EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/></PageBoundary>
               </div>
             </div>
           )}
 
           {selectedEventId ? (
-            <Suspense fallback={InlineFallback}><EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)} user={user} PaymentComponent={MoMoPayment}/></Suspense>
+            <PageBoundary><EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)} user={user} PaymentComponent={MoMoPayment}/></PageBoundary>
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>
             {/* Event category strips removed — filtering lives in the BrowseRail
@@ -3432,8 +3320,7 @@ function AshantiHubApp() {
 
       {/* About page */}
       {page==="about"&&(<>
-        <Suspense fallback={InlineFallback}><AboutPage/></Suspense>
-        <AboutTestimonialsSection/>
+        <PageBoundary><AboutPage/></PageBoundary>
         <AboutFaqSection/>
       </>)}
 
@@ -3443,7 +3330,7 @@ function AshantiHubApp() {
 
       {/* Contact page */}
       {page==="contact"&&(
-        <Suspense fallback={InlineFallback}><ContactPage user={user} onCreateAccount={()=>setAuthModal("signup")} WhatsAppButton={WABtn}/></Suspense>
+        <PageBoundary><ContactPage user={user} onCreateAccount={()=>setAuthModal("signup")} WhatsAppButton={WABtn}/></PageBoundary>
       )}
 
       {page==="contact"&&(

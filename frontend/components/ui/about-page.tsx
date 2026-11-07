@@ -3,7 +3,7 @@
 // values), replacing the old hardcoded hero+4-cards block in App.jsx's
 // page==="about" block. Fully static, no data fetching — same convention
 // as about-cta-band.tsx (Tailwind + shadcn CSS-variable tokens,
-// .shadcn-scope wrap). AboutTestimonialsSection/AboutFaqSection/
+// .shadcn-scope wrap). AboutFaqSection/
 // AboutCtaBand render after this, still each their own file/App.jsx block.
 const VALUES = [
   {
