@@ -332,3 +332,7 @@
 
 /* DESIGN.md: tabular figures on every number (prices, scores, tables). Inherited app-wide. */
 html, body { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+/* Skip link: off-screen until a keyboard user tabs to it (first focusable element on every public page). */
+.ah-skip-link { position: absolute; left: 8px; top: -64px; z-index: 3000; padding: 12px 16px; min-height: 44px; box-sizing: border-box; border-radius: 10px; background: var(--ah-ink, #2c1810); color: var(--ah-canvas, #fff); font-weight: 700; font-size: 0.9rem; text-decoration: underline; }
+.ah-skip-link:focus { top: 8px; }

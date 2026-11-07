@@ -18,6 +18,7 @@ import BookingTermsNote from "./BookingTermsNote.jsx";
 import { useBookingTerms } from "../hooks/useBookingTerms.js";
 import { stayStart } from "../lib/bookingTerms.js";
 import { useWallet } from "../hooks/useWallet.js";
+import { SkeletonProduct } from "./Skeleton.jsx";
 import { useBookingPayment } from "../hooks/useBookingPayment.js";
 import { useStayQuote } from "../hooks/useStayQuote.js";
 import PaymentMethodPicker from "./wallet/PaymentMethodPicker.jsx";
@@ -44,6 +45,7 @@ export function isGoods(category) {
 
 export default function ListingDetailPage(props) {
   const { data: item, isLoading, isError, refetch } = useListing(props.id);
+  if (!item && !(isError && !isLoading)) return <div style={{ background: C.canvas, borderRadius: 20 }}><SkeletonProduct /></div>;
   if (!item) {
     return (
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 16px", textAlign: "center", background: C.canvas, color: C.ink, borderRadius: 20 }}>
