@@ -156,6 +156,7 @@ export default function ScrollSpyTabs({ tabs, renderSection, tone = "dark", trai
                   ...look.tab(active),
                   borderRadius: 20,
                   padding: "8px 16px",
+                  minHeight: 44,
                   fontSize: "0.78rem",
                   fontWeight: 800,
                   cursor: "pointer",

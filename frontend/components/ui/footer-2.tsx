@@ -27,7 +27,7 @@ export function Footer2({ setPage, setLegalDoc, onSupport }: Footer2Props) {
     { label: "Business Agreement", onClick: () => setLegalDoc("business") },
   ];
   const linkClass =
-    "text-sm text-[#FDF6E3]/80 hover:text-[#FDF6E3] hover:underline bg-transparent border-none p-0 cursor-pointer text-left min-h-6";
+    "text-sm text-[#FDF6E3]/80 hover:text-[#FDF6E3] hover:underline bg-transparent border-none p-0 cursor-pointer text-left min-h-11 inline-flex items-center";
 
   return (
     <div className="shadcn-scope">
@@ -41,14 +41,14 @@ export function Footer2({ setPage, setLegalDoc, onSupport }: Footer2Props) {
         </button>
         <div className="bg-[#2C1810]">
           <nav aria-label="Footer" className="max-w-6xl mx-auto px-4 lg:px-6 py-10 flex flex-wrap gap-x-16 gap-y-8">
-            <ul className="space-y-2 list-none p-0 m-0">
+            <ul className="space-y-0 list-none p-0 m-0">
               {help.map((l) => (
                 <li key={l.label}>
                   <button type="button" onClick={l.onClick} className={linkClass}>{l.label}</button>
                 </li>
               ))}
             </ul>
-            <ul className="space-y-2 list-none p-0 m-0">
+            <ul className="space-y-0 list-none p-0 m-0">
               {legal.map((l) => (
                 <li key={l.label}>
                   <button type="button" onClick={l.onClick} className={linkClass}>{l.label}</button>

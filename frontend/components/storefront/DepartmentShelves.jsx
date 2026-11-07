@@ -27,7 +27,7 @@ function Shelf({ department, onNavigate, onOpen }) {
     <section aria-label={department.label} style={{ margin: "0 0 28px", color: C.ink, fontFamily: BODY_FONT, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, margin: "0 0 8px" }}>
         <h2 style={VISUALLY_HIDDEN}>{department.label}</h2>
-        <button type="button" onClick={seeAll} aria-label={`See all ${department.label}`} style={{ border: "none", background: "none", padding: 0, color: C.ink, fontSize: 13, fontWeight: 700, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer", fontFamily: BODY_FONT, whiteSpace: "nowrap" }}>See all</button>
+        <button type="button" onClick={seeAll} aria-label={`See all ${department.label}`} style={{ border: "none", background: "none", padding: "0 4px", minHeight: 44, color: C.ink, fontSize: 13, fontWeight: 700, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer", fontFamily: BODY_FONT, whiteSpace: "nowrap" }}>See all</button>
       </div>
       <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: "20px 14px" }}>
         {items.map((item) => (
