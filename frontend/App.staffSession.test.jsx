@@ -93,7 +93,7 @@ describe('/staff is staff-only in the browser', () => {
   it('a signed-out visit shows a staff sign-in that neither ✕ nor the backdrop can dismiss', async () => {
     renderAt('/staff')
     expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
-    fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: '✕' }))
+    fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('auth-modal-backdrop'))
     await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
