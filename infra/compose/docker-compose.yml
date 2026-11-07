@@ -24,6 +24,12 @@ x-app: &app
   image: ${APP_IMAGE:?APP_IMAGE is written by deploy.sh}
   restart: unless-stopped
   env_file: ../../backend/.env
+  # The application connects as the restricted runtime role (review DB-05). `environment` wins over env_file, so the owner's
+  # POSTGRES_USER / POSTGRES_PASSWORD from backend/.env never reach these containers; deploy.sh writes DB_* from
+  # POSTGRES_APP_USER / POSTGRES_APP_PASSWORD, and passes the owner's explicitly only to its one-off migrate task.
+  environment:
+    POSTGRES_USER: ${DB_USER:?DB_USER is written by deploy.sh from POSTGRES_APP_USER}
+    POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is written by deploy.sh from POSTGRES_APP_PASSWORD}
   extra_hosts:
     # Django sends mail through the host's Exim, which queues, signs with
     # DKIM and relays onward. The bridge gateway IP differs per environment

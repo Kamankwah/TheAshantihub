@@ -215,6 +215,34 @@ it is missing, a manual `up -d` falls back to the built-in defaults and
 publishes the wrong port — staging lands on production's, or on nothing at all
 and the site 502s. Re-run `deploy.sh` rather than recreating it by hand.
 
+## Database roles
+
+The application does **not** connect to Postgres as the owner (review DB-05). Two roles:
+
+| Role | Used by | Can |
+|---|---|---|
+| `POSTGRES_USER` (owner, the container's bootstrap superuser) | `migrate`, `provision_db_roles`, backups; only ever passed to those one-off tasks | everything |
+| `POSTGRES_APP_USER` (runtime) | gunicorn, realtime, both Celery workers, beat, cron jobs, `compose run web ...` | read/write rows. Not a superuser; owns nothing; cannot create objects, drop or disable the append-only triggers, `TRUNCATE`, `DELETE` from the ledger / activity log / consent tables, or run `COPY ... PROGRAM` |
+
+How it fits together: `deploy.sh` reads both pairs from `backend/.env`, writes the runtime pair into `infra/compose/.env`
+(`DB_USER`, `DB_PASSWORD`, mode 0600), and `docker-compose.yml` sets `POSTGRES_USER` / `POSTGRES_PASSWORD` for every app
+container from them - `environment` outranks `env_file`, so the owner's password in `backend/.env` never reaches a container.
+Each deploy then runs, in order: `migrate` as the owner (`DJANGO_DB_ROLE=owner`), `provision_db_roles` as the owner
+(idempotent; default privileges make tables a later migration creates usable by the runtime role), and
+`manage.py check --database default` **as the runtime role**, which fails the deploy (`core.E004`) if that role can connect as a
+superuser. All of this happens before the new containers start.
+
+**One-time setup per server:** add `POSTGRES_APP_USER=ashantihub_app` and `POSTGRES_APP_PASSWORD=$(openssl rand -hex 24)` to
+`backend/.env` (see `infra/env/backend.env.example`) and deploy. Until you do, `deploy.sh` stops at the start with the missing keys
+named. Between writing `infra/compose/.env` and the role being created (a few minutes, first deploy only) the host cron's
+`expire_events` run would fail to connect and be retried the next hour.
+
+**A one-off task that needs DDL** (rare - normally a migration does it) runs as the owner:
+`POSTGRES_USER=<owner> POSTGRES_PASSWORD=<owner pw> docker compose -p <project> -f infra/compose/docker-compose.yml run --rm -e POSTGRES_USER -e POSTGRES_PASSWORD -e DJANGO_DB_ROLE=owner web python manage.py <command>`.
+Rotating the runtime password: change it in `backend/.env`, deploy (`provision_db_roles` applies it, the containers restart with it).
+Still true after this change: the owner is the container's bootstrap superuser (Postgres will not demote it), so the protection is
+that no running application process holds its password. The staging database must use its own pair of passwords.
+
 ## Backups
 
 **Targets (set by the owner, review DB-01):** lose at most **24 hours** of data today (nightly dump) - **15 minutes** once

@@ -649,6 +649,13 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `/api/accounts/session/`, Secure unless DEBUG) via `mobile_sessions.deliver`, and a cookie refresh also needs that header.
   Every sign-in response that can carry a refresh token goes through `mobile_sessions.deliver`. CORS allows credentials, so the
   origin list must stay explicit. A client must treat only a 401 from the refresh call as "signed out" (an outage must not).
+- **Two database roles (DB-05).** The app connects as `POSTGRES_APP_USER` (row access only: not a superuser, owns nothing, no DDL,
+  no `TRUNCATE`, no `DELETE` on `core.db_roles.APPEND_ONLY_TABLES`); `POSTGRES_USER` is the owner, used only by `migrate` and
+  `manage.py provision_db_roles` (`DJANGO_DB_ROLE=owner`), never put into the running containers (compose `environment` overrides
+  `env_file` with `DB_USER`/`DB_PASSWORD`). `deploy.sh` provisions, then runs `check --database default` as the runtime role
+  (`core.E004` fails the deploy if it is a superuser). Code must not need DDL, `TRUNCATE` or ownership at runtime; to prove a change
+  doesn't, run `manage.py test --testrunner core.role_test_runner.RuntimeRoleRunner` (the suite as the restricted role;
+  `TransactionTestCase` classes fail there by design because their flush uses `TRUNCATE`).
 - **Staff 2-step** is required for `settings.STAFF_TWO_FACTOR_DEFAULT_ROLES` until a Super Admin saves a policy (empty under tests).
 - **Background jobs** route to `money` / `slow` / default queues (`CELERY_TASK_ROUTES`), each with its own worker in the
   production compose; a new queue must be added to both, or its tasks never run. Tasks have a 10-minute limit.

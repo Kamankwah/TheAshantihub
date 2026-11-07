@@ -28,3 +28,29 @@ def check_open_dev_defaults(app_configs, **kwargs):
             hint="Set DJANGO_CORS_ALLOWED_ORIGINS.", id="core.E003",
         ))
     return errors
+
+
+@checks.register(checks.Tags.database)
+def check_runtime_database_role(app_configs, databases=None, **kwargs):
+    """Review DB-05: the application must not run as a Postgres superuser (or one that can create roles/databases), or one
+    injected query can rewrite the "tamper-proof" ledger. ``deploy.sh`` runs ``check --database default`` as the runtime
+    role before the new containers start. Skipped for the owner-role tasks (``DJANGO_DB_ROLE=owner``: migrate and
+    provisioning), in DEBUG and under test."""
+    import os
+
+    from django.db import connection
+
+    if settings.DEBUG or getattr(settings, "TESTING", False) or os.environ.get("DJANGO_DB_ROLE") == "owner" or not databases:
+        return []
+    from core import db_roles
+
+    superuser, create_role, create_db = db_roles.is_runtime_superuser()
+    if not (superuser or create_role or create_db):
+        return []
+    return [checks.Error(
+        f"The application is connected to Postgres as {connection.settings_dict['USER']!r}, which is a superuser or can create "
+        "roles/databases.",
+        hint="Set POSTGRES_APP_USER and POSTGRES_APP_PASSWORD in backend/.env and deploy; deploy.sh creates the restricted "
+             "role (manage.py provision_db_roles) and starts the app as it. See infra/README.md 'Database roles'.",
+        id="core.E004",
+    )]
