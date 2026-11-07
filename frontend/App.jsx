@@ -1050,13 +1050,13 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
           <span style={{position:"absolute",top:8,left:40,background:"linear-gradient(90deg,#f59e0b,#d97706)",color:"white",fontSize:"0.58rem",fontWeight:800,padding:"2px 8px",borderRadius:20,zIndex:2,boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>⭐ Promoted</span>
         )}
         <span style={{position:"absolute",top:8,right:8,background:accentColor,color:"white",fontSize:"0.6rem",fontWeight:700,padding:"2px 7px",borderRadius:20,zIndex:2}}>{item.tag}</span>
-        <button aria-label={isFav?"Remove from Your Lists":"Save to Your Lists"} title={favFailed?"We couldn't update Your Lists. Tap to try again.":undefined} onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:8,left:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
-          {isFav?"❤️":"🤍"}
+        <button aria-label={isFav?"Remove from Your Lists":"Save to Your Lists"} title={favFailed?"We couldn't update Your Lists. Tap to try again.":undefined} onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:0,left:0,background:"transparent",border:"none",width:44,height:44,padding:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:2}}>
+          <span aria-hidden="true" style={{background:C.surface,borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem"}}>{isFav?"❤️":"🤍"}</span>
         </button>
         {favFailed&&<span role="status" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>We couldn't update Your Lists. Tap the heart to try again.</span>}
-        <button onClick={(e)=>{e.stopPropagation();if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
-          style={{position:"absolute",bottom:8,right:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.8rem",zIndex:2}}>
-          📤
+        <button aria-label={`Share ${item.name}`} onClick={(e)=>{e.stopPropagation();if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
+          style={{position:"absolute",bottom:0,right:0,background:"transparent",border:"none",width:44,height:44,padding:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:2}}>
+          <span aria-hidden="true" style={{background:C.surface,borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.8rem"}}>📤</span>
         </button>
       </div>
       <div style={{padding:"12px 14px"}}>
@@ -1069,7 +1069,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
         {item.review_count>0&&(
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
             <Stars rating={item.avg_rating}/>
-            <button onClick={()=>setShowReviews(true)} style={{background:"none",border:"none",color:accentColor,fontSize:"0.68rem",cursor:"pointer",fontWeight:600,padding:0}}>
+            <button onClick={()=>setShowReviews(true)} style={{background:"none",border:"none",color:accentColor,fontSize:"0.68rem",cursor:"pointer",fontWeight:600,padding:"0 4px",minHeight:44}}>
               ({item.review_count} reviews)
             </button>
           </div>
@@ -1086,7 +1086,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
                 framed as an AshantiHub Support conversation about this listing,
                 not a direct line to the business. */}
             <button onClick={()=>{ if(onMessage) onMessage(item); }}
-              style={{background:`${C.kente3}22`,color:"#fff",border:`1px solid ${C.kente3}66`,borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+              style={{background:`${C.kente3}22`,color:"#fff",border:`1px solid ${C.kente3}66`,borderRadius:20,padding:"5px 12px",minHeight:44,fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
               🎧 Contact Support
             </button>
           </div>
@@ -3082,7 +3082,7 @@ function AshantiHubApp() {
               this bar is mobile-only (media query below); it opens the rail
               as a slide-in drawer. */}
           <div className="ah-filter-trigger-bar" style={{background:C.darkBrown,padding:"12px 16px"}}>
-            <button onClick={() => setShowFilters((f) => !f)} aria-expanded={showFilters} style={{ background: C.surface2, border: "none", borderRadius: 30, padding: "10px 20px", cursor: "pointer", fontSize: "0.8rem", fontWeight: 700, fontFamily: "inherit" }}>
+            <button onClick={() => setShowFilters((f) => !f)} aria-expanded={showFilters} style={{ background: C.surface2, border: "none", borderRadius: 30, padding: "10px 20px", minHeight: 44, cursor: "pointer", fontSize: "0.8rem", fontWeight: 700, fontFamily: "inherit" }}>
               ⚙️ Filters & Search
             </button>
             <style>{`
@@ -3164,14 +3164,14 @@ function AshantiHubApp() {
             ):(
               <>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px 12px",marginBottom:12}}>
-                  <h2 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
+                  <h1 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
                     {activeCatObj ? <>{activeCatObj.icon} {activeCatObj.label}</> : (filters.kind==="product" ? "🛍️ All Products" : filters.kind==="service" ? "🛠️ All Services" : "🛍️ All Products & Services")}
                     {listingsCountLabel&&<span style={resultsCountStyle}>{listingsCountLabel}</span>}
-                  </h2>
+                  </h1>
                   <div style={{display:"flex",gap:10,alignItems:"center"}}>
                     <label style={{display:"flex",alignItems:"center",gap:6,fontSize:"0.7rem",fontWeight:700,color:C.lightGold}}>
                       Sort by
-                      <select value={filters.ordering||""} onChange={(e)=>{const v=e.target.value;setFilters(f=>({...f,ordering:v||undefined}));}} style={{background:C.surface,color:C.ink,border:`1px solid ${C.line}`,borderRadius:8,padding:"4px 8px",fontSize:"0.72rem",fontFamily:"inherit"}}>
+                      <select value={filters.ordering||""} onChange={(e)=>{const v=e.target.value;setFilters(f=>({...f,ordering:v||undefined}));}} style={{background:C.surface,color:C.ink,border:`1px solid ${C.line}`,borderRadius:8,padding:"4px 8px",minHeight:44,fontSize:"0.72rem",fontFamily:"inherit"}}>
                         <option value="" style={optionStyle}>Newest</option>
                         {/* price_effective: the price paid (the sale price while a discount is live), as the cards and the price filter use. */}
                         <option value="price_effective" style={optionStyle}>Lowest price</option>
@@ -3329,10 +3329,10 @@ function AshantiHubApp() {
               />
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                  <h2 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
+                  <h1 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
                     {activeEventCatObj?activeEventCatObj.icon:"🥁"} {activeEventCatObj?activeEventCatObj.label:"All Events"}
                     {eventsCountLabel&&<span style={resultsCountStyle}>{eventsCountLabel}</span>}
-                  </h2>
+                  </h1>
                   <span style={{background:`${C.gold}15`,border:`1px solid ${C.gold}44`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:C.gold,fontWeight:700}}>📍 Kumasi</span>
                 </div>
 

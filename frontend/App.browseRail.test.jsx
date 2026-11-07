@@ -204,7 +204,7 @@ describe('results count', () => {
       }),
     )
     renderAt('/business')
-    const heading = await screen.findByRole('heading', { level: 2, name: /All Products & Services/ }, { timeout: 4000 })
+    const heading = await screen.findByRole('heading', { level: 1, name: /All Products & Services/ }, { timeout: 4000 })
     expect(heading).not.toHaveTextContent(/result/)
     release()
     await waitFor(() => expect(heading).toHaveTextContent('57 results'), { timeout: 4000 })
@@ -220,7 +220,7 @@ describe('results count', () => {
       http.get(`${API}/api/events/`, () => HttpResponse.json({ count: 12, next: `${API}/api/events/?page=2`, previous: null, results: [EVENT] })),
     )
     renderAt('/events')
-    const heading = await screen.findByRole('heading', { level: 2, name: /All Events/ }, { timeout: 4000 })
+    const heading = await screen.findByRole('heading', { level: 1, name: /All Events/ }, { timeout: 4000 })
     await waitFor(() => expect(heading).toHaveTextContent('12 results'), { timeout: 4000 })
     expect(screen.getByText('Akwasidae Festival')).toBeInTheDocument()
   }, 15000)
@@ -228,7 +228,7 @@ describe('results count', () => {
   it('one result reads "1 result"', async () => {
     server.use(http.get(`${API}/api/listings/`, () => HttpResponse.json({ count: 1, next: null, previous: null, results: [LISTING] })))
     renderAt('/business')
-    const heading = await screen.findByRole('heading', { level: 2, name: /All Products & Services/ }, { timeout: 4000 })
+    const heading = await screen.findByRole('heading', { level: 1, name: /All Products & Services/ }, { timeout: 4000 })
     await waitFor(() => expect(heading).toHaveTextContent(/1 result$/), { timeout: 4000 })
   }, 15000)
 })

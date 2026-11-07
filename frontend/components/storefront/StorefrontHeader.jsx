@@ -102,7 +102,7 @@ export default function StorefrontHeader({
     >
       <div aria-hidden="true" style={{ height: 4, background: `linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)` }} />
       <div className="ah-sf-bar" style={{ display: "grid", gridTemplateColumns: "auto auto minmax(0,1fr) auto", gridTemplateAreas: '"logo deliver search actions"', alignItems: "center", gap: "8px 16px", padding: "10px 16px" }}>
-        <button type="button" onClick={onLogoClick} aria-label="AshantiHub home" style={{ gridArea: "logo", display: "flex", alignItems: "center", gap: 8, padding: 0, border: "none", background: "transparent", color: C.gold, cursor: "pointer", minWidth: 0 }}>
+        <button type="button" onClick={onLogoClick} aria-label="AshantiHub home" style={{ gridArea: "logo", display: "flex", alignItems: "center", gap: 8, padding: 0, minHeight: 44, border: "none", background: "transparent", color: C.gold, cursor: "pointer", minWidth: 0 }}>
           <img src={logoIcon} alt="" style={{ height: 36, width: "auto", display: "block" }} />
           <span className="ah-sf-wordmark" style={{ fontFamily: HEADING_FONT, fontWeight: 600, fontSize: 20, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>AshantiHub</span>
         </button>
@@ -198,11 +198,11 @@ export default function StorefrontHeader({
 }
 
 const iconButton = {
-  width: 40, height: 40, borderRadius: 10, border: "none", background: "transparent", color: C.white,
+  width: 44, height: 44, borderRadius: 10, border: "none", background: "transparent", color: C.white,
   display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 17, flexShrink: 0,
 };
 const textButton = {
-  display: "flex", flexDirection: "column", justifyContent: "center", minHeight: 44, padding: "4px 8px", borderRadius: 10,
+  display: "flex", flexDirection: "column", justifyContent: "center", minHeight: 44, minWidth: 44, padding: "4px 8px", borderRadius: 10,
   border: "none", background: "transparent", color: C.white, cursor: "pointer", fontFamily: BODY_FONT, textAlign: "left", flexShrink: 0,
 };
 const smallLine = { fontSize: 12, lineHeight: 1.2, color: C.lightGold, whiteSpace: "nowrap" };
@@ -212,6 +212,6 @@ const countBadge = {
   display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
 };
 const stripButton = {
-  minHeight: 40, padding: "8px 12px", border: "none", borderRadius: 8, background: "transparent", color: C.white,
+  minHeight: 44, padding: "8px 12px", border: "none", borderRadius: 8, background: "transparent", color: C.white,
   fontFamily: BODY_FONT, fontSize: 14, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
 };
