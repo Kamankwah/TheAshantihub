@@ -656,6 +656,11 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   (`core.E004` fails the deploy if it is a superuser). Code must not need DDL, `TRUNCATE` or ownership at runtime; to prove a change
   doesn't, run `manage.py test --testrunner core.role_test_runner.RuntimeRoleRunner` (the suite as the restricted role;
   `TransactionTestCase` classes fail there by design because their flush uses `TRUNCATE`).
+- **Personal data is encrypted at rest (DB-03, `core/pii.py`).** Use `EncryptedCharField` / `EncryptedDateField` for a new national-ID,
+  bank, tax or date-of-birth column. They cannot be searched: exact/IN/contains lookups raise `TypeError`. To find or de-duplicate,
+  add a `*_idx` column kept by `pii.sync_indexes` in `save()` and query it with `pii.blind_index(purpose, value)`; use
+  `queryset.update()` only through the field (it encrypts) and remember `update()` skips `save()`, so it skips the index. A new
+  encrypted column also goes in `core/management/commands/encrypt_pii.py` `TARGETS`. Never log or serialize the ciphertext.
 - **Ledger integrity (DB-06).** A deferred constraint trigger (ledger migration 0015) refuses a commit that leaves a journal with
   credits != debits, so a test that inserts a lone `JournalLine` must add its other side (or disable `ledger_journal_balanced` in
   that test). `ledger.tasks.verify_ledger_integrity` (02:00) re-derives balances from the lines and alerts; it corrects nothing.

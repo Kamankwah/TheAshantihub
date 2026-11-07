@@ -43,6 +43,26 @@ except ValueError as exc:
         "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
     ) from exc
 
+# Personal data encrypted at rest (core/pii.py, review DB-03): Ghana Card and TIN numbers, bank and mobile-money numbers, dates of
+# birth, rider document numbers. PII_ENCRYPTION_KEYS is a comma-separated list of Fernet keys, NEWEST FIRST: new values are written
+# with the first, any listed key reads. To rotate: put a new key in front, deploy, run `manage.py encrypt_pii --reencrypt`, then
+# retire the old key. PII_INDEX_KEY keys the HMAC "blind indexes" that let duplicate checks work on values nobody can read. LOSING
+# EITHER KEY MAKES THOSE VALUES UNREADABLE, and dumps/backups are useless without them: keep both in the owner's password manager,
+# outside the server and outside the backups. Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+PII_ENCRYPTION_KEYS = env.list("PII_ENCRYPTION_KEYS", default=[])
+PII_INDEX_KEY = env("PII_INDEX_KEY", default="")
+if not PII_ENCRYPTION_KEYS or not PII_INDEX_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured("PII_ENCRYPTION_KEYS and PII_INDEX_KEY must be set when DJANGO_DEBUG=False")
+    # Development and tests: keys derived from SECRET_KEY, so a local database keeps working and nothing is ever deployed on them.
+    PII_ENCRYPTION_KEYS = PII_ENCRYPTION_KEYS or [base64.urlsafe_b64encode(hashlib.sha256(b"pii-enc:" + SECRET_KEY.encode()).digest()).decode()]
+    PII_INDEX_KEY = PII_INDEX_KEY or base64.urlsafe_b64encode(hashlib.sha256(b"pii-idx:" + SECRET_KEY.encode()).digest()).decode()
+for _key in PII_ENCRYPTION_KEYS:
+    try:
+        Fernet(_key.encode())
+    except ValueError as exc:
+        raise ImproperlyConfigured("PII_ENCRYPTION_KEYS holds a value that is not a valid Fernet key") from exc
+
 # When True, business-registration GPS addresses are additionally verified as
 # real Ghana Post addresses via the public ghana-api.dev validator (best-effort;
 # never blocks on network failure). Off by default — the Ashanti-Region rule is

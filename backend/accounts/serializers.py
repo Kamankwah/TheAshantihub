@@ -6,6 +6,8 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
+
+from core import pii
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
@@ -644,7 +646,8 @@ def same_card_number(a, b):
 
 def card_number_taken(value, *, exclude=None):
     """Whether another business holds this number, in any case."""
-    taken = BusinessOwnerProfile.objects.filter(ghana_card_number__iexact=value)
+    # The column is ciphertext: match on the blind index (core.pii), which ignores case and spacing.
+    taken = BusinessOwnerProfile.objects.filter(ghana_card_number_idx=pii.blind_index("ghana_card", value))
     if exclude is not None and exclude.pk is not None:
         taken = taken.exclude(pk=exclude.pk)
     return taken.exists()

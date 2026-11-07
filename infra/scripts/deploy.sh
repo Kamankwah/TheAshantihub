@@ -66,6 +66,9 @@ grep -q '^REDIS_URL=.*PASTE_' "$APP_DIR/backend/.env" && _missing+=("REDIS_URL (
 grep -q '^REDIS_PASSWORD=.' "$APP_DIR/backend/.env" || _missing+=("REDIS_PASSWORD")
 grep -q '^STAFF_SECRETS_KEY=.' "$APP_DIR/backend/.env" || _missing+=("STAFF_SECRETS_KEY")
 grep -q '^STAFF_SECRETS_KEY=.*PASTE_' "$APP_DIR/backend/.env" && _missing+=("STAFF_SECRETS_KEY (still a PASTE_ placeholder)")
+# Personal data is encrypted at rest under these keys (review DB-03). Losing them makes it unreadable, so they are never generated here.
+grep -qE '^PII_ENCRYPTION_KEYS=.{40,}' "$APP_DIR/backend/.env" || _missing+=("PII_ENCRYPTION_KEYS (a Fernet key; see infra/env/backend.env.example)")
+grep -qE '^PII_INDEX_KEY=.{20,}' "$APP_DIR/backend/.env" || _missing+=("PII_INDEX_KEY")
 # The application connects as a restricted database role, never as the owner (review DB-05); the owner is for migrate only.
 grep -q '^POSTGRES_APP_USER=.' "$APP_DIR/backend/.env" || _missing+=("POSTGRES_APP_USER")
 grep -qE '^POSTGRES_APP_PASSWORD=[A-Za-z0-9_.-]{20,}$' "$APP_DIR/backend/.env" || _missing+=("POSTGRES_APP_PASSWORD (20+ letters, digits, _ . -; e.g. openssl rand -hex 24)")
@@ -208,6 +211,9 @@ as_owner web python manage.py provision_db_roles
 # Runs as the runtime role (compose passes DB_USER/DB_PASSWORD): proves it can connect and is not a superuser (core.E004)
 # BEFORE the new containers replace the old ones.
 "${COMPOSE[@]}" run --rm --no-deps web python manage.py check --database default
+
+log "Encrypting any personal data still stored in plaintext (idempotent; a no-op once done)"
+"${COMPOSE[@]}" run --rm --no-deps web python manage.py encrypt_pii
 
 log "Moving identity documents out of public media (idempotent; a no-op once done)"
 "${COMPOSE[@]}" run --rm --no-deps web python manage.py move_identity_files_private

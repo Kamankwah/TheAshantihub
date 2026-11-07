@@ -14,6 +14,7 @@ from django.conf import settings
 from django.db import models
 
 from accounts.validators import validate_document_content_type, validate_image_content_type
+from core.pii import EncryptedCharField
 
 from .storage import private_storage
 
@@ -129,7 +130,7 @@ class RiderDocument(models.Model):
     file = models.FileField(upload_to="documents/", storage=private_storage, validators=[validate_document_content_type])
     # The number printed on the paper. Stored as typed; it leaves the server only through
     # ``delivery.serializers.mask_number`` (last four characters), never whole.
-    number = models.CharField(max_length=40, blank=True)
+    number = EncryptedCharField(max_length=40, blank=True)  # encrypted at rest (core.pii, review DB-03)
     expires_on = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=UPLOADED)
     uploaded_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")

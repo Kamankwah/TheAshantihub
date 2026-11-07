@@ -271,6 +271,25 @@ re-derives each journal, each cached account balance and the trial balance from 
 holders. It corrects nothing: investigate, and do not post to the ledger until it is understood. It runs whether or not the
 ledger switch is on.
 
+## Personal data encryption
+
+Review DB-03. Ghana Card and TIN numbers, bank and mobile-money numbers (business profiles and payout destinations), customers'
+dates of birth and rider document numbers are stored as `enc1:<Fernet token>` (`core/pii.py`); the application sees plain values, a
+dump or a read-only SQL account sees ciphertext. Duplicate checks (one Ghana Card per business, one payout account per holder, a
+phone already used as a payout number) run on HMAC "blind indexes" in `*_idx` columns.
+
+- **Keys.** `PII_ENCRYPTION_KEYS` (Fernet, newest first) and `PII_INDEX_KEY` in each server's `backend/.env`; `deploy.sh` refuses to
+  run without them. **Keep both in the owner's password manager, outside the server and outside the backups.** Without them the
+  encrypted columns and every backup of them are unreadable. Staging and production use different keys. The restore drill needs the
+  production keys (it reads them from `backend/.env`), and so does any restore onto a new server: restore `backend/.env` first.
+- **First deploy.** Migrations change the columns to `text` (existing values stay readable as legacy plaintext); `deploy.sh` then
+  runs `manage.py encrypt_pii`, which encrypts the rest and fills the indexes. It is idempotent and safe to interrupt; run it by
+  hand with `--dry-run` first if you want the counts. Take the pre-deploy dump (automatic) - it is the way back.
+- **Rotating a key.** Put the new key first in `PII_ENCRYPTION_KEYS` (keep the old one after it), deploy, run
+  `manage.py encrypt_pii --reencrypt`, then remove the old key. Test the order on staging.
+- **Not covered:** phone numbers and e-mail addresses (they are the sign-in identifiers and are searched constantly), names, delivery
+  addresses, and uploaded images (those are private files, `core/private_files.py`).
+
 ## Backups
 
 **Targets (set by the owner, review DB-01):** lose at most **24 hours** of data today (nightly dump) - **15 minutes** once

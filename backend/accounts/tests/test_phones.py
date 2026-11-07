@@ -70,8 +70,8 @@ class PhoneKeyTests(TestCase):
 
     def test_matching_works_through_a_relation(self):
         owner = _owner("+233201112233")
-        BusinessOwnerProfile.objects.create(business_owner=owner, payout_momo_number="024 123 4567")
-        matches = filter_by_phone(BusinessOwner.objects.all(), "profile__payout_momo_number", "+233241234567")
+        BusinessOwnerProfile.objects.create(business_owner=owner, business_contact_phone="024 123 4567")
+        matches = filter_by_phone(BusinessOwner.objects.all(), "profile__business_contact_phone", "+233241234567")
         self.assertEqual(list(matches), [owner])
         both = filter_by_phone(matches, "login_phone", "020 111 2233")
         self.assertEqual(list(both), [owner])

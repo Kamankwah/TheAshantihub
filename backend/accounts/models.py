@@ -1,6 +1,8 @@
 from django.db import models
 from django.utils import timezone
 
+from core import pii
+from core.pii import EncryptedCharField, EncryptedDateField
 from core.private_files import ghana_card_path, kyc_storage, registration_certificate_path
 
 from .mixins import AuthenticatableAccountMixin
@@ -86,7 +88,7 @@ class Customer(AuthenticatableAccountMixin, models.Model):
     # Date of birth rather than a raw "age" field — age drifts out of date,
     # DOB is the stable source of truth (the frontend computes/display age
     # from it).
-    date_of_birth = models.DateField(null=True, blank=True)
+    date_of_birth = EncryptedDateField(null=True, blank=True)  # encrypted at rest (core.pii, review DB-03)
 
     # Secondary/recovery email + phone, each independently verified via a
     # 6-digit code + expiry — same generate/validate/clear shape as
@@ -459,7 +461,9 @@ class BusinessOwnerProfile(models.Model):
     business_owner = models.OneToOneField(
         BusinessOwner, on_delete=models.CASCADE, related_name="profile"
     )
-    ghana_card_number = models.CharField(max_length=30, unique=True, null=True, blank=True)
+    # Encrypted at rest (core.pii, review DB-03). Uniqueness and duplicate checks use the blind index, never this column.
+    ghana_card_number = EncryptedCharField(max_length=30, null=True, blank=True)
+    ghana_card_number_idx = models.CharField(max_length=64, null=True, blank=True, editable=False)
     # Identity documents: private storage + signed links, never MEDIA_ROOT (core.private_files, review BE-01).
     ghana_card_front_image = models.ImageField(
         upload_to=ghana_card_path, storage=kyc_storage, validators=[validate_image_content_type], null=True, blank=True
@@ -486,13 +490,14 @@ class BusinessOwnerProfile(models.Model):
         upload_to=registration_certificate_path, storage=kyc_storage, null=True, blank=True,
         validators=[validate_document_content_type],
     )
-    tin = models.CharField(max_length=30, null=True, blank=True)
+    tin = EncryptedCharField(max_length=30, null=True, blank=True)
 
     payout_bank_name = models.CharField(max_length=100, null=True, blank=True)
-    payout_bank_account_number = models.CharField(max_length=50, null=True, blank=True)
+    payout_bank_account_number = EncryptedCharField(max_length=50, null=True, blank=True)
     payout_bank_account_name = models.CharField(max_length=150, null=True, blank=True)
     payout_momo_network = models.CharField(max_length=20, null=True, blank=True)
-    payout_momo_number = models.CharField(max_length=20, null=True, blank=True)
+    payout_momo_number = EncryptedCharField(max_length=20, null=True, blank=True)
+    payout_momo_number_idx = models.CharField(max_length=64, null=True, blank=True, editable=False)
     payout_momo_name = models.CharField(max_length=150, null=True, blank=True)
     default_payout_method = models.CharField(
         max_length=10, choices=PAYOUT_METHOD_CHOICES, null=True, blank=True
@@ -597,6 +602,24 @@ class BusinessOwnerProfile(models.Model):
         StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="identity_reviewed_profiles",
     )
+
+    class Meta:
+        constraints = [
+            # One Ghana Card per business, case and spacing aside - on the blind index, because the column is ciphertext.
+            models.UniqueConstraint(
+                fields=["ghana_card_number_idx"], condition=models.Q(ghana_card_number_idx__isnull=False),
+                name="accounts_profile_one_ghana_card",
+            ),
+        ]
+
+    BLIND_INDEXES = {
+        "ghana_card_number": ("ghana_card", "ghana_card_number_idx"),
+        "payout_momo_number": ("momo", "payout_momo_number_idx"),
+    }
+
+    def save(self, *args, **kwargs):
+        pii.sync_indexes(self, self.BLIND_INDEXES, kwargs)
+        super().save(*args, **kwargs)
 
     def has_identity_documents(self):
         """The Ghana Card number and both photos are on file."""
