@@ -9,6 +9,8 @@ from django.db import connection, transaction
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
+from core.testing import drop_check
+
 from accounts.models import BusinessOwner, Customer
 from bookings.models import Booking
 from ledger import escrow, fees, posting, sales
@@ -118,6 +120,8 @@ class RecordBookingPaymentTests(BookingBase):
         self.assertEqual(Journal.objects.filter(kind="booking_payment").count(), 1)
 
     def test_a_free_booking_records_nothing_and_a_negative_price_is_refused(self):
+        drop_check("payments_checkoutsession", "payments_checkoutsession_amount_gte0")
+        drop_check("services_servicerequest", "services_servicerequest_agreed_price_gte0")  # the database now refuses it; posting must too
         free = self.accepted_service("0.00")
         self.assertIsNone(sales.record_payment(self.session(CheckoutSession.SERVICE_REQUEST, "0.00"), BookingSale.SERVICE, free, self.owner))
         negative = self.accepted_service("-5.00")

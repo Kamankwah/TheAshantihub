@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import os
 from pathlib import Path
 import sys
 import environ
@@ -29,6 +30,10 @@ if not DEBUG and SECRET_KEY == "dev-only-insecure-key":
 # Changing it locks every enrolled staffer out of the second step until each is
 # reset with `manage.py reset_staff_two_factor <email>`, so set it once and back
 # it up with the database password.
+# Oldest mobile app version the API still serves (core/app_version.py). Blank turns the gate off.
+MOBILE_MIN_VERSION = env("MOBILE_MIN_VERSION", default="")
+MOBILE_STORE_URL = env("MOBILE_STORE_URL", default="")
+
 STAFF_SECRETS_KEY = env("STAFF_SECRETS_KEY", default="")
 if not STAFF_SECRETS_KEY:
     if not DEBUG:
@@ -41,6 +46,35 @@ except ValueError as exc:
         "STAFF_SECRETS_KEY is not a valid Fernet key — generate one with: "
         "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
     ) from exc
+
+# Personal data encrypted at rest (core/pii.py, review DB-03): Ghana Card and TIN numbers, bank and mobile-money numbers, dates of
+# birth, rider document numbers. PII_ENCRYPTION_KEYS is a comma-separated list of Fernet keys, NEWEST FIRST: new values are written
+# with the first, any listed key reads. To rotate: put a new key in front, deploy, run `manage.py encrypt_pii --reencrypt`, then
+# retire the old key. PII_INDEX_KEY keys the HMAC "blind indexes" that let duplicate checks work on values nobody can read. LOSING
+# EITHER KEY MAKES THOSE VALUES UNREADABLE, and dumps/backups are useless without them: keep both in the owner's password manager,
+# outside the server and outside the backups. Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+PII_ENCRYPTION_KEYS = env.list("PII_ENCRYPTION_KEYS", default=[])
+PII_INDEX_KEY = env("PII_INDEX_KEY", default="")
+if not PII_ENCRYPTION_KEYS or not PII_INDEX_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured("PII_ENCRYPTION_KEYS and PII_INDEX_KEY must be set when DJANGO_DEBUG=False")
+    # Development and tests: keys derived from SECRET_KEY, so a local database keeps working and nothing is ever deployed on them.
+    PII_ENCRYPTION_KEYS = PII_ENCRYPTION_KEYS or [base64.urlsafe_b64encode(hashlib.sha256(b"pii-enc:" + SECRET_KEY.encode()).digest()).decode()]
+    PII_INDEX_KEY = PII_INDEX_KEY or base64.urlsafe_b64encode(hashlib.sha256(b"pii-idx:" + SECRET_KEY.encode()).digest()).decode()
+# How long personal data stays once the money records no longer need it (review DB-04; accounts.retention). These are the dev's
+# defaults pending the owner's and counsel's decision: 6 years matches the usual tax record-keeping period; the grace period
+# after an account is deleted covers refunds and disputes.
+PII_DELETED_ACCOUNT_GRACE_DAYS = env.int("PII_DELETED_ACCOUNT_GRACE_DAYS", default=90)
+PII_ORDER_RETENTION_DAYS = env.int("PII_ORDER_RETENTION_DAYS", default=6 * 365)
+NOTIFICATION_RETENTION_DAYS = env.int("NOTIFICATION_RETENTION_DAYS", default=365)
+# Raw Hubtel payloads (customer names and numbers) and sent business texts are kept this long for reconciliation and disputes (DB-12).
+WEBHOOK_EVENT_RETENTION_DAYS = env.int("WEBHOOK_EVENT_RETENTION_DAYS", default=400)
+VENDOR_TEXT_RETENTION_DAYS = env.int("VENDOR_TEXT_RETENTION_DAYS", default=400)
+for _key in PII_ENCRYPTION_KEYS:
+    try:
+        Fernet(_key.encode())
+    except ValueError as exc:
+        raise ImproperlyConfigured("PII_ENCRYPTION_KEYS holds a value that is not a valid Fernet key") from exc
 
 # When True, business-registration GPS addresses are additionally verified as
 # real Ghana Post addresses via the public ghana-api.dev validator (best-effort;
@@ -139,6 +173,8 @@ MIDDLEWARE = [
     # it just stamps X-Frame-Options on the response (W002).
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    # Refuses mobile builds below MOBILE_MIN_VERSION with 426 (core/app_version.py, review MOB-01).
+    "core.app_version.MobileMinVersionMiddleware",
     "django.middleware.common.CommonMiddleware",
     # Step-in: refuses every write carrying X-View-As from a Super Admin
     # before the activity middleware opens its transaction (accounts/view_as.py).
@@ -161,14 +197,41 @@ TEMPLATES = [
 WSGI_APPLICATION = "ashantihub.wsgi.application"
 ASGI_APPLICATION = "ashantihub.asgi.application"
 
+# Database (review DB-09). Under `manage.py test` and in DEBUG the connection is plain. In a deployed process:
+#  - the password has no development fallback;
+#  - connections are reused for DB_CONN_MAX_AGE seconds (default 60; 0 for the ASGI realtime service, where a per-thread
+#    persistent connection would leak) and checked before reuse;
+#  - every statement is bounded: statement_timeout (DB_STATEMENT_TIMEOUT_MS, default 60 s, just above gunicorn's --timeout so a
+#    runaway query is stopped by Postgres, not left running after the worker is killed; the Celery workers raise it to the task
+#    limit), lock_timeout (a request waits at most 20 s for a row lock instead of queueing forever) and
+#    idle_in_transaction_session_timeout (a transaction that stalls holding locks is ended after 60 s).
+# The OWNER tasks (DJANGO_DB_ROLE=owner: migrate, provisioning) get none of the timeouts, so a long index build is not cut off and
+# deploy.sh's PGOPTIONS lock_timeout still applies.
+_RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
+_DEPLOYED_APP = not DEBUG and not _RUNNING_TESTS and os.environ.get("DJANGO_DB_ROLE") != "owner"
+_POSTGRES_PASSWORD = env("POSTGRES_PASSWORD", default="")
+if not _POSTGRES_PASSWORD:
+    if not (DEBUG or _RUNNING_TESTS):
+        raise ImproperlyConfigured("POSTGRES_PASSWORD must be set when DJANGO_DEBUG=False")
+    _POSTGRES_PASSWORD = "ashantihub_dev"
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": env("POSTGRES_DB", default="ashantihub"),
         "USER": env("POSTGRES_USER", default="ashantihub"),
-        "PASSWORD": env("POSTGRES_PASSWORD", default="ashantihub_dev"),
+        "PASSWORD": _POSTGRES_PASSWORD,
         "HOST": env("POSTGRES_HOST", default="localhost"),
         "PORT": env("POSTGRES_PORT", default="5432"),
+        "CONN_MAX_AGE": env.int("DB_CONN_MAX_AGE", default=60) if _DEPLOYED_APP else 0,
+        "CONN_HEALTH_CHECKS": _DEPLOYED_APP,
+        "OPTIONS": {
+            "options": (
+                f"-c statement_timeout={env.int('DB_STATEMENT_TIMEOUT_MS', default=60000)} "
+                f"-c lock_timeout={env.int('DB_LOCK_TIMEOUT_MS', default=20000)} "
+                f"-c idle_in_transaction_session_timeout={env.int('DB_IDLE_IN_TRANSACTION_TIMEOUT_MS', default=60000)}"
+            ),
+        } if _DEPLOYED_APP else {},
     }
 }
 
@@ -191,7 +254,10 @@ CORS_ALLOW_ALL_ORIGINS = env.bool("DJANGO_CORS_ALLOW_ALL_ORIGINS", default=True)
 CORS_ALLOWED_ORIGINS = env.list("DJANGO_CORS_ALLOWED_ORIGINS", default=[])
 # The Super Admin's step-in sends two extra headers (accounts/view_as.py).
 # X-Step-Up-Token carries a one-time step-up permission (otp/step_up.py).
-CORS_ALLOW_HEADERS = (*cors_default_headers, "x-view-as", "x-view-as-screen", "x-step-up-token")
+CORS_ALLOW_HEADERS = (*cors_default_headers, "x-view-as", "x-view-as-screen", "x-step-up-token", "x-client", "x-app-version")
+# The web app's refresh token is an HttpOnly cookie (accounts/mobile_sessions.py), so its refresh call is made with credentials.
+# django-cors-headers then answers with the caller's own origin (never "*"), and only origins in the allow list.
+CORS_ALLOW_CREDENTIALS = True
 
 # Email — defaults to Django's console backend so nothing breaks locally
 # without SMTP configured; set EMAIL_BACKEND (and the SMTP vars below) in
@@ -348,7 +414,14 @@ HUBTEL_CLIENT_SECRET = env("HUBTEL_CLIENT_SECRET", default="")
 HUBTEL_MERCHANT_ACCOUNT = env("HUBTEL_MERCHANT_ACCOUNT", default="")
 HUBTEL_WEBHOOK_SECRET = env("HUBTEL_WEBHOOK_SECRET", default="")
 HUBTEL_CALLBACK_URL = env("HUBTEL_CALLBACK_URL", default="")
-PAYMENTS_PROVIDER = "hubtel" if HUBTEL_CLIENT_ID else "simulated"
+# Set PAYMENTS_PROVIDER explicitly ("simulated" or "hubtel") in every deployed environment. When it is absent the old
+# derivation applies (Hubtel only if HUBTEL_CLIENT_ID is set), which FAILS OPEN: a blank id after a restore or a typo
+# silently turns every order into a free "success". An explicit "hubtel" with a blank id fails the payments.E002 system
+# check at deploy time instead, and a payment attempt errors rather than succeeding. PAYMENTS_ALLOW_SIMULATED is the
+# deliberate opt-in for a staging server that runs the ledger with simulated money (payments.E003).
+PAYMENTS_PROVIDER_EXPLICIT = env("PAYMENTS_PROVIDER", default="").strip().lower()
+PAYMENTS_PROVIDER = PAYMENTS_PROVIDER_EXPLICIT or ("hubtel" if HUBTEL_CLIENT_ID else "simulated")
+PAYMENTS_ALLOW_SIMULATED = env.bool("PAYMENTS_ALLOW_SIMULATED", default=False)
 
 # Payment provider knobs (payments/providers.py, wallets plan 3a). The simulated provider moves no money. Its charges
 # default to 0 because no real rate is known (the UI must not show a made-up number); staging or tests may set them
@@ -396,12 +469,17 @@ REST_FRAMEWORK = {
     # Django's auth.models.AnonymousUser for DRF's IsAuthenticated checks.
     "UNAUTHENTICATED_USER": AnonymousUser,
     "EXCEPTION_HANDLER": "accounts.authentication.exception_handler",
-    "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
+    "DEFAULT_THROTTLE_CLASSES": ["core.throttling.ClusterScopedRateThrottle"],
+    # nginx appends the address it saw to any client-sent X-Forwarded-For, so the LAST entry is the only one a client
+    # cannot forge. One proxy (nginx) sits in front of gunicorn; raise this if a CDN or load balancer is ever added.
+    "NUM_PROXIES": 1,
     "DEFAULT_THROTTLE_RATES": {
         "vendor_statement_export": "6/min",
         # The native app's silent token refresh and sign-out: 30/min, not the login 5/min, because many phones
         # share one carrier address (CGNAT) and the throttle keys on the address.
         "mobile_refresh": "30/min",
+        # Signed identity-document links (core.private_files): one review sheet loads a handful of images at once.
+        "private_file": "120/min",
         # Marketplace opening: the public "Notify me" form and its one-click stop link. 30/hour, not 5: mobile
         # carriers put many phones behind one address (CGNAT), and the throttle keys on the address.
         "notify_me": "30/hour",
@@ -412,6 +490,7 @@ REST_FRAMEWORK = {
         "storefront_search": "120/min",
         "storefront_deals": "120/min",
         "storefront_home": "120/min",
+        "business_terms": "60/min",
         "customer_register": "5/min",
         "business_owner_register": "5/min",
         "staff_activate": "5/min",
@@ -480,8 +559,11 @@ SPECTACULAR_SETTINGS = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": __import__("datetime").timedelta(hours=12),
+    "ACCESS_TOKEN_LIFETIME": __import__("datetime").timedelta(hours=12),  # staff; customers/owners: see below
 }
+# A customer's or business owner's access token (review BE-09). Clients refresh it silently with their refresh token
+# (30 days, accounts/mobile_sessions.py), so this is how long a stolen token works, not how long a person stays signed in.
+CUSTOMER_ACCESS_TOKEN_MINUTES = env.int("DJANGO_ACCESS_TOKEN_MINUTES", default=30)
 
 # ── Live updates and background jobs (staff foundations F2) ─────────────────
 # One Redis per environment (infra/compose/docker-compose.yml) carries the
@@ -508,6 +590,19 @@ STAFF_BADGE_CACHE_SECONDS = 0 if TESTING else 60
 
 CACHES = {
     "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    # Throttle and sign-in lockout counters (core/throttling.py, accounts/lockout.py). Shared across gunicorn workers
+    # and restarts through Redis. Without Redis (local dev, tests) it is the same in-process store as "default", so
+    # `cache.clear()` in a test clears the counters too.
+    "throttle": (
+        {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": "ah-throttle",
+            "OPTIONS": {"socket_connect_timeout": 1, "socket_timeout": 2},
+        }
+        if USE_REDIS
+        else {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
+    ),
     "realtime": (
         {
             "BACKEND": "django.core.cache.backends.redis.RedisCache",
@@ -543,9 +638,59 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # instead of hanging a request when Redis is unreachable.
 CELERY_BROKER_TRANSPORT_OPTIONS = {"socket_connect_timeout": 1, "socket_timeout": 5}
 CELERY_TASK_PUBLISH_RETRY_POLICY = {"max_retries": 1, "interval_start": 0, "interval_step": 0.5, "interval_max": 0.5}
+# Staff roles that must use 2-step sign-in until a Super Admin saves a policy in Security settings (review BE-16): the
+# ones that move money (accountant, general manager, cosigner), approve work (operations) or read customer data
+# (support). Super Admin is always required. Set DJANGO_STAFF_2FA_DEFAULT_ROLES= (empty) to opt a server out.
+STAFF_TWO_FACTOR_DEFAULT_ROLES = [] if TESTING else env.list(
+    "DJANGO_STAFF_2FA_DEFAULT_ROLES", default=["accountant", "general_manager", "cosigner", "operations", "support"],
+)
+
+# A Hubtel checkout nobody paid is closed after this long and its stock/coupon reservation released (review BE-07).
+CHECKOUT_PENDING_TTL_MINUTES = env.int("CHECKOUT_PENDING_TTL_MINUTES", default=120)
+
+# Queues (review ARC-05). Money and reconciliation jobs run on their own `money` queue and worker, so a backlog of
+# report exports, video conversions or bulk texts can never delay a payment, a refund or a withdrawal poll. `slow`
+# holds the long or bulk jobs; everything else stays on the default `celery` queue. The worker commands in
+# infra/compose/docker-compose.yml consume exactly these three queues: a task routed to a queue no worker reads
+# would silently never run, so add a queue in both places (core/tests/test_celery_routing.py checks the settings side).
+# The first matching pattern wins, so the specific names come before their app's catch-all.
+CELERY_TASK_ROUTES = {
+    "wallets.tasks.send_due_vendor_texts": {"queue": "slow"},
+    "wallets.tasks.queue_vendor_digests": {"queue": "slow"},
+    "wallets.tasks.catch_up_digests": {"queue": "slow"},
+    "payments.tasks.*": {"queue": "money"},
+    "ledger.tasks.*": {"queue": "money"},
+    "wallets.tasks.*": {"queue": "money"},
+    "billing.tasks.*": {"queue": "money"},
+    "commission.tasks.*": {"queue": "money"},
+    "reports.tasks.*": {"queue": "slow"},
+    "insights.tasks.*": {"queue": "slow"},
+    "marketing.tasks.*": {"queue": "slow"},
+    "marketing.tasks_promos.*": {"queue": "slow"},
+    "listings.tasks.*": {"queue": "slow"},
+    "catalogue.tasks.*": {"queue": "slow"},
+    "portfolio.tasks.*": {"queue": "slow"},
+}
+CELERY_TASK_DEFAULT_QUEUE = "celery"
+# A job that hangs is killed instead of holding a worker slot for ever: soft limit raises SoftTimeLimitExceeded inside
+# the task (so it can log and clean up), the hard limit kills the child 60 s later. 10 minutes covers the longest
+# job (a PDF export or a 60 s video conversion).
+CELERY_TASK_SOFT_TIME_LIMIT = 600
+CELERY_TASK_TIME_LIMIT = 660
+# One job at a time per worker slot, so a long job does not hold prefetched short ones behind it.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
 # Each job's owning app adds its own entry; core/tests/test_background_jobs.py
 # fails if an entry names a task that doesn't exist. Times are Africa/Accra.
 CELERY_BEAT_SCHEDULE = {
+    "payments-alert-unprocessed-webhooks": {
+        "task": "payments.tasks.alert_unprocessed_webhooks",
+        "schedule": 1800.0,  # every 30 minutes
+    },
+    "payments-expire-stale-checkouts": {
+        "task": "payments.tasks.expire_stale_checkouts",
+        "schedule": 600.0,  # every 10 minutes
+    },
     "storefront-send-opening-notices": {
         "task": "storefront.tasks.send_opening_notices",
         "schedule": 60.0,
@@ -654,6 +799,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "otp.tasks.purge_old_otp_rows",
         "schedule": crontab(hour=3, minute=55),
     },
+    "accounts-scrub-expired-personal-data": {
+        "task": "accounts.tasks.scrub_expired_personal_data",
+        "schedule": crontab(hour=3, minute=15),  # blanks delivery details and support text past retention (review DB-04)
+    },
+    "ledger-verify-integrity": {
+        "task": "ledger.tasks.verify_ledger_integrity",
+        "schedule": crontab(hour=2, minute=0),  # re-derives every balance from the journal lines (review DB-06); read-only
+    },
     "ledger-refund-uncollected-pickups": {
         "task": "ledger.tasks.refund_uncollected_pickups",
         "schedule": crontab(minute=25),  # hourly, at twenty-five past: a no-op while the ledger is off
@@ -708,6 +861,10 @@ ACTIVITY_SEAL_EMAIL = env.bool("ACTIVITY_SEAL_EMAIL", default=False)
 # Files only a permission-checked view may serve (report exports, F6). Never
 # under MEDIA_ROOT, which nginx serves to anyone.
 PRIVATE_MEDIA_ROOT = BASE_DIR / "private"
+if TESTING:
+    # A test that uploads an identity document must not leave it in the real private folder.
+    import tempfile
+    PRIVATE_MEDIA_ROOT = Path(tempfile.mkdtemp(prefix="ah-private-"))
 
 # Charge the delivery fee at checkout from the live rate card (delivery.RateCard). Off until the owner
 # decides: with it off, checkout is exactly as before and nothing is added to an order's total.

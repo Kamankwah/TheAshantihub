@@ -128,7 +128,7 @@ export default function ProfilePanel({ user }) {
         <div style={{ fontSize: "0.78rem", color: D.textDim, maxWidth: 420 }}>
           Approved business details can't be edited here — message AshantiHub Support to change your contact phone or address. Your Ghana Card is managed under Get verified above.
         </div>
-        <a href="https://wa.me/233244000000?text=PROFILE%20UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "8px 16px", fontSize: "0.72rem", fontWeight: 800, textDecoration: "none", whiteSpace: "nowrap" }}>📱 Contact Support</a>
+        <a href="https://wa.me/233502481685?text=PROFILE%20UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "8px 16px", fontSize: "0.72rem", fontWeight: 800, textDecoration: "none", whiteSpace: "nowrap" }}>📱 Contact Support</a>
       </div>
     </div>
   );

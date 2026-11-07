@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
-import { SESSION_ENDED_EVENT, UNAUTHORIZED_EVENT, apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete, apiDownload, setSudoHandler, setStepUpHandler } from './apiClient.js'
+import { SESSION_ENDED_EVENT, UNAUTHORIZED_EVENT, apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete, apiDownload, setSudoHandler, setStepUpHandler, endWebSession } from './apiClient.js'
 import { getNetworkStatus, resetNetworkStatusForTests } from './lib/networkStatus.js'
 
 describe('apiFetch', () => {
@@ -597,5 +597,130 @@ describe('setStepUpHandler', () => {
     await expect(apiPatch('/api/step/', { number: '024' })).resolves.toEqual({ ok: 2 })
     off()
     expect(bodies).toEqual([{ number: '024' }, { number: '024' }])
+  })
+})
+
+describe('silent refresh of a customer or owner token (review BE-09)', () => {
+  const REFRESH = 'http://localhost:8000/api/accounts/session/refresh/'
+  const ME = 'http://localhost:8000/api/accounts/me/'
+  const mine = { account_type: 'customer', id: 1, full_name: 'Ama' }
+
+  afterEach(() => setStoredAuth(null))
+
+  it('renews an expired token from the refresh cookie and repeats the call once', async () => {
+    setStoredAuth({ token: 'expired', ...mine })
+    const seen = []
+    let refreshInit
+    server.use(
+      http.post(REFRESH, ({ request }) => {
+        refreshInit = { client: request.headers.get('x-client'), credentials: request.credentials }
+        return HttpResponse.json({ token: 'fresh', account_type: 'customer', id: 1, full_name: 'Ama' })
+      }),
+      http.get(ME, ({ request }) => {
+        seen.push(request.headers.get('authorization'))
+        return request.headers.get('authorization') === 'Bearer fresh' ? HttpResponse.json(mine) : new HttpResponse(null, { status: 401 })
+      }),
+    )
+    await expect(apiFetch('/api/accounts/me/')).resolves.toEqual(mine)
+    expect(seen).toEqual(['Bearer expired', 'Bearer fresh'])
+    expect(getStoredAuth()).toMatchObject({ token: 'fresh', full_name: 'Ama' })
+    expect(refreshInit).toEqual({ client: 'web', credentials: 'include' })
+  })
+
+  it('shares one refresh between calls that fail together', async () => {
+    setStoredAuth({ token: 'expired', ...mine })
+    let refreshes = 0
+    server.use(
+      http.post(REFRESH, async () => {
+        refreshes += 1
+        await new Promise((r) => setTimeout(r, 20))
+        return HttpResponse.json({ token: 'fresh' })
+      }),
+      http.get(ME, ({ request }) => (request.headers.get('authorization') === 'Bearer fresh' ? HttpResponse.json(mine) : new HttpResponse(null, { status: 401 }))),
+    )
+    await Promise.all([apiFetch('/api/accounts/me/'), apiFetch('/api/accounts/me/'), apiFetch('/api/accounts/me/')])
+    expect(refreshes).toBe(1)
+  })
+
+  it('signs the person out when the server refuses the refresh', async () => {
+    const ended = vi.fn()
+    window.addEventListener(SESSION_ENDED_EVENT, ended)
+    setStoredAuth({ token: 'expired', ...mine })
+    server.use(http.get(ME, () => new HttpResponse(null, { status: 401 })))
+    await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    expect(getStoredAuth()).toBeNull()
+    expect(ended).toHaveBeenCalledTimes(1)
+    window.removeEventListener(SESSION_ENDED_EVENT, ended)
+  })
+
+  it('keeps the session when the refresh itself could not be answered (server error)', async () => {
+    setStoredAuth({ token: 'expired', ...mine })
+    server.use(
+      http.post(REFRESH, () => new HttpResponse(null, { status: 503 })),
+      http.get(ME, () => new HttpResponse(null, { status: 401 })),
+    )
+    const error = await apiFetch('/api/accounts/me/').catch((e) => e)
+    expect(error.status).toBeUndefined() // not a 401: callers keep the stored session
+    expect(getStoredAuth()).toMatchObject({ token: 'expired' })
+  })
+
+  it('keeps the session when offline during the refresh', async () => {
+    setStoredAuth({ token: 'expired', ...mine })
+    server.use(
+      http.post(REFRESH, () => HttpResponse.error()),
+      http.get(ME, () => new HttpResponse(null, { status: 401 })),
+    )
+    const error = await apiFetch('/api/accounts/me/').catch((e) => e)
+    expect(error.status).toBeUndefined()
+    expect(getStoredAuth()).toMatchObject({ token: 'expired' })
+  })
+
+  it('does not refresh a staff token', async () => {
+    setStoredAuth({ token: 'expired', account_type: 'staff', id: 1, full_name: 'Esi' })
+    let refreshes = 0
+    server.use(
+      http.post(REFRESH, () => { refreshes += 1; return HttpResponse.json({ token: 'fresh' }) }),
+      http.get(ME, () => new HttpResponse(null, { status: 401 })),
+    )
+    await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    expect(refreshes).toBe(0)
+    expect(getStoredAuth()).toBeNull()
+  })
+
+  it('does not try to refresh when nobody is signed in', async () => {
+    let refreshes = 0
+    server.use(
+      http.post(REFRESH, () => { refreshes += 1; return HttpResponse.json({ token: 'fresh' }) }),
+      http.get(ME, () => new HttpResponse(null, { status: 401 })),
+    )
+    await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    expect(refreshes).toBe(0)
+  })
+
+  it('sends the web-session header and cookie only on sign-in, renewal and sign-out calls', async () => {
+    const seen = {}
+    server.use(
+      http.post('http://localhost:8000/api/accounts/customers/login/', ({ request }) => {
+        seen.login = [request.headers.get('x-client'), request.credentials]
+        return HttpResponse.json({ token: 't' })
+      }),
+      http.get('http://localhost:8000/api/listings/categories/', ({ request }) => {
+        seen.public = [request.headers.get('x-client'), request.credentials]
+        return HttpResponse.json([])
+      }),
+    )
+    await apiPost('/api/accounts/customers/login/', { identifier: 'a', password: 'b' })
+    await apiFetch('/api/listings/categories/')
+    expect(seen.login).toEqual(['web', 'include'])
+    expect(seen.public).toEqual([null, 'same-origin'])
+  })
+
+  it('endWebSession asks the server to end the cookie session and never throws', async () => {
+    let called = 0
+    server.use(http.post('http://localhost:8000/api/accounts/session/logout/', () => { called += 1; return new HttpResponse(null, { status: 204 }) }))
+    await endWebSession()
+    expect(called).toBe(1)
+    server.use(http.post('http://localhost:8000/api/accounts/session/logout/', () => HttpResponse.error()))
+    await expect(endWebSession()).resolves.toBeUndefined()
   })
 })

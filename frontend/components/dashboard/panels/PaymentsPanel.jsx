@@ -18,6 +18,7 @@ import { useMySubscription } from "../../../hooks/useMySubscription.js";
 import { useMyEvents } from "../../../hooks/useMyEvents.js";
 import { useOwnerSalesReport } from "../../../hooks/useOwnerSalesReport.js";
 import DataTableCard from "../widgets/DataTableCard.jsx";
+import { goToCheckout } from "../../../lib/safeRedirect.js";
 
 const CYCLE_OPTIONS = [
   { months: 1, label: "1 month" },
@@ -121,7 +122,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
         purpose: `AshantiHub ${selectedPlan.name} Plan — ${cycleLabel}`,
         metadata: { plan: selectedPlan.tier, cycle_months: cycleMonths },
       });
-      if (response?.mode === "redirect") { window.location.href = response.checkout_url; return; }
+      if (response?.mode === "redirect") { goToCheckout(response.checkout_url); return; }
       await apiPost("/api/billing/subscriptions/me/", { plan: selectedPlan.tier, cycle_months: cycleMonths });
       refetchTx();
     } catch (err) {

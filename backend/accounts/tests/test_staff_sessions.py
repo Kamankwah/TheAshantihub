@@ -10,6 +10,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from accounts import sessions
 from accounts.authentication import issue_token
 from accounts.models import Customer, PasswordResetToken, StaffSession
+from accounts.reset_tokens import hash_token
 from accounts.tasks import cleanup_staff_sessions
 from accounts.testing import make_staff, session_of, staff_token
 
@@ -130,7 +131,7 @@ class StaffSessionTests(TestCase):
     def test_a_password_reset_ends_every_staff_session(self):
         token = issue_token(self.esi, "staff")
         PasswordResetToken.objects.create(
-            account_type="staff", account_id=self.esi.id, token="r" * 43,
+            account_type="staff", account_id=self.esi.id, token=hash_token("r" * 43),
             expires_at=timezone.now() + timedelta(hours=1),
         )
         response = APIClient().post(

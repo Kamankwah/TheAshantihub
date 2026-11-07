@@ -318,7 +318,7 @@ class OwnerStanding(WaiverBase):
         self.owner.save(update_fields=["is_suspended"])
         self.as_owner(self.owner)
         r = self.client.post("/api/marketing/owner/delivery-promos/", self.body(), format="json")
-        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.status_code, 403)  # refused at authentication now (review BE-09), same answer as before
         self.assertIn("suspended", r.json()["detail"])
         self.assertEqual(self.client.post(f"/api/marketing/owner/delivery-promos/{paused.pk}/resume/").status_code, 403)
         self.as_staff(self.akua)

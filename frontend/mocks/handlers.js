@@ -9,6 +9,9 @@ function proposalReply(body) {
 }
 
 export const handlers = [
+  // The browser has no refresh cookie by default, so a silent refresh is refused; tests that renew a session override this.
+  http.post('http://localhost:8000/api/accounts/session/refresh/', () => new HttpResponse(null, { status: 401 })),
+  http.post('http://localhost:8000/api/accounts/session/logout/', () => new HttpResponse(null, { status: 204 })),
   // Address book (customer): a plain array, default first. Defaults are an empty book; tests override.
   http.get('http://localhost:8000/api/accounts/addresses/', () => HttpResponse.json([])),
   http.post('http://localhost:8000/api/accounts/addresses/', async ({ request }) => {

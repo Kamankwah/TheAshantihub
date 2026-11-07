@@ -147,6 +147,8 @@ describe("checkout", () => {
     await waitFor(() => expect(router.replace).toHaveBeenCalled());
     const sent = apiMock.mock.calls.find((c) => c[0] === "/api/orders/checkout/")![1].body;
     expect(sent.payment_method).toBe("wallet");
+    expect(typeof sent.request_id).toBe("string"); // the idempotency key (MOB-09): a retry returns the first order
+    expect(sent.request_id.length).toBeGreaterThan(8);
     expect(router.replace).toHaveBeenCalledWith({ pathname: "/order-confirmed", params: { id: "501" } });
   });
 

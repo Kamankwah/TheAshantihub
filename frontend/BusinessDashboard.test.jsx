@@ -205,7 +205,7 @@ describe('BusinessDashboard Submit for Hero', () => {
     fireEvent.click(screen.getByText('✓ Submit for Hero'))
     const extendButton = await screen.findByText('💰 Extend 7d')
     fireEvent.click(extendButton)
-    // Reuses MoMoModal/MoMoPayment's existing simulated-payment UI
+    // Reuses MoMoPayment's existing simulated-payment UI
     // (docs/BUSINESS_EVENTS_ROADMAP.md Phase 2) rather than inventing new
     // payment UI — assert the reused component actually opened.
     expect(screen.getByText('💰 Mobile Money Payment')).toBeInTheDocument()

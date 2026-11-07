@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth.hashers import check_password
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import generics, status
@@ -52,6 +52,7 @@ from .permissions import (
     general_manager_manager_problem,
 )
 from storefront import opening
+from . import invite_tokens
 from .phones import filter_by_phone, phone_key
 from .serializers import (
     BusinessHoursSerializer,
@@ -138,7 +139,7 @@ def me(request):
 
 
 def _with_refresh_token(body, request, account, account_type):
-    """Adds `refresh_token` to a sign-in body when the request comes from the mobile app (X-Client: mobile)."""
+    """Adds `refresh_token` to a sign-in body when the request says it is the mobile or web app (X-Client); `mobile_sessions.deliver` then moves the web app's into a cookie."""
     refresh_token = mobile_sessions.issue(request, account, account_type)
     if refresh_token:
         body["refresh_token"] = refresh_token
@@ -159,7 +160,7 @@ class CustomerRegisterView(generics.CreateAPIView):
             return response
         response.data["token"] = issue_token(customer, "customer")
         _with_refresh_token(response.data, request, customer, "customer")
-        return response
+        return mobile_sessions.deliver(request, response)
 
 
 class StaffInviteView(generics.CreateAPIView):
@@ -206,7 +207,7 @@ class BusinessOwnerRegisterView(generics.CreateAPIView):
             return response
         response.data["token"] = issue_token(owner, "business_owner")
         _with_refresh_token(response.data, request, owner, "business_owner")
-        return response
+        return mobile_sessions.deliver(request, response)
 
 
 class StaffResendInviteView(APIView):
@@ -223,13 +224,13 @@ class StaffResendInviteView(APIView):
                 {"detail": "Cannot resend invite for an already-activated account."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        staff.invite_token = get_random_string(43)
+        raw_token, staff.invite_token = invite_tokens.new_invite_token()
         staff.invite_expires_at = timezone.now() + INVITE_TOKEN_LIFETIME
         staff.invite_sent_at = timezone.now()
         staff.invite_opened_at = None  # the new link has not been opened yet
         staff.save(update_fields=["invite_token", "invite_expires_at", "invite_sent_at", "invite_opened_at"])
         send_staff_invite_email(
-            staff, f"{settings.FRONTEND_BASE_URL}/staff/activate?token={staff.invite_token}"
+            staff, f"{settings.FRONTEND_BASE_URL}/staff/activate?token={raw_token}"
         )
         return Response({"status": "invite resent"})
 
@@ -274,7 +275,7 @@ class StaffInviteOpenedView(APIView):
 
     def post(self, request):
         token = str(request.data.get("token", "")) if isinstance(request.data, dict) else ""
-        staff = StaffUser.objects.filter(invite_token=token).first() if token else None
+        staff = StaffUser.objects.filter(invite_token=invite_tokens.stored_invite_token(token)).first() if token else None
         if staff is None:
             return Response({"state": "invalid"})
         if staff.invite_expires_at is None or staff.invite_expires_at < timezone.now():
@@ -304,7 +305,7 @@ class CustomerLoginView(generics.GenericAPIView):
             "full_name": account.full_name,
         }
         _with_refresh_token(body, request, account, "customer")
-        return Response(body)
+        return mobile_sessions.deliver(request, Response(body))
 
 
 class BusinessOwnerLoginView(generics.GenericAPIView):
@@ -326,7 +327,7 @@ class BusinessOwnerLoginView(generics.GenericAPIView):
             "full_name": account.full_name,
         }
         _with_refresh_token(body, request, account, "business_owner")
-        return Response(body)
+        return mobile_sessions.deliver(request, Response(body))
 
 
 def _truthy(value):
@@ -1343,6 +1344,23 @@ class StaffSignOutEverywhereView(APIView):
         return Response({"ended": sessions.revoke_all(staff, StaffSession.SIGNED_OUT_EVERYWHERE)})
 
 
+class SignOutEverywhereView(APIView):
+    """POST /api/accounts/sign-out-everywhere/ - a customer or business owner ends every token and phone session of
+    their own account, this one included (review BE-09). The client then signs in again."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_scope = "login"
+
+    def post(self, request):
+        account = request.user
+        if isinstance(account, StaffUser):
+            return Response({"detail": "Staff end their sessions from the Security page."}, status=status.HTTP_403_FORBIDDEN)
+        account_type = "customer" if isinstance(account, Customer) else "business_owner"
+        type(account).objects.filter(pk=account.pk).update(token_version=F("token_version") + 1)
+        mobile_sessions.revoke_all(account_type, account.pk)
+        return Response({"detail": "Signed out everywhere."})
+
+
 # ── Scout field verification (punch-list item 11) ──────────────────────────
 ALREADY_ASSIGNED = "That scout is already assigned to this business."
 
@@ -1858,7 +1876,7 @@ class CustomerSecondaryEmailRequestView(generics.GenericAPIView):
             step_up.require(request, step_up.CONTACT_CHANGE, force=escrow.enabled())
             serializer.is_valid(raise_exception=True)
             customer = serializer.save()
-        send_verification_code_email(customer.secondary_email, customer.secondary_email_verify_code)
+        send_verification_code_email(customer.secondary_email, serializer.raw_code)
         return Response({
             "secondary_email": customer.secondary_email,
             "expires_in_minutes": 10,
@@ -1889,7 +1907,7 @@ class CustomerSecondaryPhoneRequestView(generics.GenericAPIView):
             customer = serializer.save()
         return Response({
             "secondary_phone": customer.secondary_phone,
-            "demo_code": customer.secondary_phone_verify_code,
+            "demo_code": serializer.raw_code,
             "expires_in_minutes": 10,
         })
 

@@ -36,10 +36,10 @@ class Booking(models.Model):
     # Statuses that occupy inventory for their date range.
     ACTIVE_STATUSES = (PENDING, CONFIRMED, CHECKED_IN)
 
-    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="bookings")
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="bookings")
     listing = models.ForeignKey(Listing, on_delete=models.PROTECT, related_name="bookings")
     business_owner = models.ForeignKey(
-        BusinessOwner, on_delete=models.CASCADE, related_name="incoming_bookings"
+        BusinessOwner, on_delete=models.PROTECT, related_name="incoming_bookings"
     )
 
     check_in = models.DateField()
@@ -58,6 +58,10 @@ class Booking(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(nightly_rate__gte=0), name="bookings_booking_nightly_rate_gte0"),  # review DB-07
+            models.CheckConstraint(condition=models.Q(total_price__gte=0), name="bookings_booking_total_price_gte0"),  # review DB-07
+        ]
         ordering = ["-created_at"]
 
     @property

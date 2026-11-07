@@ -34,6 +34,14 @@ WEEK = [
 DUPLICATE = {"detail": "Already registered — ask Operations.", "code": "duplicate"}
 
 
+# Identity documents live in private storage under random names (review BE-01).
+CARD_NAME = r"^ghana_cards/[0-9a-f]{32}\.png$"
+
+
+def card_storage():
+    return BusinessOwnerProfile._meta.get_field("ghana_card_front_image").storage
+
+
 def png(name):
     buffer = io.BytesIO()
     Image.new("RGB", (24, 24), (212, 160, 23)).save(buffer, "PNG")
@@ -443,14 +451,14 @@ class KycResubmitTests(RegistrationBase):
             response = self.client.post(self.url, {"ghana_card_front": png("late-card.png")}, format="multipart")
         self.assertEqual(response.status_code, 201, response.content)
         profile.refresh_from_db()
-        self.assertIn("late-card", profile.ghana_card_front_image.name)
+        self.assertRegex(profile.ghana_card_front_image.name, CARD_NAME)
 
     def test_replaced_photos_are_deleted_once_the_request_is_saved(self):
         reject(self.approval_id, self.lead, "Both photos are blurry")
         profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
         old_signboard, old_card = profile.signboard_photo.name, profile.ghana_card_front_image.name
         self.assertTrue(default_storage.exists(old_signboard))
-        self.assertTrue(default_storage.exists(old_card))
+        self.assertTrue(card_storage().exists(old_card))
         self.as_(self.scout)
         with self.captureOnCommitCallbacks(execute=True):
             response = self.client.post(
@@ -459,10 +467,10 @@ class KycResubmitTests(RegistrationBase):
             )
         self.assertEqual(response.status_code, 201, response.content)
         self.assertFalse(default_storage.exists(old_signboard))
-        self.assertFalse(default_storage.exists(old_card))
+        self.assertFalse(card_storage().exists(old_card))
         profile.refresh_from_db()
         self.assertTrue(default_storage.exists(profile.signboard_photo.name))
-        self.assertTrue(default_storage.exists(profile.ghana_card_front_image.name))
+        self.assertTrue(card_storage().exists(profile.ghana_card_front_image.name))
         event = ActivityEvent.objects.order_by("-id").first()
         self.assertEqual(event.after["photos"], ["signboard_photo", "ghana_card_front"])
 
@@ -484,7 +492,7 @@ class KycResubmitTests(RegistrationBase):
                 self.assertEqual(response.json()["detail"], CARD_LOCKED_MESSAGE)
                 profile.refresh_from_db()
                 self.assertEqual(profile.ghana_card_front_image.name, reviewed)
-                self.assertTrue(default_storage.exists(reviewed))
+                self.assertTrue(card_storage().exists(reviewed))
                 self.assertFalse(ApprovalRequest.objects.filter(status="pending").exists())
         # Other fields still go through while the card is locked.
         with self.captureOnCommitCallbacks(execute=True):
@@ -503,7 +511,7 @@ class KycResubmitTests(RegistrationBase):
             response = self.client.post(self.url, {"ghana_card_front": png("retake.png")}, format="multipart")
         self.assertEqual(response.status_code, 201, response.content)
         profile.refresh_from_db()
-        self.assertIn("retake", profile.ghana_card_front_image.name)
+        self.assertRegex(profile.ghana_card_front_image.name, CARD_NAME)
 
     def test_a_replaced_photo_that_cannot_be_deleted_is_logged(self):
         reject(self.approval_id, self.lead, "Blurry")
@@ -565,7 +573,7 @@ class KycResubmitTests(RegistrationBase):
         profile.refresh_from_db()
         self.assertEqual((profile.signboard_photo.name, profile.ghana_card_front_image.name), (signboard, card))
         self.assertTrue(default_storage.exists(signboard))
-        self.assertTrue(default_storage.exists(card))
+        self.assertTrue(card_storage().exists(card))
         self.assertFalse(ApprovalRequest.objects.filter(status="pending").exists())
 
     def test_a_business_that_registered_itself_online_is_refused_even_with_a_scout_manager(self):
@@ -590,7 +598,7 @@ class KycResubmitTests(RegistrationBase):
         profile.refresh_from_db()
         self.assertEqual((profile.signboard_photo.name, profile.ghana_card_front_image.name), (signboard, card))
         self.assertTrue(default_storage.exists(signboard))
-        self.assertTrue(default_storage.exists(card))
+        self.assertTrue(card_storage().exists(card))
 
     def test_only_the_account_manager_resubmits(self):
         reject(self.approval_id, self.lead, "Blurry")

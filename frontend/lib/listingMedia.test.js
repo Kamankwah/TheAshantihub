@@ -46,4 +46,11 @@ describe('mediaOf', () => {
     expect(m.filter((x) => x.kind === 'image')).toHaveLength(9)
     expect(m.filter((x) => x.kind === 'video')).toHaveLength(2)
   })
+
+  test('carries each photo\'s resized copies and uses the small one as the thumbnail', () => {
+    const v = { thumb: 'https://x/t.webp', medium: 'https://x/m.webp', large: 'https://x/l.webp' }
+    const m = mediaOf({ main_photo: 'https://x/main.jpg', main_photo_variants: v, photos: [{ id: 1, image: 'https://x/a.jpg', order: 0 }] })
+    expect(m[0]).toMatchObject({ url: 'https://x/main.jpg', thumb_url: 'https://x/t.webp', variants: v })
+    expect(m[1]).toMatchObject({ url: 'https://x/a.jpg', thumb_url: 'https://x/a.jpg', variants: null })
+  })
 })

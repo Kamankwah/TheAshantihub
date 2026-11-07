@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import BusinessOwner
 from accounts.serializers import SUSPENDED_LOGIN_MESSAGE
+from core.testing import drop_index
 
 PASSWORD = "correct-horse-battery-staple"
 LOGIN_URL = "/api/accounts/business-owners/login/"
@@ -72,6 +73,7 @@ class OwnerSignInPhoneFormatTests(TestCase):
         self.assertEqual(response.json(), INVALID)
 
     def test_two_owners_sharing_the_last_nine_digits_sign_in_only_by_their_exact_phone(self):
+        drop_index("accounts_businessowner_phone_key_unique")  # models legacy rows the index now refuses (review DB-13)
         first = _owner("0241234567", name="First Owner")
         _owner("+233241234567", name="Second Owner")
         ambiguous = self.sign_in("024 123 4567")

@@ -16,7 +16,7 @@ export function CategoryChips({ departments, selected, onSelect }: Props) {
       data={items}
       keyExtractor={(d) => String(d.id)}
       showsHorizontalScrollIndicator={false}
-      style={{ flexGrow: 0, height: 44 }}
+      style={{ flexGrow: 0, height: 48 }}
       contentContainerStyle={{ gap: 12, paddingRight: 20 }}
       renderItem={({ item }) => {
         const active = (item.slug || undefined) === selected;
@@ -26,7 +26,7 @@ export function CategoryChips({ departments, selected, onSelect }: Props) {
             accessibilityState={{ selected: active }}
             hitSlop={{ top: 2, bottom: 2 }}
             onPress={() => onSelect(item.slug || undefined)}
-            style={{ height: 44, paddingHorizontal: 18, borderRadius: 999, justifyContent: "center", borderWidth: active ? 0 : 1, borderColor: c.line, backgroundColor: active ? c.gold : c.surface }}
+            style={{ height: 48, paddingHorizontal: 18, borderRadius: 999, justifyContent: "center", borderWidth: active ? 0 : 1, borderColor: c.line, backgroundColor: active ? c.gold : c.surface }}
           >
             <Text style={{ color: active ? c.onGold : c.ink, fontFamily: active ? fonts.bodyBold : fonts.bodySemi, fontSize: 14 }}>{item.label}</Text>
           </Pressable>

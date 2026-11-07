@@ -9,14 +9,14 @@ export function mediaOf(item) {
   if (!item) return []
   const out = []
   const seen = new Set()
-  const addImage = (id, url) => {
+  const addImage = (id, url, variants = null) => {
     if (!url || seen.has(url) || seen.size >= MAX_IMAGES) return
     seen.add(url)
-    out.push({ id, kind: 'image', url, thumb_url: url, youtube_id: null, position: out.length })
+    out.push({ id, kind: 'image', url, thumb_url: variants?.thumb || url, variants, youtube_id: null, position: out.length })
   }
-  addImage('main', item.main_photo)
+  addImage('main', item.main_photo, item.main_photo_variants || null)
   const photos = [...(item.photos || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-  photos.forEach((p) => addImage(p.id, p.image))
+  photos.forEach((p) => addImage(p.id, p.image, p.variants || null))
 
   let videos = 0
   const sorted = [...(item.videos || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))

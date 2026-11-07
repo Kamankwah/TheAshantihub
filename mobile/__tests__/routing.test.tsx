@@ -1,7 +1,4 @@
-import { render, screen } from "@testing-library/react-native";
-
-import { BUSINESS_TABS, canEnter, CUSTOMER_TABS, routeFor } from "../src/lib/routing";
-import { ComingSoon } from "../src/ui/ComingSoon";
+import { BUSINESS_TABS, canEnter, CUSTOMER_TABS, guardRedirect, routeFor } from "../src/lib/routing";
 
 describe("role routing", () => {
   it("signed_out_redirects_to_welcome", () => {
@@ -39,8 +36,21 @@ describe("role routing", () => {
     expect(BUSINESS_TABS.map((t) => t.label)).toEqual(["Home", "Orders", "Listings", "Money", "More"]);
   });
 
-  it("wallet_and_money_say_coming_soon", async () => {
-    await render(<ComingSoon title="Wallet" />);
-    expect(screen.getByText("This arrives in an update.")).toBeTruthy();
+  it("guards_account_screens_for_guests_and_business_screens_for_customers", () => {
+    expect(guardRedirect(["checkout"], "signedOut")).toBe("/welcome");
+    expect(guardRedirect(["manage", "new-listing"], "signedOut")).toBe("/welcome");
+    expect(guardRedirect(["order", "[id]"], "signedOut")).toBe("/welcome");
+    expect(guardRedirect(["manage", "hours"], "signedIn", "customer")).toBe("/customer/home");
+    expect(guardRedirect(["manage", "hours"], "signedIn", "business_owner")).toBeNull();
+    expect(guardRedirect(["checkout"], "signedIn", "customer")).toBeNull();
+  });
+
+  it("lets_guests_browse_and_never_redirects_while_the_session_is_unknown", () => {
+    expect(guardRedirect(["listing", "[id]"], "signedOut")).toBeNull();
+    expect(guardRedirect(["(auth)", "welcome"], "signedOut")).toBeNull();
+    expect(guardRedirect(["legal", "[doc]"], "signedOut")).toBeNull();
+    expect(guardRedirect(["checkout"], "loading")).toBeNull();
+    expect(guardRedirect(["checkout"], "offline")).toBeNull();
+    expect(guardRedirect([], "signedOut")).toBeNull();
   });
 });

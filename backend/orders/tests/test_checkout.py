@@ -93,14 +93,19 @@ class OrderCheckoutTests(CheckoutTestsBase):
         self.assertEqual(transaction.status, Transaction.SUCCESS)
         self.assertIn(str(order_id), transaction.purpose)
 
-    def test_checkout_uses_price_snapshot_not_current_listing_price(self):
+    def test_checkout_never_silently_charges_a_stale_price(self):
+        # Review BE-11 replaced the old "checkout prices from the snapshot" rule: a moved price is shown to the shopper
+        # (409 price_changed, snapshots refreshed) and charged only after they confirm again.
         self._auth(self.customer)
         self._add_to_cart(self.listing_a, 1)
         self.listing_a.price_amount = "999.00"
         self.listing_a.save(update_fields=["price_amount"])
 
         response = self.client.post("/api/orders/checkout/")
-        self.assertEqual(str(response.json()["total_amount"]), "150.00")
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertEqual(response.json()["code"], "price_changed")
+        retry = self.client.post("/api/orders/checkout/")
+        self.assertEqual(str(retry.json()["total_amount"]), "999.00")
 
     def test_business_owner_cannot_checkout(self):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.owner, 'business_owner')}")

@@ -6,6 +6,7 @@ import { useBookingPayment } from '../hooks/useBookingPayment.js'
 import { apiErrorMessage } from '../lib/apiErrorMessage.js'
 import PaymentMethodPicker from './wallet/PaymentMethodPicker.jsx'
 import { walletStyles } from './wallet/walletStyles.js'
+import { goToCheckout } from "../lib/safeRedirect.js";
 
 // Paying for an accepted service request: before the marketplace opens the
 // button is greyed with "Opens <D Mon>" (useCanBuy); while the wallet ledger
@@ -36,7 +37,7 @@ export default function ServiceRequestPay({ sr, PaymentComponent, onPaid }) {
         // The in-flight guard stays set while the browser leaves, and the modal closes.
         redirecting = true
         setModal(false)
-        window.location.href = res.checkout_url
+        goToCheckout(res.checkout_url)
         return
       }
       setModal(false)

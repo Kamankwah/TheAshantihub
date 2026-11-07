@@ -48,6 +48,8 @@ class RedisRequiredInProductionTests(SimpleTestCase):
             "DJANGO_SECRET_KEY": "x" * 50,
             "STAFF_SECRETS_KEY": "Zm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFyMTI=",
             "REDIS_URL": "",
+            "PII_ENCRYPTION_KEYS": "A" * 43 + "=",
+            "PII_INDEX_KEY": "i" * 32,
             **overrides,
         }
         return subprocess.run(

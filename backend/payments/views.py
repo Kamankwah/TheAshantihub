@@ -13,7 +13,7 @@ from billing.models import Transaction
 from . import hubtel_client
 from .models import CheckoutSession, WebhookEvent
 from .serializers import CheckoutSessionStatusSerializer
-from .services import finalize_failure, finalize_success
+from .services import PaidForCancelledOrder, finalize_failure, finalize_success
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +26,21 @@ _REFERENCE_KEYS = ["ClientReference", "clientReference", "reference", "Reference
 _STATUS_KEYS = ["Status", "status", "PaymentStatus", "paymentStatus"]
 _AMOUNT_KEYS = ["Amount", "amount", "AmountPaid", "amountPaid", "TotalAmountCharged"]
 
-# Loose substring classification — Hubtel's exact status vocabulary is
-# unconfirmed, so this matches case-insensitively on common substrings
-# rather than an exact enum comparison.
-_SUCCESS_MARKERS = ("success", "paid", "approved")
-_FAILED_MARKERS = ("fail", "cancel", "declin", "reject")
-_EXPIRED_MARKERS = ("expire", "timeout")
+# Status classification is EXACT-MATCH on a normalised value, never substring: "Unpaid" contains "paid", "Unsuccessful"
+# contains "success" and "Not Approved" contains "approved", so a substring match marks a refused payment as paid
+# (review BE-04). Hubtel's real vocabulary is still unconfirmed (see hubtel_client.py), so the sets below are the
+# unambiguous spellings; anything else is "no action" and the session stays pending for manual reconciliation. Extend
+# the sets only from Hubtel's documentation or a sandbox response, with a test for the new spelling.
+_SUCCESS_STATUSES = frozenset({"success", "successful", "paid", "completed", "approved"})
+_FAILED_STATUSES = frozenset({
+    "failed", "failure", "unsuccessful", "unpaid", "not paid", "declined", "rejected", "not approved", "cancelled",
+    "canceled", "error",
+})
+_EXPIRED_STATUSES = frozenset({"expired", "timeout", "timed out", "timedout"})
+
+
+def _normalise_status(raw_status):
+    return " ".join(str(raw_status).lower().replace("_", " ").replace("-", " ").split())
 
 
 def _dig(payload, keys):
@@ -55,12 +64,12 @@ def _dig(payload, keys):
 def _classify_status(raw_status):
     if not raw_status:
         return None
-    lowered = str(raw_status).lower()
-    if any(marker in lowered for marker in _SUCCESS_MARKERS):
+    status = _normalise_status(raw_status)
+    if status in _SUCCESS_STATUSES:
         return CheckoutSession.SUCCESS
-    if any(marker in lowered for marker in _FAILED_MARKERS):
+    if status in _FAILED_STATUSES:
         return CheckoutSession.FAILED
-    if any(marker in lowered for marker in _EXPIRED_MARKERS):
+    if status in _EXPIRED_STATUSES:
         return CheckoutSession.EXPIRED
     return None
 
@@ -109,23 +118,24 @@ class HubtelWebhookView(APIView):
 
         reference = _dig(payload, _REFERENCE_KEYS)
 
-        # 1. Log the raw payload before any branching — including
-        # invalid-signature attempts, per docs/HUBTEL_INTEGRATION.md §8.
-        webhook_event = WebhookEvent.objects.create(
-            raw_payload=payload,
-            signature_valid=False,
-            hubtel_reference=reference or "",
-        )
-
-        # 2. Signature verification — reject unsigned/invalid requests with
-        # 401 and do not process them any further.
+        # 1. Verify the signature BEFORE storing anything (review BE-13): this endpoint is unauthenticated, so a payload
+        # that fails the check is untrusted input and is not kept. It leaves a row with only its size and a note (enough
+        # to see an attack in the admin and the logs), never the caller's JSON, so strangers cannot fill the table.
         if not hubtel_client.verify_webhook_signature(raw_body, request.headers):
-            webhook_event.processing_note = "Rejected: invalid or missing webhook signature."
-            webhook_event.save(update_fields=["processing_note"])
+            WebhookEvent.objects.create(
+                raw_payload={"rejected": "invalid or missing signature", "bytes": len(raw_body)},
+                signature_valid=False,
+                processing_note="Rejected: invalid or missing webhook signature.",
+            )
+            logger.warning("Hubtel webhook rejected: bad signature (%d bytes)", len(raw_body))
             return Response({"detail": "Invalid signature."}, status=401)
 
-        webhook_event.signature_valid = True
-        webhook_event.save(update_fields=["signature_valid"])
+        # 2. A signed payload is logged raw before any branching, per docs/HUBTEL_INTEGRATION.md §8.
+        webhook_event = WebhookEvent.objects.create(
+            raw_payload=payload,
+            signature_valid=True,
+            hubtel_reference=(reference or "")[:128],
+        )
 
         if not reference:
             webhook_event.processing_note = "Rejected: no client reference found in payload."
@@ -148,6 +158,14 @@ class HubtelWebhookView(APIView):
                 webhook_event.processing_note = (
                     f"No-op: session {reference} already {session.status}."
                 )
+                if (
+                    session.status in (CheckoutSession.FAILED, CheckoutSession.EXPIRED)
+                    and _classify_status(_dig(payload, _STATUS_KEYS)) == CheckoutSession.SUCCESS
+                ):
+                    # Hubtel says the customer paid a session we had already given up on (review BE-07). Nothing is
+                    # applied - the stock went back - but the money is real, so it must not pass unnoticed.
+                    webhook_event.processing_note += " PAID LATE: the customer was charged for a session already closed - refund or reconcile by hand."
+                    logger.error("Hubtel reported success for %s session %s: customer charged, reconcile/refund", session.status, reference)
                 webhook_event.save(update_fields=["processed", "processing_note"])
                 return Response({"detail": "Already processed."}, status=200)
 
@@ -169,10 +187,21 @@ class HubtelWebhookView(APIView):
                 except Exception:  # pragma: no cover — malformed amount field
                     webhook_event.processing_note = f"Unparseable amount in payload for {reference}."
                     webhook_event.save(update_fields=["processing_note"])
+                    logger.error("Hubtel callback for %s had an unparseable amount; left pending", reference)
                     return Response({"detail": "Unparseable amount."}, status=200)
 
             reported_status_raw = _dig(payload, _STATUS_KEYS)
             mapped_status = _classify_status(reported_status_raw)
+
+            if mapped_status == CheckoutSession.SUCCESS and reported_amount is None:
+                # A "paid" report that names no amount cannot be checked against what we asked for, so it is never
+                # trusted (review BE-04). Left pending and flagged for reconciliation against Hubtel's own records.
+                webhook_event.processing_note = (
+                    f"Success reported for {reference} with no amount - not finalized, reconcile manually."
+                )
+                webhook_event.save(update_fields=["processing_note"])
+                logger.error("Hubtel success callback for %s carried no amount; left pending", reference)
+                return Response({"detail": "Amount missing, not processed."}, status=200)
 
             if mapped_status == CheckoutSession.SUCCESS:
                 txn_kwargs = {
@@ -195,6 +224,8 @@ class HubtelWebhookView(APIView):
                         finalize_success(session)
                 except EventCancelledError:
                     return self._paid_for_cancelled_event(session, webhook_event, reference)
+                except PaidForCancelledOrder:
+                    return self._paid_for_cancelled_order(session, webhook_event, reference)
 
                 webhook_event.processed = True
                 webhook_event.processing_note = f"Finalized success for {reference}."
@@ -218,6 +249,24 @@ class HubtelWebhookView(APIView):
             )
             webhook_event.save(update_fields=["processing_note"])
             return Response({"detail": "Acknowledged, no action taken."}, status=200)
+
+    @staticmethod
+    def _paid_for_cancelled_order(session, webhook_event, reference):
+        """Hubtel took the money for an order cancelled meanwhile (review BE-17). The order stays cancelled. Its stock
+        already went back when it was cancelled, so finalize_failure is NOT run (it would return the stock twice); the
+        session is marked failed and rolled back, and the webhook row tells Support to refund by hand."""
+        session.refresh_from_db()
+        session.status = CheckoutSession.FAILED
+        session.metadata = {**session.metadata, "not_applied": "order_cancelled", "rolled_back": True}
+        session.save(update_fields=["status", "metadata", "updated_at"])
+        webhook_event.processed = True
+        webhook_event.processing_note = (
+            f"Paid after its order was cancelled: {reference} marked failed, the order stays cancelled. "
+            "The customer was charged - refund by hand (manual reconciliation)."
+        )
+        webhook_event.save(update_fields=["processed", "processing_note"])
+        logger.error("Hubtel payment %s arrived after its order was cancelled; marked failed for manual refund", reference)
+        return Response({"detail": "Order cancelled, not applied."}, status=200)
 
     @staticmethod
     def _paid_for_cancelled_event(session, webhook_event, reference):

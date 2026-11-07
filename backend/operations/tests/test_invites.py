@@ -6,7 +6,9 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from accounts import invite_tokens
 from accounts.models import StaffUser
+from accounts.reset_tokens import hash_token
 from accounts.testing import make_staff, staff_token
 from activity.models import ActivityEvent
 from listings.models import Zone
@@ -23,6 +25,12 @@ class InviteScreenTests(TestCase):
         self.admin = make_staff("super_admin", "root@example.com")
         self.lead = make_staff("operations", "ama@example.com")
         self.other_lead = make_staff("operations", "kojo@example.com")
+
+    def known_token(self, email):
+        """The invite's stored token is a hash; swap in one whose raw value the test knows."""
+        raw, stored = invite_tokens.new_invite_token()
+        StaffUser.objects.filter(email=email).update(invite_token=stored)
+        return raw
 
     def as_(self, who, sudo=True):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(who, sudo=sudo)}")
@@ -68,7 +76,7 @@ class InviteScreenTests(TestCase):
         self.invite(email="a@example.com")
         self.invite(email="b@example.com")
         self.invite(email="c@example.com", role="support")
-        token = StaffUser.objects.get(email="b@example.com").invite_token
+        token = self.known_token("b@example.com")
         self.client.credentials()
         self.assertEqual(self.client.post("/api/accounts/staff/activate/opened/", {"token": token}, format="json").data["state"], "valid")
         StaffUser.objects.filter(email="c@example.com").update(invite_expires_at=timezone.now() - timedelta(hours=1))
@@ -89,13 +97,13 @@ class InviteScreenTests(TestCase):
         self.as_(self.lead)
         self.invite()
         staff = StaffUser.objects.get(email="akwasi@example.com")
-        old = staff.invite_token
+        old = self.known_token("akwasi@example.com")
         self.client.credentials()
         self.client.post("/api/accounts/staff/activate/opened/", {"token": old}, format="json")
         self.as_(self.lead)
         self.assertEqual(self.client.post(f"/api/accounts/staff/{staff.pk}/resend-invite/").status_code, 200)
         staff.refresh_from_db()
-        self.assertNotEqual(staff.invite_token, old)
+        self.assertNotEqual(staff.invite_token, hash_token(old))
         self.assertIsNone(staff.invite_opened_at)
         self.client.credentials()
         self.assertEqual(self.client.post("/api/accounts/staff/activate/opened/", {"token": old}, format="json").data["state"], "invalid")
@@ -127,7 +135,7 @@ class InviteScreenTests(TestCase):
         self.client.credentials()
         self.assertEqual(self.client.post("/api/accounts/staff/activate/opened/", {"token": "nope"}, format="json").data, {"state": "invalid"})
         self.assertEqual(self.client.post("/api/accounts/staff/activate/opened/", {}, format="json").data, {"state": "invalid"})
-        make_staff("scout", "old@example.com", manager=self.lead, invite_token="tok", invite_expires_at=timezone.now() - timedelta(minutes=1))
+        make_staff("scout", "old@example.com", manager=self.lead, invite_token=hash_token("tok"), invite_expires_at=timezone.now() - timedelta(minutes=1))
         self.assertEqual(self.client.post("/api/accounts/staff/activate/opened/", {"token": "tok"}, format="json").data, {"state": "expired"})
 
     def test_activation_stamps_the_join_date_and_lists_the_person_as_joined(self):
@@ -135,7 +143,7 @@ class InviteScreenTests(TestCase):
         self.invite()
         staff = StaffUser.objects.get(email="akwasi@example.com")
         self.client.credentials()
-        done = self.client.post("/api/accounts/staff/activate/", {"token": staff.invite_token, "password": "a-strong-pass-1"}, format="json")
+        done = self.client.post("/api/accounts/staff/activate/", {"token": self.known_token("akwasi@example.com"), "password": "a-strong-pass-1"}, format="json")
         self.assertEqual(done.status_code, 200, done.content)
         staff.refresh_from_db()
         self.assertIsNotNone(staff.activated_at)

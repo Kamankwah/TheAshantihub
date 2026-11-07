@@ -389,7 +389,7 @@ class PublicFeaturedTests(FeaturedBase):
         self.assertEqual(r.status_code, 200)
         rows = r.json()["listings"]
         self.assertEqual(len(rows), 1)
-        self.assertEqual(set(rows[0]), {"id", "name", "main_photo", "price_amount", "price_unit", "category", "business", "verified"})
+        self.assertEqual(set(rows[0]), {"id", "name", "main_photo", "main_photo_variants", "price_amount", "price_unit", "category", "business", "verified"})
 
     def test_verified_follows_approved_identity_not_kyc(self):
         owner = self.owner(kyc_status=BusinessOwner.VERIFIED)

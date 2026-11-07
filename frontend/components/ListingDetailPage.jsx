@@ -26,6 +26,8 @@ import { ReviewsList, ReviewWriteForm, starString } from "./ReviewComponents.jsx
 import SellerRatingBadge from "./SellerRatingBadge.jsx";
 import ProductPage from "./shop/ProductPage.jsx";
 import { attributeRows } from "../lib/listingFacts.js";
+import { goToCheckout } from "../lib/safeRedirect.js";
+import { pictureProps } from "../lib/responsiveImage.js";
 
 // ─── ListingDetailPage ──────────────────────────────────────────────────────
 // The listing detail route's chooser (Marketplace Plan 4). Goods — what the
@@ -188,7 +190,8 @@ function ServiceListingDetail({
   }
 
   const accentColor = item.category?.color || C.gold;
-  const gallery = item.photos?.length > 0 ? item.photos.map((p) => p.image) : item.main_photo ? [item.main_photo] : [];
+  const galleryPics = item.photos?.length > 0 ? item.photos.map((p) => ({ url: p.image, variants: p.variants || null })) : item.main_photo ? [{ url: item.main_photo, variants: item.main_photo_variants || null }] : [];
+  const gallery = galleryPics.map((p) => p.url);
   const isFav = favourites?.includes(item.id);
   const isAccommodation = !!item.category?.is_accommodation;
   // Food and beverages are carted for delivery; every other service stays a request (and stays a booking).
@@ -221,7 +224,7 @@ function ServiceListingDetail({
       if (created?.mode === "redirect") {
         redirecting = true;
         setMomoOpen(false);
-        window.location.href = created.checkout_url;
+        goToCheckout(created.checkout_url);
         return;
       }
       setMomoOpen(false);
@@ -278,7 +281,7 @@ function ServiceListingDetail({
         <div style={{ flex: "1 1 380px", minWidth: 300 }}>
           <div style={{ height: 340, borderRadius: 16, overflow: "hidden", position: "relative", background: `linear-gradient(135deg,${tint(accentColor, "22")},${tint(accentColor, "44")})` }}>
             {gallery.length > 0 ? (
-              <img src={gallery[galleryIndex]} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              <img {...pictureProps(galleryPics[galleryIndex]?.variants, gallery[galleryIndex], { sizes: "(min-width: 900px) 560px, 100vw", eager: true })} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             ) : (
               <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "3.5rem" }}>
                 {item.category?.icon}
@@ -303,7 +306,7 @@ function ServiceListingDetail({
                     background: "none",
                   }}
                 >
-                  <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  <img src={galleryPics[i]?.variants?.thumb || src} loading="lazy" decoding="async" alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                 </button>
               ))}
             </div>

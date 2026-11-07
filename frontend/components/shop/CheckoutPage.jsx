@@ -29,6 +29,8 @@ import { addGhs, formatGhs, ghsToPesewas, isPlausibleAmount } from "../wallet/wa
 import { walletStyles } from "../wallet/walletStyles.js";
 import { BODY_FONT, HEADING_FONT, TABULAR } from "../storefront/storefrontType.js";
 import { OPENS_SOON, PIN_YOUR_DOOR, atStockCap, guardUncheckedText } from "./shopCopy.js";
+import { goToCheckout } from "../../lib/safeRedirect.js";
+import { newRequestId } from "../wallet/walletMoney.js";
 
 const num = (v) => (v == null || v === "" ? null : Number(v));
 
@@ -84,6 +86,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
   const [mLandmark, setMLandmark] = useState("");
   const [mStreet, setMStreet] = useState("");
   const streetAuto = useRef(false);
+  const requestIdRef = useRef(null);
   const preselected = useRef(false);
 
   const pick = (row) => {
@@ -234,13 +237,16 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
     setPlacing(true);
     setCheckoutError(null);
     try {
-      const response = await apiPost("/api/orders/checkout/", checkoutBody(extra));
+      // One id per order attempt: a double tap, a retry after a dropped connection or a second tab-return gets the first order back, not a second one.
+      if (!requestIdRef.current) requestIdRef.current = newRequestId();
+      const response = await apiPost("/api/orders/checkout/", { ...checkoutBody(extra), request_id: requestIdRef.current });
       // Hubtel (docs/HUBTEL_INTEGRATION.md): the order is pending until the webhook confirms, so go to the hosted checkout.
       if (response?.mode === "redirect") {
         await applyDefault(); // the page is about to leave, so a failure here has nowhere to be shown
-        window.location.assign(response.checkout_url);
+        goToCheckout(response.checkout_url, "assign");
         return;
       }
+      requestIdRef.current = null; // placed: the next checkout is a new order (a redirect keeps its id so a return click gets the same pending order)
       queryClient.invalidateQueries({ queryKey: ["cart"] });
       queryClient.invalidateQueries({ queryKey: ["cart-guard"] });
       queryClient.invalidateQueries({ queryKey: ["wallet"] });

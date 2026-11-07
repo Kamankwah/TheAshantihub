@@ -6,4 +6,4 @@ class CoreConfig(AppConfig):
     name = "core"
 
     def ready(self):
-        from . import jobs  # noqa: F401  (connects the Celery heartbeat signals)
+        from . import checks, jobs  # noqa: F401  (jobs connects the Celery heartbeat signals; checks registers the deploy checks)

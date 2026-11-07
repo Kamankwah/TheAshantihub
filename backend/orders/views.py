@@ -1,42 +1,38 @@
-from django.conf import settings
+import logging
+
 from decimal import Decimal
 
-from django.db import transaction as db_transaction
+from django.db import IntegrityError, transaction as db_transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import generics, status
-from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.gps import validate_ashanti_gps
-from accounts.models import BusinessOwner, StaffUser
+from accounts.models import StaffUser
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner, IsCustomer
 from cart import guard as cart_guard
 from cart.models import Cart
 from delivery.models import DeliveryEvent
 from disputes.models import Dispute
-from listings import variants as variants_module
-from listings.models import Listing, ListingVariant
-from listings.visibility import hidden_business_q
 from disputes.serializers import DisputeSerializer
 from notifications.services import notify_customer
 from payments.models import CheckoutSession
 from storefront.permissions import MarketplaceOpen
-from marketing import checkout as promo_checkout
-from marketing import code_guard
-from marketing import promos
-from marketing import waivers
 from ledger import escrow, posting
 from ledger.models import Account
 from ledger.money import from_pesewas, to_pesewas
 from payments.providers import get_provider
-from payments.services import process_payment
+from payments.services import process_payment, start_hubtel_checkout
 
 from . import hold, locks
+from .checkout import (
+    create_order, plan_route, price_order, price_promotions, read_delivery, refuse_stale_prices, refuse_unavailable_listings,
+    reserve_stock,
+)
 from .models import DeliveryAssignment, Order, OrderItem
 from .serializers import (
     DeliveryOrderSerializer,
@@ -48,6 +44,8 @@ from .serializers import (
     StaffOrderSerializer,
 )
 
+
+logger = logging.getLogger(__name__)
 
 # How a customer pays at checkout (wallets plan 3a): by mobile money through the provider (the default, today's path)
 # or from their AshantiHub wallet, which needs LEDGER_ENABLED.
@@ -98,25 +96,51 @@ class OrderCheckoutView(APIView):
 
     permission_classes = [IsAuthenticated, IsCustomer, MarketplaceOpen]
 
+    CART_RELATED = ("listing__business_owner__profile", "listing__category", "variant")
+
+    @staticmethod
+    def _signature(items):
+        """What a cart line commits the shopper to; two reads with the same signature priced the same goods."""
+        return sorted((i.listing_id, i.variant_id, i.quantity, str(i.unit_price_snapshot)) for i in items)
+
     def post(self, request):
+        """Idempotent on the optional `request_id` (review BE-05): a repeat of a request that already made an order
+        returns that order's result instead of making another, including when two copies race."""
+        raw = request.data.get("request_id")
+        request_id = raw.strip()[:64] if isinstance(raw, str) else ""
+        if request_id:
+            existing = Order.objects.filter(customer=request.user, request_id=request_id).first()
+            if existing is not None:
+                return self._replay(existing, request)
+        try:
+            return self._checkout(request, request_id)
+        except IntegrityError:
+            existing = Order.objects.filter(customer=request.user, request_id=request_id).first() if request_id else None
+            if existing is None:
+                raise
+            return self._replay(existing, request)  # the other copy won the race; this one rolled back whole
+
+    def _replay(self, order, request):
+        """The response the first request got, rebuilt from what it saved."""
+        session = (
+            CheckoutSession.objects.filter(kind=CheckoutSession.ORDER_CHECKOUT, metadata__order_id=order.id)
+            .order_by("-id").first()
+        )
+        if order.status == Order.PENDING and session is not None and session.status == CheckoutSession.PENDING and session.checkout_url:
+            return Response(
+                {"mode": "redirect", "checkout_url": session.checkout_url, "reference": session.reference}, status=status.HTTP_200_OK,
+            )
+        return Response(OrderSerializer(order).data, status=status.HTTP_200_OK)
+
+    def _checkout(self, request, request_id):
         cart = Cart.objects.filter(customer=request.user).first()
-        items = list(cart.items.select_related("listing__business_owner__profile", "listing__category", "variant")) if cart is not None else []
+        items = list(cart.items.select_related(*self.CART_RELATED)) if cart is not None else []
         if not items:
             return Response({"detail": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
-        # A line whose listing was dropped, discontinued or unpublished, or whose business is hidden, is refused
-        # before any stock is touched; the cart is left as it is for the shopper to fix.
-        hidden_ids = set(
-            BusinessOwner.objects.filter(
-                pk__in={item.listing.business_owner_id for item in items}
-            ).filter(hidden_business_q("")).values_list("pk", flat=True)
-        )
-        for item in items:
-            if item.listing.status != Listing.PUBLISHED or item.listing.business_owner_id in hidden_ids:
-                return Response(
-                    {"detail": f"“{item.listing.name}” is no longer available. Remove it from your cart.",
-                     "code": "listing_unavailable"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        read_signature = self._signature(items)
+        refusal = refuse_unavailable_listings(items)
+        if refusal is not None:
+            return refusal
 
         payment_method = request.data.get("payment_method") or MOMO
         if payment_method not in PAYMENT_METHODS:
@@ -140,198 +164,39 @@ class OrderCheckoutView(APIView):
             cart_guard.check_checkout(items, delivery_method)
         except cart_guard.GuardError as exc:
             return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
-        delivery_address = (request.data.get("delivery_address") or "").strip()
-        delivery_phone = (request.data.get("delivery_phone") or "").strip()
-        if delivery_method == Order.DOOR_TO_DOOR and (not delivery_address or not delivery_phone):
-            return Response(
-                {"detail": "Door-to-door delivery needs a delivery address and phone number."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        # A GhanaPost digital address (Ashanti only) and a landmark are required for door-to-door; checked before any
-        # routing call so a refusal costs no network round trip. Store pickup stores both blank.
-        delivery_gps_address = delivery_landmark = ""
-        if delivery_method == Order.DOOR_TO_DOOR:
-            try:
-                delivery_gps_address = validate_ashanti_gps(request.data.get("delivery_gps_address"))
-            except DRFValidationError as exc:
-                return Response({"delivery_gps_address": [str(m) for m in exc.detail]}, status=status.HTTP_400_BAD_REQUEST)
-            raw_landmark = request.data.get("delivery_landmark") or ""
-            delivery_landmark = raw_landmark.strip() if isinstance(raw_landmark, str) else ""  # a non-string reads as missing
-            if not delivery_landmark:
-                return Response(
-                    {"delivery_landmark": ["Add a landmark near your door so the rider can find you."]},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if len(delivery_landmark) > 200:
-                return Response(
-                    {"delivery_landmark": ["Keep the landmark under 200 characters."]}, status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        if delivery_method == Order.DOOR_TO_DOOR:
-            from routing import region
-
-            lat, lng = request.data.get("delivery_lat"), request.data.get("delivery_lng")
-            if lat not in (None, "") and lng not in (None, "") and not region.in_service_area(lat, lng):
-                return Response({"detail": region.OUT_OF_AREA_MESSAGE, "code": "out_of_area"}, status=status.HTTP_400_BAD_REQUEST)
-            from delivery.rates import PIN_REQUIRED_MESSAGE, pin_required
-
-            if pin_required(lat, lng):
-                return Response({"delivery_lat": [PIN_REQUIRED_MESSAGE]}, status=status.HTTP_400_BAD_REQUEST)
-
-        # The pickup route and the fee may call the road-routing service (a network round trip), so both are worked out
-        # before the transaction opens: they need no row lock and must not hold a database transaction open while they wait.
-        plan = None
-        if delivery_method == Order.DOOR_TO_DOOR:
-            from delivery.stops import plan_with_distances
-
-            plan, distances = plan_with_distances(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
-            try:
-                # The food radius from the planner's own table: no second routing call (cart.guard.check_food_radius).
-                cart_guard.check_food_radius(items, distances=distances)
-            except cart_guard.GuardError as exc:
-                return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
-        quoted = None
-        if settings.DELIVERY_FEE_ENABLED and delivery_method == Order.DOOR_TO_DOOR:
-            from delivery.rates import checkout_fee
-
-            quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"), plan=plan)
+        delivery, refusal = read_delivery(request.data)
+        if refusal is not None:
+            return refusal
+        route, refusal = plan_route(items, request.data, delivery_method)  # may call the routing service: before the transaction
+        if refusal is not None:
+            return refusal
 
         with db_transaction.atomic():
-            # Checkout promotions (marketing): off unless settings.MARKETING_PROMOS_ENABLED, and
-            # then priced here, before anything is reserved or written, under the flash-sale and
-            # coupon row locks. With the switch off `promo` stays None and nothing below changes.
-            promo = None
-            if promos.enabled():
-                if promo_checkout.normalise_code(request.data.get("coupon_code")) and code_guard.blocked(request):
-                    return Response({"detail": code_guard.TOO_MANY}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-                try:
-                    promo = promo_checkout.price(
-                        request.user, items, request.data.get("coupon_code"), lock=True,
-                        delivery_phone=delivery_phone if delivery_method == Order.DOOR_TO_DOOR else "",
-                    )
-                except promo_checkout.PromoError as exc:
-                    code_guard.record_failure(request)
-                    return Response({"detail": exc.message}, status=status.HTTP_400_BAD_REQUEST)
-
-            # Lock the tracked listings and check stock before creating
-            # anything. A listing with stock_quantity=None isn't inventory-
-            # tracked (services, or products the owner hasn't set a count on)
-            # and is never decremented. Mirrors the ticket flow's optimistic
-            # reserve-at-checkout, rolled back on payment failure below.
-            #
-            # Variant lines (listings.ListingVariant) reserve from the variant's own stock. Locks are taken in one global
-            # order, every Listing row by primary key and then every ListingVariant row by primary key, so two checkouts
-            # can never wait on each other; the stock is checked for the whole cart before anything is decremented.
-            locked = {
-                row.pk: row
-                for row in Listing.objects.select_for_update().filter(pk__in={i.listing_id for i in items}).order_by("pk")
-            }
-            locked_variants = {
-                row.pk: row
-                for row in ListingVariant.objects.select_for_update()
-                .filter(pk__in={i.variant_id for i in items if i.variant_id}).order_by("pk")
-            }
-            with_variants = set(
-                ListingVariant.objects.filter(listing_id__in=locked, is_active=True).values_list("listing_id", flat=True)
-            )
-            for item in items:
-                if item.variant_id is None and item.listing_id in with_variants:
-                    # A plain line from before the listing gained variants: its stock is the derived total, so refuse.
-                    return Response(
-                        {"detail": f"Choose an option for “{locked[item.listing_id].name}”: remove it from your cart and add it again.",
-                         "code": "choose_variant"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            for item in items:
-                listing = locked[item.listing_id]
-                if listing.status != Listing.PUBLISHED:  # taken down or dropped since the check above: re-read under the lock
-                    return Response(
-                        {"detail": f"“{listing.name}” is no longer available. Remove it from your cart.",
-                         "code": "listing_unavailable"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                if item.variant_id is None:
-                    if listing.stock_quantity is not None and listing.stock_quantity < item.quantity:
-                        return Response(
-                            {"detail": f"Only {listing.stock_quantity} of “{listing.name}” left in stock."},
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
-                    continue
-                variant = locked_variants.get(item.variant_id)
-                if variant is None or not variant.is_active:
-                    return Response(
-                        {"detail": f"“{listing.name} ({item.variant.label})” is no longer available. Remove it from your cart.",
-                         "code": "listing_unavailable"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                if variant.stock_quantity is not None and variant.stock_quantity < item.quantity:
-                    return Response(
-                        {"detail": f"Only {variant.stock_quantity} of “{listing.name} ({variant.label})” left in stock."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            reservations = []
-            touched = {}
-            for item in items:
-                listing = locked[item.listing_id]
-                if item.variant_id is None:
-                    if listing.stock_quantity is not None:
-                        listing.stock_quantity -= item.quantity
-                        listing.save(update_fields=["stock_quantity"])
-                        reservations.append({"listing_id": listing.id, "quantity": item.quantity})
-                    continue
-                variant = locked_variants[item.variant_id]
-                if variant.stock_quantity is not None:
-                    variant.stock_quantity -= item.quantity
-                    variant.save(update_fields=["stock_quantity"])
-                    reservations.append({"listing_id": listing.id, "variant_id": variant.id, "quantity": item.quantity})
-                touched[listing.pk] = listing
-            for listing in touched.values():
-                variants_module.sync_listing(listing)
-
-            total = sum(
-                (item.unit_price_snapshot * item.quantity for item in items), Decimal("0.00")
-            )
-            if promo:
-                total = promo.total  # net of any coupon
-            # Delivery fee from the rate card in force, only when switched on (settings.DELIVERY_FEE_ENABLED,
-            # default off). Fixed here, on the order; later card changes never touch it.
-            fee_card, fee_quote, charged, waiver = None, None, None, None
-            if quoted is not None:
-                fee_card, fee_quote = quoted
-                # A live free-delivery promo covering every line waives the fee (marketing.waivers);
-                # the original amount stays in the breakdown. An AshantiHub-funded promo waives it only when the fee
-                # fits in its budget cap, decided under the promo's row lock (a hard cap: concurrent checkouts wait).
-                waiver = waivers.covering_waiver([i.listing for i in items], timezone.now(), fee=fee_quote["total"], lock=True)
-                charged, fee_quote = waivers.apply_to_fee(waiver, fee_quote)
-                total += charged
-            order = Order.objects.create(
-                customer=request.user, status=Order.PENDING, total_amount=total, ready_not_before=hold.for_items(items),
-                delivery_fee=charged if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card, route_plan=plan,
-                **(promo.order_extras() if promo else {}),
-                delivery_method=delivery_method,
-                delivery_address=delivery_address if delivery_method == Order.DOOR_TO_DOOR else "",
-                delivery_phone=delivery_phone if delivery_method == Order.DOOR_TO_DOOR else "",
-                delivery_gps_address=delivery_gps_address, delivery_landmark=delivery_landmark,
-                delivery_lat=request.data.get("delivery_lat") if delivery_method == Order.DOOR_TO_DOOR else None,
-                delivery_lng=request.data.get("delivery_lng") if delivery_method == Order.DOOR_TO_DOOR else None,
-            )
-            if waiver is not None and fee_quote and fee_quote.get("waived"):
-                waivers.record_charge(order, waiver, Decimal(fee_quote["waived"]["amount"]))
-            if promo:
-                promo_checkout.create_lines(order, promo)
-                promo_checkout.record_redemption(order, promo, request.user)
-            else:
-                for item in items:
-                    line_total = item.unit_price_snapshot * item.quantity
-                    OrderItem.objects.create(
-                        order=order,
-                        listing=item.listing,
-                        variant=item.variant,
-                        variant_label=item.variant.label if item.variant_id else "",
-                        quantity=item.quantity,
-                        unit_price=item.unit_price_snapshot,
-                        line_total=line_total,
-                    )
+            # Lock the cart row and read it again: the cart above was read before this transaction, so a second tab, a
+            # retry or a bulk add could have changed it, and two checkouts of one cart would otherwise both buy it. The
+            # lock order (cart, then listings, then variants) is the same one the bulk cart add takes. A cart that
+            # changed since the prices and fee were worked out is refused; the shopper reviews it and tries again.
+            Cart.objects.select_for_update().get(pk=cart.pk)
+            items = list(cart.items.select_related(*self.CART_RELATED))
+            if not items:
+                return Response({"detail": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
+            if self._signature(items) != read_signature:
+                return Response(
+                    {"detail": "Your cart changed while you were checking out. Review it and try again.", "code": "cart_changed"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            refusal = refuse_stale_prices(items)  # review BE-11; nothing but the refreshed snapshots is saved by a refusal
+            if refusal is not None:
+                return refusal
+            promo, refusal = price_promotions(request, items, delivery)
+            if refusal is not None:
+                return refusal
+            reservations, refusal = reserve_stock(items)
+            if refusal is not None:
+                return refusal
+            pricing = price_order(items, promo, route)
+            total = pricing.total
+            order = create_order(request.user, request.data, items, delivery, route, pricing, promo, request_id)
 
             # The provider's collection charge ("payment processing", spec §1 row 14) is paid on top of a MoMo payment
             # while the ledger is on; a wallet payment carries none. With the ledger off nothing is added.
@@ -344,6 +209,7 @@ class OrderCheckoutView(APIView):
                         amount=total + processing,
                         processing_fee=processing,
                         wallet=payment_method == WALLET,
+                        defer_provider_call=True,  # Hubtel is called after this transaction commits (review BE-06)
                         purpose=f"AshantiHub Order #{order.id}",
                         customer=request.user,
                         # stock_reservations lets _fail_order_checkout put the stock
@@ -361,22 +227,30 @@ class OrderCheckoutView(APIView):
                 db_transaction.set_rollback(True)
                 return Response({"detail": WALLET_TOO_LOW, "code": "insufficient_funds"}, status=status.HTTP_409_CONFLICT)
 
-            if result["mode"] == "redirect":
-                redirect = {
-                    "mode": "redirect",
-                    "checkout_url": result["checkout_url"],
-                    "reference": result["reference"],
-                }
-                if escrow.enabled():
-                    redirect["payment_processing"] = str(processing)
-                return Response(redirect, status=status.HTTP_200_OK)
+            hubtel_session = None
+            if result["mode"] == "hubtel_pending":
+                hubtel_session = result["session"]
+            else:
+                # Immediate/simulated mode - process_payment() has already created the Transaction and run
+                # _finalize_order_checkout (order.status = PAID) synchronously, exactly as this view always did.
+                order.refresh_from_db()
+                cart.items.all().delete()
 
-            # Immediate/simulated mode — process_payment() has already
-            # created the Transaction and run _finalize_order_checkout
-            # (order.status = PAID) synchronously, exactly matching this
-            # view's pre-existing behavior.
-            order.refresh_from_db()
-            cart.items.all().delete()
+        if hubtel_session is not None:
+            # The order, stock reservation and session are committed and every row lock is released; only now do we
+            # wait on Hubtel. If it fails the session is closed and the stock goes back (start_hubtel_checkout).
+            try:
+                result = start_hubtel_checkout(hubtel_session)
+            except Exception:
+                logger.exception("Hubtel checkout could not be started for order %s", order.id)
+                return Response(
+                    {"detail": "We could not start the payment. Nothing was charged - please try again.", "code": "payment_unavailable"},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            redirect = {"mode": "redirect", "checkout_url": result["checkout_url"], "reference": result["reference"]}
+            if escrow.enabled():
+                redirect["payment_processing"] = str(processing)
+            return Response(redirect, status=status.HTTP_200_OK)
 
         body = OrderSerializer(order).data
         if escrow.enabled():

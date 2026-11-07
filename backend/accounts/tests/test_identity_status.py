@@ -1,14 +1,14 @@
 import importlib
 
-from django.apps import apps
 from django.test import TestCase
 
 from accounts.models import BusinessOwner, BusinessOwnerProfile
+from accounts.testing import apps_at
 
 
 def _backfill():
     module = importlib.import_module("accounts.migrations.0068_identity_status")
-    module.backfill_identity(apps, None)
+    module.backfill_identity(apps_at("accounts", "0068_identity_status"), None)
 
 
 class IdentityStatusTests(TestCase):

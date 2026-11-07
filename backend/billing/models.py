@@ -91,6 +91,11 @@ class SubscriptionPlan(models.Model):
     def __str__(self):
         return self.name
 
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(monthly_price__gte=0), name="billing_subscriptionplan_monthly_price_gte0"),  # review DB-07
+        ]
+
 
 class Subscription(models.Model):
     ACTIVE = "active"
@@ -169,11 +174,11 @@ class Transaction(models.Model):
     # the same row — enforced by the CheckConstraint below. Both FKs are
     # nullable so exactly one is set per row.
     business_owner = models.ForeignKey(
-        BusinessOwner, on_delete=models.CASCADE, related_name="transactions",
+        BusinessOwner, on_delete=models.PROTECT, related_name="transactions",
         null=True, blank=True,
     )
     customer = models.ForeignKey(
-        Customer, on_delete=models.CASCADE, related_name="transactions",
+        Customer, on_delete=models.PROTECT, related_name="transactions",
         null=True, blank=True,
     )
     amount = models.DecimalField(max_digits=10, decimal_places=2)

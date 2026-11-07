@@ -280,7 +280,7 @@ class CheckoutRecheckTests(FinalFixBase):
             return hidden_business_q(*args, **kwargs)
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(customer, 'customer')}")
-        with mock.patch("orders.views.hidden_business_q", side_effect=race):
+        with mock.patch("orders.checkout.hidden_business_q", side_effect=race):
             response = self.client.post("/api/orders/checkout/", {}, format="json")
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(response.json()["code"], "listing_unavailable")

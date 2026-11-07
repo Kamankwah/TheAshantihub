@@ -4,7 +4,6 @@ kyc_status; and no Ghana Card or registration detail reaches a public response."
 import importlib
 import itertools
 
-from django.apps import apps
 from django.core.cache import cache
 from django.db import connection
 from django.test import TestCase
@@ -13,7 +12,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import BusinessOwner, BusinessOwnerProfile
-from accounts.testing import make_staff, staff_token
+from accounts.testing import apps_at, make_staff, staff_token
 from catalogue import offers
 from catalogue.models import CatalogueProduct
 from catalogue.tests.helpers import BARCODE, product
@@ -94,7 +93,7 @@ class IdentityPublicMarkTests(TestCase):
         )
         listing(business)
         self.assertIs(self.results()[0]["business_owner"]["identity_verified"], False)
-        importlib.import_module("accounts.migrations.0068_identity_status").backfill_identity(apps, None)
+        importlib.import_module("accounts.migrations.0068_identity_status").backfill_identity(apps_at("accounts", "0068_identity_status"), None)
         self.assertIs(self.results()[0]["business_owner"]["identity_verified"], True)
         self.assertEqual([r["business_owner"]["id"] for r in self.results("?verified=true")], [business.pk])
 

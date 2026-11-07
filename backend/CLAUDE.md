@@ -173,7 +173,10 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **Phones are compared by their last 9 digits.** Write owner phones through
   `accounts.phones.normalize_gh_phone()` (`+233...`) and match stored phones only through
   `phone_key()` / `filter_by_phone()` (there is no `phone_match_q`), because older rows hold
-  whatever owners typed.
+  whatever owners typed. Since DB-13 the database enforces it: unique indexes on `lower(email)` (customers, owners, staff) and on the
+  phone key (customer `phone`, owner `login_phone`), created by `core.migration_ops.AddUniqueGuarded` (skipped with a warning if
+  legacy duplicates exist: `manage.py find_identity_duplicates` lists them). A test that models such a legacy duplicate calls
+  `core.testing.drop_index`.
 - **Hidden businesses:** a suspended owner - or, only while `SUBSCRIPTION_PAUSE_ENABLED` is on, one
   whose subscription is paused - is hidden from public browse by
   `listings.visibility.hidden_business_q()`. Every public listing or event queryset, and adding to
@@ -621,6 +624,68 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **The wishlist API is not opening-gated** (browse and wishlist work before opening).
 - **Two sponsored lists:** the public `storefront/sponsored/` feed (live, published, not hidden) versus the
   staff-only `listings/sponsored/` Marketing list; never swap their permissions.
+
+## Hardening from the 2026-11-06 review (what changed, so you don't undo it)
+
+- **Checkout (`orders/views.py` + `orders/checkout.py`).** The POST takes an optional client `request_id`
+  (`Order.request_id`, unique per customer) and a repeat returns the first order. The cart row is locked and re-read inside
+  the transaction (lock order: cart, listings by pk, variants by pk) and a changed cart answers 409 `cart_changed`. A moved
+  price answers 409 `price_changed` with the refreshed snapshots (this replaced "checkout prices from the snapshot"; add and
+  quantity-change still re-read the price, ruling R33). The step helpers in `checkout.py` **return** a refusal `Response`
+  rather than raise, because the view runs them inside `atomic()` and a raise would roll back the refreshed snapshots.
+- **Hubtel is called after the checkout transaction commits** (`process_payment(defer_provider_call=True)` then
+  `start_hubtel_checkout`); a failure there cancels the order and returns the stock (503 `payment_unavailable`). The other
+  `process_payment` callers (booking, tickets, events, top-ups, subscriptions) still call it inside their own transactions.
+- **A paid Hubtel order clears its cart lines in the finalizer**, not the view. A payment for a cancelled order raises
+  `PaidForCancelledOrder`: the session is failed (`not_applied=order_cancelled`, no second stock return) and flagged for a
+  manual refund. `payments.tasks.expire_stale_checkouts` closes PENDING sessions after `CHECKOUT_PENDING_TTL_MINUTES`; a
+  success reported on a closed session is logged `PAID LATE`. The webhook checks the signature **before** storing a payload.
+- **Tokens.** Customers and business owners carry a `tv` claim = `token_version`; a password reset, deletion or
+  `POST accounts/sign-out-everywhere/` bumps it and every older token is refused. A suspended customer/owner is refused at
+  authentication with 403 `{code: "account_suspended"}` (`accounts.authentication.AccountSuspended`, exempt from the 403-to-401
+  rewrite). Reset tokens are stored as SHA-256 (`accounts/reset_tokens.py`, the only issuer), links use a `#fragment`, only the
+  newest link works. New passwords go through `accounts.passwords.validate_new_password`.
+- **Short tokens + refresh (BE-09).** A customer's or owner's access token lives `CUSTOMER_ACCESS_TOKEN_MINUTES` (30; env
+  `DJANGO_ACCESS_TOKEN_MINUTES`); staff keep 12 h because their server-side session is revocable. The refresh token is a
+  `MobileSession` row (30 days, rotated, reuse revokes the family). The app sends/receives it in the body (`X-Client: mobile`);
+  the web app never sees it: `X-Client: web` makes sign-in set the HttpOnly `ah_refresh` cookie (SameSite=Lax, path
+  `/api/accounts/session/`, Secure unless DEBUG) via `mobile_sessions.deliver`, and a cookie refresh also needs that header.
+  Every sign-in response that can carry a refresh token goes through `mobile_sessions.deliver`. CORS allows credentials, so the
+  origin list must stay explicit. A client must treat only a 401 from the refresh call as "signed out" (an outage must not).
+- **Two database roles (DB-05).** The app connects as `POSTGRES_APP_USER` (row access only: not a superuser, owns nothing, no DDL,
+  no `TRUNCATE`, no `DELETE` on `core.db_roles.APPEND_ONLY_TABLES`); `POSTGRES_USER` is the owner, used only by `migrate` and
+  `manage.py provision_db_roles` (`DJANGO_DB_ROLE=owner`), never put into the running containers (compose `environment` overrides
+  `env_file` with `DB_USER`/`DB_PASSWORD`). `deploy.sh` provisions, then runs `check --database default` as the runtime role
+  (`core.E004` fails the deploy if it is a superuser). Code must not need DDL, `TRUNCATE` or ownership at runtime; to prove a change
+  doesn't, run `manage.py test --testrunner core.role_test_runner.RuntimeRoleRunner` (the suite as the restricted role;
+  `TransactionTestCase` classes fail there by design because their flush uses `TRUNCATE`).
+- **Personal data is encrypted at rest (DB-03, `core/pii.py`).** Use `EncryptedCharField` / `EncryptedDateField` for a new national-ID,
+  bank, tax or date-of-birth column. They cannot be searched: exact/IN/contains lookups raise `TypeError`. To find or de-duplicate,
+  add a `*_idx` column kept by `pii.sync_indexes` in `save()` and query it with `pii.blind_index(purpose, value)`; use
+  `queryset.update()` only through the field (it encrypts) and remember `update()` skips `save()`, so it skips the index. A new
+  encrypted column also goes in `core/management/commands/encrypt_pii.py` `TARGETS`. Never log or serialize the ciphertext.
+- **Retention and erasure (DB-04).** `accounts/deletion.py` erases the person; `accounts/retention.py` (daily beat task) blanks delivery
+  details and support text once the grace period (`PII_DELETED_ACCOUNT_GRACE_DAYS`) or retention (`PII_ORDER_RETENTION_DAYS`) passes.
+  New personal data on an order, message or notification model must be added to one of the two. The activity log is hash-chained,
+  so customers' and owners' IPs are truncated at write (`activity.services._event_ip`), never edited later. `accounts/export.py`
+  builds the data export: a new personal field belongs in it (masked if it is an ID or payout number).
+- **Money columns and account links (DB-07, DB-08).** 26 money columns carry `CHECK (x >= 0)` constraints (added `NOT VALID` then validated by
+  `core.migration_ops.AddCheckNotValid`; use it for any new constraint on a big table). `billing.Transaction.amount` is signed on
+  purpose (refund records are negative). A test that needs the impossible row calls `core.testing.drop_check` (rolled back with the
+  test). Foreign keys from money apps to `Customer`/`BusinessOwner` are `PROTECT`; a new one must be too
+  (`core/tests/test_money_checks.py` guards it).
+- **Ledger integrity (DB-06).** A deferred constraint trigger (ledger migration 0015) refuses a commit that leaves a journal with
+  credits != debits, so a test that inserts a lone `JournalLine` must add its other side (or disable `ledger_journal_balanced` in
+  that test). `ledger.tasks.verify_ledger_integrity` (02:00) re-derives balances from the lines and alerts; it corrects nothing.
+- **DB connection settings (DB-09).** Deployed processes reuse connections and set `statement_timeout` (60 s; workers 600 s),
+  `lock_timeout` and `idle_in_transaction_session_timeout`; the owner tasks and tests get none. A new `TransactionTestCase` needs
+  `serialized_rollback = True` (see the existing ones), or the classes after it collide on content types.
+- **Staff 2-step** is required for `settings.STAFF_TWO_FACTOR_DEFAULT_ROLES` until a Super Admin saves a policy (empty under tests).
+- **Background jobs** route to `money` / `slow` / default queues (`CELERY_TASK_ROUTES`), each with its own worker in the
+  production compose; a new queue must be added to both, or its tasks never run. Tasks have a 10-minute limit.
+- **Migrations** must be safe while the previous release runs (`core/migration_lint.py` gates CI). Production `migrate` runs under
+  `lock_timeout=15s`; `core.E001-E003` and `payments.E001-E003` system checks stop a deploy with open CORS/hosts or a bad payment mode.
+- **Identity documents** live under `PRIVATE_MEDIA_ROOT` (`core/private_files.py`) and are served only by signed links.
 
 ## Test-fixture gotcha
 

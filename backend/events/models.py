@@ -267,6 +267,10 @@ class EventPricingTier(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(live_price__gte=0), name="events_eventpricingtier_live_price_gte0"),  # review DB-07
+            models.CheckConstraint(condition=models.Q(pending_price__gte=0), name="events_eventpricingtier_pending_price_gte0"),  # review DB-07
+        ]
         ordering = ["duration_days"]
 
     def __str__(self):
@@ -374,6 +378,7 @@ class EventTicketType(models.Model):
     class Meta:
         ordering = ["created_at"]
         constraints = [
+            models.CheckConstraint(condition=models.Q(price__gte=0), name="events_eventtickettype_price_gte0"),  # review DB-07
             models.UniqueConstraint(
                 fields=["event", "name"], name="unique_ticket_type_name_per_event"
             ),
@@ -427,7 +432,7 @@ class Ticket(models.Model):
     ticket_type = models.ForeignKey(
         EventTicketType, on_delete=models.PROTECT, related_name="tickets"
     )
-    purchased_by = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="tickets")
+    purchased_by = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="tickets")
     transaction = models.ForeignKey(Transaction, on_delete=models.PROTECT, related_name="tickets")
     # Generated in save() via _generate_unique_ticket_code(), exactly
     # mirroring Event.access_code/_generate_unique_access_code above.
@@ -463,6 +468,9 @@ class Ticket(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(price__gte=0), name="events_ticket_price_gte0"),  # review DB-07
+        ]
         ordering = ["-created_at"]
 
     def __str__(self):

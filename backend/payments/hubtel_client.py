@@ -25,6 +25,7 @@ import hmac
 
 import requests
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 
 # UNVERIFIED endpoint — Hubtel's Checkout/Payment Proxy API base URL as
 # publicly documented at the time of writing. Confirm against real docs.
@@ -45,6 +46,9 @@ def create_checkout(session):
     checkout-session creation must never be mistaken for a confirmed
     payment.
     """
+    if not settings.HUBTEL_CLIENT_ID or not settings.HUBTEL_CLIENT_SECRET:
+        # Fail closed and say why, rather than send a doomed request: a blank id means the deployment is mis-set.
+        raise ImproperlyConfigured("PAYMENTS_PROVIDER is 'hubtel' but the Hubtel credentials are blank.")
     payload = {
         "totalAmount": float(session.amount),
         "description": session.purpose,

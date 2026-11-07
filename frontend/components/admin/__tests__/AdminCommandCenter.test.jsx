@@ -119,10 +119,10 @@ describe('AdminCommandCenter — tab control', () => {
     expect(onTabChange).not.toHaveBeenCalled()
   })
 
-  it('controlled: an unpermitted activeTab renders Overview and asks to replace with overview', () => {
+  it('controlled: an unpermitted activeTab renders Overview and asks to replace with overview', async () => {
     const onTabChange = vi.fn()
     renderShell({ activeTab: 'kyc', onTabChange })
-    expect(screen.getByText(/Akwaaba, Akosua/)).toBeInTheDocument()
+    expect(await screen.findByText(/Akwaaba, Akosua/)).toBeInTheDocument()
     expect(onTabChange).toHaveBeenCalledWith('overview', { replace: true })
   })
 

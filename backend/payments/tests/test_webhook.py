@@ -11,7 +11,7 @@ import hashlib
 import hmac
 import json
 
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -59,12 +59,21 @@ class WebhookSignatureTests(TestCase):
         )
         self.assertEqual(response.status_code, 401)
 
-    def test_every_webhook_including_invalid_signature_is_logged(self):
+    def test_a_rejected_webhook_leaves_a_marker_but_not_the_callers_payload(self):
+        # Review BE-13: an unsigned caller must not be able to store arbitrary JSON.
         self.assertEqual(WebhookEvent.objects.count(), 0)
-        self._post({"ClientReference": "AH-TEST-1", "Status": "Success"}, signature="wrong")
-        self.assertEqual(WebhookEvent.objects.count(), 1)
+        self._post({"ClientReference": "AH-TEST-1", "Status": "Success", "junk": "x" * 500}, signature="wrong")
         event = WebhookEvent.objects.get()
         self.assertFalse(event.signature_valid)
+        self.assertEqual(event.hubtel_reference, "")
+        self.assertNotIn("junk", event.raw_payload)
+        self.assertNotIn("ClientReference", event.raw_payload)
+        self.assertIn("Rejected", event.processing_note)
+
+    def test_a_signed_webhook_is_logged_raw(self):
+        self._post({"ClientReference": "AH-TEST-1", "Status": "Success", "Amount": 1})
+        event = WebhookEvent.objects.get()
+        self.assertTrue(event.signature_valid)
         self.assertEqual(event.raw_payload["ClientReference"], "AH-TEST-1")
 
     def test_response_never_echoes_the_webhook_secret(self):
@@ -157,6 +166,26 @@ class WebhookProcessingTests(TestCase):
         event = WebhookEvent.objects.order_by("-received_at").first()
         self.assertIn("Amount mismatch", event.processing_note)
 
+    def test_unpaid_status_never_finalizes_the_order(self):
+        order, session = self._make_pending_order_session()
+        response = self._post({"ClientReference": session.reference, "Status": "Unpaid", "Amount": 150.00})
+        self.assertEqual(response.status_code, 200)
+        session.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(session.status, CheckoutSession.FAILED)
+        self.assertNotEqual(order.status, Order.PAID)
+        self.assertFalse(Transaction.objects.filter(reference=session.reference).exists())
+
+    def test_success_without_an_amount_is_not_trusted(self):
+        order, session = self._make_pending_order_session()
+        response = self._post({"ClientReference": session.reference, "Status": "Success"})
+        self.assertEqual(response.status_code, 200)
+        session.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(session.status, CheckoutSession.PENDING)
+        self.assertEqual(order.status, Order.PENDING)
+        self.assertIn("no amount", WebhookEvent.objects.order_by("-received_at").first().processing_note)
+
     def test_failed_status_marks_session_failed_without_transaction(self):
         order, session = self._make_pending_order_session()
         response = self._post(
@@ -195,3 +224,28 @@ class WebhookProcessingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         ticket_type.refresh_from_db()
         self.assertEqual(ticket_type.quantity_sold, 0)
+
+
+class StatusClassificationTests(SimpleTestCase):
+    """Review BE-04: a refused payment must never classify as paid."""
+
+    def test_refusals_that_contain_a_success_word_are_not_success(self):
+        from payments.models import CheckoutSession
+        from payments.views import _classify_status
+        for raw in ("Unpaid", "Unsuccessful", "Not Approved", "NOT PAID", "unsuccessful_payment"):
+            self.assertNotEqual(_classify_status(raw), CheckoutSession.SUCCESS, raw)
+
+    def test_known_spellings_classify_exactly(self):
+        from payments.models import CheckoutSession
+        from payments.views import _classify_status
+        self.assertEqual(_classify_status(" Success "), CheckoutSession.SUCCESS)
+        self.assertEqual(_classify_status("PAID"), CheckoutSession.SUCCESS)
+        self.assertEqual(_classify_status("Failed"), CheckoutSession.FAILED)
+        self.assertEqual(_classify_status("Unpaid"), CheckoutSession.FAILED)
+        self.assertEqual(_classify_status("Cancelled"), CheckoutSession.FAILED)
+        self.assertEqual(_classify_status("timed_out"), CheckoutSession.EXPIRED)
+
+    def test_unknown_or_empty_status_is_no_action(self):
+        from payments.views import _classify_status
+        for raw in (None, "", "Pending", "processing", "Successfully queued", 3):
+            self.assertIsNone(_classify_status(raw), raw)

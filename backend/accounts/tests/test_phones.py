@@ -4,6 +4,7 @@ from django.test import SimpleTestCase, TestCase
 
 from accounts.models import BusinessOwner, BusinessOwnerProfile
 from accounts.phones import filter_by_phone, normalize_gh_phone, phone_key
+from core.testing import drop_index
 
 HINT = "Enter a Ghana phone number, for example 024 123 4567."
 
@@ -62,6 +63,7 @@ class PhoneKeyTests(TestCase):
                 self.assertFalse(filter_by_phone(BusinessOwner.objects.all(), "login_phone", raw).exists())
 
     def test_the_result_is_a_queryset_that_keeps_its_filters(self):
+        drop_index("accounts_businessowner_phone_key_unique")  # models legacy rows the index now refuses (review DB-13)
         stored = _owner("+233241234567")
         _owner("0241234567", name="Old Duplicate")
         matches = filter_by_phone(BusinessOwner.objects.filter(full_name="Old Duplicate"), "login_phone", "024 123 4567")
@@ -70,8 +72,8 @@ class PhoneKeyTests(TestCase):
 
     def test_matching_works_through_a_relation(self):
         owner = _owner("+233201112233")
-        BusinessOwnerProfile.objects.create(business_owner=owner, payout_momo_number="024 123 4567")
-        matches = filter_by_phone(BusinessOwner.objects.all(), "profile__payout_momo_number", "+233241234567")
+        BusinessOwnerProfile.objects.create(business_owner=owner, business_contact_phone="024 123 4567")
+        matches = filter_by_phone(BusinessOwner.objects.all(), "profile__business_contact_phone", "+233241234567")
         self.assertEqual(list(matches), [owner])
         both = filter_by_phone(matches, "login_phone", "020 111 2233")
         self.assertEqual(list(both), [owner])

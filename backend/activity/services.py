@@ -145,9 +145,30 @@ def _client_ip(request):
     return _canonical_ip(request.META.get("HTTP_X_REAL_IP") or request.META.get("REMOTE_ADDR"))
 
 
+def _truncate_ip(value):
+    """The network, not the household: an IPv4 address loses its last octet, an IPv6 address everything past the /48. What the
+    log needs (roughly where, and is it the same network) survives; the address of one person's connection does not."""
+    if not value:
+        return value
+    address = ipaddress.ip_address(value)
+    prefix = 24 if address.version == 4 else 48
+    return str(ipaddress.ip_network(f"{address}/{prefix}", strict=False).network_address)
+
+
 def client_ip(request):
     """Public name for the canonical client IP (accounts.sessions reads it)."""
     return _client_ip(request)
+
+
+def _event_ip(django_request, actor):
+    """Staff actions keep the full address (an employee's account is a security surface); a customer's or business owner's is
+    truncated (review DB-04). The hash chain covers whatever is stored here, so this must happen before the event is sealed."""
+    from accounts.models import StaffUser
+
+    if django_request is None:
+        return None
+    ip = _client_ip(django_request)
+    return ip if isinstance(actor, StaffUser) or actor is None else _truncate_ip(ip)
 
 
 def _notify(event):
@@ -176,7 +197,7 @@ def record(actor, verb, *, target=None, target_type="", target_id="", target_lab
         summary=_without_nul(str(summary))[:300],
         before=_bounded(before),
         after=_bounded(after),
-        ip=_client_ip(django_request) if django_request is not None else None,
+        ip=_event_ip(django_request, actor),
         user_agent=django_request.META.get("HTTP_USER_AGENT", "")[:300] if django_request is not None else "",
         request_id=getattr(django_request, "activity_request_id", "") if django_request is not None else "",
         **_actor_fields(actor),
