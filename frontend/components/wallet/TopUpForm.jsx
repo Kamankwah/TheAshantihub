@@ -7,6 +7,7 @@ import ProcessingLine from './ProcessingLine.jsx'
 import { walletMessage } from './walletErrors.js'
 import { formatGhs, isPlausibleAmount } from './walletMoney.js'
 import { walletStyles } from './walletStyles.js'
+import { goToCheckout } from "../../lib/safeRedirect.js";
 
 // Add money to the wallet by mobile money. The processing figures come from
 // the server (ProcessingLine); the button posts only a plausible amount.
@@ -32,7 +33,7 @@ export default function TopUpForm({ tone = 'light', onDone }) {
     try {
       const res = await apiPost('/api/wallet/top-up/', { amount })
       if (res?.mode === 'redirect' && res.checkout_url) {
-        window.location.href = res.checkout_url
+        goToCheckout(res.checkout_url)
         return
       }
       await Promise.all([

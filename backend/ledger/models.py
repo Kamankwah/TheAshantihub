@@ -4,6 +4,8 @@ A balance lives on `Account.net_credit` (credits minus debits) as a cache that o
 `ledger.posting.post` changes, in the same transaction that writes the journal lines."""
 from django.db import models
 
+from core.pii import EncryptedCharField
+
 
 class Account(models.Model):
     CUSTOMER_WALLET = "customer_wallet"
@@ -212,7 +214,7 @@ class FulfilmentCheck(models.Model):
     collected_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     # A store-pickup order's one-time six-digit hand-over code (only the customer's own order shows it) and the wrong
     # tries so far; at five the desk is locked out and Support is told.
-    collection_code = models.CharField(max_length=6, blank=True, default="")
+    collection_code = EncryptedCharField(max_length=6, blank=True, default="")  # shown to the customer, so encrypted rather than hashed (DB-14)
     code_attempts = models.PositiveSmallIntegerField(default=0)
     phone_confirmed_at = models.DateTimeField(null=True, blank=True)
     outcome = models.CharField(max_length=14, choices=OUTCOME_CHOICES, blank=True, default="")

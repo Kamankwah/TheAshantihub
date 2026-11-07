@@ -37,6 +37,13 @@ server {
 	# Django does not serve uploads or static files when DEBUG=False
 	# (see backend/ashantihub/urls.py) — nginx does, straight off the
 	# bind-mounted host directories the container writes to.
+	# Identity documents are private: the API serves them through short-lived signed links (backend core/private_files).
+	# They no longer live under media/, but refuse the old public paths outright in case a file is ever restored there.
+	# A plain regex location (never "^~") so it outranks the /media/ prefix below.
+	location ~ ^/media/(ghana_cards|business_reg_certificates)/ {
+		return 404;
+	}
+
 	location /media/ {
 		alias   __APP_DIR__/backend/media/;
 		expires 30d;

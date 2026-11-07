@@ -1,8 +1,11 @@
+import re
+
 from django.core import mail
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from accounts import invite_tokens
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, Customer
 
@@ -31,13 +34,14 @@ class CustomerSecondaryEmailVerificationTests(TestCase):
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.secondary_email, "recovery@example.com")
         self.assertFalse(self.customer.secondary_email_verified)
-        self.assertRegex(self.customer.secondary_email_verify_code, r"^\d{6}$")
+        self.assertRegex(self.customer.secondary_email_verify_code, r"^[0-9a-f]{64}$")  # stored as an HMAC (DB-14)
         self.assertIsNotNone(self.customer.secondary_email_verify_expires_at)
 
         self.assertEqual(len(mail.outbox), 1)
         sent = mail.outbox[0]
         self.assertEqual(sent.to, ["recovery@example.com"])
-        self.assertIn(self.customer.secondary_email_verify_code, sent.body)
+        emailed = re.search(r"\b(\d{6})\b", sent.body).group(1)
+        self.assertTrue(invite_tokens.verify_code_matches(self.customer.secondary_email_verify_code, emailed))
 
     def test_request_rejects_same_as_primary_email(self):
         response = self.client.post(
@@ -53,8 +57,7 @@ class CustomerSecondaryEmailVerificationTests(TestCase):
             {"secondary_email": "recovery@example.com"},
             format="json",
         )
-        self.customer.refresh_from_db()
-        code = self.customer.secondary_email_verify_code
+        code = re.search(r"\b(\d{6})\b", mail.outbox[0].body).group(1)
 
         response = self.client.post(
             "/api/accounts/customers/me/secondary-email/confirm/", {"code": code}, format="json",

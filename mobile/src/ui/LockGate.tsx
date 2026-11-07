@@ -35,26 +35,52 @@ export function LockGate({ children }: { children: ReactNode }) {
     if (showLock) void unlock();
   }, [showLock, unlock]);
 
-  if (!(enabled && signedIn) || (!locked && !covered)) return <>{children}</>;
+  const overlay = enabled && signedIn && (locked || covered);
+  // The app stays mounted underneath: going to another app for a moment must not throw away a half-filled form, a checkout
+  // in progress or the paid-result screen (review MOB-06). The opaque overlay covers it, blocks touches and hides it from
+  // screen readers; it also hides it in the phone's app switcher.
   return (
-    <View
-      accessibilityViewIsModal
-      style={{ flex: 1, backgroundColor: c.canvas, alignItems: "center", justifyContent: "center", gap: 16, padding: 24 }}
-    >
-      <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 32 }}>
-        AshantiHub
-      </Text>
-      {locked ? (
-        <View style={{ alignSelf: "stretch", gap: 12 }}>
-          <Button label="Unlock" onPress={() => void unlock()} />
-          <Button
-            variant="secondary"
-            label="Sign in with password instead"
-            onPress={() => {
-              useLock.setState({ locked: false });
-              void useAuth.getState().signOut();
-            }}
-          />
+    <View style={{ flex: 1 }}>
+      <View
+        style={{ flex: 1 }}
+        accessibilityElementsHidden={overlay}
+        importantForAccessibility={overlay ? "no-hide-descendants" : "auto"}
+        pointerEvents={overlay ? "none" : "auto"}
+      >
+        {children}
+      </View>
+      {overlay ? (
+        <View
+          accessibilityViewIsModal
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: c.canvas,
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 16,
+            padding: 24,
+          }}
+        >
+          <Text accessibilityRole="header" style={{ color: c.ink, fontFamily: fonts.display, fontSize: 32 }}>
+            AshantiHub
+          </Text>
+          {locked ? (
+            <View style={{ alignSelf: "stretch", gap: 12 }}>
+              <Button label="Unlock" onPress={() => void unlock()} />
+              <Button
+                variant="secondary"
+                label="Sign in with password instead"
+                onPress={() => {
+                  useLock.setState({ locked: false });
+                  void useAuth.getState().signOut();
+                }}
+              />
+            </View>
+          ) : null}
         </View>
       ) : null}
     </View>

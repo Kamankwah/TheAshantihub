@@ -57,7 +57,17 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   async bootstrap() {
-    const { access } = await session.load();
+    let access: string | undefined;
+    try {
+      ({ access } = await session.load());
+    } catch {
+      // Secure storage can fail (a restored phone whose Keystore keys are gone): start signed out rather than on a blank screen.
+      try {
+        await session.clear();
+      } catch {
+        // nothing more to do; the person signs in again
+      }
+    }
     if (!access) {
       set({ status: "signedOut" });
       return;

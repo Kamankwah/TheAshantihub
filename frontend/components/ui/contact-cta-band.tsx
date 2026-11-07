@@ -44,7 +44,7 @@ export function ContactCtaBand({ user, onCreateAccount, whatsappPhone, whatsappN
           <div className="flex flex-wrap items-center justify-center gap-3">
             {/* WhatsApp support is an account-holder channel — guests use the
                 in-app chat (open to everyone) instead. */}
-            {user && (
+            {!!user && (
               <span className="inline-flex rounded-full border bg-card p-1 shadow-sm">
                 <WhatsAppButton phone={whatsappPhone} name={whatsappName} />
               </span>

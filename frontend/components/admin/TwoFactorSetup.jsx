@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
 import { saveBlob } from "../../lib/saveBlob.js";
 import { button, codeField } from "./panels/panelStyles.js";
 import { D } from "./theme.js";
@@ -18,7 +17,7 @@ export function TwoFactorSetup({ secret, otpauthUri, onConfirm, busy, error }) {
   const [code, setCode] = useState("");
   useEffect(() => {
     let live = true;
-    QRCode.toString(otpauthUri, { type: "svg", errorCorrectionLevel: "M", margin: 2 })
+    import("qrcode").then(({ default: QRCode }) => QRCode.toString(otpauthUri, { type: "svg", errorCorrectionLevel: "M", margin: 2 }))
       .then((svg) => { if (live) setQr(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`); })
       .catch(() => { if (live) setQr(null); });
     return () => { live = false; };

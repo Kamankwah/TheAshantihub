@@ -6,13 +6,16 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
+
+from core import pii
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
-from . import sessions
+from . import lockout, reset_tokens, sessions
 from .authentication import ACCOUNT_MODELS
 from .emails import send_password_reset_email, send_staff_invite_email
 from .gps import validate_ashanti_gps
+from .passwords import validate_new_password
 from .models import (
     BusinessOwner,
     BusinessOwnerProfile,
@@ -29,6 +32,7 @@ from delivery.models import VEHICLE_TYPES as VEHICLE_TYPE_CHOICES, DeliveryZone,
 from listings.models import Zone
 
 from .permissions import can_lead_team, can_manage_staff, general_manager_manager_problem
+from . import invite_tokens
 from .phones import filter_by_phone, mask_phone
 
 # Used to pay the same check_password() cost when no account is found, so that
@@ -108,13 +112,26 @@ def _require_usable_contact(unsaved_account, field):
 
 
 class CustomerRegistrationSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=8)
+    password = serializers.CharField(write_only=True, min_length=8, validators=[validate_new_password])
     # {"sms": true, "email": true, ...} - the sign-up form's marketing boxes, each separate and unticked by default.
     marketing_consent = serializers.JSONField(write_only=True, required=False)
 
     class Meta:
         model = Customer
         fields = ["id", "full_name", "phone", "email", "password", "marketing_consent"]
+
+    def validate_phone(self, value):
+        # The same number written another way ("024..." and "+23324...") is the same person (review DB-13): the database refuses it
+        # too, so answer it here as a normal field error rather than a 500.
+        if value and filter_by_phone(Customer.objects.all(), "phone", value).exists():
+            raise serializers.ValidationError("customer with this phone already exists.")
+        return value
+
+    def validate_email(self, value):
+        value = (value or "").strip().lower() or None
+        if value and Customer.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("customer with this email already exists.")
+        return value
 
     def validate(self, attrs):
         phone = attrs.get("phone")
@@ -202,7 +219,7 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         rider_profile = {k: validated_data.pop(k) for k in ("vehicle_type", "home_zone", "first_shift_date", "invite_note") if k in validated_data}
         validated_data["password_hash"] = make_password(get_random_string(32))
         validated_data["invited_by"] = self.context["request"].user
-        validated_data["invite_token"] = get_random_string(43)
+        raw_token, validated_data["invite_token"] = invite_tokens.new_invite_token()
         validated_data["invite_expires_at"] = timezone.now() + INVITE_TOKEN_LIFETIME
         validated_data["invite_sent_at"] = timezone.now()
         staff = StaffUser.objects.create(**validated_data)
@@ -216,18 +233,18 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         # this token — a hardcoded domain here once sent staging invites to
         # the production site, where the token doesn't exist.
         send_staff_invite_email(
-            staff, f"{settings.FRONTEND_BASE_URL}/staff/activate?token={staff.invite_token}"
+            staff, f"{settings.FRONTEND_BASE_URL}/staff/activate?token={raw_token}"
         )
         return staff
 
 
 class StaffActivateSerializer(serializers.Serializer):
     token = serializers.CharField()
-    password = serializers.CharField(min_length=8)
+    password = serializers.CharField(min_length=8, validators=[validate_new_password])
 
     def validate_token(self, value):
         try:
-            staff = StaffUser.objects.get(invite_token=value)
+            staff = StaffUser.objects.get(invite_token=invite_tokens.stored_invite_token(value))
         except StaffUser.DoesNotExist as exc:
             raise serializers.ValidationError("Invalid invite token") from exc
         if staff.invite_expires_at is None or staff.invite_expires_at < timezone.now():
@@ -283,14 +300,8 @@ class PasswordResetRequestSerializer(serializers.Serializer):
                 # A scout-registered owner must accept the Business Agreement
                 # through a claim (accounts/claims.py), not a reset.
                 continue
-            token = get_random_string(43)
-            PasswordResetToken.objects.create(
-                account_type=account_type,
-                account_id=account.id,
-                token=token,
-                expires_at=timezone.now() + PASSWORD_RESET_TOKEN_LIFETIME,
-            )
-            reset_link = f"{settings.FRONTEND_BASE_URL}/reset-password?token={token}&type={account_type}"
+            token = reset_tokens.issue(account_type, account.id)
+            reset_link = reset_tokens.link_for(token, account_type)
             send_password_reset_email(email, reset_link)
         return None
 
@@ -298,12 +309,12 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 class PasswordResetConfirmSerializer(serializers.Serializer):
     token = serializers.CharField()
     account_type = serializers.ChoiceField(choices=list(ACCOUNT_MODELS.keys()))
-    password = serializers.CharField(min_length=8)
+    password = serializers.CharField(min_length=8, validators=[validate_new_password])
 
     def validate(self, attrs):
         try:
             reset_token = PasswordResetToken.objects.get(
-                token=attrs["token"], account_type=attrs["account_type"]
+                token=reset_tokens.hash_token(attrs["token"]), account_type=attrs["account_type"]
             )
         except PasswordResetToken.DoesNotExist as exc:
             raise serializers.ValidationError("Invalid or expired reset token") from exc
@@ -328,7 +339,11 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
         with transaction.atomic():
             self.account.password_hash = make_password(self.validated_data["password"])
-            self.account.save(update_fields=["password_hash"])
+            update_fields = ["password_hash"]
+            if not isinstance(self.account, StaffUser):
+                self.account.token_version += 1  # a reset is often "someone else may have my password": end every token
+                update_fields.append("token_version")
+            self.account.save(update_fields=update_fields)
             self.reset_token.used_at = timezone.now()
             self.reset_token.save(update_fields=["used_at"])
             if isinstance(self.account, StaffUser):
@@ -363,20 +378,27 @@ class OwnerEmailSerializer(serializers.Serializer):
 
 
 class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=8)
+    password = serializers.CharField(write_only=True, min_length=8, validators=[validate_new_password])
     # Required: the go-live rule needs a confirmed email, and the confirmation link goes out at sign-up. The model
     # field is unique, so the unique validator is kept (as the model field would add it).
-    email = serializers.EmailField(
-        max_length=254,
-        error_messages=EMAIL_REQUIRED_ERRORS,
-        validators=[UniqueValidator(queryset=BusinessOwner.objects.all(), message=EMAIL_TAKEN)],
-    )
+    email = serializers.EmailField(max_length=254, error_messages=EMAIL_REQUIRED_ERRORS)
     kyc_status = serializers.CharField(read_only=True)
     marketing_consent = serializers.JSONField(write_only=True, required=False)
 
     class Meta:
         model = BusinessOwner
         fields = ["id", "full_name", "login_phone", "email", "password", "kyc_status", "marketing_consent"]
+
+    def validate_email(self, value):
+        value = value.strip().lower()
+        if BusinessOwner.objects.filter(email__iexact=value).exists():  # case-insensitive, like the database index (review DB-13)
+            raise serializers.ValidationError(EMAIL_TAKEN)
+        return value
+
+    def validate_login_phone(self, value):
+        if value and filter_by_phone(BusinessOwner.objects.all(), "login_phone", value).exists():
+            raise serializers.ValidationError("business owner with this login phone already exists.")
+        return value
 
     def validate(self, attrs):
         _require_usable_contact(
@@ -645,7 +667,8 @@ def same_card_number(a, b):
 
 def card_number_taken(value, *, exclude=None):
     """Whether another business holds this number, in any case."""
-    taken = BusinessOwnerProfile.objects.filter(ghana_card_number__iexact=value)
+    # The column is ciphertext: match on the blind index (core.pii), which ignores case and spacing.
+    taken = BusinessOwnerProfile.objects.filter(ghana_card_number_idx=pii.blind_index("ghana_card", value))
     if exclude is not None and exclude.pk is not None:
         taken = taken.exclude(pk=exclude.pk)
     return taken.exists()
@@ -790,13 +813,16 @@ class CustomerLoginSerializer(serializers.Serializer):
     password = serializers.CharField()
 
     def validate(self, attrs):
+        lockout.check("customer", attrs["identifier"])
         account = Customer.objects.filter(
             Q(phone=attrs["identifier"]) | Q(email=attrs["identifier"])
         ).first()
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
         password_valid = check_password(attrs["password"], password_hash)
         if account is None or not password_valid or account.deleted_at:
+            lockout.record_failure("customer", attrs["identifier"])
             raise serializers.ValidationError("Invalid credentials")
+        lockout.clear("customer", attrs["identifier"])
         # Only surfaced after valid credentials — never leaks a suspension to
         # someone who couldn't otherwise sign in.
         if account.is_suspended:
@@ -811,6 +837,7 @@ class BusinessOwnerLoginSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         identifier = attrs["identifier"]
+        lockout.check("business_owner", identifier)
         account = BusinessOwner.objects.filter(
             Q(login_phone=identifier) | Q(email=identifier)
         ).first()
@@ -827,7 +854,9 @@ class BusinessOwnerLoginSerializer(serializers.Serializer):
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
         password_valid = check_password(attrs["password"], password_hash)
         if account is None or not password_valid or account.deleted_at:
+            lockout.record_failure("business_owner", identifier)
             raise serializers.ValidationError("Invalid credentials")
+        lockout.clear("business_owner", identifier)
         if account.is_suspended:
             raise serializers.ValidationError(SUSPENDED_LOGIN_MESSAGE)
         self.account = account
@@ -839,6 +868,7 @@ class StaffLoginSerializer(serializers.Serializer):
     password = serializers.CharField()
 
     def validate(self, attrs):
+        lockout.check("staff", attrs["identifier"])
         account = StaffUser.objects.filter(email=attrs["identifier"]).first()
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
         password_valid = check_password(attrs["password"], password_hash)
@@ -847,7 +877,9 @@ class StaffLoginSerializer(serializers.Serializer):
         self.refusal = ""
         if account is None or not password_valid:
             self.refusal = "Wrong password or unknown address"
+            lockout.record_failure("staff", attrs["identifier"])
             raise serializers.ValidationError("Invalid credentials")
+        lockout.clear("staff", attrs["identifier"])
         # Only surfaced after valid credentials — never leaks account state to
         # someone who couldn't otherwise sign in (punch-list item 10). Both a
         # temporary suspension and a "no longer works here" deactivation stop
@@ -898,7 +930,7 @@ class CustomerSecondaryEmailRequestSerializer(serializers.Serializer):
         return value
 
     def save(self):
-        code = get_random_string(6, allowed_chars="0123456789")
+        self.raw_code, code = invite_tokens.new_verify_code()
         customer = self.context["request"].user
         customer.secondary_email = self.validated_data["secondary_email"]
         customer.secondary_email_verified = False
@@ -920,7 +952,7 @@ class CustomerSecondaryEmailConfirmSerializer(serializers.Serializer):
             raise serializers.ValidationError("No verification in progress. Request a new code.")
         if customer.secondary_email_verify_expires_at < timezone.now():
             raise serializers.ValidationError("This code has expired. Request a new one.")
-        if attrs["code"] != customer.secondary_email_verify_code:
+        if not invite_tokens.verify_code_matches(customer.secondary_email_verify_code, attrs["code"]):
             raise serializers.ValidationError("Incorrect code.")
         return attrs
 
@@ -945,7 +977,7 @@ class CustomerSecondaryPhoneRequestSerializer(serializers.Serializer):
         return value
 
     def save(self):
-        code = get_random_string(6, allowed_chars="0123456789")
+        self.raw_code, code = invite_tokens.new_verify_code()
         customer = self.context["request"].user
         customer.secondary_phone = self.validated_data["secondary_phone"]
         customer.secondary_phone_verified = False
@@ -967,7 +999,7 @@ class CustomerSecondaryPhoneConfirmSerializer(serializers.Serializer):
             raise serializers.ValidationError("No verification in progress. Request a new code.")
         if customer.secondary_phone_verify_expires_at < timezone.now():
             raise serializers.ValidationError("This code has expired. Request a new one.")
-        if attrs["code"] != customer.secondary_phone_verify_code:
+        if not invite_tokens.verify_code_matches(customer.secondary_phone_verify_code, attrs["code"]):
             raise serializers.ValidationError("Incorrect code.")
         return attrs
 

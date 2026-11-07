@@ -19,6 +19,7 @@ from django.utils import timezone
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
 from accounts.phones import normalize_gh_phone
 from accounts.serializers import mask_but_last
+from core import pii
 from ledger import settings_store
 from otp.identity import ref
 from payments import providers
@@ -141,7 +142,7 @@ def check(holder, data):
         )
     rail, institution, account_number = clean(data if isinstance(data, dict) else {}, holder)
     live = live_for(holder)
-    if live.filter(rail=rail, account_number=account_number).exists():
+    if live.filter(rail=rail, account_number_idx=pii.blind_index("account", account_number)).exists():
         raise DestinationError(DUPLICATE, "duplicate", 409)
     if live.count() >= MAX_LIVE:
         raise DestinationError(TOO_MANY, "too_many", 409)
@@ -181,7 +182,7 @@ def save(holder, checked, now=None):
         raise DestinationError("The name on that account doesn't match the name we have verified for you.", "name_mismatch", 400)
     checked = {**checked, "matched_name": matched[:150]}
     live = live_for(holder)
-    if live.filter(rail=checked["rail"], account_number=checked["account_number"]).exists():
+    if live.filter(rail=checked["rail"], account_number_idx=pii.blind_index("account", checked["account_number"])).exists():
         raise DestinationError(DUPLICATE, "duplicate", 409)
     if live.count() >= MAX_LIVE:
         raise DestinationError(TOO_MANY, "too_many", 409)

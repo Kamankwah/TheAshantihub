@@ -213,7 +213,7 @@ describe("business home", () => {
     server({ "/api/accounts/me/": me(), "/api/orders/owner/": { results: [], next: null }, "/api/accounts/business/hours/": { has_hours: true, days: [] }, "/api/catalogue/stock/": stock() });
     await render(client(<BusinessHome />));
     await fireEvent.press(await screen.findByLabelText("WhatsApp Update to AshantiHub"));
-    expect(open).toHaveBeenCalledWith(expect.stringMatching(/^https:\/\/wa\.me\/233244000000/));
+    expect(open).toHaveBeenCalledWith(expect.stringMatching(/^https:\/\/wa\.me\/233502481685/));
   });
 
   it("spend_is_not_called_revenue", async () => {

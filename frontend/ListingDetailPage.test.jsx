@@ -946,7 +946,7 @@ describe('ListingDetailPage — booking a stay with the wallet ledger (plan 1F)'
   })
 
   it('book posts payment_method and follows a redirect', async () => {
-    setup({ post: () => HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.example/c/9' }) })
+    setup({ post: () => HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.hubtel.com/c/9' }) })
     const PaymentComponent = vi.fn(({ onSuccess }) => <button onClick={onSuccess}>confirm momo</button>)
     const original = window.location
     Object.defineProperty(window, 'location', { configurable: true, value: { href: 'http://localhost/' } })
@@ -956,7 +956,7 @@ describe('ListingDetailPage — booking a stay with the wallet ledger (plan 1F)'
       await waitFor(() => expect(screen.getByRole('button', { name: 'Book and pay' })).not.toBeDisabled())
       fireEvent.click(screen.getByRole('button', { name: 'Book and pay' }))
       fireEvent.click(await screen.findByText('confirm momo'))
-      await waitFor(() => expect(window.location.href).toBe('https://pay.example/c/9'))
+      await waitFor(() => expect(window.location.href).toBe('https://pay.hubtel.com/c/9'))
       expect(posts).toEqual([{ listing: 3, check_in: '2030-06-10', check_out: '2030-06-13', units: 1, payment_method: 'momo' }])
       expect(PaymentComponent.mock.calls[0][0].processing).toBe('3.00')
       expect(screen.queryByText(/Booked!/)).not.toBeInTheDocument()

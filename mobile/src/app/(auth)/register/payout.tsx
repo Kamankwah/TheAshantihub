@@ -69,7 +69,7 @@ export default function Payout() {
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
             {NETWORKS.map((n) => (
               <Pressable key={n} accessibilityRole="radio" accessibilityLabel={n} accessibilityState={{ selected: network === n }} onPress={() => setNetwork(n)}
-                style={{ minHeight: 44, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: c.line, justifyContent: "center", backgroundColor: network === n ? c.gold : c.surface }}>
+                style={{ minHeight: 48, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: c.line, justifyContent: "center", backgroundColor: network === n ? c.gold : c.surface }}>
                 <Text style={{ color: network === n ? c.onGold : c.ink, fontFamily: fonts.bodySemi }}>{n}</Text>
               </Pressable>
             ))}

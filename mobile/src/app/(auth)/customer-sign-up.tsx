@@ -1,5 +1,4 @@
 import { router } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -40,7 +39,6 @@ function Check({ checked, onToggle, label, children }: { checked: boolean; onTog
   );
 }
 
-const open = (url?: string) => (url ? WebBrowser.openBrowserAsync(url) : undefined);
 
 export default function CustomerSignUp() {
   const { c } = useTheme();
@@ -123,11 +121,11 @@ export default function CustomerSignUp() {
       />
       <Check checked={terms} onToggle={() => setTerms(!terms)} label="I agree to the Terms and Privacy Policy">
         I agree to the{" "}
-        <Text style={{ textDecorationLine: "underline" }} onPress={() => open(process.env.EXPO_PUBLIC_TERMS_URL)}>
+        <Text style={{ textDecorationLine: "underline" }} onPress={() => router.push("/legal/terms" as never)}>
           Terms
         </Text>{" "}
         and{" "}
-        <Text style={{ textDecorationLine: "underline" }} onPress={() => open(process.env.EXPO_PUBLIC_PRIVACY_URL)}>
+        <Text style={{ textDecorationLine: "underline" }} onPress={() => router.push("/legal/privacy" as never)}>
           Privacy Policy
         </Text>
       </Check>

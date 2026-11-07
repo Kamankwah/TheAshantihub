@@ -9,10 +9,16 @@ def current():
 
 
 def required_roles():
-    """Role names that must use 2-step sign-in because Super Admin said so
-    (Super Admin itself is always required elsewhere)."""
+    """Role names that must use 2-step sign-in (Super Admin itself is always required elsewhere). Once a Super Admin
+    has saved a policy, that list is the whole answer (an empty list is a deliberate choice). Until then the roles that
+    move money, see personal data or approve others' work are required by default (review BE-16):
+    ``settings.STAFF_TWO_FACTOR_DEFAULT_ROLES``."""
+    from django.conf import settings
+
     policy = current()
-    return set(policy.two_factor_roles) if policy else set()
+    if policy:
+        return set(policy.two_factor_roles)
+    return set(settings.STAFF_TWO_FACTOR_DEFAULT_ROLES)
 
 
 def requires_two_factor(role_name):

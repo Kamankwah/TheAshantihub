@@ -10,6 +10,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import PasswordResetToken
+from accounts.reset_tokens import hash_token
 from otp import devices, signin
 from otp.models import SIGN_IN, SIGN_UP, SMS, OtpEvent, TrustedDevice, VerifiedContact
 from staffsecurity import policy
@@ -45,7 +46,7 @@ class TrustedDeviceTests(TestCase):
 
     def test_a_password_reset_revokes_every_device_and_records_it(self):
         PasswordResetToken.objects.create(
-            account_type="customer", account_id=self.customer.pk, token="reset-1", expires_at=timezone.now() + timedelta(hours=1),
+            account_type="customer", account_id=self.customer.pk, token=hash_token("reset-1"), expires_at=timezone.now() + timedelta(hours=1),
         )
         response = APIClient().post(
             "/api/accounts/password-reset/confirm/",

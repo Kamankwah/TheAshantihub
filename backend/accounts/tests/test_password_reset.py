@@ -9,6 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import BusinessOwner, Customer, PasswordResetToken, Role, StaffUser
+from accounts.reset_tokens import hash_token
 
 
 class PasswordResetRequestTests(TestCase):
@@ -31,15 +32,17 @@ class PasswordResetRequestTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
 
         token = PasswordResetToken.objects.get(account_type="customer", account_id=self.customer.id)
-        self.assertIsNotNone(token.token)
+        self.assertEqual(len(token.token), 64)  # the SHA-256 hex, never the raw token
         self.assertIsNone(token.used_at)
         self.assertGreater(token.expires_at, timezone.now())
 
         self.assertEqual(len(mail.outbox), 1)
         sent = mail.outbox[0]
         self.assertEqual(sent.to, ["ama@example.com"])
-        self.assertIn(token.token, sent.body)
-        self.assertIn(f"{settings.FRONTEND_BASE_URL}/reset-password?token=", sent.body)
+        self.assertIn(f"{settings.FRONTEND_BASE_URL}/reset-password#token=", sent.body)
+        raw = sent.body.split("#token=")[1].split("&")[0]
+        self.assertEqual(hash_token(raw), token.token)
+        self.assertNotIn(token.token, sent.body)
 
     def test_request_is_silent_and_generic_when_the_account_does_not_exist(self):
         response = self.client.post(
@@ -101,14 +104,17 @@ class PasswordResetConfirmTests(TestCase):
         )
 
     def _make_token(self, account_type, account_id, **overrides):
+        raw = overrides.pop("token", "a-valid-token-123")
         defaults = {
             "account_type": account_type,
             "account_id": account_id,
-            "token": "a-valid-token-123",
+            "token": hash_token(raw),
             "expires_at": timezone.now() + datetime.timedelta(hours=1),
         }
         defaults.update(overrides)
-        return PasswordResetToken.objects.create(**defaults)
+        row = PasswordResetToken.objects.create(**defaults)
+        row.token = raw  # the in-memory copy carries the raw token a test posts; the database holds only its hash
+        return row
 
     def test_confirm_works_with_a_valid_token(self):
         token = self._make_token("customer", self.customer.id)
@@ -285,3 +291,40 @@ class PasswordResetTypelessRequestTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(PasswordResetToken.objects.count(), 0)
         self.assertEqual(len(mail.outbox), 0)
+
+
+class ResetTokenHardeningTests(TestCase):
+    """Review BE-14: one live link, hashed at rest, and a poor password is refused."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.customer = Customer.objects.create(
+            full_name="Ama", email="ama@example.com", phone="+233241234500", password_hash=make_password("old-password-1"),
+        )
+
+    def request_link(self):
+        cache.clear()  # the request endpoint is throttled
+        self.client.post("/api/accounts/password-reset/request/", {"email": "ama@example.com", "account_type": "customer"}, format="json")
+        return mail.outbox[-1].body.split("#token=")[1].split("&")[0]
+
+    def confirm(self, raw, password):
+        cache.clear()
+        return self.client.post(
+            "/api/accounts/password-reset/confirm/", {"token": raw, "account_type": "customer", "password": password}, format="json",
+        )
+
+    def test_only_the_newest_link_works(self):
+        first = self.request_link()
+        second = self.request_link()
+        self.assertEqual(self.confirm(first, "a-fresh-passphrase-7").status_code, 400)
+        self.assertEqual(self.confirm(second, "a-fresh-passphrase-7").status_code, 200)
+
+    def test_a_common_password_is_refused_on_reset(self):
+        raw = self.request_link()
+        refused = self.confirm(raw, "password123")
+        self.assertEqual(refused.status_code, 400, refused.content)
+        self.assertEqual(self.confirm(raw, "a-fresh-passphrase-7").status_code, 200)  # the refusal did not use the link up
+
+    def test_an_all_digit_password_is_refused(self):
+        raw = self.request_link()
+        self.assertEqual(self.confirm(raw, "839201746502").status_code, 400)

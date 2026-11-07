@@ -76,6 +76,21 @@ describe("api client", () => {
     expect((await session.load()).access).toBeUndefined();
   });
 
+  it("refresh_that_cannot_be_answered_keeps_the_session", async () => {
+    await session.save("old", "refresh-1");
+    useAuth.setState({ status: "signedIn", account: { type: "customer", id: 1, fullName: "Ama" } });
+    mockFetch({ status: 401 }, { status: 503 });
+    await expect(api("/api/orders/")).rejects.toMatchObject({ status: 401 });
+    expect(useAuth.getState().status).toBe("signedIn");
+    expect((await session.load()).refresh).toBe("refresh-1");
+    (globalThis as any).fetch = jest.fn(async (url: unknown) => {
+      if (String(url).includes("/session/refresh/")) throw new TypeError("Network request failed");
+      return reply({ status: 401 });
+    });
+    await expect(api("/api/orders/")).rejects.toMatchObject({ status: 401 });
+    expect(useAuth.getState().status).toBe("signedIn");
+  });
+
   it("staff_account_is_rejected", async () => {
     await expect(
       useAuth.getState().signIn({ token: "t", account_type: "staff", id: 9, full_name: "Staff" }),

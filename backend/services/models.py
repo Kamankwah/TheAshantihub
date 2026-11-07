@@ -38,12 +38,12 @@ class ServiceRequest(models.Model):
     # Terminal states — no further transitions.
     FINAL_STATUSES = (DECLINED, COMPLETED, CANCELLED)
 
-    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="service_requests")
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="service_requests")
     listing = models.ForeignKey(Listing, on_delete=models.PROTECT, related_name="service_requests")
     # Denormalised from listing.business_owner so the owner's incoming queue is
     # a plain filter and survives even if the listing is later reassigned.
     business_owner = models.ForeignKey(
-        BusinessOwner, on_delete=models.CASCADE, related_name="incoming_service_requests"
+        BusinessOwner, on_delete=models.PROTECT, related_name="incoming_service_requests"
     )
 
     message = models.TextField()
@@ -60,6 +60,10 @@ class ServiceRequest(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(budget__gte=0), name="services_servicerequest_budget_gte0"),  # review DB-07
+            models.CheckConstraint(condition=models.Q(agreed_price__gte=0), name="services_servicerequest_agreed_price_gte0"),  # review DB-07
+        ]
         ordering = ["-created_at"]
 
     def __str__(self):

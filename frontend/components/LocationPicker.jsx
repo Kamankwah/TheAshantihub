@@ -2,16 +2,11 @@ import { useState } from "react";
 import { MapContainer, Marker, useMapEvents } from "react-leaflet";
 import BaseTileLayers from "./maps/BaseTileLayers.jsx";
 import L from "leaflet";
+import "../lib/leafletIcons.js";
 import "leaflet/dist/leaflet.css";
 import { C } from "../theme.js";
 import { reverseGeocodeText } from "../lib/reverseGeocode.js";
 
-const iconBase = "https://unpkg.com/leaflet@1.9.4/dist/images/";
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: `${iconBase}marker-icon-2x.png`,
-  iconUrl: `${iconBase}marker-icon.png`,
-  shadowUrl: `${iconBase}marker-shadow.png`,
-});
 
 // Kumasi centre — the platform's home city, a sensible default view before the
 // customer has dropped a pin.

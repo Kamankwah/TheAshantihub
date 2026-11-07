@@ -130,6 +130,9 @@ class Dispute(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(refund_amount__gte=0), name="disputes_dispute_refund_amount_gte0"),  # review DB-07
+        ]
         ordering = ["-created_at"]
 
     def __str__(self):

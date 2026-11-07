@@ -53,10 +53,28 @@ function refuseWhileViewing(path) {
 // proves the API is reachable. The original error is rethrown unchanged.
 const sentAuth = new WeakMap()
 
+// Calls that start, renew or end a browser session (review BE-09). The refresh token is an HttpOnly cookie the page
+// cannot read: these calls say they come from the web app (X-Client) and send/receive the cookie (credentials). No other
+// call carries either, so ordinary public GETs stay simple, un-preflighted requests.
+const WEB_SESSION_PATHS = new Set([
+  '/api/accounts/customers/login/',
+  '/api/accounts/customers/register/',
+  '/api/accounts/business-owners/login/',
+  '/api/accounts/business-owners/register/',
+  '/api/otp/sign-in/verify/',
+  '/api/accounts/session/refresh/',
+  '/api/accounts/session/logout/',
+])
+
+function withWebSession(path, init) {
+  if (!WEB_SESSION_PATHS.has(path.split('?')[0])) return init
+  return { ...init, credentials: 'include', headers: { ...init?.headers, 'X-Client': 'web' } }
+}
+
 async function request(path, init) {
   let response
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, init)
+    response = await fetch(`${API_BASE_URL}${path}`, withWebSession(path, init))
   } catch (error) {
     reportApiNetworkFailure()
     throw error
@@ -110,6 +128,54 @@ async function refusalCode(response) {
   }
 }
 
+// A customer's or business owner's access token is short-lived (30 minutes). When the API answers 401 for one, the browser's
+// refresh cookie is traded for a new token and the call is made once more, so a person is not signed out mid-task.
+// Calls arriving together share one refresh. A refresh the server refuses (401) ends the session as before; one that could
+// not be asked or answered (offline, a server error) throws an error with no `.status`, which callers treat as "keep the
+// stored session", never as a sign-out. Staff tokens are not refreshed: their sessions are revoked server-side.
+let refreshing = null
+
+function refreshSession() {
+  if (!refreshing) {
+    refreshing = (async () => {
+      try {
+        const response = await request('/api/accounts/session/refresh/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+        if (response.status === 401) return false
+        if (!response.ok) throw new Error(`Session refresh failed with status ${response.status}`)
+        const body = await response.json()
+        const stored = getStoredAuth()
+        if (!stored || !body?.token) return false
+        setStoredAuth({ ...stored, token: body.token })
+        return true
+      } finally {
+        refreshing = null
+      }
+    })()
+  }
+  return refreshing
+}
+
+async function renewedAfter401(response) {
+  const stored = getStoredAuth()
+  const sent = sentAuth.get(response)
+  if (!stored?.token || !sent || stored.account_type === 'staff') return false // nothing signed in, or a staffer
+  if (sent !== `Bearer ${stored.token}`) return true // another call or tab has already renewed it: just retry
+  return refreshSession()
+}
+
+// Ends the browser's refresh session (server-side revoke + cookie cleared). Best effort: signing out never waits on it.
+export function endWebSession() {
+  return request('/api/accounts/session/logout/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  }).catch(() => {})
+}
+
 async function send(path, makeInit) {
   const method = makeInit().method || 'GET'
   if (lastStepUp && Date.now() >= lastStepUp.expiresAt) lastStepUp = null
@@ -140,6 +206,7 @@ async function send(path, makeInit) {
     }
     response = await request(path, build())
   }
+  if (response.status === 401 && (await renewedAfter401(response))) response = await request(path, build())
   // Only an answer for the remembered method and path may clear it; an
   // unrelated request (a background refetch) must not cost a second code.
   const sameRequest = lastStepUp?.method === method && lastStepUp.path === path
@@ -190,8 +257,10 @@ async function handleResponse(response, path, { session = true } = {}) {
   return response.json()
 }
 
-export async function apiFetch(path) {
-  const response = await send(path, () => ({ headers: authHeaders(path) }))
+// `options.signal` (optional) is the AbortSignal React Query hands a queryFn, so a query that is
+// unmounted or superseded cancels its in-flight request instead of finishing it for nobody.
+export async function apiFetch(path, options = {}) {
+  const response = await send(path, () => ({ headers: authHeaders(path), ...(options.signal ? { signal: options.signal } : {}) }))
   return handleResponse(response, path)
 }
 

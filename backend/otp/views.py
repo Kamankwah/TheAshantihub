@@ -150,4 +150,6 @@ class SignInVerifyView(APIView):
         payload = signin.signed_in_body(ticket.account, request)
         if ticket.account_type == CUSTOMER and _truthy(body.get("trust_device")):
             payload["device_token"] = devices.trust(ticket.account, request, existing=_text(body.get("device_token")) or "")
-        return Response(payload)
+        from accounts import mobile_sessions
+
+        return mobile_sessions.deliver(request, Response(payload))

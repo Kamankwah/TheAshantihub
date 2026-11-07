@@ -29,3 +29,13 @@ def staff_token(staff, *, sudo=False):
     if sudo:
         sessions.grant_sudo(session_of(token))
     return token
+
+
+def apps_at(app_label, migration_name):
+    """The model registry exactly as ``migration_name`` left it, for running an old data migration's function in a test. The
+    live models now encrypt some columns (DB-03); a migration written before that must see the plain columns it was written for."""
+    from django.db import connection
+    from django.db.migrations.loader import MigrationLoader
+
+    loader = MigrationLoader(connection)
+    return loader.project_state((app_label, migration_name)).apps

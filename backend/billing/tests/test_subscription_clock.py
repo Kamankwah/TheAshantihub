@@ -415,7 +415,7 @@ class PaymentClearsTheClockTests(TestCase):
             business_owner=self.owner, kind=CheckoutSession.SUBSCRIPTION, amount="10.00",
             purpose="AshantiHub Product Basic — 1 month", metadata={"plan": "product_basic", "cycle_months": 1},
         )
-        raw = json.dumps({"ClientReference": session.reference, "Status": "Success"}).encode("utf-8")
+        raw = json.dumps({"ClientReference": session.reference, "Status": "Success", "Amount": 10.0}).encode("utf-8")
         signature = hmac.new(WEBHOOK_SECRET.encode("utf-8"), raw, hashlib.sha256).hexdigest()
         response = APIClient().generic(
             "POST", "/api/payments/webhook/hubtel/", data=raw, content_type="application/json",

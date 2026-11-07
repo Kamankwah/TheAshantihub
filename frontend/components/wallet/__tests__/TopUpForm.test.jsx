@@ -66,14 +66,14 @@ describe('TopUpForm', () => {
   })
 
   it('test_redirect_answer_navigates_to_checkout_url', async () => {
-    server.use(http.post(`${API}/api/wallet/top-up/`, () => HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.example/c/1' })))
+    server.use(http.post(`${API}/api/wallet/top-up/`, () => HttpResponse.json({ mode: 'redirect', checkout_url: 'https://pay.hubtel.com/c/1' })))
     const original = window.location
     Object.defineProperty(window, 'location', { configurable: true, value: { href: 'http://localhost/' } })
     try {
       renderForm()
       type('10')
       fireEvent.click(screen.getByRole('button', { name: 'Top up' }))
-      await waitFor(() => expect(window.location.href).toBe('https://pay.example/c/1'))
+      await waitFor(() => expect(window.location.href).toBe('https://pay.hubtel.com/c/1'))
     } finally {
       Object.defineProperty(window, 'location', { configurable: true, value: original })
     }

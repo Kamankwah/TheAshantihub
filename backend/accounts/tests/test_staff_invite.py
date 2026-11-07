@@ -1,4 +1,5 @@
 import datetime
+import re
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password
@@ -10,6 +11,7 @@ from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
 from accounts.models import Permission, Role, StaffUser
+from accounts.reset_tokens import hash_token
 from accounts.testing import staff_token
 
 
@@ -40,7 +42,9 @@ class StaffInviteTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         sent = mail.outbox[0]
         self.assertEqual(sent.to, ["akosua@example.com"])
-        self.assertIn(invited.invite_token, sent.body)
+        raw = re.search(r"/staff/activate\?token=(\w+)", sent.body).group(1)
+        self.assertEqual(hash_token(raw), invited.invite_token)  # the database holds the hash, never the emailed token
+        self.assertNotEqual(raw, invited.invite_token)
         self.assertIn(f"{settings.FRONTEND_BASE_URL}/staff/activate?token=", sent.body)
         # The staff-app install page (/staff/install), per environment like
         # the activation link, so a staging invite never points at production.
@@ -83,7 +87,7 @@ class StaffInviteTests(TestCase):
             password_hash="unusable",
             role=Role.objects.get(name="support"),
             invited_by=self.super_admin,
-            invite_token="valid-token-123",
+            invite_token=hash_token("valid-token-123"),
             invite_expires_at=timezone.now() + datetime.timedelta(days=7),
         )
         response = self.client.post(
@@ -104,7 +108,7 @@ class StaffInviteTests(TestCase):
             password_hash="unusable",
             role=Role.objects.get(name="support"),
             invited_by=self.super_admin,
-            invite_token="expired-token-456",
+            invite_token=hash_token("expired-token-456"),
             invite_expires_at=timezone.now() - datetime.timedelta(days=1),
         )
         response = self.client.post(
@@ -121,20 +125,21 @@ class StaffInviteTests(TestCase):
             password_hash="unusable",
             role=Role.objects.get(name="support"),
             invited_by=self.super_admin,
-            invite_token="old-token-789",
+            invite_token=hash_token("old-token-789"),
             invite_expires_at=timezone.now() - datetime.timedelta(days=1),
         )
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
         response = self.client.post(f"/api/accounts/staff/{invited.id}/resend-invite/")
         self.assertEqual(response.status_code, 200)
         invited.refresh_from_db()
-        self.assertNotEqual(invited.invite_token, "old-token-789")
+        self.assertNotEqual(invited.invite_token, hash_token("old-token-789"))
         self.assertGreater(invited.invite_expires_at, timezone.now())
 
         self.assertEqual(len(mail.outbox), 1)
         sent = mail.outbox[0]
         self.assertEqual(sent.to, ["waiting@example.com"])
-        self.assertIn(invited.invite_token, sent.body)
+        raw = re.search(r"/staff/activate\?token=(\w+)", sent.body).group(1)
+        self.assertEqual(hash_token(raw), invited.invite_token)
         self.assertIn(f"{settings.FRONTEND_BASE_URL}/staff/install", sent.body)
 
     def test_non_super_admin_cannot_invite_super_admin(self):
@@ -194,7 +199,7 @@ class StaffInviteTests(TestCase):
             password_hash="unusable",
             role=Role.objects.get(name="support"),
             invited_by=self.super_admin,
-            invite_token="token-hire-abc",
+            invite_token=hash_token("token-hire-abc"),
             invite_expires_at=timezone.now() + datetime.timedelta(days=7),
         )
         response = self.client.post(

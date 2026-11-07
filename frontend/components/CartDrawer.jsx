@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { C } from "../theme.js";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCart } from "../hooks/useCart.js";
+import { useDialogFocus } from "../hooks/useDialogFocus.js";
 import { apiPatch, apiDelete } from "../apiClient.js";
 import { TABULAR } from "./storefront/storefrontType.js";
 
@@ -17,6 +18,8 @@ import { TABULAR } from "./storefront/storefrontType.js";
 // Amounts are the cart's own GHS strings, always shown as GHS: what is charged is GHS whatever the display currency
 // (Ruling P26), so there is no currency conversion here.
 export default function CartDrawer({ onClose, onGoToCart }) {
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, onClose);
   const { data: cart, isLoading, isError, refetch } = useCart();
   const queryClient = useQueryClient();
   const refreshGuard = () => { queryClient.invalidateQueries({ queryKey: ["cart-guard"] }); queryClient.invalidateQueries({ queryKey: ["listings"] }); };
@@ -60,12 +63,13 @@ export default function CartDrawer({ onClose, onGoToCart }) {
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 999 }} onClick={onClose}>
       <div
+        ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="cart-drawer-title"
         style={{ position: "absolute", top: 65, right: 16, background: C.surface, borderRadius: 16, width: 340, maxHeight: "82vh", overflowY: "auto", boxShadow: "0 8px 40px rgba(0,0,0,0.2)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontWeight: 800, color: C.ink, fontSize: "0.85rem" }}>🛒 Your Cart {items.length > 0 ? `(${items.length})` : ""}</div>
-          <button onClick={onClose} aria-label="Close cart" style={{ background: "none", border: "none", cursor: "pointer", color: C.inkFaint, fontSize: "1.1rem" }}>✕</button>
+          <h2 id="cart-drawer-title" style={{ margin: 0, fontWeight: 800, color: C.ink, fontSize: "0.85rem" }}>🛒 Your Cart {items.length > 0 ? `(${items.length})` : ""}</h2>
+          <button type="button" onClick={onClose} aria-label="Close cart" style={{ background: "none", border: "none", cursor: "pointer", color: C.inkFaint, fontSize: "1.1rem" }}>✕</button>
         </div>
 
         {isLoading && (

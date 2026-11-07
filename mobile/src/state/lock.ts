@@ -25,8 +25,13 @@ export const useLock = create<LockState>((set, get) => ({
   backgroundedAt: undefined,
 
   async hydrate() {
-    const saved = (await SecureStore.getItemAsync(KEY)) === "1";
-    set({ enabled: saved && (await biometrics.available()), locked: saved });
+    try {
+      const saved = (await SecureStore.getItemAsync(KEY)) === "1";
+      set({ enabled: saved && (await biometrics.available()), locked: saved });
+    } catch {
+      // If the setting cannot be read, run without the lock; the person can turn it on again in Security.
+      set({ enabled: false, locked: false });
+    }
   },
 
   async setEnabled(value) {
