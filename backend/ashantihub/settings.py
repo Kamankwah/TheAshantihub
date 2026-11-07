@@ -63,6 +63,9 @@ if not PII_ENCRYPTION_KEYS or not PII_INDEX_KEY:
 PII_DELETED_ACCOUNT_GRACE_DAYS = env.int("PII_DELETED_ACCOUNT_GRACE_DAYS", default=90)
 PII_ORDER_RETENTION_DAYS = env.int("PII_ORDER_RETENTION_DAYS", default=6 * 365)
 NOTIFICATION_RETENTION_DAYS = env.int("NOTIFICATION_RETENTION_DAYS", default=365)
+# Raw Hubtel payloads (customer names and numbers) and sent business texts are kept this long for reconciliation and disputes (DB-12).
+WEBHOOK_EVENT_RETENTION_DAYS = env.int("WEBHOOK_EVENT_RETENTION_DAYS", default=400)
+VENDOR_TEXT_RETENTION_DAYS = env.int("VENDOR_TEXT_RETENTION_DAYS", default=400)
 for _key in PII_ENCRYPTION_KEYS:
     try:
         Fernet(_key.encode())

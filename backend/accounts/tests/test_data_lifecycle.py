@@ -130,8 +130,31 @@ class RetentionTests(TestCase):
         Notification.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=400))
         Notification.objects.create(customer=customer, kind=Notification.ORDER_STATUS, title="New")
         self.assertEqual(retention.scrub_expired()["notifications"], 1)
-        self.assertEqual(retention.scrub_expired(), {"orders": 0, "messages": 0, "notifications": 0})
+        self.assertEqual(
+            retention.scrub_expired(), {"orders": 0, "messages": 0, "notifications": 0, "webhooks": 0, "vendor_texts": 0},
+        )
         self.assertEqual(list(Notification.objects.values_list("title", flat=True)), ["New"])
+
+
+@override_settings(WEBHOOK_EVENT_RETENTION_DAYS=400, VENDOR_TEXT_RETENTION_DAYS=400)
+class OtherPurgeTests(TestCase):
+    def test_handled_webhooks_and_finished_texts_expire_but_unhandled_and_queued_ones_stay(self):
+        from payments.models import WebhookEvent
+        from wallets.models import VendorText
+
+        old = timezone.now() - timedelta(days=401)
+        handled = WebhookEvent.objects.create(raw_payload={"a": 1}, processed=True)
+        stuck = WebhookEvent.objects.create(raw_payload={"a": 2}, processed=False)
+        recent = WebhookEvent.objects.create(raw_payload={"a": 3}, processed=True)
+        WebhookEvent.objects.filter(pk__in=[handled.pk, stuck.pk]).update(received_at=old)
+        owner = BusinessOwner.objects.create(full_name="Kwame", login_phone="+233207886600", password_hash="x")
+        sent = VendorText.objects.create(key="k1", business_owner=owner, kind="paid", body="x", status=VendorText.SENT, next_attempt_at=timezone.now())
+        queued = VendorText.objects.create(key="k2", business_owner=owner, kind="paid", body="x", status=VendorText.QUEUED, next_attempt_at=timezone.now())
+        VendorText.objects.filter(pk__in=[sent.pk, queued.pk]).update(created_at=old)
+        result = retention.scrub_expired()
+        self.assertEqual((result["webhooks"], result["vendor_texts"]), (1, 1))
+        self.assertEqual(set(WebhookEvent.objects.values_list("pk", flat=True)), {stuck.pk, recent.pk})
+        self.assertEqual(list(VendorText.objects.values_list("pk", flat=True)), [queued.pk])
 
 
 class ActivityAddressTests(TestCase):
