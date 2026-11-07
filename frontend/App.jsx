@@ -11,6 +11,7 @@ import { addGhs } from "./components/wallet/walletMoney.js";
 import { useListing } from "./hooks/useListing.js";
 import { useEvents } from "./hooks/useEvents.js";
 import { useAuth } from "./hooks/useAuth.js";
+import { useDialogFocus } from "./hooks/useDialogFocus.js";
 import { useTheme } from "./hooks/useTheme.js";
 import { useMyListings } from "./hooks/useMyListings.js";
 import { useMyHeroSubmission } from "./hooks/useMyHeroSubmission.js";
@@ -150,6 +151,8 @@ const MOMO_NETWORKS = [
 // `processing` (optional): the server's payment-processing charge as a GH₵ string. When given, it replaces the
 // simulated 1.5% fee everywhere in the modal; left undefined, the modal behaves exactly as before the ledger.
 export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose, processing: serverProcessing }) {
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, onClose);
   const [step, setStep] = useState(1);
   const [network, setNetwork] = useState(null);
   const [phone, setPhone] = useState("");
@@ -231,12 +234,12 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose,
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
       onClick={e => { if(e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background:C.surface, borderRadius:24, width:"100%", maxWidth:400, boxShadow:"0 24px 64px rgba(0,0,0,0.4)", overflow:"hidden" }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="momo-title" style={{ background:C.surface, borderRadius:24, width:"100%", maxWidth:400, boxShadow:"0 24px 64px rgba(0,0,0,0.4)", overflow:"hidden" }}>
 
         {/* Header */}
         <div style={{ background:`linear-gradient(135deg,${C.darkBrown},${C.kente2})`, padding:"20px 24px", position:"relative" }}>
-          <button onClick={onClose} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", color:"white", fontSize:"1.4rem", cursor:"pointer", opacity:0.7 }}>✕</button>
-          <div style={{ color:C.gold, fontWeight:900, fontSize:"0.9rem", marginBottom:2 }}>💰 Mobile Money Payment</div>
+          <button type="button" onClick={onClose} aria-label="Close" style={{ position:"absolute", top:14, right:16, background:"none", border:"none", color:"white", fontSize:"1.4rem", cursor:"pointer", opacity:0.7 }}>✕</button>
+          <h2 id="momo-title" style={{ margin:"0 0 2px", color:C.gold, fontWeight:900, fontSize:"0.9rem" }}>💰 Mobile Money Payment</h2>
           <div style={{ color:"white", fontSize:"0.78rem", opacity:0.85 }}>{purpose}</div>
           {businessName && <div style={{ color:C.lightGold, fontSize:"0.72rem", opacity:0.75, marginTop:2 }}>{businessName}</div>}
           {/* Progress */}
@@ -1102,6 +1105,8 @@ const authSubmitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"
 // it carries one plain link out to the marketplace instead. The installed
 // staff app has no marketplace and never gets it.
 export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) {
+  const dialogRef=useRef(null);
+  useDialogFocus(dialogRef,onClose);
   const lockedAccountType = authState==="staff-login" ? "staff" : null;
   const [mode,setMode]=useState(authState==="staff-login" ? "login" : authState);
   const [accountType,setAccountType]=useState(lockedAccountType || "customer");
@@ -1214,10 +1219,10 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   };
 
   return <div data-testid="auth-modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="auth-modal-title" style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,borderRadius:"22px 22px 0 0",padding:"20px 24px",position:"relative"}}>
-        <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>{mode==="forgot"?"Reset your password":lockedAccountType==="staff"?"Staff Sign In":mode==="login"?"Welcome back":"Create your account"}</div>
+        <button type="button" onClick={onClose} aria-label="Close" style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
+        <h2 id="auth-modal-title" style={{margin:0,color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>{mode==="forgot"?"Reset your password":lockedAccountType==="staff"?"Staff Sign In":mode==="login"?"Welcome back":"Create your account"}</h2>
       </div>
       <div style={{padding:"20px 24px"}}>
         {!lockedAccountType && mode!=="forgot" && !otp && <div style={{display:"flex",gap:8,marginBottom:16}}>
@@ -1236,8 +1241,8 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
             <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
             <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
           </div>}
-          <input value={identifier} onChange={e=>setIdentifier(e.target.value)} placeholder="Phone or email" required style={authInputStyle}/>
-          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password" required style={authInputStyle}/>
+          <input value={identifier} onChange={e=>setIdentifier(e.target.value)} placeholder="Phone or email" aria-label="Phone or email" autoComplete="username" required style={authInputStyle}/>
+          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password" aria-label="Password" autoComplete="current-password" required style={authInputStyle}/>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Signing in…":"Sign In"}</button>
           <div style={{textAlign:"center",marginTop:10}}>
             <button type="button" onClick={()=>{setMode("forgot");setError(null);setResetSubmitted(false);}} style={{background:"none",border:"none",color:C.deepGold,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}>Forgot password?</button>
@@ -1257,7 +1262,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
                   the type; a visible "Staff" option on a public form would
                   advertise which account classes exist. */}
               <div style={{fontSize:"0.76rem",color:C.inkDim,marginBottom:12,lineHeight:1.5}}>Enter your account email and we'll send you a link to reset your password.</div>
-              <input value={resetEmail} onChange={e=>setResetEmail(e.target.value)} type="email" placeholder="Email" required style={authInputStyle}/>
+              <input value={resetEmail} onChange={e=>setResetEmail(e.target.value)} type="email" placeholder="Email" aria-label="Email" autoComplete="email" required style={authInputStyle}/>
               <button type="submit" disabled={resetSubmitting} style={authSubmitStyle}>{resetSubmitting?"Sending…":"Send Reset Link"}</button>
             </form>
           )}
@@ -1268,10 +1273,10 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
             <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
             <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
           </div>
-          <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={authInputStyle}/>
-          <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" style={authInputStyle}/>
-          <input value={email} onChange={e=>setEmail(e.target.value)} type={accountType==="business_owner"?"text":"email"} inputMode="email" aria-required={accountType==="business_owner"} placeholder="Email" style={authInputStyle}/>
-          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
+          <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" aria-label="Full name" autoComplete="name" required style={authInputStyle}/>
+          <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" aria-label="Phone" type="tel" autoComplete="tel" style={authInputStyle}/>
+          <input value={email} onChange={e=>setEmail(e.target.value)} type={accountType==="business_owner"?"text":"email"} inputMode="email" aria-required={accountType==="business_owner"} placeholder="Email" aria-label="Email" autoComplete="email" style={authInputStyle}/>
+          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" aria-label="Password, at least 8 characters" autoComplete="new-password" required minLength={8} style={authInputStyle}/>
           <fieldset style={{border:`1px solid ${C.line}`,borderRadius:10,padding:"8px 12px",margin:"0 0 12px"}}>
             <legend style={{fontSize:"0.72rem",fontWeight:800,padding:"0 4px"}}>Offers from AshantiHub (optional)</legend>
             {[["sms","SMS"],["whatsapp","WhatsApp"],["email","Email"],["inapp","In the app"]].map(([key,label])=>(
