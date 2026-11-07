@@ -157,6 +157,10 @@
    tokens (background/foreground colors, default font, border-color
    defaults for descendant elements) without affecting the rest of the app. */
 @layer base {
+  /* DESIGN.md: Fraunces for headings. Dense staff panels stay in the body face
+     (sober core); a heading that sets its own font-family inline still wins. */
+  h1, h2, h3 { font-family: var(--font-serif); letter-spacing: -0.01em; }
+  .staff-shell h1, .staff-shell h2, .staff-shell h3 { font-family: var(--font-sans); letter-spacing: normal; }
   .shadcn-scope {
     @apply bg-background text-foreground font-sans;
   }

@@ -2,8 +2,10 @@
 // with tabular figures). Shared by the storefront components so the stacks
 // are spelled once; the fallbacks keep things readable where the web fonts
 // are not loaded.
-export const HEADING_FONT = "'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif";
-export const BODY_FONT = "'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif";
+import { FONTS } from "../../theme.js";
+
+export const HEADING_FONT = FONTS.display;
+export const BODY_FONT = FONTS.body;
 export const TABULAR = { fontVariantNumeric: "tabular-nums", fontFeatureSettings: '"tnum" 1' };
 
 // Shared frame for the home sections: ~1120px content column with the 16px

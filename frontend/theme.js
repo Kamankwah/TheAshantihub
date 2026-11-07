@@ -68,6 +68,15 @@ export const THEME_TOKENS = {
 
 const token = (name) => `var(--${name}, ${THEME_TOKENS.light[name]})`;
 
+// Font stacks from DESIGN.md: Fraunces for headings and the wordmark, Plus Jakarta
+// Sans for body/UI/data, JetBrains Mono for ticket and access codes. Spelled once
+// here; the fallbacks keep things readable where a web font has not loaded.
+export const FONTS = {
+  display: "'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif",
+  body: "'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+  mono: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+};
+
 export const C = {
   // brand colours — fixed in both themes
   gold:"#D4A017", deepGold:"#B8860B", darkBrown:"#2C1810",
