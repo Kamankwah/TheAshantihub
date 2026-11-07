@@ -4,6 +4,7 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from catalogue.models import CatalogueProduct
+from core.testing import drop_check
 from datetime import timedelta
 from decimal import Decimal
 
@@ -171,6 +172,8 @@ class OfferVisibilityTests(TestCase):
         self.assertEqual(response.json()["offers"][0]["listing_id"], other.pk)
 
     def test_a_zero_or_negative_price_is_never_listed_or_featured(self):
+        drop_check("listings_listingpricehistory", "listings_listingpricehistory_price_gte0")
+        drop_check("listings_listing", "listings_listing_price_amount_gte0")  # the database now refuses it; the code must still cope
         product(business("Free Shop"), price="0.00", catalogue_product=self.entry)
         product(business("Odd Shop"), price="-5.00", catalogue_product=self.entry)
         body = self.client.get(sellers_url(self.mine)).json()

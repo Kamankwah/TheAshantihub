@@ -666,6 +666,11 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   New personal data on an order, message or notification model must be added to one of the two. The activity log is hash-chained,
   so customers' and owners' IPs are truncated at write (`activity.services._event_ip`), never edited later. `accounts/export.py`
   builds the data export: a new personal field belongs in it (masked if it is an ID or payout number).
+- **Money columns and account links (DB-07, DB-08).** 26 money columns carry `CHECK (x >= 0)` constraints (added `NOT VALID` then validated by
+  `core.migration_ops.AddCheckNotValid`; use it for any new constraint on a big table). `billing.Transaction.amount` is signed on
+  purpose (refund records are negative). A test that needs the impossible row calls `core.testing.drop_check` (rolled back with the
+  test). Foreign keys from money apps to `Customer`/`BusinessOwner` are `PROTECT`; a new one must be too
+  (`core/tests/test_money_checks.py` guards it).
 - **Ledger integrity (DB-06).** A deferred constraint trigger (ledger migration 0015) refuses a commit that leaves a journal with
   credits != debits, so a test that inserts a lone `JournalLine` must add its other side (or disable `ledger_journal_balanced` in
   that test). `ledger.tasks.verify_ledger_integrity` (02:00) re-derives balances from the lines and alerts; it corrects nothing.

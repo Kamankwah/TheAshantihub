@@ -76,11 +76,11 @@ class CheckoutSession(models.Model):
     # Exactly-one-of business_owner/customer, mirroring billing.Transaction's
     # own CheckConstraint (backend/billing/models.py) exactly.
     business_owner = models.ForeignKey(
-        BusinessOwner, on_delete=models.CASCADE, related_name="checkout_sessions",
+        BusinessOwner, on_delete=models.PROTECT, related_name="checkout_sessions",
         null=True, blank=True,
     )
     customer = models.ForeignKey(
-        Customer, on_delete=models.CASCADE, related_name="checkout_sessions",
+        Customer, on_delete=models.PROTECT, related_name="checkout_sessions",
         null=True, blank=True,
     )
 
@@ -117,6 +117,8 @@ class CheckoutSession(models.Model):
     class Meta:
         ordering = ["-created_at"]
         constraints = [
+            models.CheckConstraint(condition=models.Q(amount__gte=0), name="payments_checkoutsession_amount_gte0"),  # review DB-07
+            models.CheckConstraint(condition=models.Q(processing_fee__gte=0), name="payments_checkoutsession_processing_fee_gte0"),  # review DB-07
             models.CheckConstraint(
                 condition=(
                     models.Q(business_owner__isnull=False, customer__isnull=True)

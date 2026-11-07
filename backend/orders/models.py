@@ -36,7 +36,7 @@ class Order(models.Model):
         (STORE_PICKUP, "Store pickup"),
     ]
 
-    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="orders")
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="orders")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
     delivery_status = models.CharField(
         max_length=20, choices=DELIVERY_STATUS_CHOICES, default=PROCESSING
@@ -83,6 +83,9 @@ class Order(models.Model):
     class Meta:
         ordering = ["-placed_at"]
         constraints = [
+            models.CheckConstraint(condition=models.Q(total_amount__gte=0), name="orders_order_total_amount_gte0"),  # review DB-07
+            models.CheckConstraint(condition=models.Q(discount_amount__gte=0), name="orders_order_discount_amount_gte0"),  # review DB-07
+            models.CheckConstraint(condition=models.Q(delivery_fee__gte=0), name="orders_order_delivery_fee_gte0"),  # review DB-07
             models.UniqueConstraint(
                 fields=["customer", "request_id"], condition=~models.Q(request_id=""), name="order_request_id_unique_per_customer",
             ),
@@ -117,6 +120,12 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"{self.quantity} x {self.listing.name} (Order {self.order_id})"
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(unit_price__gte=0), name="orders_orderitem_unit_price_gte0"),  # review DB-07
+            models.CheckConstraint(condition=models.Q(line_total__gte=0), name="orders_orderitem_line_total_gte0"),  # review DB-07
+        ]
 
 
 class DeliveryAssignment(models.Model):
@@ -231,6 +240,12 @@ class DeliveryAssignment(models.Model):
 
     def __str__(self):
         return f"Delivery for Order {self.order_id} → dispatch {self.dispatch_id} ({self.status})"
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(rider_pay__gte=0), name="orders_deliveryassignment_rider_pay_gte0"),  # review DB-07
+            models.CheckConstraint(condition=models.Q(cod_amount__gte=0), name="orders_deliveryassignment_cod_amount_gte0"),  # review DB-07
+        ]
 
 
 class OrderSupportNote(models.Model):

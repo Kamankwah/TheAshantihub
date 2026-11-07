@@ -31,6 +31,7 @@ class CartItem(models.Model):
     class Meta:
         ordering = ["added_at"]
         constraints = [
+            models.CheckConstraint(condition=models.Q(unit_price_snapshot__gte=0), name="cart_cartitem_unit_price_snapshot_gte0"),  # review DB-07
             models.UniqueConstraint(
                 fields=["cart", "listing"], condition=models.Q(variant__isnull=True), name="unique_novariant_listing_per_cart",
             ),
