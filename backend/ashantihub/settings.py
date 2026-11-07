@@ -30,6 +30,10 @@ if not DEBUG and SECRET_KEY == "dev-only-insecure-key":
 # Changing it locks every enrolled staffer out of the second step until each is
 # reset with `manage.py reset_staff_two_factor <email>`, so set it once and back
 # it up with the database password.
+# Oldest mobile app version the API still serves (core/app_version.py). Blank turns the gate off.
+MOBILE_MIN_VERSION = env("MOBILE_MIN_VERSION", default="")
+MOBILE_STORE_URL = env("MOBILE_STORE_URL", default="")
+
 STAFF_SECRETS_KEY = env("STAFF_SECRETS_KEY", default="")
 if not STAFF_SECRETS_KEY:
     if not DEBUG:
@@ -169,6 +173,8 @@ MIDDLEWARE = [
     # it just stamps X-Frame-Options on the response (W002).
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    # Refuses mobile builds below MOBILE_MIN_VERSION with 426 (core/app_version.py, review MOB-01).
+    "core.app_version.MobileMinVersionMiddleware",
     "django.middleware.common.CommonMiddleware",
     # Step-in: refuses every write carrying X-View-As from a Super Admin
     # before the activity middleware opens its transaction (accounts/view_as.py).
@@ -248,7 +254,7 @@ CORS_ALLOW_ALL_ORIGINS = env.bool("DJANGO_CORS_ALLOW_ALL_ORIGINS", default=True)
 CORS_ALLOWED_ORIGINS = env.list("DJANGO_CORS_ALLOWED_ORIGINS", default=[])
 # The Super Admin's step-in sends two extra headers (accounts/view_as.py).
 # X-Step-Up-Token carries a one-time step-up permission (otp/step_up.py).
-CORS_ALLOW_HEADERS = (*cors_default_headers, "x-view-as", "x-view-as-screen", "x-step-up-token", "x-client")
+CORS_ALLOW_HEADERS = (*cors_default_headers, "x-view-as", "x-view-as-screen", "x-step-up-token", "x-client", "x-app-version")
 # The web app's refresh token is an HttpOnly cookie (accounts/mobile_sessions.py), so its refresh call is made with credentials.
 # django-cors-headers then answers with the caller's own origin (never "*"), and only origins in the allow list.
 CORS_ALLOW_CREDENTIALS = True

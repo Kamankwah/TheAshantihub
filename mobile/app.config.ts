@@ -34,6 +34,7 @@ const config: ExpoConfig = {
     "expo-secure-store",
     "expo-local-authentication",
     "expo-font",
+    "expo-updates",
     // Expo turns on R8 shrinking for release builds; it removed the WorkManager database class and the app
     // crashed on launch on Android (SM-A225F, 2026-11-05). Leave shrinking off for the first release.
     ["expo-build-properties", { android: { enableMinifyInReleaseBuilds: false, enableShrinkResourcesInReleaseBuilds: false } }],
@@ -55,6 +56,11 @@ const config: ExpoConfig = {
       },
     ],
   ],
+  // Over-the-air JS fixes (review MOB-01). A build only receives updates published for its own runtime version, which
+  // follows `version` above, so a JS update can never reach a binary whose native code it was not built against.
+  // Each EAS build profile has its own channel (eas.json); publish with `eas update --channel <profile>`.
+  runtimeVersion: { policy: "appVersion" },
+  updates: { url: "https://u.expo.dev/aef33392-3255-437b-85d2-c888f1532348", checkAutomatically: "ON_LOAD", fallbackToCacheTimeout: 0 },
   experiments: { typedRoutes: true, reactCompiler: true },
   extra: {
     apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL,

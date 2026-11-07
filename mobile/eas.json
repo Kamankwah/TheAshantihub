@@ -8,7 +8,8 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-test.theashantihub.com"
-      }
+      },
+      "channel": "preview"
     },
     "play-internal": {
       "distribution": "store",
@@ -18,7 +19,8 @@
       },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-test.theashantihub.com"
-      }
+      },
+      "channel": "play-internal"
     },
     "production": {
       "autoIncrement": true,
@@ -28,7 +30,8 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api.theashantihub.com"
       },
-      "ios": {}
+      "ios": {},
+      "channel": "production"
     },
     "testflight": {
       "distribution": "store",
@@ -38,7 +41,8 @@
       },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://api-test.theashantihub.com"
-      }
+      },
+      "channel": "testflight"
     }
   },
   "submit": {

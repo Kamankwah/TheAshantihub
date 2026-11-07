@@ -9,6 +9,8 @@ import { usePrefs } from "../state/prefs";
 import { useAppFonts } from "../theme/fonts";
 import AppProviders from "../ui/AppProviders";
 import { LockGate } from "../ui/LockGate";
+import { UpdateGate } from "../ui/UpdateGate";
+import "../state/update";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -23,11 +25,13 @@ export default function RootLayout() {
   if (!ready) return null;
   return (
     <AppProviders>
+    <UpdateGate>
     <LockGate>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="listing/[id]" options={{ animation: "fade", animationDuration: 200 }} />
       </Stack>
     </LockGate>
+    </UpdateGate>
     </AppProviders>
   );
 }

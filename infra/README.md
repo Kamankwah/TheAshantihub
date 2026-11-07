@@ -637,3 +637,9 @@ Rolling out: the new template reaches the server through the normal production d
 templates tree changed). Browse staging with the console open and note every CSP violation; once none remain, rename the header to
 `Content-Security-Policy` in both files and tighten `connect-src` from `https: wss:` to the API and realtime origins.
 Never add a `^~ /.well-known/` location to this file.
+
+## Mobile minimum version (review MOB-01)
+
+`MOBILE_MIN_VERSION` (blank = off) and `MOBILE_STORE_URL` in the server `.env` make the API answer a too-old mobile build with
+`426 upgrade_required` (`core/app_version.py`; `/api/core/health/`, webhooks and web/staff traffic are exempt). Procedure and the
+OTA rollback steps: `docs/mobile-release/UPDATES_AND_ROLLBACK.md`.
