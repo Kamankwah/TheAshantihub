@@ -12,4 +12,4 @@ export const LEGAL_DOCS: Record<string, { title: string; path: string }> = {
 };
 
 /** AshantiHub's own WhatsApp (a business telling AshantiHub about an update). Never a business's number. */
-export const SUPPORT_WHATSAPP = "https://wa.me/233244000000";
+export const SUPPORT_WHATSAPP = "https://wa.me/233502481685";
