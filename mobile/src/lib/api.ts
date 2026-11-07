@@ -15,6 +15,9 @@ export class ApiError extends Error {
   }
 }
 
+export const REQUEST_TIMEOUT_MS = 20_000;
+export const UPLOAD_TIMEOUT_MS = 120_000;
+
 type Init = {
   method?: string;
   body?: unknown;
@@ -49,11 +52,20 @@ async function send(path: string, init: Init) {
   const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
   if (init.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   if (init.auth !== false && session.access) headers.Authorization = `Bearer ${session.access}`;
-  return fetch(build(path, init.query), {
-    method: init.method ?? (init.body !== undefined ? "POST" : "GET"),
-    headers,
-    body: init.body === undefined ? undefined : isForm ? (init.body as FormData) : JSON.stringify(init.body),
-  });
+  // A request that hangs (poor network, dead connection) must end, or the screen waits forever. The rejection is a plain
+  // network failure, which the screens already treat as offline. Uploads get longer because photos are large.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), isForm ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(build(path, init.query), {
+      method: init.method ?? (init.body !== undefined ? "POST" : "GET"),
+      headers,
+      body: init.body === undefined ? undefined : isForm ? (init.body as FormData) : JSON.stringify(init.body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function parse(res: { status: number; text: () => Promise<string> }) {

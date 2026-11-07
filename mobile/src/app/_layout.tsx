@@ -8,6 +8,7 @@ import { useAuth } from "../state/auth";
 import { usePrefs } from "../state/prefs";
 import { useAppFonts } from "../theme/fonts";
 import AppProviders from "../ui/AppProviders";
+import { EnvBadge } from "../ui/EnvBadge";
 import { LockGate } from "../ui/LockGate";
 import { UpdateGate } from "../ui/UpdateGate";
 import "../state/update";
@@ -32,6 +33,7 @@ export default function RootLayout() {
       </Stack>
     </LockGate>
     </UpdateGate>
+    <EnvBadge />
     </AppProviders>
   );
 }
