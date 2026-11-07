@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { C } from "../theme.js";
+import { C, FONTS } from "../theme.js";
 import { apiFetch, apiPost, apiPut } from "../apiClient.js";
 import { apiErrorMessage } from "../lib/apiErrorMessage.js";
 import { GHANA_POST_REGION, ghanaPostError, normalizeGhanaPost } from "../lib/ghanaPost.js";
@@ -385,7 +385,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
   );
 
   return (
-    <div style={{fontFamily:"'Georgia',serif",background:C.surface2,minHeight:"100vh"}}>
+    <div style={{fontFamily:FONTS.body,background:C.surface2,minHeight:"100vh"}}>
       <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.black})`,padding:"0 16px",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.4)"}}>
         <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
         <div style={{maxWidth:520,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:58}}>

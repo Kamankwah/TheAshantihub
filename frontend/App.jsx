@@ -37,7 +37,7 @@ import { useMyTickets } from "./hooks/useMyTickets.js";
 import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
-import { C, optionStyle } from "./theme.js";
+import { C, FONTS, optionStyle } from "./theme.js";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 import VerifiedMark from "./components/VerifiedMark.jsx";
 import Flag from "./components/Flag.jsx";
@@ -1946,7 +1946,7 @@ function TicketsTab({ searchQuery, onContactSupport }) {
             <span style={{background:tint(status.color, "22"),color:status.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:800,whiteSpace:"nowrap"}}>{status.label}</span>
           </div>
           <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontFamily:"monospace",fontSize:"0.8rem",fontWeight:800,color:D.text,background:D.panelBg2,borderRadius:8,padding:"4px 10px"}}>{t.code}</span>
+            <span style={{fontFamily:FONTS.mono,fontSize:"0.8rem",fontWeight:800,color:D.text,background:D.panelBg2,borderRadius:8,padding:"4px 10px"}}>{t.code}</span>
             <button onClick={()=>copyCode(t)} style={{background:"none",border:`1px solid ${D.cardBorderStrong}`,color:D.gold,borderRadius:20,padding:"3px 11px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
               {copiedId===t.id ? "Copied ✓" : "Copy"}
             </button>
@@ -2059,8 +2059,8 @@ function LoadingScreen() {
     <div style={{position:"fixed",inset:0,background:`linear-gradient(135deg,${C.darkBrown},${C.black})`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:9999}}>
       <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
       <Flag w={80} h={53}/>
-      <div style={{color:C.gold,fontWeight:900,fontSize:"1.8rem",letterSpacing:2,marginTop:16,fontFamily:"Georgia,serif"}}>AshantiHub</div>
-      <div style={{color:C.lightGold,fontSize:"0.65rem",letterSpacing:3,opacity:0.8,marginTop:4,fontFamily:"Georgia,serif"}}>THE MARKETPLACE OF ASHANTI</div>
+      <div style={{color:C.gold,fontWeight:900,fontSize:"1.8rem",letterSpacing:2,marginTop:16,fontFamily:FONTS.display}}>AshantiHub</div>
+      <div style={{color:C.lightGold,fontSize:"0.65rem",letterSpacing:3,opacity:0.8,marginTop:4,fontFamily:FONTS.body}}>THE MARKETPLACE OF ASHANTI</div>
       {/* Animated loading bar */}
       <div style={{width:120,height:4,background:"rgba(255,255,255,0.1)",borderRadius:10,marginTop:28,overflow:"hidden"}}>
         <div style={{height:"100%",background:`linear-gradient(90deg,${C.ghRed},${C.ghGold},${C.ghGreen})`,borderRadius:10,animation:"loadBar 1.5s ease-in-out infinite"}}/>
@@ -2114,7 +2114,7 @@ function OfflineBanner() {
 // ─── 404 Not Found Page ───────────────────────────────────────────────────────
 function NotFoundPage({ onHome, user }) {
   return (
-    <div style={{fontFamily:"'Georgia',serif",background:C.canvas,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+    <div style={{fontFamily:FONTS.body,background:C.canvas,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{textAlign:"center",maxWidth:400}}>
         <div style={{fontSize:"4rem",marginBottom:12}}>👑</div>
         <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,borderRadius:20,padding:"28px 24px",marginBottom:20,color:"white"}}>
@@ -2961,7 +2961,7 @@ function AshantiHubApp() {
   );
 
   return (
-    <div style={{fontFamily:"'Georgia',serif",background:C.canvas,minHeight:"100vh",
+    <div style={{fontFamily:FONTS.body,background:C.canvas,minHeight:"100vh",
       ...(showStaffBar ? {"--ah-top-offset":`${STAFF_VIEW_ONLY_BAR_HEIGHT}px`,paddingTop:STAFF_VIEW_ONLY_BAR_HEIGHT} : {})}}>
       {showStaffBar&&<StaffViewOnlyBar onBackToDashboard={()=>navigate("/staff")} onSignOut={staffSignOut}/>}
       {appStaffGate.shownFor&&<StaffGateNotice floating onDismiss={appStaffGate.dismiss}/>}
