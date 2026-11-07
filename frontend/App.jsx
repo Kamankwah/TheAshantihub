@@ -2419,6 +2419,16 @@ function AshantiHubApp() {
   const [authModal,setAuthModal]=useState(null);
   // Where to go once the sign-in modal succeeds (checkout sends the shopper home to show the modal, then back).
   const [authReturn,setAuthReturn]=useState(null);
+  // "/?auth=forgot" opens the password-reset form directly: the mobile app's "Forgot password?" link points here (review MOB-13).
+  useEffect(()=>{
+    const params=new URLSearchParams(location.search);
+    if(params.get("auth")!=="forgot")return;
+    setAuthModal("forgot");
+    params.delete("auth");
+    const rest=params.toString();
+    navigate(`${location.pathname}${rest?`?${rest}`:""}`,{replace:true});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[location.search]);
   const auth=useAuth();
   const queryClient=useQueryClient();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,goLive:auth.user.go_live,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;

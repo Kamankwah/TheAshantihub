@@ -8,6 +8,7 @@ import { fonts } from "../../theme/fonts";
 import { useTheme } from "../../theme/useTheme";
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
+import { ForgotPasswordLink } from "../../ui/ForgotPasswordLink";
 import { Screen } from "../../ui/Screen";
 
 export default function CustomerSignIn() {
@@ -67,6 +68,7 @@ export default function CustomerSignIn() {
         error={error}
       />
       <Button label="Sign in" onPress={submit} loading={busy} disabled={!identifier || !password} />
+      <ForgotPasswordLink />
       <Pressable accessibilityRole="link" onPress={() => router.push("/customer-sign-up")} style={{ minHeight: 48, justifyContent: "center" }}>
         <Text style={{ color: c.ink, fontFamily: fonts.bodyBold, textDecorationLine: "underline", textAlign: "center" }}>
           New here? Create an account
