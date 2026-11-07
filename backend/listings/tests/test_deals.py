@@ -164,6 +164,17 @@ class SalePriceRuleTests(DealsBase):
 
 
 class DealsFeedTests(DealsBase):
+    def test_rows_carry_photo_variants_when_the_listing_has_a_photo(self):
+        with_photo = self.listing("Photo", sponsored=True, main_photo="listing_photos/a.jpg",
+                                  main_photo_variants={"src": "listing_photos/a.jpg", "thumb": "listing_photos/variants/a-320.webp"})
+        without = self.listing("No photo", sponsored=True)
+        by_id = {row["id"]: row for row in self.client.get(DEALS).json()}
+        sizes = by_id[with_photo.pk]["photo_variants"]
+        self.assertEqual(set(sizes), {"thumb", "medium", "large"})
+        self.assertIn("a-320.webp", sizes["thumb"])
+        self.assertIn("a.jpg", sizes["medium"])  # a size that was not made falls back to the original
+        self.assertIsNone(by_id[without.pk]["photo_variants"])
+
     def test_deals_include_sale_and_sponsored_only(self):
         sale = self.listing("On sale", sale_price="80.00")
         self.age_history(sale, 9)

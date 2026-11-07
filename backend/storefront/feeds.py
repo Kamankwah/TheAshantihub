@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from cart.guard import deliverable_q
 from catalogue.offers import live_q
-from listings import pricing
+from listings import image_variants, pricing
 from listings.models import Listing, ListingPriceHistory
 from listings.serializers import PublicListingSerializer
 from listings.views import _with_rating_annotations
@@ -68,6 +68,8 @@ def deals(limit=DEFAULT_LIMIT, request=None):
             "id": item.pk,
             "name": item.name,
             "photo": _url(item.main_photo, request),
+            # thumb / medium / large copies of the same photo, so a phone loads 320 px instead of the original (review MOB-15)
+            "photo_variants": image_variants.urls(request, item.main_photo_variants, item.main_photo) if item.main_photo else None,
             "category_label": item.category.label,
             "price_amount": str(pricing.dec(item.price_amount)),
             "sale_price": str(pricing.dec(item.sale_price)) if real else None,

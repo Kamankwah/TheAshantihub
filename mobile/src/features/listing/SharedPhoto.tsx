@@ -13,7 +13,7 @@ export function SharedPhoto({ id, uri, style }: { id: number; uri: string; style
   }, [id, uri]);
   return (
     <View ref={ref} collapsable={false} style={style}>
-      <Image source={{ uri }} contentFit="cover" transition={200} style={{ flex: 1 }} accessibilityIgnoresInvertColors />
+      <Image source={{ uri }} contentFit="cover" transition={200} cachePolicy="memory-disk" style={{ flex: 1 }} accessibilityIgnoresInvertColors />
     </View>
   );
 }
