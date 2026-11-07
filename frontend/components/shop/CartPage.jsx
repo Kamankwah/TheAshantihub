@@ -95,7 +95,7 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn,
 
   const shell = { maxWidth: 1120, margin: "0 auto", padding: phone ? "20px 16px 40px" : "28px 16px 56px", boxSizing: "border-box", fontFamily: BODY_FONT, color: C.ink, minHeight: "60vh" };
   const h1 = { margin: 0, fontFamily: HEADING_FONT, fontWeight: 600, fontSize: phone ? "1.6rem" : "2rem", lineHeight: 1.15, letterSpacing: "-0.02em", color: C.ink };
-  const linkBtn = { background: "none", border: "none", padding: "6px 0", color: C.trust, fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", minHeight: 32 };
+  const linkBtn = { background: "none", border: "none", padding: "6px 0", color: C.trust, fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", minHeight: phone ? 44 : 32 };
   const goldBtn = (disabled) => ({
     width: "100%", background: disabled ? C.surface3 : C.gold, color: disabled ? C.inkDim : C.darkBrown, border: "none", borderRadius: 24,
     padding: "12px", fontWeight: 900, fontSize: "0.9rem", cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit",
@@ -149,7 +149,7 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn,
   }
 
   const stepBtn = (disabled) => ({
-    width: 32, height: 32, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.surface, color: C.ink,
+    width: phone ? 44 : 32, height: phone ? 44 : 32, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.surface, color: C.ink,
     fontSize: "1rem", fontWeight: 800, cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit", lineHeight: 1, opacity: disabled ? 0.5 : 1,
   });
 

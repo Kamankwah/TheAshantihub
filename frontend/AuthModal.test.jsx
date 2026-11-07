@@ -16,6 +16,26 @@ function makeAuth(overrides = {}) {
 }
 
 describe('AuthModal', () => {
+  // UX phase 1: the chosen option is carried by aria-pressed (not colour alone), and the controls are 44px targets
+  // whose selected text is the dark brown on the gold fill in both themes.
+  it('exposes the chosen tab and account type with aria-pressed and gives them 44px targets', () => {
+    render(<AuthModal authState="login" auth={makeAuth()} onClose={vi.fn()} onSuccess={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'Customer' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Business Owner' })).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(screen.getByRole('button', { name: 'Business Owner' }))
+    expect(screen.getByRole('button', { name: 'Business Owner' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Customer' })).toHaveAttribute('aria-pressed', 'false')
+
+    const signUp = screen.getByRole('button', { name: 'Sign Up' })
+    expect(signUp).toHaveAttribute('aria-pressed', 'false')
+    for (const el of [signUp, screen.getByRole('button', { name: 'Customer' }), screen.getByRole('button', { name: 'Close' }), screen.getByRole('button', { name: 'Forgot password?' })]) {
+      const { minHeight, height } = el.style
+      expect(minHeight === '44px' || height === '44px').toBe(true)
+    }
+    expect(screen.getByRole('button', { name: 'Business Owner' }).style.color).toBe('rgb(44, 24, 16)')
+  })
+
   it('submits identifier and password to auth.login on the Sign In form', async () => {
     const auth = makeAuth()
     const onSuccess = vi.fn()
