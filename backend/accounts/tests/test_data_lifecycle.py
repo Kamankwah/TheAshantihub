@@ -271,3 +271,75 @@ class HashedCodesTests(TestCase):
         self.assertTrue(stored.startswith("enc1:"))
         check.refresh_from_db()
         self.assertEqual(check.collection_code, "123456")
+
+
+class IdentityUniquenessTests(TestCase):
+    """Review DB-13: one person, one account - whatever case or spelling they type."""
+
+    def setUp(self):
+        self.client = APIClient()
+
+    def _register(self, **body):
+        base = {"full_name": "Ama", "password": "a-strong-pass-1"}
+        return self.client.post("/api/accounts/customers/register/", {**base, **body}, format="json")
+
+    def test_a_customer_cannot_register_the_same_phone_or_email_written_differently(self):
+        self.assertEqual(self._register(phone="0241234567", email="Ama@Example.com").status_code, 201)
+        for body in ({"phone": "+233 24 123 4567"}, {"phone": "233241234567"}, {"email": "AMA@example.com"}):
+            with self.subTest(body=body):
+                response = self._register(**body)
+                self.assertEqual(response.status_code, 400, response.content)
+
+    def test_the_database_refuses_what_a_validator_misses(self):
+        from django.db import IntegrityError, transaction
+
+        Customer.objects.create(full_name="A", phone="0241234567", email="a@example.com", password_hash="x")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Customer.objects.create(full_name="B", phone="+233241234567", password_hash="x")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Customer.objects.create(full_name="C", email="A@EXAMPLE.COM", password_hash="x")
+        Customer.objects.create(full_name="D", phone=None, email=None, password_hash="x")  # no contact: many rows allowed
+        Customer.objects.create(full_name="E", phone=None, email=None, password_hash="x")
+
+    def test_an_owner_cannot_register_a_known_phone_or_email_in_another_spelling(self):
+        body = {"full_name": "Kwame", "password": "a-strong-pass-1", "login_phone": "0207886600", "email": "Kwame@Example.com"}
+        self.assertEqual(self.client.post("/api/accounts/business-owners/register/", body, format="json").status_code, 201)
+        again = {**body, "login_phone": "+233 20 788 6600", "email": "other@example.com"}
+        self.assertEqual(self.client.post("/api/accounts/business-owners/register/", again, format="json").status_code, 400)
+        again = {**body, "login_phone": "0551112223", "email": "KWAME@example.com"}
+        response = self.client.post("/api/accounts/business-owners/register/", again, format="json")
+        self.assertEqual((response.status_code, response.json()["email"]), (400, ["A business owner with this email already exists."]))
+
+    def test_the_duplicate_finder_lists_nothing_on_clean_data_and_command_runs(self):
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("find_identity_duplicates", stdout=out)
+        self.assertIn("No duplicates", out.getvalue())
+
+    def test_existing_duplicates_skip_the_index_with_a_warning_instead_of_stopping_the_deploy(self):
+        from django.apps import apps
+        from django.db import connection
+        from django.db.migrations.state import ProjectState
+
+        from core.migration_ops import AddUniqueGuarded
+
+        name = "accounts_customer_email_ci_unique"
+        constraint = next(c for c in Customer._meta.constraints if c.name == name)
+        with connection.cursor() as cursor:
+            cursor.execute(f"drop index {name}")
+        Customer.objects.create(full_name="A", email="a@example.com", password_hash="x")
+        Customer.objects.create(full_name="B", email="A@example.com", password_hash="x")  # a legacy duplicate
+        with connection.cursor() as cursor:
+            cursor.execute("set constraints all immediate")
+        state = ProjectState.from_apps(apps)
+        with connection.schema_editor(atomic=False) as editor:
+            AddUniqueGuarded("customer", constraint).database_forwards("accounts", editor, state, state)
+        with connection.cursor() as cursor:
+            cursor.execute("select count(*) from pg_indexes where indexname = %s", [name])
+            self.assertEqual(cursor.fetchone(), (0,))
+        out = StringIO()
+        from django.core.management import call_command
+
+        call_command("find_identity_duplicates", stdout=out)
+        self.assertIn("Customer.email", out.getvalue())

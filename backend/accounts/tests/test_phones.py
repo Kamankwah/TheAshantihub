@@ -4,6 +4,7 @@ from django.test import SimpleTestCase, TestCase
 
 from accounts.models import BusinessOwner, BusinessOwnerProfile
 from accounts.phones import filter_by_phone, normalize_gh_phone, phone_key
+from core.testing import drop_index
 
 HINT = "Enter a Ghana phone number, for example 024 123 4567."
 
@@ -62,6 +63,7 @@ class PhoneKeyTests(TestCase):
                 self.assertFalse(filter_by_phone(BusinessOwner.objects.all(), "login_phone", raw).exists())
 
     def test_the_result_is_a_queryset_that_keeps_its_filters(self):
+        drop_index("accounts_businessowner_phone_key_unique")  # models legacy rows the index now refuses (review DB-13)
         stored = _owner("+233241234567")
         _owner("0241234567", name="Old Duplicate")
         matches = filter_by_phone(BusinessOwner.objects.filter(full_name="Old Duplicate"), "login_phone", "024 123 4567")

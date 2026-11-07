@@ -299,6 +299,13 @@ records are untouched. These periods are the dev's defaults - the owner and coun
 own data comes from `GET /api/accounts/me/export/`. Customer and owner IPs in the activity log are stored truncated; rows written
 before this change keep the full address (the hash chain covers them), and the lawful basis for the log is for counsel to document.
 
+## Duplicate accounts
+
+Review DB-13. Two accounts cannot share an e-mail that differs only by case, or a phone that is the same number written two ways.
+The migration that creates those unique indexes skips one (with a `WARNING ... NOT created` line in the `migrate` output) when old
+rows already collide. After a deploy, run `manage.py find_identity_duplicates`: if it lists anything, merge or fix those accounts, then
+re-run `migrate` after unapplying that migration (`migrate accounts 0083` then `migrate`) to create the index.
+
 ## Backups
 
 **Targets (set by the owner, review DB-01):** lose at most **24 hours** of data today (nightly dump) - **15 minutes** once

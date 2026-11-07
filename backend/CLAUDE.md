@@ -173,7 +173,10 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **Phones are compared by their last 9 digits.** Write owner phones through
   `accounts.phones.normalize_gh_phone()` (`+233...`) and match stored phones only through
   `phone_key()` / `filter_by_phone()` (there is no `phone_match_q`), because older rows hold
-  whatever owners typed.
+  whatever owners typed. Since DB-13 the database enforces it: unique indexes on `lower(email)` (customers, owners, staff) and on the
+  phone key (customer `phone`, owner `login_phone`), created by `core.migration_ops.AddUniqueGuarded` (skipped with a warning if
+  legacy duplicates exist: `manage.py find_identity_duplicates` lists them). A test that models such a legacy duplicate calls
+  `core.testing.drop_index`.
 - **Hidden businesses:** a suspended owner - or, only while `SUBSCRIPTION_PAUSE_ENABLED` is on, one
   whose subscription is paused - is hidden from public browse by
   `listings.visibility.hidden_business_q()`. Every public listing or event queryset, and adding to

@@ -5,6 +5,7 @@ ones this code writes as "+233" + key."""
 import re
 
 from django.db.models import CharField, F, Func, Value
+from django.db.models.functions import Right
 
 PHONE_HINT = "Enter a Ghana phone number, for example 024 123 4567."
 _NOT_DIGITS = re.compile(r"\D")
@@ -45,6 +46,13 @@ def normalize_gh_phone(raw):
     if not shaped or digits[-9] not in "25":
         raise ValueError(PHONE_HINT)
     return "+233" + digits[-9:]
+
+
+def phone_key_expression(field):
+    """SQL for the same key `phone_key` computes (the last 9 digits), for a unique index: two spellings of one number collide in the
+    database too (review DB-13). Matches `filter_by_phone`'s REGEXP_REPLACE."""
+    digits = Func(F(field), Value("[^0-9]"), Value(""), Value("g"), function="REGEXP_REPLACE", output_field=CharField())
+    return Right(digits, 9)
 
 
 def filter_by_phone(queryset, field, raw):

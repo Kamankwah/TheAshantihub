@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models.functions import Lower
 from django.utils import timezone
 
 from core import pii
@@ -6,6 +7,7 @@ from core.pii import EncryptedCharField, EncryptedDateField
 from core.private_files import ghana_card_path, kyc_storage, registration_certificate_path
 
 from .mixins import AuthenticatableAccountMixin
+from .phones import phone_key_expression
 from .validators import validate_document_content_type, validate_image_content_type
 
 
@@ -129,6 +131,12 @@ class Customer(AuthenticatableAccountMixin, models.Model):
     def __str__(self):
         return self.full_name
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(Lower('email'), name='accounts_customer_email_ci_unique'),  # review DB-13
+            models.UniqueConstraint(phone_key_expression('phone'), name='accounts_customer_phone_key_unique'),
+        ]
+
 
 class StaffUser(AuthenticatableAccountMixin, models.Model):
     full_name = models.CharField(max_length=150)
@@ -205,6 +213,11 @@ class StaffUser(AuthenticatableAccountMixin, models.Model):
 
     def __str__(self):
         return f"{self.full_name} ({self.role.name})"
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(Lower('email'), name='accounts_staffuser_email_ci_unique'),  # review DB-13
+        ]
 
 
 class RoleInviteRule(models.Model):
@@ -376,6 +389,8 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
 
     class Meta:
         constraints = [
+            models.UniqueConstraint(Lower('email'), name='accounts_businessowner_email_ci_unique'),  # review DB-13
+            models.UniqueConstraint(phone_key_expression('login_phone'), name='accounts_businessowner_phone_key_unique'),
             models.UniqueConstraint(fields=["is_company"], condition=models.Q(is_company=True), name="one_company_owner"),
         ]
 

@@ -22,3 +22,23 @@ class AddCheckNotValid(migrations.AddConstraint):
             f"RAISE WARNING 'constraint %% left NOT VALID: existing rows break it', '{self.constraint.name}'; "
             "END $$"
         )
+
+
+class AddUniqueGuarded(migrations.AddConstraint):
+    """Add a unique index/constraint, but if existing rows already collide, leave it out with a warning instead of stopping the deploy
+    (review DB-13). Duplicates that already exist are data to clean up (`manage.py find_identity_duplicates`), not a reason to refuse
+    a release; once they are gone, re-running the migration step (`migrate accounts <previous> && migrate`) or the SQL the warning
+    prints creates the index. Tables where this is used are small, so the plain (locking) build is quick."""
+
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        model = to_state.apps.get_model(app_label, self.model_name_lower)
+        if not self.allow_migrate_model(schema_editor.connection.alias, model):
+            return
+        create = str(self.constraint.create_sql(model, schema_editor)).replace("%", "%%")
+        schema_editor.execute(
+            "DO $$ BEGIN "
+            f"{create}; "
+            "EXCEPTION WHEN unique_violation THEN "
+            f"RAISE WARNING 'unique index %% NOT created: existing rows collide (run manage.py find_identity_duplicates)', '{self.constraint.name}'; "
+            "END $$"
+        )

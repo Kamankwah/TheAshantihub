@@ -26,6 +26,7 @@ from orders.models import Order, OrderItem
 from orders.serializers import OwnerOrderSerializer
 from payments.models import CheckoutSession
 from payments.services import finalize_failure
+from core.testing import drop_index
 
 ON = override_settings(MARKETING_PROMOS_ENABLED=True)
 
@@ -338,6 +339,7 @@ class CouponCheckout(PromoBase):
         self.assertEqual(self.checkout(self.yaw, coupon_code=["A10", "B10"]).status_code, 400)
 
     def test_per_customer_limit_counts_the_same_phone(self):
+        drop_index("accounts_customer_phone_key_unique")  # models legacy rows the index now refuses (review DB-13)
         self.coupon("ONCE")
         self.assertEqual(self.apply("ONCE").status_code, 201)
         self.assertEqual(self.apply("ONCE").status_code, 400)  # Ama again

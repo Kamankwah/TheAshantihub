@@ -120,6 +120,19 @@ class CustomerRegistrationSerializer(serializers.ModelSerializer):
         model = Customer
         fields = ["id", "full_name", "phone", "email", "password", "marketing_consent"]
 
+    def validate_phone(self, value):
+        # The same number written another way ("024..." and "+23324...") is the same person (review DB-13): the database refuses it
+        # too, so answer it here as a normal field error rather than a 500.
+        if value and filter_by_phone(Customer.objects.all(), "phone", value).exists():
+            raise serializers.ValidationError("customer with this phone already exists.")
+        return value
+
+    def validate_email(self, value):
+        value = (value or "").strip().lower() or None
+        if value and Customer.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("customer with this email already exists.")
+        return value
+
     def validate(self, attrs):
         phone = attrs.get("phone")
         email = attrs.get("email")
@@ -368,17 +381,24 @@ class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8, validators=[validate_new_password])
     # Required: the go-live rule needs a confirmed email, and the confirmation link goes out at sign-up. The model
     # field is unique, so the unique validator is kept (as the model field would add it).
-    email = serializers.EmailField(
-        max_length=254,
-        error_messages=EMAIL_REQUIRED_ERRORS,
-        validators=[UniqueValidator(queryset=BusinessOwner.objects.all(), message=EMAIL_TAKEN)],
-    )
+    email = serializers.EmailField(max_length=254, error_messages=EMAIL_REQUIRED_ERRORS)
     kyc_status = serializers.CharField(read_only=True)
     marketing_consent = serializers.JSONField(write_only=True, required=False)
 
     class Meta:
         model = BusinessOwner
         fields = ["id", "full_name", "login_phone", "email", "password", "kyc_status", "marketing_consent"]
+
+    def validate_email(self, value):
+        value = value.strip().lower()
+        if BusinessOwner.objects.filter(email__iexact=value).exists():  # case-insensitive, like the database index (review DB-13)
+            raise serializers.ValidationError(EMAIL_TAKEN)
+        return value
+
+    def validate_login_phone(self, value):
+        if value and filter_by_phone(BusinessOwner.objects.all(), "login_phone", value).exists():
+            raise serializers.ValidationError("business owner with this login phone already exists.")
+        return value
 
     def validate(self, attrs):
         _require_usable_contact(
