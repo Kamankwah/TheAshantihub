@@ -172,6 +172,8 @@ Two optional keys in the production `.deploy.conf` set the map tiles of the SPA 
 ```bash
 VITE_MAPBOX_TOKEN=pk.<your public token>   # a public Mapbox token restricted to the site's URL
 VITE_MAP_TILES_PROVIDER=mapbox             # defaults to osm when absent
+VITE_SENTRY_DSN=https://<key>@<org>.ingest.sentry.io/<project>   # browser error reporting; absent = off (a DSN is public)
+VITE_SENTRY_ENVIRONMENT=production         # defaults to the ENV_NAME above
 ```
 
 Both are public values baked into the page (the token is a public `pk.` token, never a
