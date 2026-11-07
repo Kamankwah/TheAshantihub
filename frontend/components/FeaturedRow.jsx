@@ -1,6 +1,7 @@
 import { C } from "../theme.js";
 import VerifiedMark from "./VerifiedMark.jsx";
 import { usePublicFeatured } from "../hooks/useMarketingBanners.js";
+import { pictureProps } from "../lib/responsiveImage.js";
 
 // ─── FeaturedRow ────────────────────────────────────────────────────────────
 // Paid featured listings (home row, or the top of a category). Paid and verified must never
@@ -17,7 +18,7 @@ export default function FeaturedRow({ category = "", onOpen }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
         {rows.map((row) => (
           <button key={row.id} type="button" onClick={() => onOpen?.(row.id)} style={{ textAlign: "left", cursor: "pointer", font: "inherit", padding: 0, background: C.surface, border: `2px solid ${C.gold}`, borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-            {row.main_photo ? <img src={row.main_photo} alt={row.name} style={{ width: "100%", height: 120, objectFit: "cover" }} /> : <div aria-hidden="true" style={{ height: 120, background: C.darkBrown }} />}
+            {row.main_photo ? <img {...pictureProps(row.main_photo_variants, row.main_photo, { sizes: "(min-width: 900px) 220px, 50vw" })} alt={row.name} style={{ width: "100%", height: 120, objectFit: "cover" }} /> : <div aria-hidden="true" style={{ height: 120, background: C.darkBrown }} />}
             <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
               <span style={{ alignSelf: "flex-start", fontSize: "0.62rem", fontWeight: 800, color: C.ink, background: `${C.gold}33`, border: `1px solid ${C.gold}`, borderRadius: 6, padding: "1px 6px" }}>Featured</span>
               <strong style={{ fontSize: "0.85rem", color: C.ink }}>{row.name}</strong>

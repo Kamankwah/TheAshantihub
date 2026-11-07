@@ -8,6 +8,7 @@ import { BODY_FONT, HEADING_FONT, TABULAR } from "../storefront/storefrontType.j
 import PriceTag from "./PriceTag.jsx";
 import { cheapestPrice } from "./cheapestPrice.js";
 import { SR_ONLY } from "./shopCopy.js";
+import { cardPhoto, pictureProps } from "../../lib/responsiveImage.js";
 
 const GAP = 14;
 
@@ -21,7 +22,7 @@ export function alsoViewedTitle(basis) {
 // only when it has reviews, and the price (`was_price` struck only when sent).
 // Drawn with theme tokens; App's Card is fixed-dark and unreadable here.
 export function ProductTile({ item, currency = "GHS", onOpen }) {
-  const photo = item.main_photo || item.photos?.[0]?.image || null;
+  const photo = cardPhoto(item);
   const price = item.has_variants ? cheapestPrice(item) : item.effective_price ?? item.price_amount ?? null;
   const rated = item.review_count > 0 && item.avg_rating != null;
   return (
@@ -32,7 +33,7 @@ export function ProductTile({ item, currency = "GHS", onOpen }) {
     >
       <span style={{ display: "block", width: "100%", aspectRatio: "1 / 1", background: C.surface2, border: `1px solid ${C.line}`, borderRadius: 12, overflow: "hidden" }}>
         {photo
-          ? <img src={photo} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+          ? <img {...pictureProps(photo.variants, photo.url, { sizes: "(min-width: 900px) 200px, 45vw" })} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
           : <span aria-hidden="true" style={{ display: "flex", height: "100%", alignItems: "center", justifyContent: "center", fontSize: "2rem" }}>{item.category?.icon}</span>}
       </span>
       <span style={{ fontSize: "0.85rem", fontWeight: 600, lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.name}</span>

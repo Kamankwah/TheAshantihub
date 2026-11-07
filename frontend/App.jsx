@@ -77,6 +77,7 @@ import CancelBookingDialog from "./components/bookings/CancelBookingDialog.jsx";
 import OtpSignIn from "./components/OtpSignIn.jsx";
 import { useStaffGate } from "./hooks/useStaffGate.js";
 import { useFavourites } from "./hooks/useFavourites.js";
+import { cardPhoto as pickCardPhoto, pictureProps } from "./lib/responsiveImage.js";
 
 
 // ─── Code splitting ───────────────────────────────────────────────────────────
@@ -1005,7 +1006,8 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
   // so images uploaded via the owner's Products/Services photo manager (which
   // create ListingPhoto rows, not main_photo) still show on the marketplace
   // grid, not just on the detail page.
-  const cardPhoto = item.main_photo || item.photos?.[0]?.image || null;
+  const photo = pickCardPhoto(item);
+  const cardPhoto = photo?.url || null;
 
   return <>
     {showReviews&&<ReviewsModal item={item} user={user} onClose={()=>setShowReviews(false)}/>}
@@ -1017,7 +1019,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
       <div onClick={()=>onOpen&&onOpen(item.id)} style={{height:140,position:"relative",overflow:"hidden",background:`linear-gradient(135deg,${tint(accentColor, "22")},${tint(accentColor, "44")})`,cursor:onOpen?"pointer":"default"}}>
         {/* Real photo if available (main_photo or first gallery photo), fallback to category emoji */}
         {cardPhoto ? (
-          <img src={cardPhoto} alt={item.name}
+          <img {...pictureProps(photo.variants, photo.url, { sizes: "(min-width: 900px) 280px, 50vw" })} alt={item.name}
             style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}
             onError={e=>{e.target.style.display="none";e.target.nextSibling.style.display="flex";}}
           />
@@ -1032,7 +1034,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
         {item.photos?.length>1&&(
           <div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:2}}>
             {item.photos.map((p,i)=>(
-              <img key={p.id} src={p.image} alt="" onClick={(e)=>{e.stopPropagation();setPhotoIdx(i);}}
+              <img key={p.id} src={p.variants?.thumb || p.image} loading="lazy" decoding="async" alt="" onClick={(e)=>{e.stopPropagation();setPhotoIdx(i);}}
                 style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",border:photoIdx===i?`2px solid ${C.surface}`:"1px solid rgba(255,255,255,0.6)",cursor:"pointer"}}/>
             ))}
           </div>

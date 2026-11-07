@@ -299,3 +299,7 @@ ads are Marketing's). Never hardcode `/api/listings/mine` in a panel.
 - **Browser error reporting is `lib/telemetry.js`**: off unless `VITE_SENTRY_DSN` is set at build time, SDK loaded lazily, and every event
   passes `scrub()` (no user, cookies, headers, bodies, query strings, e-mails, phone numbers or tokens). `ErrorBoundary` reports through it.
   Never call `Sentry.setUser` or attach customer data; add a field to the scrubber's tests before sending anything new.
+- **Listing photos render through `pictureProps(variants, original, {sizes, eager})`** (`lib/responsiveImage.js`): `srcset` from the API's
+  `main_photo_variants` / `photos[].variants` (thumb 320, medium 800, large 1600), lazy by default, `eager` only for the one image above the
+  fold. `cardPhoto(item)` picks the main photo else the first gallery photo. Pass the width the image is really shown at as `sizes`;
+  don't point an `<img>` at the original when a variant exists.
