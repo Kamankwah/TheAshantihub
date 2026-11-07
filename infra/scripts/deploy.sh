@@ -247,10 +247,13 @@ if [[ "${SERVE_FRONTEND:-no}" == "yes" ]]; then
 	# frontend/.env.production for VITE_API_BASE_URL. The map tile settings come
 	# from the optional VITE_MAPBOX_TOKEN and VITE_MAP_TILES_PROVIDER keys in
 	# .deploy.conf (a public, URL-restricted token; never committed). Unset keeps
-	# the OpenStreetMap street tiles.
+	# the OpenStreetMap street tiles. VITE_SENTRY_DSN (a public identifier) and VITE_SENTRY_ENVIRONMENT
+	# come from .deploy.conf the same way; unset keeps browser error reporting off (review FE-02).
 	docker run --rm \
 		-e "VITE_MAPBOX_TOKEN=${VITE_MAPBOX_TOKEN:-}" \
 		-e "VITE_MAP_TILES_PROVIDER=${VITE_MAP_TILES_PROVIDER:-osm}" \
+		-e "VITE_SENTRY_DSN=${VITE_SENTRY_DSN:-}" \
+		-e "VITE_SENTRY_ENVIRONMENT=${VITE_SENTRY_ENVIRONMENT:-$ENV_NAME}" \
 		-v "$APP_DIR/frontend":/app \
 		-w /app \
 		node:22-alpine \
