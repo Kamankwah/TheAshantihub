@@ -26,12 +26,12 @@ class ListingModerationTests(TestCase):
         self.hotels = Category.objects.get(slug="hotels")
         self.manhyia = Zone.objects.get(name="Manhyia")
 
-        self.listing_verified_owner = Listing.objects.create(
+        self.listing_verified_owner = Listing.objects.create(price_amount="10.00",
             business_owner=self.verified_owner, category=self.hotels, zone=self.manhyia,
             name="Verified Lodge", description="D.", contact_phone="+233207556677",
             status=Listing.PENDING_REVIEW,
         )
-        self.listing_pending_owner = Listing.objects.create(
+        self.listing_pending_owner = Listing.objects.create(price_amount="10.00",
             business_owner=self.pending_owner, category=self.hotels, zone=self.manhyia,
             name="Unverified Lodge", description="D.", contact_phone="+233207556688",
             status=Listing.PENDING_REVIEW,

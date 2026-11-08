@@ -61,3 +61,17 @@ def sold_out_q(prefix=""):
     from cart.guard import deliverable_q  # cart.guard imports this module
 
     return Q(**{f"{prefix}stock_quantity": 0}) & deliverable_q(prefix)
+
+
+NO_PRICE_MESSAGE = "Set a price above GH₵ 0.00. A listing without a price is not shown in the marketplace."
+
+
+def unpriced_q(prefix=""):
+    """A Q matching listings with no price (blank or zero): products, food, services and stays alike. Every public
+    listing query excludes them, so an item without a price is never in the marketplace; a variant listing's price is
+    derived from its variants (listings.variants.sync_listing), so it matches only while it has none."""
+    return Q(**{f"{prefix}price_amount__isnull": True}) | Q(**{f"{prefix}price_amount__lte": 0})
+
+
+def has_price(listing):
+    return listing.price_amount is not None and listing.price_amount > 0

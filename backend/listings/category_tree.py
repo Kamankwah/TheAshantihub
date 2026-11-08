@@ -9,16 +9,16 @@ from catalogue.offers import live_q
 from cart.guard import deliverable_q
 
 from .models import Category, Listing
-from .visibility import hidden_business_q
+from .visibility import hidden_business_q, unpriced_q
 
 
 def _populated_ids():
     """Ids of categories holding something a shopper can see now."""
     from events.views import _live_events_queryset  # the one rule for which events are public
 
-    # Goods and food: published, priced, in stock (live_q). Services and stays have no price or stock rule: published
-    # and from a business public browse shows.
-    visible = live_q() | (Q(status=Listing.PUBLISHED) & ~deliverable_q() & ~hidden_business_q("business_owner__"))
+    # Goods and food: published, priced, in stock (live_q). Services and stays have no stock rule: published, priced
+    # and from a business public browse shows. Nothing without a price is in the marketplace.
+    visible = live_q() | (Q(status=Listing.PUBLISHED) & ~deliverable_q() & ~hidden_business_q("business_owner__") & ~unpriced_q())
     ids = set(Listing.objects.filter(visible).values_list("category_id", flat=True).distinct())
     ids |= set(_live_events_queryset().values_list("category_id", flat=True).distinct())
     return ids

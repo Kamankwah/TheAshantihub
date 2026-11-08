@@ -34,6 +34,7 @@ async function fillProduct() {
   fireEvent.change(screen.getByDisplayValue('Choose a zone…'), { target: { value: '1' } })
   fireEvent.change(screen.getByPlaceholderText('e.g. Hand-woven Kente Scarf'), { target: { value: 'Shea butter' } })
   fireEvent.change(screen.getByPlaceholderText("Describe what you're offering — customers see this on your listing page"), { target: { value: 'Pure.' } })
+  fireEvent.change(screen.getByPlaceholderText('e.g. 25.00'), { target: { value: '25' } })
   const [warranty, expiry] = screen.getAllByDisplayValue('— Please answer —')
   fireEvent.change(warranty, { target: { value: 'no' } })
   fireEvent.change(expiry, { target: { value: 'no' } })

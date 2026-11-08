@@ -78,6 +78,7 @@ export function buildListingBody(d: Draft, category: Cat): Record<string, unknow
 /** The client-side mirror of the server's product rules, so Save stays off until the owner has answered on purpose. */
 export function canSave(d: Draft, category: Cat): boolean {
   if (!category || d.category == null || d.zone == null || !d.name.trim() || !d.description.trim()) return false;
+  if (!(Number(d.price) > 0)) return false; // an item without a price is not shown in the marketplace
   if (accommodation(category)) return d.cancellationPolicy !== "";
   if (category.kind === "product") {
     return d.hasWarranty !== "" && d.hasExpiry !== "" && d.returnPolicy.trim() !== "" &&

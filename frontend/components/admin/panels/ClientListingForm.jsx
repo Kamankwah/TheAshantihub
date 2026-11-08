@@ -100,7 +100,7 @@ export default function ClientListingForm({ businessId, draft = null, onBack, on
   const isStay = kind === "stay";
   const isProduct = kind === "product";
   const isService = kind === "service";
-  const priceNeeded = isProduct || isStay;
+  const priceNeeded = isProduct || isStay || isService; // an item without a price is not shown in the marketplace
   const priceOk = price !== "" && Number.isFinite(Number(price)) && Number(price) > 0;
   const answered = !isProduct || Boolean(
     warranty !== null && (!warranty || warrantyDetails.trim()) && expiry !== null && (!expiry || expiryDate) && returnPolicy.trim(),
