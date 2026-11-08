@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { apiPostForm } from "../../../apiClient.js";
 import { useMyIdentity } from "../../../hooks/useMyIdentity.js";
-import { D, glassCard, tint } from "../theme.js";
+import { D, glassCard, tint, inkOf } from "../theme.js";
 
 // "Get verified" (Profile & Settings): the owner uploads their Ghana Card to earn the verified check mark on their
 // products. Registering needs no documents; this is the optional step. AshantiHub staff review the submission, so
@@ -56,7 +56,7 @@ export default function IdentityPanel() {
   if (status === "verified") {
     return (
       <Shell>
-        <span style={{ background: tint(D.green, "20"), color: D.green, borderRadius: 20, padding: "2px 10px", fontSize: "0.72rem", fontWeight: 800 }}>✓ Verified</span>
+        <span style={{ background: tint(D.green, "20"), color: inkOf(D.green), borderRadius: 20, padding: "2px 10px", fontSize: "0.72rem", fontWeight: 800 }}>✓ Verified</span>
         <div style={{ color: D.textDim, fontSize: "0.78rem", marginTop: 10 }}>The verified check mark shows on your products.</div>
       </Shell>
     );

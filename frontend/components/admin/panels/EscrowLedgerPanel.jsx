@@ -70,9 +70,9 @@ function Row({ t, canRelease, canRefund, onDone }) {
       {actions && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <input aria-label={`Note for ticket ${t.code}`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (required)" maxLength={500} style={{ ...field, flex: 1, minWidth: 160 }} />
-          {canRelease_ && t.escrow_status === "held" && <button type="button" disabled={!ready || busy} onClick={() => act("release", "note", "Could not release this ticket's escrow.")} style={button(D.green, "#fff", !ready || busy)}>Release</button>}
+          {canRelease_ && t.escrow_status === "held" && <button type="button" disabled={!ready || busy} onClick={() => act("release", "note", "Could not release this ticket's escrow.")} style={button(D.greenFill, D.white, !ready || busy)}>Release</button>}
           {canRelease_ && t.escrow_status === "released" && <button type="button" disabled={!ready || busy} onClick={() => act("hold", "note", "Could not hold this ticket's escrow.")} style={button(D.amber, "#2a1a00", !ready || busy)}>Hold</button>}
-          {canRefund && t.escrow_status === "held" && !delivered && <button type="button" disabled={!ready || busy} onClick={() => act("refund", "reason", "Could not refund this ticket.")} style={button(D.red, "#fff", !ready || busy)}>Refund</button>}
+          {canRefund && t.escrow_status === "held" && !delivered && <button type="button" disabled={!ready || busy} onClick={() => act("refund", "reason", "Could not refund this ticket.")} style={button(D.red, D.white, !ready || busy)}>Refund</button>}
         </div>
       )}
       {error && <div role="alert" style={errorStyle}>{error}</div>}

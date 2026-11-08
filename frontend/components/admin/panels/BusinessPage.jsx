@@ -268,7 +268,7 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
           <h3 style={h3}>{`Listings & photos · ${b.listings_live ?? 0} live`}</h3>
           {(b.listings || []).length > STRIP && (
             <button type="button" onClick={() => setAllListings((v) => !v)}
-              style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 700, color: D.deepGold }}>
+              style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 700, color: D.goldInk }}>
               {allListings ? "Show fewer" : "See all"}
             </button>
           )}

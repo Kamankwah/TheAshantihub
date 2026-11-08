@@ -39,7 +39,7 @@ export function TwoFactorSetup({ secret, otpauthUri, onConfirm, busy, error }) {
         <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" maxLength={7} style={codeField} />
       </label>
       {error && <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>{error}</div>}
-      <button type="submit" disabled={busy || !ready} style={{ ...button(D.gold, D.text, busy || !ready), alignSelf: "flex-start" }}>Turn on 2-step sign-in</button>
+      <button type="submit" disabled={busy || !ready} style={{ ...button(D.gold, D.onGold, busy || !ready), alignSelf: "flex-start" }}>Turn on 2-step sign-in</button>
     </form>
   );
 }
@@ -77,7 +77,7 @@ export function RecoveryCodes({ codes, onDone, doneLabel = "Done" }) {
         <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
         I've saved these codes
       </label>
-      <button type="button" disabled={!saved} onClick={onDone} style={{ ...button(D.gold, D.text, !saved), alignSelf: "flex-start" }}>{doneLabel}</button>
+      <button type="button" disabled={!saved} onClick={onDone} style={{ ...button(D.gold, D.onGold, !saved), alignSelf: "flex-start" }}>{doneLabel}</button>
     </div>
   );
 }

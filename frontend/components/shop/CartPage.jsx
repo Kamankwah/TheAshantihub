@@ -14,6 +14,7 @@ import StaffGateNotice from "../StaffGateNotice.jsx";
 import { BODY_FONT, HEADING_FONT, TABULAR } from "../storefront/storefrontType.js";
 import PriceTag from "./PriceTag.jsx";
 import { LOW_STOCK_AT, OPENS_SOON, atStockCap, guardUncheckedText } from "./shopCopy.js";
+import { SkeletonRow, SkeletonStatus } from "../Skeleton.jsx";
 import ProductCarousel, { AlsoViewedCarousel } from "./ProductCarousel.jsx";
 
 function stockText(line) {
@@ -95,7 +96,7 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn,
 
   const shell = { maxWidth: 1120, margin: "0 auto", padding: phone ? "20px 16px 40px" : "28px 16px 56px", boxSizing: "border-box", fontFamily: BODY_FONT, color: C.ink, minHeight: "60vh" };
   const h1 = { margin: 0, fontFamily: HEADING_FONT, fontWeight: 600, fontSize: phone ? "1.6rem" : "2rem", lineHeight: 1.15, letterSpacing: "-0.02em", color: C.ink };
-  const linkBtn = { background: "none", border: "none", padding: "6px 0", color: C.trust, fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", minHeight: 32 };
+  const linkBtn = { background: "none", border: "none", padding: "6px 0", color: C.trust, fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", minHeight: phone ? 44 : 32, minWidth: phone ? 44 : undefined };
   const goldBtn = (disabled) => ({
     width: "100%", background: disabled ? C.surface3 : C.gold, color: disabled ? C.inkDim : C.darkBrown, border: "none", borderRadius: 24,
     padding: "12px", fontWeight: 900, fontSize: "0.9rem", cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit",
@@ -104,26 +105,26 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn,
   const sponsoredRow = <ProductCarousel title="Sponsored products" items={sponsored} sponsored currency={currency} onOpen={(id) => go(`/business/${id}`)} />;
 
   if (!user && authLoading) {
-    return <main style={shell}><h1 style={h1}>Shopping Cart</h1><p style={{ color: C.inkDim }}>Loading your cart{"…"}</p></main>;
+    return <main id="main-content" style={shell} aria-busy="true"><h1 style={h1}>Shopping Cart</h1><SkeletonStatus label={"Loading your cart…"} style={{ marginTop: 12 }}><SkeletonRow photo={phone ? 84 : 120} /><SkeletonRow photo={phone ? 84 : 120} /></SkeletonStatus></main>;
   }
   if (!user) {
     return (
-      <main style={shell}>
+      <main id="main-content" style={shell}>
         <h1 style={h1}>Shopping Cart</h1>
         <p style={{ color: C.inkDim, margin: "12px 0 16px" }}>Sign in to see your cart.</p>
-        {onSignIn && <button type="button" onClick={onSignIn} style={{ ...goldBtn(false), width: "auto", padding: "10px 24px" }}>Sign in</button>}
+        {onSignIn && <button type="button" onClick={onSignIn} style={{ ...goldBtn(false), width: "auto", minHeight: 44, padding: "10px 24px" }}>Sign in</button>}
       </main>
     );
   }
 
   if (cartQuery.isPending) {
-    return <main style={shell}><h1 style={h1}>Shopping Cart</h1><p style={{ color: C.inkDim }}>Loading your cart{"…"}</p></main>;
+    return <main id="main-content" style={shell} aria-busy="true"><h1 style={h1}>Shopping Cart</h1><SkeletonStatus label={"Loading your cart…"} style={{ marginTop: 12 }}><SkeletonRow photo={phone ? 84 : 120} /><SkeletonRow photo={phone ? 84 : 120} /></SkeletonStatus></main>;
   }
   if (cartQuery.isError) {
     // Only the server's 403 for a non-customer account means "not for you"; any other failure is just a failed read.
     const notCustomer = !isCustomer && cartQuery.error?.status === 403;
     return (
-      <main style={shell}>
+      <main id="main-content" style={shell}>
         <h1 style={h1}>Shopping Cart</h1>
         {notCustomer ? (
           <p role="alert" style={{ color: C.errInk }}>Carts are for customer accounts.</p>
@@ -139,22 +140,22 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn,
 
   if (items.length === 0) {
     return (
-      <main style={shell}>
+      <main id="main-content" style={shell}>
         <h1 style={h1}>Shopping Cart</h1>
         <p style={{ color: C.inkDim, margin: "12px 0 16px" }}>Your cart is empty.</p>
-        <button type="button" onClick={() => go("/")} style={{ ...goldBtn(false), width: "auto", padding: "10px 24px", marginBottom: 32 }}>Continue shopping</button>
+        <button type="button" onClick={() => go("/")} style={{ ...goldBtn(false), width: "auto", padding: "10px 24px", minHeight: 44, marginBottom: 32 }}>Continue shopping</button>
         {sponsoredRow}
       </main>
     );
   }
 
   const stepBtn = (disabled) => ({
-    width: 32, height: 32, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.surface, color: C.ink,
+    width: phone ? 44 : 32, height: phone ? 44 : 32, borderRadius: "50%", border: `1px solid ${C.line}`, background: C.surface, color: C.ink,
     fontSize: "1rem", fontWeight: 800, cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit", lineHeight: 1, opacity: disabled ? 0.5 : 1,
   });
 
   return (
-    <main style={shell}>
+    <main id="main-content" style={shell}>
       <div style={{ display: "grid", gridTemplateColumns: phone ? "minmax(0, 1fr)" : "minmax(0, 1fr) 300px", gap: 24, alignItems: "start" }}>
         <section aria-label="Cart items" style={{ minWidth: 0 }}>
           <h1 style={{ ...h1, paddingBottom: 12, borderBottom: `1px solid ${C.line}` }}>Shopping Cart</h1>
@@ -173,7 +174,7 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn,
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                       <div style={{ minWidth: 0 }}>
-                        <a href={`/business/${line.listing}`} onClick={(e) => openProduct(e, line.listing)} style={{ color: C.ink, fontWeight: 700, fontSize: "1rem", lineHeight: 1.35, textDecoration: "none" }}>{name}</a>
+                        <a href={`/business/${line.listing}`} onClick={(e) => openProduct(e, line.listing)} className="ah-tap" style={{ display: "inline-flex", alignItems: "center", color: C.ink, fontWeight: 700, fontSize: "1rem", lineHeight: 1.35, textDecoration: "none" }}>{name}</a>
                         {line.variant_label && <div style={{ fontSize: "0.82rem", color: C.inkDim, marginTop: 2 }}>{line.variant_label}</div>}
                         <div style={{ fontSize: "0.8rem", color: C.inkDim, marginTop: 2 }}>{`Sold by ${line.seller_name}`}</div>
                         <div style={{ fontSize: "0.8rem", marginTop: 2, fontWeight: 600, color: stock.bad ? C.errInk : C.trust }}>{stock.text}</div>

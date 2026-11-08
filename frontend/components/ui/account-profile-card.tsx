@@ -306,8 +306,8 @@ export function AccountProfileCard({ user, auth }: AccountProfileCardProps) {
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contact &amp; recovery</p>
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <Label>Email</Label>
-                <Input value={profile?.email || "Not set"} disabled />
+                <Label htmlFor={`${id}-email`}>Email</Label>
+                <Input id={`${id}-email`} value={profile?.email || "Not set"} disabled />
                 <p className="text-xs text-muted-foreground">Your sign-in email — can&apos;t be changed here yet.</p>
               </div>
 
@@ -323,8 +323,8 @@ export function AccountProfileCard({ user, auth }: AccountProfileCardProps) {
               />
 
               <div className="space-y-1.5">
-                <Label>Phone</Label>
-                <Input value={profile?.phone || "Not set"} disabled />
+                <Label htmlFor={`${id}-phone`}>Phone</Label>
+                <Input id={`${id}-phone`} value={profile?.phone || "Not set"} disabled />
                 <p className="text-xs text-muted-foreground">Your sign-in phone number — can&apos;t be changed here yet.</p>
               </div>
 

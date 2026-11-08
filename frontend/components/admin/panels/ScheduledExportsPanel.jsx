@@ -191,7 +191,7 @@ export default function ScheduledExportsPanel() {
             <section aria-labelledby="schedules" style={section}>
               <h3 id="schedules" style={sectionTitle}>Schedules</h3>
               {data.schedules.length === 0 ? <span style={dim}>No export is scheduled. Choose New schedule to send one to named staff.</span> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Export", "Who gets it", "When", "Format", "Personal data", "Last · next run", "Status"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}<th scope="col" style={th}><span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>Actions</span></th></tr></thead>
                     <tbody>

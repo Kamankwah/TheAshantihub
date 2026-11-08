@@ -115,7 +115,7 @@ export default function SecurityPanel({ isSuperAdmin = false }) {
         ) : (
           <>
             <div style={{ color: D.text, fontSize: "0.82rem" }}>Off. With 2-step sign-in, signing in also asks for a 6-digit code from an app on your phone, so a stolen password isn't enough.</div>
-            <button type="button" disabled={busy} onClick={startSetup} style={{ ...button(D.gold, D.text, busy), alignSelf: "flex-start" }}>Set up 2-step sign-in</button>
+            <button type="button" disabled={busy} onClick={startSetup} style={{ ...button(D.gold, D.onGold, busy), alignSelf: "flex-start" }}>Set up 2-step sign-in</button>
           </>
         )}
         {message && <div role="status" style={{ color: D.text, fontSize: "0.8rem" }}>{message}</div>}

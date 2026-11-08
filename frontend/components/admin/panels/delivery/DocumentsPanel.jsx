@@ -39,14 +39,14 @@ function Row({ d, onDone, setError }) {
           {d.status === "uploaded" && !rejecting && (
             <>
               <label style={{ fontSize: "0.7rem", fontWeight: 700, color: D.text }}>Expires<input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} style={{ ...field, marginLeft: 4 }} /></label>
-              <button type="button" onClick={() => run(() => apiPost(`/api/delivery/documents/${d.id}/review/`, { decision: "approve", expires_on: expires || undefined }), "Could not approve this paper.")} style={button(D.gold, D.text)}>Approve</button>
+              <button type="button" onClick={() => run(() => apiPost(`/api/delivery/documents/${d.id}/review/`, { decision: "approve", expires_on: expires || undefined }), "Could not approve this paper.")} style={button(D.gold, D.onGold)}>Approve</button>
               <button type="button" onClick={() => setRejecting(true)} style={button(D.panelBg, D.text)}>Send back</button>
             </>
           )}
           {rejecting && (
             <>
               <input aria-label={`Why ${d.kind_label} is sent back`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why it is sent back" style={field} />
-              <button type="button" disabled={!reason.trim()} onClick={() => run(() => apiPost(`/api/delivery/documents/${d.id}/review/`, { decision: "reject", reject_reason: reason }), "Could not send this paper back.")} style={button(D.red, "#fff", !reason.trim())}>Send back</button>
+              <button type="button" disabled={!reason.trim()} onClick={() => run(() => apiPost(`/api/delivery/documents/${d.id}/review/`, { decision: "reject", reject_reason: reason }), "Could not send this paper back.")} style={button(D.red, D.white, !reason.trim())}>Send back</button>
               <button type="button" onClick={() => setRejecting(false)} style={button(D.panelBg, D.text)}>Cancel</button>
             </>
           )}
@@ -79,7 +79,7 @@ export default function DocumentsPanel({ onNavigate }) {
             <section aria-labelledby="docs" style={section}>
               <h3 id="docs" style={sectionTitle}>Needs action, then expiring soonest</h3>
               {data.results.length === 0 ? <Empty>No paper in this list.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Rider", "Document", "Expiry", "Status", "Actions"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>{data.results.map((d) => <Row key={d.id} d={d} onDone={refetch} setError={setError} />)}</tbody>

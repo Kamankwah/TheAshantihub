@@ -5,7 +5,7 @@ import { useDevicePosition } from "../../hooks/useDevicePosition.js";
 import { apiErrorMessage } from "../../lib/apiErrorMessage.js";
 import { MAX_ACCURACY_M, VERIFY_ACCURACY_M, fieldMessage, isWeakFix, tooCoarseMessage, weakFixMessage } from "../../lib/locationFix.js";
 import AddressPinMap from "../admin/panels/AddressPinMap.jsx";
-import { D, glassCard, tint } from "./theme.js";
+import { D, glassCard, tint, inkOf } from "./theme.js";
 
 // The owner's shop location: a prompt while there is no pin, then the pin with AshantiHub's address check
 // (GET/POST /api/accounts/me/location/). The pin is always a real device fix taken at the shop: one reading on tap,

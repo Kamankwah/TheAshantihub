@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { apiDelete, apiPost, apiPostForm } from "../../../apiClient.js";
 import { useListingRevision } from "../../../hooks/useListingRevision.js";
-import { D, tint } from "../theme.js";
+import { D, tint, inkOf } from "../theme.js";
 import { Chip, DEFAULT_LISTINGS_PATH, btn, inputStyle, noteStyle, quietBtn, serverMessage } from "./listingEditorShared.jsx";
 
 // Images and videos of a listing. The server is the authority on every limit; the checks here
@@ -131,17 +131,17 @@ export default function MediaManager({ listing = null, basePath = DEFAULT_LISTIN
         {photos.map(p => (
           <div key={p.id} style={{ position: "relative", width: 72 }}>
             <img src={p.image} alt="" style={{ ...thumb, border: `1px solid ${D.divider}`, opacity: queuedPhotos.has(p.id) ? 0.5 : 1 }} />
-            {p.staged && <div style={{ color: D.amber, fontSize: "0.6rem", fontWeight: 700 }}>Waiting for approval</div>}
-            {queuedPhotos.has(p.id) && <div style={{ color: D.amber, fontSize: "0.6rem", fontWeight: 700 }}>Removal waiting for approval</div>}
+            {p.staged && <div style={{ color: D.amberInk, fontSize: "0.6rem", fontWeight: 700 }}>Waiting for approval</div>}
+            {queuedPhotos.has(p.id) && <div style={{ color: D.amberInk, fontSize: "0.6rem", fontWeight: 700 }}>Removal waiting for approval</div>}
             {!queuedPhotos.has(p.id) && (
-              <button type="button" onClick={() => removePhoto(p.id)} disabled={busy} title="Remove photo" aria-label="Remove photo" style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: D.red, color: "#fff", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer", lineHeight: 1, padding: 0 }}>✕</button>
+              <button type="button" onClick={() => removePhoto(p.id)} disabled={busy} title="Remove photo" aria-label="Remove photo" style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: D.redFill, color: D.white, fontSize: "0.7rem", fontWeight: 800, cursor: "pointer", lineHeight: 1, padding: 0 }}>✕</button>
             )}
           </div>
         ))}
         {local && pending.map((p, i) => (
           <div key={i} style={{ ...noteStyle, padding: "4px 8px", border: `1px solid ${D.divider}`, borderRadius: 8, display: "flex", gap: 6, alignItems: "center" }}>
             <span>{p.kind === "youtube" ? `YouTube: ${p.url}` : p.file.name}</span>
-            <button type="button" onClick={() => onPendingChange?.(pending.filter((_, idx) => idx !== i))} aria-label="Remove" style={{ ...btn, padding: "0 8px", background: tint(D.red, "22"), color: D.red }}>✕</button>
+            <button type="button" onClick={() => onPendingChange?.(pending.filter((_, idx) => idx !== i))} aria-label="Remove" style={{ ...btn, padding: "0 8px", background: tint(D.red, "22"), color: inkOf(D.red) }}>✕</button>
           </div>
         ))}
         <label style={{ ...btn, background: D.panelBg2, color: D.text, border: `1px dashed ${D.divider}`, display: "inline-flex", alignItems: "center", opacity: busy ? 0.6 : 1 }}>
@@ -162,7 +162,7 @@ export default function MediaManager({ listing = null, basePath = DEFAULT_LISTIN
             {v.staged && <Chip color={D.amber}>Waiting for approval</Chip>}
             {queuedVideos.has(v.id) && <Chip color={D.amber}>Removal waiting for approval</Chip>}
           </span>
-          {!queuedVideos.has(v.id) && <button type="button" disabled={busy} onClick={() => removeVideo(v.id)} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>Remove video</button>}
+          {!queuedVideos.has(v.id) && <button type="button" disabled={busy} onClick={() => removeVideo(v.id)} style={{ ...btn, background: tint(D.red, "22"), color: inkOf(D.red) }}>Remove video</button>}
         </div>
       ))}
 

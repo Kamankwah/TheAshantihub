@@ -234,7 +234,7 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
         {isError && <div role="alert" style={errorStyle}>Could not load the portfolios.</div>}
         {!isLoading && !isError && rows.length === 0 && <div style={dim}>No business matches these filters.</div>}
         {rows.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table aria-label="Businesses" style={{ borderCollapse: "collapse", width: "100%", minWidth: 900, fontSize: "0.78rem", color: D.text, fontVariantNumeric: "tabular-nums" }}>
               <thead>
                 <tr>
@@ -250,7 +250,7 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
                       <div style={{ fontWeight: 800 }}>{b.business_name}</div>
                       <div style={dim}>{[b.zone?.name, b.registration_channel === "self" ? "registered online" : null, b.needs_claim ? "owner hasn't set a login" : null].filter(Boolean).join(" · ")}</div>
                     </td>
-                    <td style={td}>{b.account_manager?.full_name || <span style={{ color: D.amber, fontWeight: 800 }}>No account manager</span>}</td>
+                    <td style={td}>{b.account_manager?.full_name || <span style={{ color: D.amberInk, fontWeight: 800 }}>No account manager</span>}</td>
                     <td style={td}>
                       <HealthChip rating={b.health?.rating} />
                       <div style={dim}>{b.health?.reasons?.[0] || ""}</div>
@@ -265,7 +265,7 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button type="button" aria-label={`Open ${b.business_name}`} onClick={() => onOpen(b.id)} style={button(D.panelBg, D.text)}>Open</button>
                         {canReassign && !b.account_manager && (
-                          <button type="button" aria-label={`Assign a scout to ${b.business_name}`} onClick={() => setSelected([{ id: b.id, business_name: b.business_name }])} style={button(D.gold, D.text)}>Assign a scout</button>
+                          <button type="button" aria-label={`Assign a scout to ${b.business_name}`} onClick={() => setSelected([{ id: b.id, business_name: b.business_name }])} style={button(D.gold, D.onGold)}>Assign a scout</button>
                         )}
                       </div>
                     </td>
@@ -332,7 +332,7 @@ function AtRisk({ auth, onOpen }) {
               {flags > 0 && <li>{plural(flags, "open fraud case", "open fraud cases")}</li>}
             </ul>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" onClick={() => show(b.id, "follow-up")} style={button(D.gold, D.text)}>Create follow-up task</button>
+              <button type="button" onClick={() => show(b.id, "follow-up")} style={button(D.gold, D.onGold)}>Create follow-up task</button>
               <button type="button" onClick={() => show(b.id, "reassign")} style={button(D.panelBg, D.text)}>Reassign to another scout</button>
               <button type="button" onClick={() => onOpen(b.id)} style={button(D.panelBg, D.text)}>Open business</button>
             </div>

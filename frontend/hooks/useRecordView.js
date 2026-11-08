@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react'
 import { apiPost } from '../apiClient.js'
+import { readCookieConsent } from '../lib/cookieConsent.js'
 
 // POST /api/listings/<id>/view/ — the "customers also viewed" signal. One post
 // per listing once the page has been on screen for three seconds (a hidden tab
 // does not count until it is shown). A signed-in customer sends `{}`; a
 // signed-out visitor sends `{viewer}`, an anonymous id kept in this browser.
-// It is analytics only: nothing waits for it and every failure is ignored.
+// Only after the visitor chose "Accept All" on the cookie banner: "Essential Only" (or no choice yet) records nothing
+// and creates no anonymous id. It is analytics only: nothing waits for it and every failure is ignored.
 const VIEWER_KEY = 'ashantihub.viewerId'
 const DELAY_MS = 3000
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -50,6 +52,7 @@ export function useRecordView(id, user) {
     let timer = null
     const fire = () => {
       timer = null
+      if (readCookieConsent() !== 'accepted') return // checked when the timer fires, so a choice made meanwhile counts
       recorded.current = id
       const body = signedIn ? {} : { viewer: anonymousViewerId() }
       apiPost(`/api/listings/${id}/view/`, body).catch(() => {})

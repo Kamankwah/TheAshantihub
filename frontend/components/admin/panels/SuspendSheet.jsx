@@ -59,7 +59,7 @@ export default function SuspendSheet({ kind, id, name, suspended, onDone, onCanc
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
-        <button type="submit" disabled={!ready} style={button(suspended ? D.gold : D.red, suspended ? D.text : "#fff", !ready)}>{suspended ? "Lift suspension" : "Suspend"}</button>
+        <button type="submit" disabled={!ready} style={button(suspended ? D.gold : D.red, suspended ? D.text : D.white, !ready)}>{suspended ? "Lift suspension" : "Suspend"}</button>
       </div>
     </form>
   );

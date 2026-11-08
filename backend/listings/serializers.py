@@ -9,6 +9,7 @@ from accounts.models import BusinessOwner
 from billing.models import Subscription
 
 from . import image_variants, pricing, services, variants
+from .visibility import NO_PRICE_MESSAGE
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, ListingVariant, ListingVideo, Promotion, Zone
 
 # The product/service decision fields added by the comprehensive listing-
@@ -556,6 +557,14 @@ class OwnerListingManageSerializer(serializers.ModelSerializer):
     def validate(self, data):
         if self.instance is not None and self.instance.status == Listing.DISCONTINUED:
             raise serializers.ValidationError({"status": "A discontinued listing cannot be changed."})
+        # A listing that is live or waiting for review keeps a price: blanking it would take the item out of the
+        # marketplace. A draft or rejected one may still be unpriced until it is submitted.
+        if (
+            "price_amount" in data and self.instance is not None
+            and self.instance.status in (Listing.PUBLISHED, Listing.PENDING_REVIEW, Listing.DROPPED)
+            and (data["price_amount"] is None or data["price_amount"] <= 0)
+        ):
+            raise serializers.ValidationError({"price_amount": NO_PRICE_MESSAGE})
         return validate_sale_price(data, self.instance)
 
     def update(self, instance, validated_data):

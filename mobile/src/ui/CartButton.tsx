@@ -22,7 +22,7 @@ export function CartButton() {
       <Feather name="shopping-bag" size={24} color={c.ink} />
       {count > 0 ? (
         <View style={{ position: "absolute", top: 4, right: 2, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: c.ink, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 }}>
-          <Text style={{ color: c.canvas, fontFamily: fonts.bodyBold, fontSize: 11 }}>{count > 99 ? "99+" : count}</Text>
+          <Text style={{ color: c.canvas, fontFamily: fonts.bodyBold, fontSize: 12 }}>{count > 99 ? "99+" : count}</Text>
         </View>
       ) : null}
     </Pressable>

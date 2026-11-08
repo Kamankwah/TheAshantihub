@@ -3,7 +3,7 @@ import { useIncomingBookings } from "../../../hooks/useIncomingBookings.js";
 import { useMyListings, DEFAULT_LISTINGS_PATH } from "../../../hooks/useMyListings.js";
 import { useCategories } from "../../../hooks/useCategories.js";
 import { useState } from "react";
-import { D, glassCard, sectionTitle, tint } from "../theme.js";
+import { D, glassCard, sectionTitle, tint, inkOf } from "../theme.js";
 import OwnerListingCard from "./OwnerListingCard.jsx";
 
 // Accommodation booking management (business item 2 / Wave H3): an
@@ -12,7 +12,7 @@ import OwnerListingCard from "./OwnerListingCard.jsx";
 const btn = { border: "none", borderRadius: 20, padding: "7px 14px", fontSize: "0.74rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
 
 const STATUS_META = {
-  pending: { label: "Pending payment", color: D.amber },
+  pending: { label: "Pending payment", color: D.amberInk },
   confirmed: { label: "Confirmed", color: D.blue },
   checked_in: { label: "Checked in", color: D.green },
   checked_out: { label: "Checked out", color: D.textFaint },
@@ -39,14 +39,14 @@ function BookingCard({ booking, onChanged }) {
           </div>
           <div style={{ color: D.textFaint, fontSize: "0.72rem", marginTop: 2 }}>GHS {booking.total_price}</div>
         </div>
-        <span style={{ background: tint(meta.color, "22"), color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.label}</span>
+        <span style={{ background: tint(meta.color, "22"), color: inkOf(meta.color), borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.label}</span>
       </div>
 
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
 
       <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-        {booking.status === "confirmed" && <button onClick={() => act("check-in")} style={{ ...btn, background: D.green, color: "#fff" }}>🔑 Check in</button>}
-        {booking.status === "checked_in" && <button onClick={() => act("check-out")} style={{ ...btn, background: D.gold, color: "#1a1205" }}>✓ Check out</button>}
+        {booking.status === "confirmed" && <button onClick={() => act("check-in")} style={{ ...btn, background: D.greenFill, color: D.white }}>🔑 Check in</button>}
+        {booking.status === "checked_in" && <button onClick={() => act("check-out")} style={{ ...btn, background: D.gold, color: D.onGold }}>✓ Check out</button>}
       </div>
     </div>
   );

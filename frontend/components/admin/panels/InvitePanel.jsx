@@ -106,7 +106,7 @@ export default function InvitePanel({ auth }) {
           {limited && <div style={dim}>{`You can invite ${roles.map((r) => `${ROLE_LABEL[r]}s`).join(" and ")} only. Other roles are invited by Super Admin.`}</div>}
         </fieldset>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))", gap: 10 }}>
           <label style={labelStyle}>Full name<input value={form.full_name} onChange={set("full_name")} style={field} required /></label>
           <label style={labelStyle}>Email<input type="email" value={form.email} onChange={set("email")} style={field} required /></label>
           <label style={labelStyle}>Phone<input type="tel" value={form.phone} onChange={set("phone")} placeholder="Phone number" style={field} />
@@ -139,7 +139,7 @@ export default function InvitePanel({ auth }) {
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span style={dim}>{`The link lasts ${days} days. Sent by email · SMS: not connected.`}</span>
-          <button type="submit" disabled={!chosen || sending} style={button(D.gold, D.text, !chosen || sending)}>{sending ? "Sending…" : "Send invite"}</button>
+          <button type="submit" disabled={!chosen || sending} style={button(D.gold, D.onGold, !chosen || sending)}>{sending ? "Sending…" : "Send invite"}</button>
         </div>
       </form>
 
@@ -154,7 +154,7 @@ export default function InvitePanel({ auth }) {
               <span style={dim}>{`${pending.length} waiting`}</span>
             </div>
             {pending.length === 0 ? <div style={dim}>No invites waiting.</div> : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead>
                     <tr>
@@ -179,7 +179,7 @@ export default function InvitePanel({ auth }) {
                               <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 190 }}>
                                 <div style={dim}>{`Cancel the invite to ${v.full_name}? The link stops working.`}</div>
                                 <div style={{ display: "flex", gap: 6 }}>
-                                  <button type="button" onClick={() => run(() => apiPost(`/api/accounts/staff/${v.id}/cancel-invite/`, {}), `Invite to ${v.full_name} cancelled.`, "Could not cancel the invite.")} style={button(D.red, "#fff")}>Cancel invite</button>
+                                  <button type="button" onClick={() => run(() => apiPost(`/api/accounts/staff/${v.id}/cancel-invite/`, {}), `Invite to ${v.full_name} cancelled.`, "Could not cancel the invite.")} style={button(D.red, D.white)}>Cancel invite</button>
                                   <button type="button" onClick={() => setCancelling(null)} style={button(D.panelBg, D.text)}>Keep it</button>
                                 </div>
                               </div>

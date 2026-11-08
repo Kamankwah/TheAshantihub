@@ -899,6 +899,7 @@ describe('CheckoutPage: money-screen correctness', () => {
     serve()
     const loading = renderPage({ user: null, authLoading: true, onSignIn: vi.fn() })
     expect(screen.getByText(/Loading your checkout/)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(/Loading your checkout/) // the placeholders are one live region carrying the words
     expect(screen.queryByText('Sign in to check out.')).not.toBeInTheDocument()
     loading.unmount()
     renderPage({ user: null, authLoading: false, onSignIn: vi.fn() })
@@ -966,5 +967,50 @@ describe('CheckoutPage: the delivery pin while delivery fees are on (P45)', () =
     renderPage()
     await screen.findByText('AK-039-5028')
     expect(await screen.findByRole('button', { name: 'Increase quantity of Kente Stole' })).toBeDisabled()
+  })
+})
+
+// UX phase 1b: on a phone the one "Place your order" button (and its reason) sits in a fixed bar with the total.
+describe('CheckoutPage: sticky order bar on a phone', () => {
+  const realMatchMedia = window.matchMedia
+  const setPhone = (isPhone) => {
+    window.matchMedia = (query) => ({
+      matches: isPhone && query.includes('max-width: 760px'), media: query, addListener() {}, removeListener() {},
+      addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,
+    })
+  }
+  afterEach(() => { window.matchMedia = realMatchMedia })
+
+  test('test_a_phone_has_one_place_order_button_and_it_is_in_the_bar_with_the_total', async () => {
+    setPhone(true)
+    serve({ addresses: [addr(1, { is_default: true })] })
+    renderPage()
+    await screen.findByText('AK-039-5028')
+    const bar = screen.getByTestId('checkout-sticky-bar')
+    expect(screen.getAllByRole('button', { name: /Place your order in GHS/ })).toHaveLength(1)
+    expect(within(bar).getByRole('button', { name: /Place your order in GHS/ })).toBeInTheDocument()
+    expect(within(bar).getByText('Order total')).toBeInTheDocument()
+    expect(within(bar).getByText(screen.getByTestId('summary-total').textContent)).toBeInTheDocument()
+  })
+
+  test('test_a_phone_bar_button_places_the_order_and_shows_why_it_is_disabled', async () => {
+    setPhone(true)
+    const seen = serve({ addresses: [] })
+    const { onNavigate } = renderPage()
+    const bar = await screen.findByTestId('checkout-sticky-bar')
+    await waitFor(() => expect(within(bar).getByTestId('checkout-reason')).toBeInTheDocument()) // no address yet
+    expect(placeButton()).toBeDisabled()
+    expect(placeButton()).toHaveAttribute('aria-describedby', 'checkout-reason')
+    expect(seen.checkout).toEqual([])
+    expect(onNavigate).not.toHaveBeenCalled()
+  })
+
+  test('test_a_wider_screen_has_no_bar_and_the_button_sits_under_the_summary', async () => {
+    setPhone(false)
+    serve({ addresses: [addr(1, { is_default: true })] })
+    renderPage()
+    await screen.findByText('AK-039-5028')
+    expect(screen.queryByTestId('checkout-sticky-bar')).not.toBeInTheDocument()
+    expect(within(screen.getByTestId('checkout-summary')).getByRole('button', { name: /Place your order in GHS/ })).toBeInTheDocument()
   })
 })

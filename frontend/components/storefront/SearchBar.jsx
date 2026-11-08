@@ -93,7 +93,7 @@ export default function SearchBar({ onOpenResult, onSubmit }) {
           ) : (
             groups.map((g) => (
               <div key={g.key} style={{ padding: "4px 0" }}>
-                <div style={{ padding: "6px 16px 4px", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.deepGold }}>{g.label}</div>
+                <div style={{ padding: "6px 16px 4px", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.goldInk }}>{g.label}</div>
                 {g.rows.map((row) => (
                   <button
                     key={`${g.key}-${row.id}`}

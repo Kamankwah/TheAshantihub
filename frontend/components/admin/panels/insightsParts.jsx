@@ -49,7 +49,7 @@ export function NotRecorded({ title, items }) {
     <section aria-label={title} style={section}>
       <h3 style={sectionTitle}>{title}</h3>
       <span style={dim}>These are left blank on purpose rather than guessed.</span>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))", gap: 10 }}>
         {items.map((item) => (
           <div key={item.name} style={{ border: `1px dashed ${D.cardBorder}`, borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 3 }}>
             <span style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text }}>{item.name}</span>

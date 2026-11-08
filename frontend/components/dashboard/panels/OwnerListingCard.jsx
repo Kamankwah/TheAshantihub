@@ -9,7 +9,7 @@ import StockLineEditor from "../../catalogue/StockLineEditor.jsx";
 import GroupingCard from "../../catalogue/GroupingCard.jsx";
 import BarcodeField from "../../catalogue/BarcodeField.jsx";
 import { displayBarcode } from "../../catalogue/catalogueFormat.js";
-import { D, glassCard, sectionTitle, tint } from "../theme.js";
+import { D, glassCard, sectionTitle, tint, inkOf } from "../theme.js";
 import ListingChangesBanner from "./ListingChangesBanner.jsx";
 import MediaManager from "./MediaManager.jsx";
 import VariantEditor from "./VariantEditor.jsx";
@@ -37,7 +37,7 @@ function ExpiryBadge({ listing }) {
   const soon = days >= 0 && days <= 14;
   if (!expired && !soon) return null;
   return (
-    <span style={{ background: expired ? tint(D.red, "22") : `${D.amber}22`, color: expired ? D.red : D.amber, borderRadius: 20, padding: "2px 9px", fontSize: "0.62rem", fontWeight: 800 }}>
+    <span style={{ background: expired ? tint(D.red, "22") : `${D.amber}22`, color: expired ? D.red : D.amberInk, borderRadius: 20, padding: "2px 9px", fontSize: "0.62rem", fontWeight: 800 }}>
       {expired ? `⚠️ Expired ${-days}d ago` : `⏳ Expires in ${days}d`}
     </span>
   );
@@ -114,6 +114,7 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
     }
     const priceChanged = !listing.has_variants && String(price) !== String(listing.price_amount ?? "");
     if (!priceChanged && Object.keys(changes).length === 0) { setError("You have not changed anything yet."); return; }
+    if (priceChanged && !(Number(price) > 0)) { setError("Set a price above GH₵ 0.00. A listing without a price is not shown in the marketplace."); return; }
     let priceSaved = false;
     try {
       if (priceChanged) { await apiPatch(`${basePath}/${listing.id}/manage/`, { price_amount: price === "" ? null : price }); priceSaved = true; }
@@ -141,7 +142,7 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
         </div>
       )}
       {waiting ? (
-        <div style={{ color: D.amber, fontSize: "0.74rem", marginBottom: 8 }}>This edit is waiting for review, so the other details cannot change until it is decided.</div>
+        <div style={{ color: D.amberInk, fontSize: "0.74rem", marginBottom: 8 }}>This edit is waiting for review, so the other details cannot change until it is decided.</div>
       ) : (
       <>
       <div style={{ ...noteStyle, marginBottom: 8 }}>Everything below needs approval. Your approved version stays live until then.</div>
@@ -170,7 +171,7 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
         <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
           <input value={s.label || ""} onChange={e => setSpec(i, "label", e.target.value)} placeholder="Label" style={{ ...inputStyle, flex: 1, width: "auto" }} />
           <input value={s.value || ""} onChange={e => setSpec(i, "value", e.target.value)} placeholder="Value" style={{ ...inputStyle, flex: 1, width: "auto" }} />
-          <button type="button" onClick={() => setSpecs(prev => prev.filter((_, idx) => idx !== i))} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>✕</button>
+          <button type="button" onClick={() => setSpecs(prev => prev.filter((_, idx) => idx !== i))} style={{ ...btn, background: tint(D.red, "22"), color: inkOf(D.red) }}>✕</button>
         </div>
       ))}
       <button type="button" onClick={() => setSpecs(prev => [...prev, { label: "", value: "" }])} style={{ ...quietBtn, marginBottom: 10 }}>+ Add spec</button>
@@ -178,7 +179,7 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
       )}
       {error && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginBottom: 6 }}>{error}</div>}
       <div style={{ display: "flex", gap: 6 }}>
-        <button type="button" onClick={save} style={{ ...btn, background: D.gold, color: "#1a1205" }}>Save changes</button>
+        <button type="button" onClick={save} style={{ ...btn, background: D.gold, color: D.onGold }}>Save changes</button>
         <button type="button" onClick={onCancel} style={quietBtn}>Cancel</button>
       </div>
     </div>
@@ -257,15 +258,15 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
 
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
       {soldOut && !restockOpen && <div style={{ color: D.red, fontSize: "0.7rem", marginTop: 6 }}>Sold out — restock to keep selling.</div>}
-      {low && !restockOpen && <div style={{ color: D.amber, fontSize: "0.7rem", marginTop: 6 }}>Running low — restock soon.</div>}
+      {low && !restockOpen && <div style={{ color: D.amberInk, fontSize: "0.7rem", marginTop: 6 }}>Running low — restock soon.</div>}
 
       {!discontinued && !hasVariants && isProduct && (
         <div style={{ marginTop: 12 }}>
-          <button type="button" onClick={() => setRestockOpen(o => !o)} style={{ ...btn, background: D.gold, color: "#1a1205" }}>📦 Restock</button>
+          <button type="button" onClick={() => setRestockOpen(o => !o)} style={{ ...btn, background: D.gold, color: D.onGold }}>📦 Restock</button>
           {restockOpen && (
             <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center" }}>
               <input type="number" min={1} value={restockQty} onChange={e => setRestockQty(e.target.value)} placeholder="Add quantity" style={{ ...inputStyle, width: 140 }} />
-              <button type="button" onClick={restock} disabled={!restockQty || busy} style={{ ...btn, background: D.green, color: "#fff", cursor: restockQty ? "pointer" : "default" }}>Add to stock</button>
+              <button type="button" onClick={restock} disabled={!restockQty || busy} style={{ ...btn, background: D.greenFill, color: D.white, cursor: restockQty ? "pointer" : "default" }}>Add to stock</button>
               <Chip color={D.green}>Live now</Chip>
             </div>
           )}
@@ -286,9 +287,9 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
           )}
           <button type="button" onClick={() => setEditing(e => !e)} style={quietBtn}>{editing ? "Close" : "✏️ Edit price & specs"}</button>
           {dropped
-            ? <button type="button" disabled={busy} onClick={() => lifecycle("restore")} style={{ ...btn, background: D.green, color: "#fff" }}>Restore</button>
+            ? <button type="button" disabled={busy} onClick={() => lifecycle("restore")} style={{ ...btn, background: D.greenFill, color: D.white }}>Restore</button>
             : <button type="button" disabled={busy} onClick={() => setConfirm("drop")} style={quietBtn}>Drop</button>}
-          <button type="button" disabled={busy} onClick={() => setConfirm("discontinue")} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>Discontinue</button>
+          <button type="button" disabled={busy} onClick={() => setConfirm("discontinue")} style={{ ...btn, background: tint(D.red, "22"), color: inkOf(D.red) }}>Discontinue</button>
         </div>
       )}
 
@@ -302,7 +303,7 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
         <div role="alertdialog" aria-label={`Confirm ${confirm}`} style={{ marginTop: 10, padding: "10px 12px", border: `1px solid ${D.red}`, borderRadius: 10, color: D.text, fontSize: "0.76rem" }}>
           <div>{CONFIRM_TEXT[confirm].text}</div>
           <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-            <button type="button" disabled={busy} onClick={() => lifecycle(confirm)} style={{ ...btn, background: D.red, color: "#fff" }}>{CONFIRM_TEXT[confirm].action}</button>
+            <button type="button" disabled={busy} onClick={() => lifecycle(confirm)} style={{ ...btn, background: D.redFill, color: D.white }}>{CONFIRM_TEXT[confirm].action}</button>
             <button type="button" onClick={() => setConfirm(null)} style={quietBtn}>Cancel</button>
           </div>
         </div>

@@ -80,7 +80,7 @@ export function ContactSocialRing() {
                       target="_blank"
                       rel="noreferrer noopener"
                       aria-label={p.name}
-                      className="flex items-center justify-center size-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-card border shadow-sm hover:bg-accent transition-colors"
+                      className="flex items-center justify-center size-11 -translate-x-1/2 -translate-y-1/2 rounded-full bg-card border shadow-sm hover:bg-accent transition-colors"
                     >
                       <p.icon className="size-5 text-muted-foreground" />
                     </a>

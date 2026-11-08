@@ -18,6 +18,7 @@ import BookingTermsNote from "./BookingTermsNote.jsx";
 import { useBookingTerms } from "../hooks/useBookingTerms.js";
 import { stayStart } from "../lib/bookingTerms.js";
 import { useWallet } from "../hooks/useWallet.js";
+import { SkeletonProduct } from "./Skeleton.jsx";
 import { useBookingPayment } from "../hooks/useBookingPayment.js";
 import { useStayQuote } from "../hooks/useStayQuote.js";
 import PaymentMethodPicker from "./wallet/PaymentMethodPicker.jsx";
@@ -44,6 +45,7 @@ export function isGoods(category) {
 
 export default function ListingDetailPage(props) {
   const { data: item, isLoading, isError, refetch } = useListing(props.id);
+  if (!item && !(isError && !isLoading)) return <div style={{ background: C.canvas, borderRadius: 20 }}><SkeletonProduct /></div>;
   if (!item) {
     return (
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 16px", textAlign: "center", background: C.canvas, color: C.ink, borderRadius: 20 }}>
@@ -367,7 +369,7 @@ function ServiceListingDetail({
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               onClick={() => onMessage && onMessage(item)}
-              style={{ background: `${C.kente3}22`, color: "#fff", border: `1px solid ${C.kente3}66`, borderRadius: 20, padding: "10px 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", minHeight: 44 }}
+              style={{ background: `${C.kente3}22`, color: C.white, border: `1px solid ${C.kente3}66`, borderRadius: 20, padding: "10px 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", minHeight: 44 }}
             >
               🎧 Contact Support
             </button>
@@ -417,10 +419,10 @@ function ServiceListingDetail({
                     {pay.problem && <div role="alert" style={{ ...stayStyles.error, marginTop: 8 }}>{pay.problem}</div>}
                   </div>
                 )}
-                {!pay.ledgerOn && pay.problem && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{pay.problem}</div>}
+                {!pay.ledgerOn && pay.problem && <div role="alert" style={{ color: C.errOnDark, fontSize: "0.72rem", marginBottom: 8 }}>{pay.problem}</div>}
                 {stayPayActive && pay.state === "unknown" && !pay.problem && <div role="status" style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.72rem", marginBottom: 8 }}>Checking payment options…</div>}
                 {checkIn && <BookingTermsNote kind="stay" policy={item.cancellation_policy} start={stayStart(checkIn, bookingTerms.data?.stay_check_in_time)} />}
-                {bookingError && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{bookingError}</div>}
+                {bookingError && <div role="alert" style={{ color: C.errOnDark, fontSize: "0.72rem", marginBottom: 8 }}>{bookingError}</div>}
                 <button
                   disabled={booking || !checkIn || !checkOut || !canBuy || (pay.ledgerOn && !stayReady) || pay.state === "unknown"}
                   onClick={() => {
@@ -467,7 +469,7 @@ function ServiceListingDetail({
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: "0.8rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
                 />
                 <BookingTermsNote kind="service" policy={item.cancellation_policy} />
-                {requestError && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{requestError}</div>}
+                {requestError && <div role="alert" style={{ color: C.errOnDark, fontSize: "0.72rem", marginBottom: 8 }}>{requestError}</div>}
                 <button
                   disabled={requesting || !requestMessage.trim()}
                   onClick={async () => {
@@ -572,7 +574,7 @@ function ServiceListingDetail({
           </button>
           )}
           {cartError && (
-            <div style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.72rem" }}>{cartError}</div>
+            <div style={{ marginTop: 8, color: C.errOnDark, fontSize: "0.72rem" }}>{cartError}</div>
           )}
           </>
           )}
@@ -595,7 +597,7 @@ function ServiceListingDetail({
       {Array.isArray(related) && related.length > 0 && CardComponent && (
         <div data-testid="related-rail" style={{ marginTop: 40 }}>
           <h2 style={{ color: C.gold, fontSize: "0.95rem", fontWeight: 900, margin: "0 0 14px" }}>Related</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(230px, 100%), 1fr))", gap: 14 }}>
             {related.map((r) => (
               <CardComponent
                 key={r.id}
@@ -643,7 +645,7 @@ function VariantPicker({ variants, qty, setQty, canBuy, opensLabel, adding, adde
               <PriceLine item={v} tone="dark" size="0.85rem" />
             </div>
             {out ? (
-              <span style={{ color: "#ffb4b4", fontSize: "0.78rem", fontWeight: 700 }}>Out of stock</span>
+              <span style={{ color: C.errOnDark, fontSize: "0.78rem", fontWeight: 700 }}>Out of stock</span>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <button type="button" aria-label={`One fewer ${v.label}`} style={stepBtn} onClick={() => change(v, -1)} disabled={(qty[v.id] || 0) === 0}>−</button>
@@ -737,7 +739,7 @@ function SpecsSection({ item }) {
       {list.length === 0 ? (
         <EmptyNote text="No specs listed yet." />
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: "6px 24px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(240px, 100%), 1fr))", gap: "6px 24px" }}>
           {list.map((spec, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "8px 0", fontSize: "0.8rem" }}>
               <span style={{ color: "rgba(255,255,255,0.55)" }}>{spec.label}</span>

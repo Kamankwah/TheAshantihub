@@ -32,10 +32,10 @@ function MarketplaceView({ m, days }) {
         <Kpi label="Reachable by SMS" value={fmtNum(reach("sms"))} sub="Opted in, see Consent" />
         <Kpi label="Reachable by email" value={fmtNum(reach("email"))} sub="Opted in" />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="by-category" title={`By category · last ${days} days`}>
           {m.categories.length === 0 ? <Honest>No live listing or order in a category yet.</Honest> : (
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr>{["Category", "Live listings", "Orders and bookings", "Order value"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                 <tbody>

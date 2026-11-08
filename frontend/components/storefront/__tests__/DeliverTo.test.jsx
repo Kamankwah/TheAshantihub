@@ -16,25 +16,29 @@ function position(lat, lng) {
     value: { getCurrentPosition: (ok) => ok({ coords: { latitude: lat, longitude: lng } }) },
   })
 }
+function openAndLocate() {
+  fireEvent.click(screen.getByRole('button', { name: /Choose location|Deliver to/ }))
+  fireEvent.click(screen.getByRole('button', { name: 'Use my current location' }))
+}
 const found = (countryCode, country, state) => server.use(http.get(NOMINATIM, () => HttpResponse.json({ address: { country_code: countryCode.toLowerCase(), country, state } })))
 
 describe('DeliverTo', () => {
   beforeEach(() => { localStorage.clear(); sessionStorage.clear() })
   afterEach(() => { delete navigator.geolocation; delete navigator.permissions })
 
-  it('opens by itself once per session while nothing is chosen, then stays shut', () => {
-    const first = setup()
-    expect(screen.getByRole('dialog', { name: /delivery location/i })).toBeInTheDocument()
-    first.unmount()
+  it('stays shut on arrival while nothing is chosen, and opens on a tap', () => {
     setup()
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.getByText('Choose location')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Choose location/ }))
+    expect(screen.getByRole('dialog', { name: /delivery location/i })).toBeInTheDocument()
   })
 
   it('detects Accra, asks "Deliver to Accra?" and remembers the yes', async () => {
     position(5.6, -0.19)
     found('GH', 'Ghana', 'Greater Accra Region')
     setup()
+    openAndLocate()
     expect(await screen.findByRole('heading', { name: 'Deliver to Accra?' })).toBeInTheDocument()
     expect(screen.getByTestId('deliver-note')).toHaveTextContent(/Ashanti Region only/)
     fireEvent.click(screen.getByRole('button', { name: 'Yes, deliver to Accra' }))
@@ -47,22 +51,15 @@ describe('DeliverTo', () => {
     position(51.5, -0.12)
     found('GB', 'United Kingdom', 'England')
     setup()
+    openAndLocate()
     expect(await screen.findByRole('heading', { name: 'Deliver to United Kingdom?' })).toBeInTheDocument()
     expect(screen.getByTestId('deliver-note')).toHaveTextContent(/Ghana only/)
   })
 
-  it('"Use my current location" asks again on a tap when the arrival ask was already made', async () => {
-    sessionStorage.setItem('ashantihub.deliverToLocated', '1')
-    position(5.6, -0.19)
-    found('GH', 'Ghana', 'Greater Accra Region')
-    setup()
-    fireEvent.click(screen.getByRole('button', { name: 'Use my current location' }))
-    expect(await screen.findByRole('heading', { name: 'Deliver to Accra?' })).toBeInTheDocument()
-  })
 
   it('a manual choice of Ashanti is delivered door to door', () => {
-    sessionStorage.setItem('ashantihub.deliverToLocated', '1')
     setup()
+    fireEvent.click(screen.getByRole('button', { name: /Choose location/ }))
     fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'Ashanti' } })
     fireEvent.click(screen.getByRole('button', { name: 'Deliver here' }))
     expect(screen.getByText('Ashanti')).toBeInTheDocument()
@@ -73,12 +70,12 @@ describe('DeliverTo', () => {
   it('says so when the location cannot be found, and does not invent a place', async () => {
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (_ok, fail) => fail({ code: 1 }) } })
     setup()
+    openAndLocate()
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/Couldn’t find where you are/))
     expect(localStorage.getItem('ashantihub.deliverTo')).toBeNull()
   })
 
   it('a customer with a saved address sees it until they choose a place; Escape closes the panel', () => {
-    sessionStorage.setItem('ashantihub.deliverToAsked', '1')
     setup({ firstName: 'Ama', savedAddress: 'Asokwa, Kumasi' })
     expect(screen.getByText('Deliver to Ama')).toBeInTheDocument()
     expect(screen.getByText('Asokwa, Kumasi')).toBeInTheDocument()
@@ -89,46 +86,26 @@ describe('DeliverTo', () => {
   })
 })
 
-describe('DeliverTo asks the browser for the location on arrival', () => {
+describe('DeliverTo never asks the browser for the location by itself', () => {
   beforeEach(() => { localStorage.clear(); sessionStorage.clear() })
   afterEach(() => { delete navigator.geolocation; delete navigator.permissions })
-  const permission = (state) => Object.defineProperty(navigator, 'permissions', { configurable: true, value: { query: () => Promise.resolve({ state }) } })
 
-  it('asks when the permission is still undecided, then offers "Deliver to Accra?" without a tap', async () => {
-    permission('prompt')
-    position(5.6, -0.19)
-    found('GH', 'Ghana', 'Greater Accra Region')
-    setup()
-    expect(await screen.findByRole('heading', { name: 'Deliver to Accra?' })).toBeInTheDocument()
-    expect(localStorage.getItem('ashantihub.deliverTo')).toBeNull() // a suggestion until they say yes
-  })
-
-  it('asks only once per session, so a dismissed prompt is not repeated on every page', async () => {
-    permission('prompt')
-    let asked = 0
-    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: () => { asked += 1 } } })
-    const first = setup()
-    await waitFor(() => expect(asked).toBe(1))
-    first.unmount()
-    setup()
-    await new Promise((r) => setTimeout(r, 30))
-    expect(asked).toBe(1)
-  })
-
-  it('never asks a site the shopper has blocked; the button is still there', async () => {
-    permission('denied')
+  it('asks nothing on arrival, even when the permission is undecided', async () => {
+    Object.defineProperty(navigator, 'permissions', { configurable: true, value: { query: () => Promise.resolve({ state: 'prompt' }) } })
     let asked = 0
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: () => { asked += 1 } } })
     setup()
-    await new Promise((r) => setTimeout(r, 30))
+    await new Promise((r) => setTimeout(r, 50))
     expect(asked).toBe(0)
-    expect(screen.getByRole('button', { name: 'Use my current location' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('asks directly in a browser without the permissions API', async () => {
+  it('asks exactly once, on the tap of "Use my current location"', async () => {
     let asked = 0
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: () => { asked += 1 } } })
     setup()
+    openAndLocate()
     await waitFor(() => expect(asked).toBe(1))
+    expect(localStorage.getItem('ashantihub.deliverTo')).toBeNull()
   })
 })

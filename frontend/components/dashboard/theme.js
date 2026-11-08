@@ -43,9 +43,14 @@ export const D = {
   gold: C.gold,            // #D4A017
   goldSoft: "rgba(212,160,23,0.14)",
   deepGold: C.deepGold,    // #B8860B
-  green: C.trust,    // #006400 light / retuned for dark
+  green: C.trust,    // #006400 light / retuned for dark (text, borders)
+  greenFill: C.trustFill, // solid green button/badge fill; pair with white text
+  goldInk: C.goldInk,     // gold/deepGold as TEXT on a themed surface (plain D.gold fails AA on white)
+  amberInk: C.amberInk,   // amber/orange as TEXT on a themed surface
+  purpleInk: C.purpleInk,
   amber: C.orange,   // #E8621A
-  red: C.danger,     // #CC0000 light / retuned for dark
+  red: C.danger,     // #CC0000 light / retuned for dark (text, borders)
+  redFill: C.dangerFill, // destructive button fill; pair with white/cream text
   blue: C.info,      // #000080 light / retuned for dark
   purple: "#6B4E8E", // new — no purple exists in C; used only for chart/usage-meter variety
   kente1: C.kente1, kente2: C.kente2, kente3: C.kente3,
@@ -55,6 +60,9 @@ export const D = {
   // and solid green/red buttons
   darkBrown: C.darkBrown,
   cream: C.cream,
+  white: C.white,
+  onGold: C.onGold,
+  errOnDark: C.errOnDark,
   // tinted status wells with their readable text colour
   okBg: C.okBg, okInk: C.okInk,
   errBg: C.errBg, errInk: C.errInk,
@@ -63,6 +71,9 @@ export const D = {
   glow: "0 0 20px rgba(212,160,23,0.25)",
   shadow: C.shadow,
 };
+
+// A brand accent passed around as a "tone" and drawn as TEXT: swap in its text-safe ink twin.
+export const inkOf = (c) => (c === D.gold || c === D.deepGold ? D.goldInk : c === D.amber ? D.amberInk : c === D.purple ? D.purpleInk : c);
 
 // The five recharts series colors, mirroring index.css's .command-center
 // --chart-1..5 (theme-aware: green/blue are tokens).
@@ -98,8 +109,8 @@ export const sectionTitle = {
 export function getScoreColor(score) {
   if (score >= 800) return D.green;
   if (score >= 700) return D.kente2;
-  if (score >= 600) return D.gold;
-  if (score >= 500) return D.amber;
+  if (score >= 600) return D.goldInk;
+  if (score >= 500) return D.amberInk;
   return D.red;
 }
 

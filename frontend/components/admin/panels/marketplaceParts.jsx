@@ -2,7 +2,7 @@ import { useState } from "react";
 import { apiDownload } from "../../../apiClient.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { queryString } from "../../../hooks/useMarketplace.js";
-import { D } from "../theme.js";
+import { D, inkOf } from "../theme.js";
 import { button, callout, chip, dim, field } from "./panelStyles.js";
 import { card, errorStyle, formatDateTime, h2, labelStyle } from "./portfolioParts.jsx";
 
@@ -45,7 +45,7 @@ export function KpiStrip({ tiles, label = "Summary" }) {
         <div key={tile.label} style={{ ...card, padding: 12, gap: 4 }}>
           <div style={{ color: D.textDim, fontSize: "0.68rem", fontWeight: 800 }}>{tile.label}</div>
           <div style={{ color: D.text, fontSize: tile.value == null ? "0.85rem" : "1.25rem", fontWeight: 900, ...figures }}>{tile.value == null ? "Not available" : tile.value}</div>
-          {tile.sub && <div style={{ ...dim, color: tile.tone || D.textDim }}>{tile.sub}</div>}
+          {tile.sub && <div style={{ ...dim, color: inkOf(tile.tone || D.textDim) }}>{tile.sub}</div>}
         </div>
       ))}
     </div>

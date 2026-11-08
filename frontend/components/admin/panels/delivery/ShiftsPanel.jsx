@@ -39,7 +39,7 @@ function AddShift({ data, day, onDone }) {
       {label("Zone", <select value={form.zone} onChange={set("zone")} style={field}><option value="">Any zone</option>{data.zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}</select>)}
       {label("From", <input type="time" value={form.start} onChange={set("start")} style={field} />)}
       {label("To", <input type="time" value={form.end} onChange={set("end")} style={field} />)}
-      <button type="button" onClick={save} style={button(D.gold, D.text)}>Add shift</button>
+      <button type="button" onClick={save} style={button(D.gold, D.onGold)}>Add shift</button>
     </div>
   );
 }
@@ -67,7 +67,7 @@ export default function ShiftsPanel() {
           <button type="button" onClick={() => setWeek(addDays(monday, -7))} style={button(D.panelBg, D.text)}>Previous week</button>
           <button type="button" onClick={() => setWeek(addDays(monday, 7))} style={button(D.panelBg, D.text)}>Next week</button>
           <button type="button" onClick={() => run(() => apiPost("/api/delivery/shifts/copy-week/", { from: addDays(monday, -7), to: monday }), (o) => `Copied ${o.copied} shifts from last week.`, "Could not copy last week.")} style={button(D.panelBg, D.text)}>Copy last week</button>
-          <button type="button" onClick={() => run(() => apiPost("/api/delivery/shifts/publish/", { week: monday }), (o) => `Published ${o.published} shifts; ${o.riders_told} riders told.`, "Could not publish.")} style={button(D.gold, D.text)}>Publish</button>
+          <button type="button" onClick={() => run(() => apiPost("/api/delivery/shifts/publish/", { week: monday }), (o) => `Published ${o.published} shifts; ${o.riders_told} riders told.`, "Could not publish.")} style={button(D.gold, D.onGold)}>Publish</button>
         </>
       )}>Shifts</Title>
       <ErrorLine>{error}</ErrorLine>
@@ -102,7 +102,7 @@ export default function ShiftsPanel() {
                         {s.status === "swap" && s.swap_with && (
                           <>
                             <span style={dim}>with {s.swap_with.full_name}</span>
-                            <button type="button" onClick={() => run(() => apiPost(`/api/delivery/shifts/${s.id}/swap-decision/`, { approve: true }), "Swap approved.", "Could not approve the swap.")} style={button(D.gold, D.text)}>Approve swap</button>
+                            <button type="button" onClick={() => run(() => apiPost(`/api/delivery/shifts/${s.id}/swap-decision/`, { approve: true }), "Swap approved.", "Could not approve the swap.")} style={button(D.gold, D.onGold)}>Approve swap</button>
                             <button type="button" onClick={() => run(() => apiPost(`/api/delivery/shifts/${s.id}/swap-decision/`, { approve: false }), "Swap declined.", "Could not decline the swap.")} style={button(D.panelBg, D.text)}>Decline</button>
                           </>
                         )}

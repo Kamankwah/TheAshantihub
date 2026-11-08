@@ -77,7 +77,7 @@ function Documents({ detail }) {
         <Fact label="TIN">{p.tin || <Missing />}</Fact>
         <Fact label="Business registration certificate">
           {p.business_reg_certificate
-            ? <a href={p.business_reg_certificate} target="_blank" rel="noreferrer" style={{ color: D.deepGold, fontWeight: 700 }}>📄 View business registration certificate</a>
+            ? <a href={p.business_reg_certificate} target="_blank" rel="noreferrer" style={{ color: D.goldInk, fontWeight: 700 }}>📄 View business registration certificate</a>
             : <Missing />}
         </Fact>
       </div>
@@ -165,14 +165,14 @@ function IdentityRow({ row, state, onDone }) {
       </div>
 
       {state === "pending" && !gateReady && (
-        <div style={{ color: D.amber, fontSize: "0.68rem", marginTop: 6 }}>{GATE_HINT}</div>
+        <div style={{ color: D.amberInk, fontSize: "0.68rem", marginTop: 6 }}>{GATE_HINT}</div>
       )}
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
 
       {rejecting && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-start" }}>
           <textarea aria-label="Rejection reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why the owner's documents are not accepted (the owner sees this)" style={{ ...field, flex: "1 1 240px", minWidth: 0 }} />
-          <button type="button" onClick={reject} disabled={!reason.trim() || busy} style={{ background: D.red, color: D.cream, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: reason.trim() && !busy ? "pointer" : "not-allowed", opacity: reason.trim() && !busy ? 1 : 0.5, fontFamily: "inherit" }}>Confirm reject</button>
+          <button type="button" onClick={reject} disabled={!reason.trim() || busy} style={{ background: D.redFill, color: D.cream, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: reason.trim() && !busy ? "pointer" : "not-allowed", opacity: reason.trim() && !busy ? 1 : 0.5, fontFamily: "inherit" }}>Confirm reject</button>
           <button type="button" onClick={() => { setRejecting(false); setReason(""); }} style={{ background: "none", border: "none", color: D.textDim, fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
         </div>
       )}

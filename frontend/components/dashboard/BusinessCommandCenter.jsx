@@ -135,7 +135,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
     return (
       <div style={{ minHeight: "100vh", background: D.pageBg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 20, textAlign: "center" }}>
         <div style={{ fontSize: "1.15rem", fontWeight: 700, color: D.text }}>Sign in with a business owner account to view this dashboard.</div>
-        <button onClick={onExit} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: D.gold, color: "#1a1205", fontWeight: 700, cursor: "pointer", fontSize: "0.85rem" }}>← Back to AshantiHub</button>
+        <button onClick={onExit} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: D.gold, color: D.onGold, fontWeight: 700, cursor: "pointer", fontSize: "0.85rem" }}>← Back to AshantiHub</button>
       </div>
     );
   }
@@ -171,7 +171,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
               <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.92rem", lineHeight: 1 }}>AshantiHub</div>
               <div style={{ color: "rgba(253,246,227,0.55)", fontSize: "0.58rem", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 4 }}>Business Command Center</div>
             </div>
-            {mobileNavOpen && <button onClick={() => setMobileNavOpen(false)} aria-label="Close menu" style={{ marginLeft: "auto", background: "rgba(255,255,255,0.08)", color: "#fff", border: "none", borderRadius: "50%", width: 28, height: 28, cursor: "pointer", fontSize: "0.85rem" }}>✕</button>}
+            {mobileNavOpen && <button onClick={() => setMobileNavOpen(false)} aria-label="Close menu" style={{ marginLeft: "auto", background: "rgba(255,255,255,0.08)", color: D.white, border: "none", borderRadius: "50%", width: 28, height: 28, cursor: "pointer", fontSize: "0.85rem" }}>✕</button>}
           </div>
 
           <nav style={{ padding: "6px 10px", display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
@@ -214,7 +214,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                 onClick={() => setProfileMenuOpen(o => !o)}
                 aria-label="Account menu"
                 aria-expanded={profileMenuOpen}
-                style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: "50%", width: 34, height: 34, padding: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "0.85rem", fontWeight: 900, flexShrink: 0 }}
+                style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: "50%", width: 34, height: 34, padding: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "0.85rem", fontWeight: 900, flexShrink: 0 }}
               >
                 {user?.avatar
                   ? <img src={user.avatar} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
@@ -234,7 +234,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
             </div>
           </div>
 
-          {saved && <div style={{ position: "fixed", top: 70, right: 20, background: D.green, color: "#fff", borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, zIndex: 999, boxShadow: "0 6px 24px rgba(0,100,0,0.28)" }}>✓ Saved!</div>}
+          {saved && <div style={{ position: "fixed", top: 70, right: 20, background: D.greenFill, color: D.white, borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, zIndex: 999, boxShadow: "0 6px 24px rgba(0,100,0,0.28)" }}>✓ Saved!</div>}
 
           <div style={{ maxWidth: 1080, width: "100%", margin: "0 auto", padding: "22px 18px 72px", flex: 1 }}>
             {/* The go-live rule's email blocker, on every tab: the server lists it until the link is opened. */}
@@ -249,7 +249,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                     <div style={{ fontSize: "2rem", marginBottom: 10 }}>⚠️</div>
                     <div style={{ fontWeight: 900, color: D.red, fontSize: "1.05rem", marginBottom: 8 }}>Your application needs changes</div>
                     <div style={{ color: D.textDim, fontSize: "0.85rem", lineHeight: 1.6, marginBottom: 18, maxWidth: 420, marginLeft: "auto", marginRight: "auto" }}>{user?.kycRejectionReason || "Our team found an issue with your submission."}</div>
-                    <button onClick={() => setResubmitting(true)} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 30, padding: "11px 24px", fontWeight: 900, fontSize: "0.85rem", cursor: "pointer", fontFamily: "inherit" }}>Fix and Resubmit</button>
+                    <button onClick={() => setResubmitting(true)} style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: 30, padding: "11px 24px", fontWeight: 900, fontSize: "0.85rem", cursor: "pointer", fontFamily: "inherit" }}>Fix and Resubmit</button>
                   </>
                 ) : (
                   <>
@@ -262,7 +262,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                         <ul style={{ listStyle: "none", margin: "0 auto", padding: 0, maxWidth: 460, textAlign: "left", display: "flex", flexDirection: "column", gap: 8 }}>
                           {blockers.map((b, i) => (
                             <li key={b?.code || i} style={{ color: D.textDim, fontSize: "0.85rem", lineHeight: 1.5, display: "flex", gap: 8 }}>
-                              <span aria-hidden="true" style={{ color: D.amber, fontWeight: 900 }}>•</span>
+                              <span aria-hidden="true" style={{ color: D.amberInk, fontWeight: 900 }}>•</span>
                               <span>{typeof b === "string" ? b : b?.message}</span>
                             </li>
                           ))}
@@ -286,7 +286,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                       <div style={{ fontWeight: 800, color: D.text, fontSize: "0.86rem" }}>Hours not set</div>
                       <div style={{ color: D.textDim, fontSize: "0.78rem", marginTop: 2 }}>Add your weekly opening hours so an order placed while you are closed is held until you open.</div>
                     </div>
-                    <button onClick={() => setShowProfile(true)} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}>Set opening hours</button>
+                    <button onClick={() => setShowProfile(true)} style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}>Set opening hours</button>
                   </section>
                 )}
                 {!plansGone && <RenewBanner subscription={subscription} onRenew={() => selectTab("subscription")} />}

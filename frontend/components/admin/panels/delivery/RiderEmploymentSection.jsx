@@ -56,7 +56,7 @@ export default function RiderEmploymentSection({ riderId, employment, onDone }) 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
             {third && <label style={labelStyle}>Rider company name<input value={company} onChange={(e) => setCompany(e.target.value)} maxLength={200} style={field} /></label>}
             <label style={labelStyle}>Note (optional)<input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} style={field} /></label>
-            <button type="button" disabled={busy || !valid} onClick={submit} style={button(D.gold, D.text, busy || !valid)}>Send for approval</button>
+            <button type="button" disabled={busy || !valid} onClick={submit} style={button(D.gold, D.onGold, busy || !valid)}>Send for approval</button>
           </div>
           <ErrorLine>{error}</ErrorLine>
           {result && <span role="status" style={text}>{result}</span>}

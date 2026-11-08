@@ -161,7 +161,7 @@ export default function ProductPage({ id, onBack, user, currency = "GHS", onMess
       <SellerRatingBadge businessOwner={item.business_owner} user={user} tone="theme" />
       {item.review_count > 0 && item.avg_rating != null && (
         <button type="button" data-testid="rating-row" onClick={() => scrollTo(SECTION_IDS.reviews)}
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: 0, margin: "2px 0 8px", cursor: "pointer", color: C.ink, fontFamily: "inherit", fontSize: "0.85rem" }}>
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: 0, minHeight: 44, margin: "0 0 4px", cursor: "pointer", color: C.ink, fontFamily: "inherit", fontSize: "0.85rem" }}>
           <span style={{ fontWeight: 800, ...TABULAR }}>{Number(item.avg_rating).toFixed(1)}</span>
           <span aria-hidden="true" style={{ color: C.gold }}>{starString(item.avg_rating)}</span>
           <span style={{ color: C.info, textDecoration: "underline", ...TABULAR }}>{item.review_count} {item.review_count === 1 ? "rating" : "ratings"}</span>
@@ -346,7 +346,7 @@ export default function ProductPage({ id, onBack, user, currency = "GHS", onMess
 
   return (
     <div data-testid="product-page" style={{ maxWidth: 1280, margin: "0 auto", padding: "16px 16px 48px", boxSizing: "border-box", background: C.canvas, color: C.ink, fontFamily: BODY_FONT, borderRadius: 20 }}>
-      <button type="button" onClick={onBack} style={{ background: C.surface, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 20, padding: "9px 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", minHeight: 44, fontFamily: "inherit" }}>
+      <button type="button" onClick={onBack} style={{ background: C.surface, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 20, padding: "9px 16px", minHeight: 44, fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", minHeight: 44, fontFamily: "inherit" }}>
         ‹ Back to results
       </button>
       <nav aria-label="Breadcrumb" style={{ margin: "12px 0 16px" }}>

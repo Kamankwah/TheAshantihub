@@ -65,7 +65,7 @@ from .serializers import (
 from . import pricing
 from .pricing import effective_price_expr
 from .validators import validate_image_size
-from .visibility import hidden_business_q, sold_out_q
+from .visibility import NO_PRICE_MESSAGE, has_price, hidden_business_q, sold_out_q, unpriced_q
 from .visits import record_visit
 
 logger = logging.getLogger(__name__)
@@ -426,6 +426,7 @@ class PublicListingListView(generics.ListAPIView):
         queryset = (
             Listing.objects.filter(status=Listing.PUBLISHED)
             .exclude(hidden_business_q())
+            .exclude(unpriced_q())  # no price, not in the marketplace
             .exclude(sold_out_q())
             .select_related("category", "zone", "business_owner__profile")
             .prefetch_related("photos")
@@ -575,7 +576,7 @@ class PublicListingDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return _with_rating_annotations(
-            Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q())
+            Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q()).exclude(unpriced_q())
             .select_related("business_owner__profile")
         )
 
@@ -601,6 +602,7 @@ class RelatedListingsView(generics.ListAPIView):
         queryset = (
             Listing.objects.filter(status=Listing.PUBLISHED)
             .exclude(hidden_business_q())
+            .exclude(unpriced_q())
             .exclude(sold_out_q())  # sold out: hidden like search while the switch is on (catalogue plan 6)
             .filter(Q(category=anchor.category) | Q(zone=anchor.zone))
             .exclude(pk=anchor.pk)
@@ -915,6 +917,10 @@ class ListingSubmitView(ScopedOwner, APIView):
                 held = verdict.details if verdict.outcome == autopublish.HOLD else []
             else:
                 held = []
+            if not has_price(listing):
+                # With auto-publish on, the check above has already named the missing price; this is the same refusal for
+                # the staff-queue path, so no item without a price is ever sent for review.
+                return Response({"code": "price_required", "detail": NO_PRICE_MESSAGE, "price_amount": [NO_PRICE_MESSAGE]}, status=400)
             if published:
                 listing.status = Listing.PUBLISHED
                 listing.rejection_reason = None
@@ -1134,6 +1140,8 @@ class ModerationApproveView(APIView):
                     },
                     status=400,
                 )
+            if not has_price(listing):
+                return Response({"code": "price_required", "detail": NO_PRICE_MESSAGE}, status=400)
             if media.waiting_for_video(listing):
                 return Response({"detail": "Wait for the video to finish converting before approving."}, status=400)
             listing.status = Listing.PUBLISHED

@@ -43,7 +43,7 @@ function refusalOf(error) {
 
 const pageStyle = { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.canvas, padding: 16, boxSizing: "border-box" };
 const sheetStyle = { background: C.surface, color: C.ink, borderRadius: 22, width: "100%", maxWidth: 460, boxShadow: "0 20px 60px rgba(0,0,0,0.25)", overflow: "hidden" };
-const bandStyle = { background: `linear-gradient(135deg, ${C.kente1}, ${C.kente3})`, padding: "20px 24px", color: C.gold, fontWeight: 900, fontSize: "1.1rem" };
+const bandStyle = { background: `linear-gradient(135deg, ${C.kente1}, ${C.kente3})`, padding: "20px 24px", color: C.gold, fontWeight: 900, fontSize: "1.1rem", margin: 0 };
 const bodyStyle = { padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14, color: C.ink };
 const primaryStyle = { minHeight: 48, width: "100%", background: C.gold, color: C.darkBrown, border: "none", borderRadius: 24, padding: "12px 18px", fontWeight: 900, fontSize: "0.9rem", cursor: "pointer", fontFamily: "inherit" };
 const secondaryStyle = { ...primaryStyle, background: "transparent", color: C.ink, border: `1px solid ${C.ink}` };
@@ -183,7 +183,7 @@ export default function ShareLocationPage() {
       <>
         <div>
           <div style={mutedStyle}>Share your shop's location</div>
-          <h1 style={{ margin: "4px 0 0", fontSize: "1.25rem", fontWeight: 800 }}>{data.business_name}</h1>
+          <h2 style={{ margin: "4px 0 0", fontSize: "1.25rem", fontWeight: 800 }}>{data.business_name}</h2>
         </div>
         <div style={{ fontSize: "0.88rem", lineHeight: 1.5 }}>
           Share this device's location so AshantiHub can place your shop on the map. Please do this while you are at your shop.
@@ -197,7 +197,7 @@ export default function ShareLocationPage() {
   return (
     <div style={pageStyle}>
       <div style={sheetStyle}>
-        <div style={bandStyle}>Share with AshantiHub</div>
+        <h1 style={bandStyle}>Share with AshantiHub</h1>
         <div style={bodyStyle}>{content}</div>
       </div>
     </div>

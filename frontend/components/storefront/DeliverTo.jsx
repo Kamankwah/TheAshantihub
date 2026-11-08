@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { C } from "../../theme.js";
-import { shouldAutoAsk, useDeliveryPlace } from "../../hooks/useDeliveryPlace.js";
+import { useDeliveryPlace } from "../../hooks/useDeliveryPlace.js";
 import { COUNTRY_CODES, GHANA_REGIONS, countryName, deliveryNote, isDeliverable, placeFromChoice, regionLabel } from "../../lib/deliveryPlace.js";
 import { BODY_FONT } from "./storefrontType.js";
 
@@ -9,9 +9,9 @@ import { BODY_FONT } from "./storefrontType.js";
 //  - offers to use their current location (the browser asks permission), then asks "Deliver to Accra?" as a yes/no;
 //  - or lets them pick a country, and in Ghana a region, by hand;
 //  - says plainly where door-to-door delivery is available (Ashanti only), never a made-up delivery time.
-// Opens by itself once per session while nothing is chosen, and on that first visit asks the browser for the location
-// (its own permission prompt; a site the shopper has blocked is not asked). The choice lives in this browser only. A signed-in
-// customer's saved address is the fallback label until they choose.
+// It never opens or asks for the location by itself: the shopper taps the control, then "Use my current location" (the
+// browser's own permission prompt). The choice lives in this browser only. A signed-in customer's saved address is the
+// fallback label until they choose.
 export default function DeliverTo({ firstName, savedAddress }) {
   const { place, suggestion, status, locate, choose, dismissSuggestion } = useDeliveryPlace();
   const [open, setOpen] = useState(false);
@@ -21,7 +21,6 @@ export default function DeliverTo({ firstName, savedAddress }) {
   const trigger = useRef(null);
   const panelId = useId();
 
-  useEffect(() => { if (shouldAutoAsk(place)) setOpen(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => { if (e.key === "Escape") { setOpen(false); trigger.current?.focus(); } };
@@ -38,9 +37,9 @@ export default function DeliverTo({ firstName, savedAddress }) {
     if (next) confirm(next);
   };
   const shown = suggestion || place;
-  const field = { width: "100%", padding: "8px 10px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.surface2, color: C.ink, fontSize: 14, fontFamily: BODY_FONT, boxSizing: "border-box" };
-  const primary = { padding: "9px 14px", borderRadius: 10, border: "none", background: C.gold, color: C.darkBrown, fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: BODY_FONT };
-  const quiet = { padding: "9px 14px", borderRadius: 10, border: `1px solid ${C.line}`, background: "transparent", color: C.ink, fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: BODY_FONT };
+  const field = { width: "100%", minHeight: 44, padding: "8px 10px", borderRadius: 10, border: `1px solid ${C.line}`, background: C.surface2, color: C.ink, fontSize: 14, fontFamily: BODY_FONT, boxSizing: "border-box" };
+  const primary = { minHeight: 44, padding: "9px 14px", borderRadius: 10, border: "none", background: C.gold, color: C.darkBrown, fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: BODY_FONT };
+  const quiet = { minHeight: 44, padding: "9px 14px", borderRadius: 10, border: `1px solid ${C.line}`, background: "transparent", color: C.ink, fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: BODY_FONT };
 
   return (
     <div ref={root} className="ah-sf-deliver" style={{ gridArea: "deliver", position: "relative", minWidth: 0, maxWidth: 200 }}>
@@ -51,7 +50,7 @@ export default function DeliverTo({ firstName, savedAddress }) {
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, maxWidth: "100%", padding: "4px 6px", border: "none", background: "transparent", color: "inherit", cursor: "pointer", textAlign: "left", fontFamily: BODY_FONT, borderRadius: 8 }}
+        style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, maxWidth: "100%", minHeight: 44, padding: "4px 6px", border: "none", background: "transparent", color: "inherit", cursor: "pointer", textAlign: "left", fontFamily: BODY_FONT, borderRadius: 8 }}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.lightGold} strokeWidth="2" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
         <span style={{ display: "flex", flexDirection: "column", minWidth: 0, lineHeight: 1.2 }}>

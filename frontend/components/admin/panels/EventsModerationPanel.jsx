@@ -73,7 +73,7 @@ function EventRow({ event, state, onDone, presetReasons = false }) {
           <button onClick={() => setExpanded(e => !e)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>{expanded ? "▲ Hide" : "👁️ View"}</button>
           {state === "pending" && (
             <>
-              <button onClick={approve} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
+              <button onClick={approve} style={{ background: D.greenFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
               <button onClick={() => setRejecting(true)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
             </>
           )}
@@ -91,7 +91,7 @@ function EventRow({ event, state, onDone, presetReasons = false }) {
           </select>
         )}
         <input value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder={presetReasons ? "Note to the organiser (optional)" : "Rejection reason"} aria-label={presetReasons ? "Note to the organiser" : "Rejection reason"} style={{ flex: "1 1 160px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-        <button onClick={reject} disabled={presetReasons ? !presetChoice : !rejectReason} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: (presetReasons ? presetChoice : rejectReason) ? "pointer" : "default" }}>Confirm reject</button>
+        <button onClick={reject} disabled={presetReasons ? !presetChoice : !rejectReason} style={{ background: D.redFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: (presetReasons ? presetChoice : rejectReason) ? "pointer" : "default" }}>Confirm reject</button>
       </div>}
 
       {expanded && (
@@ -112,7 +112,7 @@ function EventRow({ event, state, onDone, presetReasons = false }) {
                 <DetailField label="Coordinates" value={d.lat && d.lng ? `${d.lat}, ${d.lng}` : null} />
               </div>
 
-              <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "12px 0 8px" }}>Media ({d.media?.length || 0})</div>
+              <div style={{ color: D.goldInk, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "12px 0 8px" }}>Media ({d.media?.length || 0})</div>
               {d.media?.length ? (
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   {d.media.map(m => (

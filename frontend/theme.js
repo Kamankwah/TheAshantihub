@@ -26,15 +26,20 @@ export const THEME_TOKENS = {
     "ah-surface-2": "#F5ECD8",               // recessed well (list rows, secondary buttons)
     "ah-surface-3": "#EADFC6",               // stronger well (disabled buttons, tracks)
     "ah-ink": "#2C1810",                     // C.darkBrown — body text
-    "ah-ink-dim": "rgba(44, 24, 16, 0.62)",
-    "ah-ink-faint": "rgba(44, 24, 16, 0.42)",
+    "ah-ink-dim": "rgba(44, 24, 16, 0.72)",
+    "ah-ink-faint": "rgba(44, 24, 16, 0.66)",    // AA (4.5:1) on canvas, surface and every well
     "ah-line": "rgba(44, 24, 16, 0.12)",     // dividers, neutral input borders
     "ah-border": "rgba(212, 160, 23, 0.35)", // C.gold, low opacity — card borders
     "ah-border-strong": "rgba(212, 160, 23, 0.6)",
     "ah-shadow": "0 10px 28px rgba(44, 24, 16, 0.12)",
     "ah-price": "#2C1810",                   // DESIGN.md: prices dark brown on light
     "ah-green": "#006400",                   // C.kente2 — trust/verified/success
-    "ah-red": "#CC0000",                     // C.kente1 — error/destructive
+    "ah-green-fill": "#006400",              // solid green button/badge fill (white text)
+    "ah-gold-ink": "#80600A",                // gold as TEXT: deepGold darkened to AA on white, canvas and wells
+    "ah-amber-ink": "#8F3F09",               // C.orange as TEXT, AA on white and its own tint
+    "ah-purple-ink": "#6B4E8E",              // purple as TEXT
+    "ah-red": "#CC0000",                     // C.kente1 — error/destructive text and borders
+    "ah-red-fill": "#CC0000",                // destructive button fill (white text)
     "ah-blue": "#000080",                    // C.kente3 — info
     "ah-ok-bg": "#E3F1E3", "ah-ok-ink": "#00500A",
     "ah-err-bg": "#FDECEA", "ah-err-ink": "#A30000",
@@ -48,15 +53,20 @@ export const THEME_TOKENS = {
     "ah-surface-2": "#3D281A",               // darkBrown, lightened (index.css .dark --secondary)
     "ah-surface-3": "#4A3324",
     "ah-ink": "#F5DEB3",                     // C.lightGold
-    "ah-ink-dim": "rgba(245, 222, 179, 0.72)",
-    "ah-ink-faint": "rgba(245, 222, 179, 0.5)",
+    "ah-ink-dim": "rgba(245, 222, 179, 0.78)",
+    "ah-ink-faint": "rgba(245, 222, 179, 0.62)",
     "ah-line": "rgba(245, 222, 179, 0.14)",
     "ah-border": "rgba(212, 160, 23, 0.4)",
     "ah-border-strong": "rgba(212, 160, 23, 0.65)",
     "ah-shadow": "0 10px 28px rgba(0, 0, 0, 0.45)",
     "ah-price": "#F5DEB3",                   // C.lightGold — prices on dark surfaces
-    "ah-green": "#2F9E2F",                   // kente green retuned for dark (index.css .dark --chart-3)
-    "ah-red": "#E03A3A",                     // kente red retuned for dark (DESIGN.md)
+    "ah-green": "#5CC15C",                   // kente green as text on dark: 5.5:1 on the green-tinted wells too
+    "ah-green-fill": "#237A23",              // solid green fill in dark (white text 5.4:1)
+    "ah-gold-ink": "#D4A017",                // gold text is native on dark surfaces (4.9:1 on the strongest well)
+    "ah-amber-ink": "#F5A068",               // C.orange as text on dark
+    "ah-purple-ink": "#B79BE0",              // purple as text on dark
+    "ah-red": "#F57474",                     // kente red retuned for dark text: 4.5:1 on canvas, surface and wells
+    "ah-red-fill": "#C62828",                // destructive button fill in dark (white text 5.6:1)
     "ah-blue": "#9A9AFF",                    // kente navy retuned for dark (navy is unreadable on brown)
     "ah-ok-bg": "rgba(47, 158, 47, 0.18)", "ah-ok-ink": "#8FD98F",
     "ah-err-bg": "rgba(224, 58, 58, 0.18)", "ah-err-ink": "#FF9B9B",
@@ -68,6 +78,15 @@ export const THEME_TOKENS = {
 
 const token = (name) => `var(--${name}, ${THEME_TOKENS.light[name]})`;
 
+// Font stacks from DESIGN.md: Fraunces for headings and the wordmark, Plus Jakarta
+// Sans for body/UI/data, JetBrains Mono for ticket and access codes. Spelled once
+// here; the fallbacks keep things readable where a web font has not loaded.
+export const FONTS = {
+  display: "'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif",
+  body: "'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+  mono: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+};
+
 export const C = {
   // brand colours — fixed in both themes
   gold:"#D4A017", deepGold:"#B8860B", darkBrown:"#2C1810",
@@ -76,6 +95,8 @@ export const C = {
   ghRed:"#CE1126", ghGold:"#FCD116", ghGreen:"#006B3F",
   whatsapp:"#25D366", orange:"#E8621A",
   pureBlack:"#000000", white:"#ffffff",
+  // Fixed text colours for fixed fills (same in both themes): ink on gold/amber buttons, light red on dark red-tinted fills.
+  onGold:"#1A1205", errOnDark:"#FFB4B4",
   void:"#160E08",
   // Always white in both themes: QR codes (scanners need dark-on-white) and
   // the frame behind product photos/logos that have their own white ground.
@@ -94,7 +115,12 @@ export const C = {
   shadow: token("ah-shadow"),
   price: token("ah-price"),
   trust: token("ah-green"),
+  trustFill: token("ah-green-fill"),
+  goldInk: token("ah-gold-ink"),
+  amberInk: token("ah-amber-ink"),
+  purpleInk: token("ah-purple-ink"),
   danger: token("ah-red"),
+  dangerFill: token("ah-red-fill"),
   info: token("ah-blue"),
   okBg: token("ah-ok-bg"), okInk: token("ah-ok-ink"),
   errBg: token("ah-err-bg"), errInk: token("ah-err-ink"),
@@ -105,6 +131,16 @@ export const C = {
 // `${hex}${alpha}` form; a theme token (a var()) is mixed with transparent,
 // since a hex alpha suffix after `var(...)` is invalid CSS.
 const HEX6 = /^#[0-9a-f]{6}$/i;
+// Text colour for a solid fill: white or dark brown, whichever has the higher WCAG contrast. Category and promotion
+// accents are arbitrary hex fills (gold, orange, teal...), so a fixed white label fails AA on the light ones.
+export function readableOn(fill) {
+  const m = /^#([0-9a-f]{6})$/i.exec(String(fill || "").trim());
+  if (!m) return "#2C1810";
+  const lin = (i) => { const v = parseInt(m[1].slice(i, i + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(0) + 0.7152 * lin(2) + 0.0722 * lin(4);
+  return (L + 0.05) / 0.0623 >= 1.05 / (L + 0.05) ? "#2C1810" : "#FFFFFF";
+}
+
 export function tint(color, alpha) {
   if (HEX6.test(color)) return `${color}${alpha}`;
   const pct = Math.round((parseInt(alpha, 16) / 255) * 1000) / 10;

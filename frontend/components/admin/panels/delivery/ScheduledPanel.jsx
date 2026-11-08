@@ -30,7 +30,7 @@ export default function ScheduledPanel({ auth }) {
           <section aria-labelledby="held" style={section}>
             <h3 id="held" style={sectionTitle}>Held until the shop opens ({data.count}), soonest first</h3>
             {rows.length === 0 ? <Empty>No order is waiting for a shop to open.</Empty> : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr>{["Order", "Vendors and next opening", "Held until", ""].map((h, i) => <th key={i} scope="col" style={th}>{h}</th>)}</tr></thead>
                   <tbody>

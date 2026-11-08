@@ -69,7 +69,7 @@ export default function SupportCannedPanel() {
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <h2 style={{ margin: 0, color: D.text, fontSize: "1.3rem", fontWeight: 800 }}>Canned replies</h2>
-        <button type="button" onClick={() => { setCreating(true); setDraft(BLANK); setNotice(null); }} style={button(D.gold, D.text)}>New canned reply</button>
+        <button type="button" onClick={() => { setCreating(true); setDraft(BLANK); setNotice(null); }} style={button(D.gold, D.onGold)}>New canned reply</button>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
         <section aria-labelledby="canned-lib" style={{ ...glassCard, flex: "1 1 320px", maxWidth: 400, minWidth: 0, padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -116,7 +116,7 @@ export default function SupportCannedPanel() {
               <div style={{ background: D.panelBg2, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <span style={{ fontSize: "0.65rem", fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: D.textDim }}>Preview with a real conversation</span>
-                  <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0, maxWidth: "100%" }}>
                     <select aria-label="Conversation" value={previewId} onChange={(e) => setPreviewId(e.target.value)} style={{ ...field, padding: "3px 6px" }}>
                       <option value="">No conversation</option>
                       {convs.map((c) => <option key={c.id} value={c.id}>{`${c.display_name}${c.about.order ? ` · Order #${c.about.order.id}` : ""}`}</option>)}
@@ -140,7 +140,7 @@ export default function SupportCannedPanel() {
                     ? <button type="button" onClick={() => run(() => apiPost(`/api/messaging/staff/canned/${selected.id}/restore/`, {}), "Restored.")} style={button(D.panelBg, D.text)}>Restore</button>
                     : <button type="button" onClick={() => run(() => apiPost(`/api/messaging/staff/canned/${selected.id}/retire/`, {}), "Retired. It no longer shows in the composer.")} style={{ ...button(D.panelBg, D.red) }}>Retire</button>)}
                 </div>
-                <button type="button" disabled={!draft.title.trim() || !draft.body.trim()} onClick={save} style={button(D.gold, D.text, !draft.title.trim() || !draft.body.trim())}>{creating ? "Add canned reply" : "Save changes"}</button>
+                <button type="button" disabled={!draft.title.trim() || !draft.body.trim()} onClick={save} style={button(D.gold, D.onGold, !draft.title.trim() || !draft.body.trim())}>{creating ? "Add canned reply" : "Save changes"}</button>
               </div>
               <div style={dim}>Canned replies always go out as AshantiHub Support. Never put a business's phone number or WhatsApp in one.</div>
             </>

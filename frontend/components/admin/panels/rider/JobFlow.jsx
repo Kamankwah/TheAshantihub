@@ -404,7 +404,7 @@ export default function ActiveJob({ jobId, onDelivered }) {
       {job.status === "at_pickup" && <AtPickup job={job} step={step} onChanged={refetch} onSkip={canSkip ? () => setSkip(true) : undefined} />}
       {job.status === "picked_up" && <ToCustomer job={job} step={step} onChanged={refetch} />}
       {job.status === "at_customer" && <AtCustomer job={job} step={step} onChanged={refetch} onCant={() => setCant(true)} />}
-      {me.data?.rider?.manager && <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: "0.82rem", fontWeight: 700 }}><span style={dim}>Something wrong? Use Report an issue in the menu.</span>{me.data.rider.manager.phone && <a href={`tel:${me.data.rider.manager.phone}`} style={{ color: D.deepGold }}>Call {me.data.rider.manager.full_name.split(" ")[0]}</a>}</div>}
+      {me.data?.rider?.manager && <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: "0.82rem", fontWeight: 700 }}><span style={dim}>Something wrong? Use Report an issue in the menu.</span>{me.data.rider.manager.phone && <a href={`tel:${me.data.rider.manager.phone}`} style={{ color: D.goldInk }}>Call {me.data.rider.manager.full_name.split(" ")[0]}</a>}</div>}
     </div>
   );
 }

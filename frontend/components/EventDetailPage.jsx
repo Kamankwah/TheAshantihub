@@ -238,7 +238,7 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
               {unlocking ? "Checking…" : "Unlock"}
             </button>
           </form>
-          {unlockError && <div role="alert" style={{ marginTop: 10, color: "#ffb4b4", fontSize: "0.76rem" }}>{unlockError}</div>}
+          {unlockError && <div role="alert" style={{ marginTop: 10, color: C.errOnDark, fontSize: "0.76rem" }}>{unlockError}</div>}
         </div>
       </div>
     );
@@ -312,7 +312,7 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
               href={directionsUrl}
               target="_blank"
               rel="noreferrer"
-              style={{ display: "inline-block", background: C.whatsapp, color: "white", border: "none", borderRadius: 20, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 700, textDecoration: "none", minHeight: 44, lineHeight: "24px" }}
+              style={{ display: "inline-block", background: C.whatsapp, color: "#0B2E13", border: "none", borderRadius: 20, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 700, textDecoration: "none", minHeight: 44, lineHeight: "24px" }}
             >
               🧭 Get Directions
             </a>
@@ -340,7 +340,7 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
             ) : isCustomer ? (
               <div>
                 {rsvpFull ? (
-                  <div style={{ color: "#ffb4b4", fontSize: "0.82rem", fontWeight: 700 }}>🚫 This event is at capacity.</div>
+                  <div style={{ color: C.errOnDark, fontSize: "0.82rem", fontWeight: 700 }}>🚫 This event is at capacity.</div>
                 ) : (
                   <button
                     onClick={rsvpStatus === "going" ? handleRSVPCancel : handleRSVPGoing}
@@ -361,7 +361,7 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
                     {rsvpBusy ? "…" : rsvpStatus === "going" ? "✓ Going — Can't Go?" : "🎉 I'm Going"}
                   </button>
                 )}
-                {rsvpError && <div role="alert" style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.74rem" }}>{rsvpError}</div>}
+                {rsvpError && <div role="alert" style={{ marginTop: 8, color: C.errOnDark, fontSize: "0.74rem" }}>{rsvpError}</div>}
               </div>
             ) : (
               <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.78rem" }}>Only customer accounts can RSVP to events.</div>
@@ -521,12 +521,12 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, inLed
 
       {ticketTypesQuery.isLoading && <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.8rem" }}>Loading ticket types…</div>}
       {ticketTypesQuery.isError && (
-        <div style={{ color: "#ffb4b4", fontSize: "0.8rem" }}>
+        <div style={{ color: C.errOnDark, fontSize: "0.8rem" }}>
           Could not load ticket types.{" "}
           <button onClick={() => ticketTypesQuery.refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "2px 10px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button>
         </div>
       )}
-      {payError && <div role="alert" style={{ marginBottom: 12, color: "#ffb4b4", fontSize: "0.76rem" }}>{payError}</div>}
+      {payError && <div role="alert" style={{ marginBottom: 12, color: C.errOnDark, fontSize: "0.76rem" }}>{payError}</div>}
       {/* The refund and payout terms are the event's, not each ticket type's: shown once, above the list, to someone who can buy. */}
       {ticketTypes.length > 0 && user && (isCustomer || staffGate.isStaff) && (
         <BookingTermsNote kind="ticket" start={eventDate ? new Date(eventDate) : null} refundDays={refundDays ?? null} />

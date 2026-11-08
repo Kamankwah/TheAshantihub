@@ -36,7 +36,7 @@ class RelatedListingsTests(TestCase):
             name="Adum Chop Bar", description="Quick lunch spot.",
             contact_phone="+233207334455", price_amount="20.00", status=Listing.PUBLISHED,
         )
-        self.draft_same_category = Listing.objects.create(
+        self.draft_same_category = Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name="Unfinished Lodge", description="Not ready.",
             contact_phone="+233207334455", status=Listing.DRAFT,
@@ -62,7 +62,7 @@ class RelatedListingsTests(TestCase):
 
     def test_related_is_limited_to_eight(self):
         for i in range(10):
-            Listing.objects.create(
+            Listing.objects.create(price_amount="10.00",
                 business_owner=self.owner, category=self.hotels, zone=self.manhyia,
                 name=f"Extra Lodge {i}", description="Filler.",
                 contact_phone="+233207334455", status=Listing.PUBLISHED,

@@ -51,7 +51,7 @@ export default function CollectionsPanel() {
             <section aria-labelledby="col-rows" style={section}>
               <h3 id="col-rows" style={sectionTitle}>Payments ({data.count})</h3>
               {data.rows.length === 0 ? <span style={dim}>No payments match.</span> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["When", "Type", "Payer", "What for", "Our reference", "Provider reference", "Status", "Amount"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>

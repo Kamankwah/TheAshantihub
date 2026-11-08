@@ -59,7 +59,7 @@ export function ReviewAgainButton({ onClick, disabled = false }) {
       onClick={onClick}
       disabled={disabled}
       style={{
-        background: D.goldSoft, color: D.deepGold, border: `1px solid ${D.cardBorder}`,
+        background: D.goldSoft, color: D.goldInk, border: `1px solid ${D.cardBorder}`,
         borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.6 : 1,
       }}
     >
@@ -101,7 +101,7 @@ export default function ModerationQueueTabs({
               onClick={() => onTab(key)}
               style={{
                 background: isActive ? D.gold : D.panelBg2,
-                color: isActive ? "#1a1205" : D.textDim,
+                color: isActive ? D.onGold : D.textDim,
                 border: `1px solid ${isActive ? D.gold : D.cardBorder}`,
                 borderRadius: 20,
                 padding: "6px 16px",

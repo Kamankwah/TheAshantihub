@@ -11,7 +11,7 @@ import { ExportBar, Kpi, NotRecorded, Select, ShareBar, SimulatedBanner, Status,
 // are counted from successful payments (simulated until Hubtel). Commission on
 // sales, delivery fees and VAT have no record, so they are listed as not recorded
 // instead of drawn as rows.
-const TYPE_COLORS = { subscriptions: "#B8860B", promotions: "#3949AB", hero: "#1E7B3A", event_fees: "#8A5FA8" };
+const TYPE_COLORS = { subscriptions: D.deepGold, promotions: "#3949AB", hero: "#1E7B3A", event_fees: "#8A5FA8" };
 const PERIODS = [
   ["month", "This month so far"],
   ["last", "Last month"],
@@ -65,7 +65,7 @@ export default function RevenueSalesPanel() {
             <section aria-labelledby="by-month" style={section}>
               <h3 id="by-month" style={sectionTitle}>AshantiHub revenue by month</h3>
               <span style={dim}>Revenue is what AshantiHub keeps: plan fees, paid promotions, hero placements and event fees. Sales paid to businesses are not revenue. The table holds the same numbers.</span>
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr><th scope="col" style={th}>Month</th>{data.types.map((t) => <th key={t.key} scope="col" style={th}>{t.label}</th>)}<th scope="col" style={th}>Total</th><th scope="col" style={th}><span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>Bar</span></th></tr></thead>
                   <tbody>
@@ -84,7 +84,7 @@ export default function RevenueSalesPanel() {
 
             <section aria-labelledby="by-type" style={section}>
               <h3 id="by-type" style={sectionTitle}>Revenue by type</h3>
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr><th scope="col" style={th}>Type</th><th scope="col" style={th}>{data.from} to {data.to}</th><th scope="col" style={th}>Before it ({data.previous.from} to {data.previous.to})</th></tr></thead>
                   <tbody>
@@ -104,7 +104,7 @@ export default function RevenueSalesPanel() {
             <section aria-labelledby="by-zone" style={section}>
               <h3 id="by-zone" style={sectionTitle}>By zone</h3>
               {data.zones.length === 0 ? <span style={dim}>No sales or revenue in this period.</span> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Zone", "Sales", "Orders", "AshantiHub revenue", "Verified businesses"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>

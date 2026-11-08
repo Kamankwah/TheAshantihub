@@ -61,13 +61,13 @@ export default function QuietHoursPanel() {
     <div style={page}>
       <PageHead title="Quiet hours & limits">
         <span style={{ ...dim, maxWidth: 300 }}>{waiting ? "A change is waiting for Super Admin." : "Changes go to Super Admin. Today's rules stay until approved."}</span>
-        {data.can_propose && <button type="button" disabled={!changed || busy || waiting} onClick={propose} style={button(D.gold, D.text, !changed || busy || waiting)}>{busy ? "Sending…" : "Propose changes"}</button>}
+        {data.can_propose && <button type="button" disabled={!changed || busy || waiting} onClick={propose} style={button(D.gold, D.onGold, !changed || busy || waiting)}>{busy ? "Sending…" : "Propose changes"}</button>}
       </PageHead>
       {sent && <div role="status" style={chip(D.green)}>{sent === "applied" ? "Applied: these rules are in force now." : "Sent to Super Admin. Today's rules stay until it is approved."}</div>}
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       {waiting && <Honest>{data.pending.maker} proposed a change on {whenWord(data.pending.created_at)}. It is waiting for Super Admin; the rules below are the ones in force.</Honest>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
           <Section id="qh-win" title="Send window">
             <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>

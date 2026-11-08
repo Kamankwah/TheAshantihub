@@ -38,7 +38,7 @@ export default function ReportProblemForm({ path, idPrefix, onDone, onBack }) {
         style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: 10, border: `1px solid ${D.cardBorder}`, background: D.panelBg2, color: D.text, fontFamily: "inherit", fontSize: "0.76rem" }}
       />
       <div style={{ display: "flex", gap: 8 }}>
-        <button type="button" disabled={busy || reason.trim().length < 5} onClick={send} style={pill(D.red, "#fff")}>Send report</button>
+        <button type="button" disabled={busy || reason.trim().length < 5} onClick={send} style={pill(D.red, D.white)}>Send report</button>
         <button type="button" disabled={busy} onClick={onBack} style={pill(D.panelBg2, D.textDim)}>Back</button>
       </div>
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.74rem" }}>{actionError}</div>}

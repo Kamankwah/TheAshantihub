@@ -47,7 +47,7 @@ export default function CampaignsPanel({ onNavigate }) {
     <div style={page}>
       <PageHead title="Campaigns">
         <span style={dim}>SMS this month (estimated) <b style={{ color: D.text }}>GH₵ {d.sms_month_estimate}</b></span>
-        <button type="button" onClick={() => onNavigate?.("mk-new-campaign")} style={button(D.gold, D.text)}>New campaign</button>
+        <button type="button" onClick={() => onNavigate?.("mk-new-campaign")} style={button(D.gold, D.onGold)}>New campaign</button>
       </PageHead>
       <Honest>{d.sms_note}</Honest>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
@@ -65,7 +65,7 @@ export default function CampaignsPanel({ onNavigate }) {
       </div>
       <Section id="cp-all" title={`${status ? TABS.find(([k]) => k === status)[1] : "All campaigns"} · ${d.results.length}`}>
         {d.results.length === 0 ? <Honest>{d.total === 0 ? "No campaign yet. Start one with “New campaign”." : "No campaign matches this filter."}</Honest> : (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={{ ...table, minWidth: 900 }}>
               <thead><tr>{["Campaign", "Channel", "Audience", "Status", "Send time", "Cost", "Results"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
               <tbody>

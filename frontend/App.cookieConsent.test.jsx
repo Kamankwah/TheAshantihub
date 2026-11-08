@@ -8,11 +8,11 @@ import AshantiHub from './App.jsx'
 // every page load and the visitor's choice was never recorded. A choice must
 // survive a reload (a fresh mount of the app).
 
-function mountApp() {
+function mountApp(path = '/') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter initialEntries={[path]}>
         <AshantiHub />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -66,5 +66,35 @@ describe('cookie consent', () => {
       expect(screen.queryByText(/AshantiHub uses cookies/)).not.toBeInTheDocument()
     },
     12000,
+  )
+
+  it(
+    'links to the Privacy Notice page from the banner (a real link, not styled text)',
+    async () => {
+      mountApp()
+      await waitForHome()
+      const link = screen.getByRole('link', { name: 'Privacy Notice' })
+      expect(link).toHaveAttribute('href', '/privacy')
+      fireEvent.click(link)
+      expect(await screen.findByRole('heading', { level: 1, name: 'Privacy Notice' }, { timeout: 5000 })).toBeInTheDocument()
+      expect(screen.getByText(/AshantiHub uses cookies/)).toBeInTheDocument() // the choice is still open
+    },
+    12000,
+  )
+
+  it(
+    'opens the Privacy Notice page from the footer, and /privacy is a known page, not a 404',
+    async () => {
+      localStorage.setItem('ashantihub.cookie_consent', 'essential')
+      const first = mountApp()
+      await waitForHome()
+      fireEvent.click(await screen.findByRole('button', { name: 'Privacy Notice' }))
+      expect(await screen.findByRole('heading', { level: 1, name: 'Privacy Notice' }, { timeout: 5000 })).toBeInTheDocument()
+      first.unmount()
+
+      mountApp('/privacy')
+      expect(await screen.findByRole('heading', { level: 1, name: 'Privacy Notice' }, { timeout: 5000 })).toBeInTheDocument()
+    },
+    15000,
   )
 })

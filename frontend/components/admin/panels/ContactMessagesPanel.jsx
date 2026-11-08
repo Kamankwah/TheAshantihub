@@ -86,7 +86,7 @@ export default function ContactMessagesPanel({ auth }) {
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {m.status === "new" && <button type="button" onClick={() => act(m.id, "read", "Could not mark this message as read.")} style={button(D.panelBg, D.text)}>Mark read</button>}
                   {canCall && match && <button type="button" onClick={() => setCall(match)} style={button(D.panelBg, D.text)}>Log a call</button>}
-                  <button type="button" onClick={() => act(m.id, "resolve", "Could not resolve this message.")} style={button(D.green, "#fff")}>Resolve</button>
+                  <button type="button" onClick={() => act(m.id, "resolve", "Could not resolve this message.")} style={button(D.greenFill, D.white)}>Resolve</button>
                 </div>
               )}
             </div>

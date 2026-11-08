@@ -52,7 +52,7 @@ export function CashPanel() {
             <section aria-labelledby="held" style={section}>
               <h3 id="held" style={sectionTitle}>Held now, per rider</h3>
               {data.riders.length === 0 ? <Empty>No rider exists yet.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Rider", "Held now", "Status"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>{data.riders.map((r) => <tr key={r.id}><td style={{ ...td, fontWeight: 700 }}>{r.full_name}</td><td style={td}>{money(r.holding)}</td><td style={td}>{r.over_cap ? <span style={chip(D.red)}>Over the cap</span> : Number(r.holding) > 0 ? <span style={chip(D.amber)}>Holding cash</span> : <span style={dim}>Nothing held</span>}</td></tr>)}</tbody>
@@ -69,7 +69,7 @@ export function CashPanel() {
                   {labelled("Rider", <select value={rider} onChange={(e) => setRider(e.target.value)} style={field}><option value="">Choose a rider</option>{holders.map((r) => <option key={r.id} value={r.id}>{r.full_name} · holds {money(r.holding)}</option>)}</select>)}
                   {labelled("Amount you counted (GH₵)", <input aria-label="Amount you counted (GH₵)" inputMode="decimal" value={counted} onChange={(e) => setCounted(e.target.value)} style={{ ...field, maxWidth: 140 }} />)}
                   {labelled("Note (needed for a shortfall)", <input value={note} onChange={(e) => setNote(e.target.value)} style={field} />)}
-                  <button type="button" disabled={!rider || !counted} onClick={confirm} style={button(D.gold, D.text, !rider || !counted)}>Confirm</button>
+                  <button type="button" disabled={!rider || !counted} onClick={confirm} style={button(D.gold, D.onGold, !rider || !counted)}>Confirm</button>
                 </div>
               )}
               <span style={dim}>You will be asked for your password. A shortfall tells the rider&apos;s manager and every Super Admin. This is a count of cash, not a ledger; matching hand-overs to bank deposits is not connected.</span>
@@ -77,7 +77,7 @@ export function CashPanel() {
             <section aria-labelledby="recent" style={section}>
               <h3 id="recent" style={sectionTitle}>Recent hand-overs</h3>
               {data.handovers.length === 0 ? <Empty>No hand-over has been counted.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["When", "Rider", "Expected", "Counted", "Difference", "Counted by"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>{data.handovers.map((h) => <tr key={h.id}><td style={td}>{dayTime(h.at)}</td><td style={td}>{h.rider}</td><td style={td}>{money(h.expected)}</td><td style={td}>{money(h.counted)}</td><td style={{ ...td, color: Number(h.difference) < 0 ? WARN : D.text, fontWeight: 700 }}>{money(h.difference)}{h.note && <div style={dim}>{h.note}</div>}</td><td style={td}>{h.counted_by}</td></tr>)}</tbody>
@@ -107,7 +107,7 @@ function Lines({ staffId, weeks, onClose }) {
       <div style={{ display: "flex", justifyContent: "space-between" }}><h3 style={sectionTitle}>Lines behind the total</h3><button type="button" onClick={onClose} style={linkStyle}>Close</button></div>
       <Status isLoading={isLoading} isError={isError}>
         {data && (data.results.length === 0 ? <Empty>No delivered job in this period.</Empty> : (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{["Order", "Delivered", "Pay", "How it was worked out"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
               <tbody>{data.results.map((l) => (
@@ -124,7 +124,7 @@ function Lines({ staffId, weeks, onClose }) {
       {data?.redeliveries?.length > 0 && (
         <div style={{ display: "grid", gap: 6 }}>
           <h4 style={sectionTitle}>Re-delivery trips</h4>
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{["Order", "Trip", "Done", "Fee owed"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
               <tbody>{data.redeliveries.map((r) => (
@@ -160,7 +160,7 @@ export function PayoutsPanel() {
               <h3 id="earned" style={sectionTitle}>What each rider earned</h3>
               {!data.card && <Note>No rate card is in force, so no job has recorded any pay. Pay appears here after a delivery completes under an approved rate card.</Note>}
               {data.riders.length === 0 ? <Empty>No job was delivered in this period.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Rider", "Jobs", "Jobs with pay recorded", "Earned"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>{data.riders.map((r) => (
@@ -179,7 +179,7 @@ export function PayoutsPanel() {
               <section aria-labelledby="redeliveries" style={section}>
                 <h3 id="redeliveries" style={sectionTitle}>Re-delivery trips owed through payroll</h3>
                 <span style={dim}>The customer paid each re-delivery fee. It is owed to the AshantiHub rider who made the second trip and is paid through payroll, not from this screen.</span>
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Rider", "Trips", "Owed"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>{data.redeliveries.map((r) => (

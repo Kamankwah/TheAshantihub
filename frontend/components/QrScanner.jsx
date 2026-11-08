@@ -87,7 +87,7 @@ export default function QrScanner({ onDetected, onClose, openCamera = defaultOpe
   return (
     <div style={{ marginBottom: 10 }}>
       {error ? (
-        <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 6 }}>{error}</div>
+        <div style={{ color: C.errOnDark, fontSize: "0.72rem", marginBottom: 6 }}>{error}</div>
       ) : (
         <video
           ref={videoRef}

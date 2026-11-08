@@ -69,10 +69,10 @@ export default function MyTeamPanel({ currentStaffId, rosterOnly = false }) {
               {m.status === "active" && (
                 <>
                   <input aria-label={`Reason for suspending ${m.full_name}`} placeholder="Reason" value={reasons[m.id] || ""} onChange={(e) => setReasons({ ...reasons, [m.id]: e.target.value })} style={{ ...field, padding: "6px 8px", fontSize: "0.75rem" }} />
-                  <button type="button" aria-label={`Suspend ${m.full_name}`} onClick={() => run(() => apiPost(`/api/accounts/staff/${m.id}/suspend/`, { reason: reasons[m.id] || "" }), `${m.full_name} is suspended.`, "Could not suspend.")} style={smallBtn(D.red, "#fff")}>Suspend</button>
+                  <button type="button" aria-label={`Suspend ${m.full_name}`} onClick={() => run(() => apiPost(`/api/accounts/staff/${m.id}/suspend/`, { reason: reasons[m.id] || "" }), `${m.full_name} is suspended.`, "Could not suspend.")} style={smallBtn(D.red, D.white)}>Suspend</button>
                 </>
               )}
-              {m.status === "suspended" && <button type="button" aria-label={`Unsuspend ${m.full_name}`} onClick={() => run(() => apiPost(`/api/accounts/staff/${m.id}/unsuspend/`, {}), `${m.full_name} is active again.`, "Could not unsuspend.")} style={smallBtn(D.green, "#fff")}>Unsuspend</button>}
+              {m.status === "suspended" && <button type="button" aria-label={`Unsuspend ${m.full_name}`} onClick={() => run(() => apiPost(`/api/accounts/staff/${m.id}/unsuspend/`, {}), `${m.full_name} is active again.`, "Could not unsuspend.")} style={smallBtn(D.green, D.white)}>Unsuspend</button>}
             </div>
           </div>
         ))}

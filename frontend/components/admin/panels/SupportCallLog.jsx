@@ -73,7 +73,7 @@ function CallRow({ call, onEarlier }) {
         <div style={{ fontWeight: 700, overflowWrap: "anywhere" }}>{call.counterpart_name || "Unknown"}</div>
         <div style={dim}>{TYPE_LABEL[call.counterpart_type] || label(call.counterpart_type)}{call.counterpart_phone ? ` · ${call.counterpart_phone}` : ""}</div>
         {call.counterpart_id && call.counterpart_type !== "guest" && (
-          <button type="button" onClick={() => onEarlier(call)} style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.7rem", fontWeight: 700, color: D.deepGold }}>Earlier calls with them</button>
+          <button type="button" onClick={() => onEarlier(call)} style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.7rem", fontWeight: 700, color: D.goldInk }}>Earlier calls with them</button>
         )}
       </td>
       <td style={td}>{label(call.purpose)}</td>
@@ -155,7 +155,7 @@ export default function SupportCallLog({ onLogCall, counterpart: initialCounterp
             <button type="button" onClick={() => download("csv")} style={button(D.panelBg, D.text)}>Export CSV</button>
             <button type="button" onClick={() => download("xlsx")} style={button(D.panelBg, D.text)}>Export Excel</button>
           </div>
-          <button type="button" onClick={() => onLogCall?.()} style={button(D.gold, D.text)}>Log a call</button>
+          <button type="button" onClick={() => onLogCall?.()} style={button(D.gold, D.onGold)}>Log a call</button>
         </div>
       </div>
       {exportNotice && <div role="status" style={{ ...dim, color: D.text, fontWeight: 700 }}>{exportNotice}</div>}

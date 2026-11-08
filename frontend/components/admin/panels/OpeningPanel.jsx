@@ -103,7 +103,7 @@ export default function OpeningPanel({ auth }) {
             </label>
             {delayError && <div role="alert" style={errorStyle}>{delayError}</div>}
             {notice && <div role="status" style={{ color: D.green, fontSize: "0.8rem", fontWeight: 700 }}>{notice}</div>}
-            <button type="submit" disabled={busy || !when || !reason.trim()} style={{ ...button(D.gold, D.text, busy || !when || !reason.trim()), alignSelf: "flex-start" }}>Delay opening</button>
+            <button type="submit" disabled={busy || !when || !reason.trim()} style={{ ...button(D.gold, D.onGold, busy || !when || !reason.trim()), alignSelf: "flex-start" }}>Delay opening</button>
           </>
         )}
       </form>
@@ -126,7 +126,7 @@ export default function OpeningPanel({ auth }) {
           <label style={labelStyle}>Customer ID
             <input inputMode="numeric" value={customer} onChange={(e) => setCustomer(e.target.value)} style={field} />
           </label>
-          <button type="submit" style={button(D.gold, D.text)}>Add test account</button>
+          <button type="submit" style={button(D.gold, D.onGold)}>Add test account</button>
         </form>
         {accountError && <div role="alert" style={errorStyle}>{accountError}</div>}
       </section>

@@ -157,7 +157,7 @@ export default function OpsScoutsPanel({ auth, onNavigate, onOpenScout }) {
             <button type="button" aria-pressed={scope === "team"} onClick={() => setScope("team")} style={toggleButton(scope === "team")}>{`My team${data ? ` · ${data.counts.team}` : ""}`}</button>
             <button type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")} style={toggleButton(scope === "all")}>{`All scouts${data ? ` · ${data.counts.all}` : ""}`}</button>
           </div>
-          {canInvite && <button type="button" onClick={() => onNavigate?.("my-team")} style={button(D.gold, D.text)}>Invite a scout</button>}
+          {canInvite && <button type="button" onClick={() => onNavigate?.("my-team")} style={button(D.gold, D.onGold)}>Invite a scout</button>}
         </div>
       </div>
 
@@ -188,7 +188,7 @@ export default function OpsScoutsPanel({ auth, onNavigate, onOpenScout }) {
             {rows.length === 0 ? (
               <div style={dim}>{scope === "team" ? "No scouts report to you yet. Invite one from the Invite screen." : "There are no active scouts yet."}</div>
             ) : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead>
                     <tr>

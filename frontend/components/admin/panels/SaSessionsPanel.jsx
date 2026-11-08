@@ -72,7 +72,7 @@ export default function SaSessionsPanel() {
           <h3 style={h3}>Sign out every staff member</h3>
           <div style={{ fontSize: "0.8rem", color: D.text }}>Everyone except you is signed out at once and has to sign in again. Your own sessions stay open. It asks for your password and is recorded.</div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" disabled={busy} onClick={() => run(() => apiPost("/api/people/sessions/sign-out-all/", {}), (out) => `Signed out ${plural(out.people, "person", "people")} (${plural(out.ended, "session", "sessions")}).`, "Could not sign everyone out.")} style={button(D.red, "#fff", busy)}>Sign everyone out</button>
+            <button type="button" disabled={busy} onClick={() => run(() => apiPost("/api/people/sessions/sign-out-all/", {}), (out) => `Signed out ${plural(out.people, "person", "people")} (${plural(out.ended, "session", "sessions")}).`, "Could not sign everyone out.")} style={button(D.red, D.white, busy)}>Sign everyone out</button>
             <button type="button" onClick={() => setConfirmAll(false)} style={button(D.panelBg, D.text)}>Keep them signed in</button>
           </div>
         </section>
@@ -110,7 +110,7 @@ export default function SaSessionsPanel() {
           </div>
           {rows.length === 0 && <div style={dim}>{all.length <= 1 ? "Nobody else is signed in right now." : "No session matches these filters."}</div>}
           {rows.length > 0 && (
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table aria-label="Sessions" style={{ ...tableStyle, minWidth: 860 }}>
                 <thead><tr><th style={th}>Person</th><th style={th}>Device</th><th style={th}>IP</th><th style={th}>Signed in</th><th style={th}>Last seen</th><th style={th}>Ends</th><th style={th}>Actions</th></tr></thead>
                 <tbody>

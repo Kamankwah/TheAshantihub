@@ -176,7 +176,7 @@ function ScoutCalls() {
         <h2 style={{ color: D.text, fontSize: "1.4rem", fontWeight: 800, margin: "2px 0 0" }}>Calls</h2>
         <div style={{ ...dim, fontVariantNumeric: "tabular-nums" }}>{`Today · ${summary.logged} logged · ${summary.connected} connected`}</div>
       </div>
-      <button type="button" onClick={() => { setNotice(null); setSheet({ call: null }); }} style={{ ...button(D.gold, D.text), minHeight: 48, fontSize: "0.9rem" }}>Log a call</button>
+      <button type="button" onClick={() => { setNotice(null); setSheet({ call: null }); }} style={{ ...button(D.gold, D.onGold), minHeight: 48, fontSize: "0.9rem" }}>Log a call</button>
       {notice && <div role="status" style={{ ...dim, color: D.text, fontWeight: 700 }}>{notice}</div>}
 
       {today.isLoading && <div style={dim}>Loading…</div>}

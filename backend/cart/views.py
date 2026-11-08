@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 
 from accounts.views import IsCustomer
 from listings.models import Listing, ListingVariant
-from listings.visibility import hidden_business_q
+from listings.visibility import hidden_business_q, unpriced_q
 
 from . import guard
 from .models import Cart, CartItem
@@ -190,7 +190,7 @@ class CartGuardView(APIView):
             if not str(raw).isdigit():
                 return Response({"detail": "Name a listing by its number."}, status=status.HTTP_400_BAD_REQUEST)
             listing = generics.get_object_or_404(
-                Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q())
+                Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q()).exclude(unpriced_q())
                 .select_related("category", "business_owner__profile"),
                 pk=raw,
             )

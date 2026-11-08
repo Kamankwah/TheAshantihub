@@ -1014,7 +1014,7 @@ describe('AshantiHub — installed staff app (standalone display)', () => {
     expect(screen.getByTestId('location').textContent).toBe('/staff')
 
     // The ✕ close control must not drop the staffer into the marketplace.
-    fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: '✕' }))
+    fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
     // Nor must a backdrop tap.
     fireEvent.click(screen.getByTestId('auth-modal-backdrop'))
@@ -1027,7 +1027,7 @@ describe('AshantiHub — installed staff app (standalone display)', () => {
     renderStaffAt('/staff')
     expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Go to marketplace' })).not.toBeInTheDocument()
-    fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: '✕' }))
+    fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
     expect(screen.getByTestId('location').textContent).toBe('/staff')
   }, 10000)

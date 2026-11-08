@@ -38,7 +38,7 @@ export function ActiveDeliveriesPanel({ onOpenDelivery }) {
             <section aria-labelledby="tbl" style={section}>
               <h3 id="tbl" style={sectionTitle}>In flight</h3>
               {data.results.length === 0 ? <Empty>No delivery matches.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Order", "Rider", "Current step", "Last stamp", "Deliver by", "Payment", "Flag"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>
@@ -99,7 +99,7 @@ function Decision({ job, onDone }) {
         Note{decision === "upheld" ? " (required)" : ""}
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={300} style={field} />
       </label>
-      <div><button type="button" disabled={!decision || busy || (decision === "upheld" && !note.trim())} onClick={save} style={button(D.gold, D.text, !decision || busy || (decision === "upheld" && !note.trim()))}>Save decision</button></div>
+      <div><button type="button" disabled={!decision || busy || (decision === "upheld" && !note.trim())} onClick={save} style={button(D.gold, D.onGold, !decision || busy || (decision === "upheld" && !note.trim()))}>Save decision</button></div>
     </div>
   );
 }
@@ -145,7 +145,7 @@ function CodeLine({ label, which, jobId, stopId, state, onDone, canUnlock = true
                 <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={300} style={field} />
               </label>
               <span style={{ display: "flex", gap: 8 }}>
-                <button type="button" disabled={!note.trim() || busy} onClick={unlock} style={button(D.gold, D.text, !note.trim() || busy)}>Confirm unlock</button>
+                <button type="button" disabled={!note.trim() || busy} onClick={unlock} style={button(D.gold, D.onGold, !note.trim() || busy)}>Confirm unlock</button>
                 <button type="button" disabled={busy} onClick={() => { setOpen(false); setError(""); }} style={button(D.panelBg, D.text)}>Cancel</button>
               </span>
             </span>
@@ -198,7 +198,7 @@ function StopRow({ jobId, stop, canSkip, onDone }) {
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={300} style={field} />
           </label>
           <span style={{ display: "flex", gap: 8 }}>
-            <button type="button" disabled={!note.trim() || busy} onClick={skip} style={button(D.gold, D.text, !note.trim() || busy)}>Confirm skip</button>
+            <button type="button" disabled={!note.trim() || busy} onClick={skip} style={button(D.gold, D.onGold, !note.trim() || busy)}>Confirm skip</button>
             <button type="button" disabled={busy} onClick={() => { setOpen(false); setError(""); }} style={button(D.panelBg, D.text)}>Cancel</button>
           </span>
         </span>

@@ -48,13 +48,13 @@ export default function ListingChangesBanner({ listing, onChanged, onEdit, baseP
       <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
         {revision.status === "draft" && (
           <>
-            <button type="button" disabled={busy} onClick={submit} style={{ ...btn, background: D.gold, color: "#1a1205" }}>Submit for approval</button>
+            <button type="button" disabled={busy} onClick={submit} style={{ ...btn, background: D.gold, color: D.onGold }}>Submit for approval</button>
             <button type="button" disabled={busy} onClick={discard} style={quietBtn}>Discard changes</button>
           </>
         )}
         {rejected && (
           <>
-            <button type="button" disabled={busy} onClick={() => onEdit?.()} style={{ ...btn, background: D.gold, color: "#1a1205" }}>Edit and resubmit</button>
+            <button type="button" disabled={busy} onClick={() => onEdit?.()} style={{ ...btn, background: D.gold, color: D.onGold }}>Edit and resubmit</button>
             <button type="button" disabled={busy} onClick={discard} style={quietBtn}>Discard changes</button>
           </>
         )}

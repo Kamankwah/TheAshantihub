@@ -89,7 +89,7 @@ export default function SudoPrompt() {
         {error && <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>{error}</div>}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button type="button" onClick={() => finish(false)} style={button(D.panelBg, D.text)}>Cancel</button>
-          <button type="submit" disabled={busy || !password} style={button(D.gold, D.text, busy || !password)}>Confirm</button>
+          <button type="submit" disabled={busy || !password} style={button(D.gold, D.onGold, busy || !password)}>Confirm</button>
         </div>
       </form>
     </div>

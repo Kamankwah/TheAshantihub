@@ -61,7 +61,7 @@ function FlagFraudForm({ business, onDone, onCancel }) {
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
-        <button type="submit" disabled={!ready} style={button(D.gold, D.text, !ready)}>Raise case</button>
+        <button type="submit" disabled={!ready} style={button(D.gold, D.onGold, !ready)}>Raise case</button>
       </div>
     </form>
   );
@@ -152,7 +152,7 @@ export default function SaBusinessDetail({ businessId, auth, onBack }) {
             </div>
             <div style={dim}>{[categories.join(", "), b.zone?.name, `owner ${b.owner_name}`, `on AshantiHub since ${formatDay(b.created_at)}`].filter(Boolean).join(" · ")}</div>
             <div style={{ fontSize: "0.8rem", color: D.text, marginTop: 4 }}>
-              {manager ? <>Account manager <strong>{manager.full_name}</strong> (Scout){sameAsRegistrar ? ", who also registered it" : ""}</> : <strong style={{ color: D.amber }}>No account manager</strong>}
+              {manager ? <>Account manager <strong>{manager.full_name}</strong> (Scout){sameAsRegistrar ? ", who also registered it" : ""}</> : <strong style={{ color: D.amberInk }}>No account manager</strong>}
               {" · customers reach it only through AshantiHub Support"}
             </div>
             {b.is_suspended && <div style={{ ...callout(D.red), marginTop: 8 }}>{`Suspended${b.suspension_reason ? `: ${b.suspension_reason}` : ""}. Its listings and events are hidden.`}</div>}
@@ -237,7 +237,7 @@ export default function SaBusinessDetail({ businessId, auth, onBack }) {
             {oversight.isLoading && <div style={dim}>Loading…</div>}
             {o && o.orders.length === 0 && <div style={dim}>No paid orders yet.</div>}
             {o && o.orders.length > 0 && (
-              <div style={{ overflowX: "auto" }}>
+              <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table aria-label="Orders" style={{ ...tableStyle, minWidth: 560 }}>
                   <thead><tr><th style={th}>Order</th><th style={th}>Customer</th><th style={th}>This business's items</th><th style={th}>Payment</th><th style={th}>Delivery</th></tr></thead>
                   <tbody>

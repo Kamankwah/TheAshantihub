@@ -129,7 +129,7 @@ export default function ProspectSheet({ prospect = null, auth = null, defaultSco
           </div>
         )}
         {error && <div role="alert" style={errorStyle}>{error}</div>}
-        <button type="submit" disabled={busy} style={{ ...button(D.gold, D.text, busy), minHeight: 48, fontSize: "0.95rem" }}>{busy ? "Saving…" : editing ? "Save changes" : "Add prospect"}</button>
+        <button type="submit" disabled={busy} style={{ ...button(D.gold, D.onGold, busy), minHeight: 48, fontSize: "0.95rem" }}>{busy ? "Saving…" : editing ? "Save changes" : "Add prospect"}</button>
         <div style={{ ...dim, textAlign: "center", lineHeight: 1.45 }}>Adding a prospect doesn't use your location. Check in at the prospect to put it on the map.</div>
       </form>
     </BottomSheet>

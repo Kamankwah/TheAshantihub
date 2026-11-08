@@ -9,7 +9,7 @@
 // - Reminders is real (subscription expiry, unpaid events, failed payments) —
 //   the old hardcoded WhatsApp-schedule mock is gone.
 import { useState } from "react";
-import { D, glassCard, sectionTitle, tint } from "../theme.js";
+import { D, glassCard, sectionTitle, tint, inkOf } from "../theme.js";
 import { apiDownload, apiPost } from "../../../apiClient.js";
 import { useMyTransactions } from "../../../hooks/useMyTransactions.js";
 import { useSubscriptionPlans } from "../../../hooks/useSubscriptionPlans.js";
@@ -72,7 +72,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
   // end date means nothing then, so no renew or lapsed reminder at all.
   if (!plansGone && subscription?.id && subDays != null && subDays <= 14) {
     reminders.push({
-      icon: subDays < 0 ? "🔴" : "⏰", color: subDays < 0 ? D.red : D.amber,
+      icon: subDays < 0 ? "🔴" : "⏰", color: subDays < 0 ? D.red : D.amberInk,
       title: subDays < 0 ? "Your subscription has lapsed" : `Subscription renews in ${subDays} day${subDays === 1 ? "" : "s"}`,
       // With the subscription pause switched off (clock.pause_enabled false)
       // an unpaid plan hides nothing, so don't promise to keep listings live.
@@ -83,7 +83,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
     });
   }
   (myEvents || []).filter(e => e.status === "approved" && !e.paid_at).forEach(e => {
-    reminders.push({ icon: "🎉", color: D.gold, title: `“${e.name}” is approved but unpaid`, body: "Pay to publish it in the Events tab.", action: null });
+    reminders.push({ icon: "🎉", color: D.goldInk, title: `“${e.name}” is approved but unpaid`, body: "Pay to publish it in the Events tab.", action: null });
   });
   txList.filter(t => t.status === "failed").forEach(t => {
     reminders.push({ icon: "⚠️", color: D.red, title: `Failed payment — ${t.purpose}`, body: `GHS ${Number(t.amount).toLocaleString()} didn't go through.`, action: null });
@@ -159,7 +159,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
       </div>
 
       <div style={{ padding: "22px 0 20px" }}>
-        {actionError && <div role="alert" style={{ background: tint(D.red, "1f"), color: D.red, border: `1px solid ${tint(D.red, "55")}`, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 16 }}>{actionError}</div>}
+        {actionError && <div role="alert" style={{ background: tint(D.red, "1f"), color: inkOf(D.red), border: `1px solid ${tint(D.red, "55")}`, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 16 }}>{actionError}</div>}
 
         {/* ── SALES OVERVIEW (customer sales) ── */}
         {payTab === "overview" && (
@@ -177,7 +177,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
                   <option value="service">Services</option>
                 </select>
               </label>
-              <button onClick={exportCsv} disabled={exporting} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit", opacity: exporting ? 0.6 : 1 }}>{exporting ? "Exporting…" : "⬇ Export CSV"}</button>
+              <button onClick={exportCsv} disabled={exporting} style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit", opacity: exporting ? 0.6 : 1 }}>{exporting ? "Exporting…" : "⬇ Export CSV"}</button>
             </div>
 
             {report.isLoading && <div style={{ color: D.textDim, fontSize: "0.82rem" }}>Loading your sales…</div>}
@@ -188,7 +188,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
                   {[
                     { icon: "💰", label: "Total Sales", value: `GHS ${Number(summary.total_sales).toLocaleString()}`, color: D.green },
                     { icon: "🧾", label: "Orders", value: summary.order_count, color: D.blue },
-                    { icon: "📦", label: "Items Sold", value: summary.item_count, color: D.gold },
+                    { icon: "📦", label: "Items Sold", value: summary.item_count, color: D.goldInk },
                   ].map(s => (
                     <div key={s.label} style={{ ...glassCard, padding: "16px", borderLeft: `4px solid ${s.color}` }}>
                       <div style={{ fontSize: "1.3rem", marginBottom: 4 }}>{s.icon}</div>
@@ -235,7 +235,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
                   {/* subscription.plan is a nested object (SubscriptionPlanSerializer),
                       not a string — reading .name; rendering the object itself
                       would throw "Objects are not valid as a React child". */}
-                  {subscription.plan?.name || subscription.plan?.tier || "Your plan"} · <span style={{ color: subscription.status === "active" ? D.green : D.amber, fontWeight: 700 }}>{subscription.status}</span>
+                  {subscription.plan?.name || subscription.plan?.tier || "Your plan"} · <span style={{ color: subscription.status === "active" ? D.green : D.amberInk, fontWeight: 700 }}>{subscription.status}</span>
                   {subEnd && <> · renews {subEnd.slice(0, 10)}{subDays != null && subDays >= 0 ? ` (${subDays}d)` : ""}</>}
                 </div>
               ) : (
@@ -260,11 +260,11 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
                   rows={txList}
                   emptyText="No payments yet."
                   renderCell={(t, c) => {
-                    if (c.key === "reference") return <span style={{ fontWeight: 700, color: D.deepGold, fontSize: "0.68rem" }}>{t.reference}</span>;
+                    if (c.key === "reference") return <span style={{ fontWeight: 700, color: D.goldInk, fontSize: "0.68rem" }}>{t.reference}</span>;
                     if (c.key === "purpose") return t.purpose;
                     if (c.key === "amount") return <span style={{ fontWeight: 800, color: D.text }}>GHS {Number(t.amount).toLocaleString()}</span>;
                     if (c.key === "date") return t.created_at?.slice(0, 10);
-                    if (c.key === "status") return <span style={{ background: tint(statusColor[t.status], "20"), color: statusColor[t.status], borderRadius: 20, padding: "3px 9px", fontSize: "0.62rem", fontWeight: 800 }}>{statusLabel[t.status] || t.status}</span>;
+                    if (c.key === "status") return <span style={{ background: tint(statusColor[t.status], "20"), color: inkOf(statusColor[t.status]), borderRadius: 20, padding: "3px 9px", fontSize: "0.62rem", fontWeight: 800 }}>{statusLabel[t.status] || t.status}</span>;
                     return null;
                   }}
                 />
@@ -288,7 +288,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
             {plansLoading && <div style={{ color: D.textDim, fontSize: "0.82rem", textAlign: "center" }}>Loading plans…</div>}
             {plansError && <div role="alert" style={{ color: D.red, fontSize: "0.82rem", textAlign: "center" }}>Could not load plans.</div>}
             {!plansLoading && !plansError && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(240px, 100%), 1fr))", gap: 14 }}>
                 {visiblePlans.map(plan => (
                   <div key={plan.id} style={{ ...glassCard, padding: "22px", border: `2px solid ${plan.is_recommended ? D.gold : D.cardBorder}`, position: "relative" }}>
                     {plan.is_recommended && <div style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", background: D.gold, color: D.cream, borderRadius: 20, padding: "3px 14px", fontSize: "0.62rem", fontWeight: 900, whiteSpace: "nowrap" }}>⭐ MOST POPULAR</div>}
@@ -329,7 +329,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
                     <div style={{ fontWeight: 800, fontSize: "0.8rem", color: r.color }}>{r.title}</div>
                     <div style={{ fontSize: "0.72rem", color: D.textDim, marginTop: 2 }}>{r.body}</div>
                   </div>
-                  {r.action && <button onClick={r.action} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Resolve</button>}
+                  {r.action && <button onClick={r.action} style={{ background: D.greenFill, color: D.white, border: "none", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Resolve</button>}
                 </div>
               ))}
             </div>

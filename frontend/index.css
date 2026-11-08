@@ -157,6 +157,10 @@
    tokens (background/foreground colors, default font, border-color
    defaults for descendant elements) without affecting the rest of the app. */
 @layer base {
+  /* DESIGN.md: Fraunces for headings. Dense staff panels stay in the body face
+     (sober core); a heading that sets its own font-family inline still wins. */
+  h1, h2, h3 { font-family: var(--font-serif); letter-spacing: -0.01em; }
+  .staff-shell h1, .staff-shell h2, .staff-shell h3 { font-family: var(--font-sans); letter-spacing: normal; }
   .shadcn-scope {
     @apply bg-background text-foreground font-sans;
   }
@@ -182,15 +186,20 @@
   --ah-surface-2: #F5ECD8;
   --ah-surface-3: #EADFC6;
   --ah-ink: #2C1810;
-  --ah-ink-dim: rgba(44, 24, 16, 0.62);
-  --ah-ink-faint: rgba(44, 24, 16, 0.42);
+  --ah-ink-dim: rgba(44, 24, 16, 0.72);
+  --ah-ink-faint: rgba(44, 24, 16, 0.66);
   --ah-line: rgba(44, 24, 16, 0.12);
   --ah-border: rgba(212, 160, 23, 0.35);
   --ah-border-strong: rgba(212, 160, 23, 0.6);
   --ah-shadow: 0 10px 28px rgba(44, 24, 16, 0.12);
   --ah-price: #2C1810;
   --ah-green: #006400;
+  --ah-green-fill: #006400;
+  --ah-gold-ink: #80600A;
+  --ah-amber-ink: #8F3F09;
+  --ah-purple-ink: #6B4E8E;
   --ah-red: #CC0000;
+  --ah-red-fill: #CC0000;
   --ah-blue: #000080;
   --ah-ok-bg: #E3F1E3;
   --ah-ok-ink: #00500A;
@@ -209,15 +218,20 @@
   --ah-surface-2: #3D281A;
   --ah-surface-3: #4A3324;
   --ah-ink: #F5DEB3;
-  --ah-ink-dim: rgba(245, 222, 179, 0.72);
-  --ah-ink-faint: rgba(245, 222, 179, 0.5);
+  --ah-ink-dim: rgba(245, 222, 179, 0.78);
+  --ah-ink-faint: rgba(245, 222, 179, 0.62);
   --ah-line: rgba(245, 222, 179, 0.14);
   --ah-border: rgba(212, 160, 23, 0.4);
   --ah-border-strong: rgba(212, 160, 23, 0.65);
   --ah-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
   --ah-price: #F5DEB3;
-  --ah-green: #2F9E2F;
-  --ah-red: #E03A3A;
+  --ah-green: #5CC15C;
+  --ah-green-fill: #237A23;
+  --ah-gold-ink: #D4A017;
+  --ah-amber-ink: #F5A068;
+  --ah-purple-ink: #B79BE0;
+  --ah-red: #F57474;
+  --ah-red-fill: #C62828;
   --ah-blue: #9A9AFF;
   --ah-ok-bg: rgba(47, 158, 47, 0.18);
   --ah-ok-ink: #8FD98F;
@@ -266,7 +280,7 @@
   --muted-foreground: var(--ah-ink-dim);
   --accent: #D4A017;
   --accent-foreground: #2C1810;
-  --destructive: var(--ah-red);
+  --destructive: var(--ah-red-fill);
   --border: var(--ah-border);
   --input: var(--ah-border);
   --ring: #D4A017;
@@ -328,3 +342,29 @@
 
 /* DESIGN.md: tabular figures on every number (prices, scores, tables). Inherited app-wide. */
 html, body { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+/* Skip link: off-screen until a keyboard user tabs to it (first focusable element on every public page). */
+.ah-skip-link { position: absolute; left: 8px; top: -64px; z-index: 3000; padding: 12px 16px; min-height: 44px; box-sizing: border-box; border-radius: 10px; background: var(--ah-ink, #2c1810); color: var(--ah-canvas, #fff); font-weight: 700; font-size: 0.9rem; text-decoration: underline; }
+.ah-skip-link:focus { top: 8px; }
+
+/* Phone baseline for the business dashboard, the account hub and the staff shell (all `.command-center`): every
+   control is a 44px target. Many panels set a smaller inline minHeight, hence !important. Checkboxes and radios
+   are 24px (WCAG 2.5.8). The account header drops the wordmark so the bell, menu, theme and Exit all fit. */
+@media (max-width: 760px) {
+  .command-center button, .command-center summary, .command-center select, .command-center textarea,
+  .command-center input:not([type="checkbox"]):not([type="radio"]) { min-height: 44px !important; box-sizing: border-box; }
+  .command-center button, .command-center summary { min-width: 44px; }
+  .command-center select, .command-center input:not([type="checkbox"]):not([type="radio"]) { max-width: 100%; }
+  .command-center input[type="checkbox"], .command-center input[type="radio"] { width: 24px; height: 24px; }
+}
+@media (max-width: 520px) { .acct-logo-text { display: none; } }
+
+/* Breadcrumb links in the account hub are 44px targets on a phone. */
+.ah-crumb-link { display: inline-flex; align-items: center; min-height: 24px; }
+@media (max-width: 760px) { .ah-crumb-link { min-height: 44px; } }
+/* Generic small-control target: 24px everywhere (WCAG 2.5.8), 44px on a phone. */
+.ah-tap { min-height: 24px; min-width: 24px; }
+@media (max-width: 760px) { .ah-tap { min-height: 44px; min-width: 44px; } }
+
+/* Leaflet zoom controls are 44px targets on a phone (checkout map, location pickers). */
+@media (max-width: 760px) { .leaflet-bar a, .leaflet-touch .leaflet-bar a { width: 44px !important; height: 44px !important; line-height: 44px !important; } }

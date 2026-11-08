@@ -70,7 +70,7 @@ export default function CategoriesMarketing({ auth }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
           <div style={{ gridColumn: "1 / -1" }}><CategoryPictures canEdit={canManage} /></div>
           <Section id="all-cats" title={`All categories · ${rows.length}`}>
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr>
                   <th scope="col" style={th}>Category</th><th scope="col" style={th}>Kind</th><th scope="col" style={th}>Listings</th>

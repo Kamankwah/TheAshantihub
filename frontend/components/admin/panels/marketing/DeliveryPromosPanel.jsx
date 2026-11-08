@@ -74,7 +74,7 @@ function PlatformForm({ onDone }) {
       <div style={dim}>Covers every item of this business.</div>
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>{actionError}</div>}
       {notice && <div role="status" style={chip(D.green)}>{notice}</div>}
-      <div><button type="submit" disabled={busy || !ready} style={button(D.gold, D.text, busy || !ready)}>Send for approval</button></div>
+      <div><button type="submit" disabled={busy || !ready} style={button(D.gold, D.onGold, busy || !ready)}>Send for approval</button></div>
     </form>
   );
 }
@@ -125,12 +125,12 @@ export default function DeliveryPromosPanel({ auth }) {
             <div style={dim}>{p.all_items ? "All of the business's items" : p.listings.map((l) => l.name).join(", ")}</div>
             <div style={dim}>Covered so far: GH₵ {p.covered_total} on {p.covered_orders} {p.covered_orders === 1 ? "order" : "orders"}</div>
             {p.funded_by === "platform" && p.budget_cap != null && <div style={dim}>Spent GH₵ {p.spent ?? "0.00"} of GH₵ {p.budget_cap}</div>}
-            {p.awaiting_approval && <div style={{ ...dim, color: D.amber }}>Waiting for Operations or Super Admin.</div>}
+            {p.awaiting_approval && <div style={{ ...dim, color: D.amberInk }}>Waiting for Operations or Super Admin.</div>}
             {p.rejection_reason && <div style={{ ...dim, color: D.red }}>Reason: {p.rejection_reason}</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
               {p.status === "pending" && !p.awaiting_approval && (
                 <>
-                  <button type="button" disabled={busyId === p.id} onClick={() => act(p.id, "approve")} style={button(D.gold, D.text, busyId === p.id)}>Approve</button>
+                  <button type="button" disabled={busyId === p.id} onClick={() => act(p.id, "approve")} style={button(D.gold, D.onGold, busyId === p.id)}>Approve</button>
                   <button type="button" disabled={busyId === p.id} onClick={() => { setRejecting(rejecting === p.id ? null : p.id); setReason(""); }} style={button(D.panelBg, D.text)}>Not approve</button>
                 </>
               )}
@@ -140,7 +140,7 @@ export default function DeliveryPromosPanel({ auth }) {
             {rejecting === p.id && (
               <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                 <input aria-label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Tell the business why" maxLength={300} style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
-                <button type="button" disabled={!reason.trim() || busyId === p.id} onClick={() => act(p.id, "reject", { reason })} style={button(D.red, "#fff", !reason.trim())}>Send</button>
+                <button type="button" disabled={!reason.trim() || busyId === p.id} onClick={() => act(p.id, "reject", { reason })} style={button(D.red, D.white, !reason.trim())}>Send</button>
               </div>
             )}
           </div>

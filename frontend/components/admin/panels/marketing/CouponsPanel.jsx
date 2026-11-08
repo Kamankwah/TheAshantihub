@@ -22,7 +22,7 @@ export default function CouponsPanel({ detailId, onOpenDetail }) {
   const k = data.kpis;
   return (
     <div style={page}>
-      <PageHead title="Coupons"><button type="button" onClick={() => onOpenDetail?.("new")} style={button(D.gold, D.text)}>New coupon</button></PageHead>
+      <PageHead title="Coupons"><button type="button" onClick={() => onOpenDetail?.("new")} style={button(D.gold, D.onGold)}>New coupon</button></PageHead>
       <OffNotice data={data} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
         <Kpi label="Live coupons" value={k.live} sub={`${k.waiting} waiting for Super Admin · ${k.paused} paused`} />
@@ -38,7 +38,7 @@ export default function CouponsPanel({ detailId, onOpenDetail }) {
         </label>
       }>
         {rows.length === 0 ? <Honest>{data.results.length === 0 ? "No coupon yet." : "No coupon in this status."}</Honest> : (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{["Code", "Value", "Minimum spend", "Uses / limit", "Per customer", "Expiry", "Cost so far", "Status"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
               <tbody>

@@ -11,7 +11,7 @@ const text = { color: D.text, fontSize: "0.8rem", lineHeight: 1.5 };
 // goes back to the password step with the server's message.
 const isExpired = (err) => err?.body?.code === "challenge_expired";
 
-const primary = (disabled) => ({ ...button(D.gold, D.text, disabled), borderRadius: 20, padding: "12px", fontWeight: 900, fontSize: "0.85rem" });
+const primary = (disabled) => ({ ...button(D.gold, D.onGold, disabled), borderRadius: 20, padding: "12px", fontWeight: 900, fontSize: "0.85rem" });
 
 // The second step of a staff sign-in (F9), shown by AuthModal (and the
 // invite-activation page) when the password step answers with a challenge

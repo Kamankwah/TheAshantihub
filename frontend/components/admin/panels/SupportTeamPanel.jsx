@@ -33,7 +33,7 @@ export default function SupportTeamPanel({ onNavigate }) {
       <div style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <h2 style={h2}>Support team</h2>
-          {onNavigate && <button type="button" onClick={() => onNavigate("my-team")} style={button(D.gold, D.text)}>Invite a support agent</button>}
+          {onNavigate && <button type="button" onClick={() => onNavigate("my-team")} style={button(D.gold, D.onGold)}>Invite a support agent</button>}
         </div>
         <div style={callout(D.amber)}>{SOON}</div>
       </div>
@@ -54,7 +54,7 @@ export default function SupportTeamPanel({ onNavigate }) {
           <section aria-labelledby="st-agents" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
             <h3 id="st-agents" style={{ ...h2, fontSize: "0.95rem" }}>Agents reporting to you</h3>
             {data.agents.length === 0 ? <div style={dim}>No support agent reports to you yet.</div> : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr>{["Agent", "Calls logged today", "Report today", "Last report"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                   <tbody>

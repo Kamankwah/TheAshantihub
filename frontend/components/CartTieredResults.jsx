@@ -7,7 +7,7 @@ import { C } from "../theme.js";
 // and everyone else behind an always-available "See other shops too". A shop the cart cannot take now stays visible
 // with the server's reason.
 const heading = { margin: "18px 0 8px", color: C.lightGold, fontSize: "0.82rem", fontWeight: 900 };
-const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(215px,1fr))", gap: 14 };
+const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(215px, 100%), 1fr))", gap: 14 };
 const tag = { marginTop: 6, fontSize: "0.7rem", fontWeight: 700, color: C.lightGold };
 
 function Row({ item, renderCard }) {
@@ -48,14 +48,14 @@ export default function CartTieredResults({ listings, renderCard }) {
       <Group title="Near the shops in your cart" rows={near} renderCard={renderCard} />
       {!inCart.length && !near.length && <div style={{ color: C.inkFaint, fontSize: "0.8rem", margin: "12px 0" }}>Nothing in these results from the shops in your cart or shops near them.</div>}
       <Group title="Services, stays and events" rows={separate} renderCard={renderCard} />
-      <button type="button" aria-expanded={showOthers} onClick={() => setShowOthers((v) => !v)}
+      <button type="button" aria-expanded={showOthers} onClick={() => setShowOthers((v) => !v)} className="ah-tap"
         style={{ marginTop: 16, background: "none", border: `1px solid ${C.gold}`, color: C.lightGold, borderRadius: 20, padding: "7px 16px", fontWeight: 800, fontSize: "0.78rem", cursor: "pointer", fontFamily: "inherit" }}>
         {showOthers ? "Hide other shops" : `See other shops too${others.length ? ` (${others.length})` : ""}`}
       </button>
       {showOthers && (others.length === 0
-        ? <div style={{ color: C.inkFaint, fontSize: "0.8rem", marginTop: 10 }}>No other shops in these results.</div>
+        ? <div style={{ color: C.lightGold, fontSize: "0.8rem", marginTop: 10 }}>No other shops in these results.</div>
         : <div style={{ ...grid, marginTop: 12 }}>{others.map((item) => <Row key={item.id} item={item} renderCard={renderCard} />)}</div>)}
-      <div style={{ color: C.inkFaint, fontSize: "0.7rem", marginTop: 10 }}>One rider collects from every shop in your cart on one trip, so shops near each other come first.</div>
+      <div style={{ color: C.lightGold, fontSize: "0.7rem", marginTop: 10 }}>One rider collects from every shop in your cart on one trip, so shops near each other come first.</div>
     </div>
   );
 }
