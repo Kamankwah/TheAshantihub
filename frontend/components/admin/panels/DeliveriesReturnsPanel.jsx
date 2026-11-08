@@ -72,7 +72,7 @@ function StatusEditor({ row, choices, onDone, onError }) {
           {choices.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
       </label>
-      <button type="button" disabled={busy || value === row.delivery_status} onClick={save} style={button(D.gold, D.text, busy || value === row.delivery_status)}>Save</button>
+      <button type="button" disabled={busy || value === row.delivery_status} onClick={save} style={button(D.gold, D.onGold, busy || value === row.delivery_status)}>Save</button>
       <button type="button" onClick={() => setEditing(false)} style={button(D.panelBg, D.text)}>Cancel</button>
     </div>
   );
@@ -108,7 +108,7 @@ export default function DeliveriesReturnsPanel({ auth }) {
           <section aria-labelledby="dr-disputes" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
             <h3 id="dr-disputes" style={{ ...h2, fontSize: "0.95rem" }}>{`Disputes · open (${data.dispute_total})`}</h3>
             {data.disputes.length === 0 ? <div style={dim}>No open disputes.</div> : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr>{["Case", "Order · business", "Where it stands", "Open for", "Actions"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                   <tbody>
@@ -131,7 +131,7 @@ export default function DeliveriesReturnsPanel({ auth }) {
             <h3 id="dr-assignments" style={{ ...h2, fontSize: "0.95rem" }}>Today's delivery assignments</h3>
             <div style={dim}>{`${data.assigned_today} assigned today${data.assignments_total > data.assigned_today ? `, plus ${data.assignments_total - data.assigned_today} still on the road from earlier days` : ""} · all businesses`}</div>
             {data.assignments.length === 0 ? <div style={dim}>No delivery is assigned or on the road today.</div> : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr>{["Order", "From → to", "Rider", "Status", "Last update", ...(canUpdate ? ["Update status"] : [])].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                   <tbody>

@@ -10,7 +10,7 @@ import { BODY_FONT, HEADING_FONT, SECTION } from "./storefrontType.js";
 export default function CtaBlock({ user, onSignIn, onSell }) {
   return (
     <section aria-label="Get started" style={{ ...SECTION, padding: "32px 16px 40px" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))", gap: 12 }}>
         {!user && (
           <div style={card}>
             <h2 style={title}>Sign in for the best experience</h2>

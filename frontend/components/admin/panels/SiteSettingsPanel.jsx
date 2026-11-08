@@ -101,12 +101,12 @@ function SiteSettingsForm({ initial, onSaved, showToast }) {
           <strong style={{ color: D.text, fontSize: "0.85rem" }}>{changed.length === 1 ? "1 unsaved change" : `${changed.length} unsaved changes`}</strong>
           <span style={{ display: "inline-flex", gap: 8 }}>
             <button type="button" style={button(D.panelBg, D.text)} onClick={() => { setForm(base); setError(null); }}>Discard</button>
-            <button type="button" disabled={saving} style={button(D.gold, D.text, saving)} onClick={save}>{saving ? "Saving…" : "Save"}</button>
+            <button type="button" disabled={saving} style={button(D.gold, D.onGold, saving)} onClick={save}>{saving ? "Saving…" : "Save"}</button>
           </span>
         </div>
       )}
       {error && <div role="alert" style={errorStyle}>{error}</div>}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <section aria-labelledby="ss-contact" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
           <h3 id="ss-contact" style={{ ...h2, fontSize: "1rem" }}>Footer contact details</h3>
           {CONTACT.map((f) => input(f))}
@@ -124,7 +124,7 @@ function SiteSettingsForm({ initial, onSaved, showToast }) {
           <section aria-labelledby="ss-save" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
             <h3 id="ss-save" style={{ ...h2, fontSize: "1rem" }}>When you save</h3>
             <div style={dim}>Changes go live on the public site straight away and are recorded with the before and after. The WhatsApp number here is AshantiHub's own support line — never a business's number.</div>
-            <button type="button" disabled={!changed.length || saving} style={{ ...button(D.gold, D.text, !changed.length || saving), alignSelf: "flex-start" }} onClick={save}>Save</button>
+            <button type="button" disabled={!changed.length || saving} style={{ ...button(D.gold, D.onGold, !changed.length || saving), alignSelf: "flex-start" }} onClick={save}>Save</button>
           </section>
           <History />
         </div>

@@ -34,7 +34,7 @@ export default function StatementsPanel() {
         {data && (
           <section aria-labelledby="st-rev" style={section}>
             <h3 id="st-rev" style={sectionTitle}>Revenue by type, before tax</h3>
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr><th scope="col" style={th}>Type</th><th scope="col" style={th}>What it is</th><th scope="col" style={{ ...th, textAlign: "right" }}>Amount</th><th scope="col" style={{ ...th, textAlign: "right" }}>Previous period</th></tr></thead>
                 <tbody>

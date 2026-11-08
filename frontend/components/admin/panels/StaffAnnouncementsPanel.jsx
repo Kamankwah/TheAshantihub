@@ -108,7 +108,7 @@ function Compose({ data, onDone }) {
       )}
       {error && <div role="alert" style={errorStyle}>{error}</div>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="submit" disabled={busy} style={button(D.gold, D.text, busy)}>{form.when === "schedule" ? "Schedule" : "Send now"}</button>
+        <button type="submit" disabled={busy} style={button(D.gold, D.onGold, busy)}>{form.when === "schedule" ? "Schedule" : "Send now"}</button>
         <button type="button" disabled={busy || !form.title || !form.body} onClick={(e) => submit(e, "draft")} style={button(D.panelBg, D.text, busy || !form.title || !form.body)}>Save draft</button>
       </div>
     </form>
@@ -166,7 +166,7 @@ export default function StaffAnnouncementsPanel() {
           <h3 style={sectionTitle}>Scheduled and sent</h3>
           {data.announcements.length === 0 && <div style={dim}>No announcements yet.</div>}
           {data.announcements.length > 0 && (
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr>{["Announcement", "To", "When", "Opened", "Confirmed", "Not opened yet", ""].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
                 <tbody>

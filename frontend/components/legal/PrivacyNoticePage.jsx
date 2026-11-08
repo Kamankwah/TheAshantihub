@@ -60,7 +60,7 @@ export default function PrivacyNoticePage({ onNavigate }) {
   return (
     <main id="main-content" style={{ maxWidth: 720, margin: "0 auto", padding: "28px 16px 64px", boxSizing: "border-box", fontFamily: BODY_FONT, color: C.ink }}>
       <p style={{ margin: "0 0 6px" }}>
-        <a href="/" onClick={(e) => { if (onNavigate) { e.preventDefault(); onNavigate("/"); } }} style={{ color: C.ink, fontWeight: 700, fontSize: "0.85rem", textDecoration: "underline" }}>{"← Back to AshantiHub"}</a>
+        <a href="/" className="ah-tap" onClick={(e) => { if (onNavigate) { e.preventDefault(); onNavigate("/"); } }} style={{ display: "inline-flex", alignItems: "center", color: C.ink, fontWeight: 700, fontSize: "0.85rem", textDecoration: "underline" }}>{"← Back to AshantiHub"}</a>
       </p>
       <h1 style={{ margin: "8px 0 4px", fontFamily: HEADING_FONT, fontWeight: 600, fontSize: "clamp(1.9rem, 5vw, 2.5rem)", lineHeight: 1.1, letterSpacing: "-0.02em" }}>Privacy Notice</h1>
       <p style={{ margin: "0 0 20px", color: C.inkDim, fontSize: "0.9rem" }}>{`Last updated ${PRIVACY_UPDATED}`}</p>
@@ -76,9 +76,9 @@ export default function PrivacyNoticePage({ onNavigate }) {
         <h2 style={{ ...h2, fontSize: "1.1rem" }}>Contents</h2>
         <ol style={{ margin: 0, paddingLeft: 26, lineHeight: 2, listStyle: "decimal" }}>
           {PRIVACY_SECTIONS.map((section) => (
-            <li key={section.id}><a href={`#${section.id}`} onClick={contentsLink(section.id)} style={{ color: C.ink, textDecoration: "underline" }}>{section.title}</a></li>
+            <li key={section.id}><a href={`#${section.id}`} className="ah-tap" onClick={contentsLink(section.id)} style={{ display: "inline-flex", alignItems: "center", color: C.ink, textDecoration: "underline" }}>{section.title}</a></li>
           ))}
-          <li><a href="#contact" onClick={contentsLink("contact")} style={{ color: C.ink, textDecoration: "underline" }}>Contact</a></li>
+          <li><a href="#contact" className="ah-tap" onClick={contentsLink("contact")} style={{ display: "inline-flex", alignItems: "center", color: C.ink, textDecoration: "underline" }}>Contact</a></li>
         </ol>
       </nav>
 
@@ -97,7 +97,7 @@ export default function PrivacyNoticePage({ onNavigate }) {
             {contact.map(([label, value, href]) => (
               <div key={label} style={{ display: "flex", gap: 12, padding: "8px 0", borderTop: `1px solid ${C.line}` }}>
                 <dt style={{ flex: "0 0 120px", fontWeight: 700 }}>{label}</dt>
-                <dd style={{ margin: 0, minWidth: 0, overflowWrap: "anywhere" }}>{href ? <a href={href} style={{ color: C.ink, textDecoration: "underline" }}>{value}</a> : value}</dd>
+                <dd style={{ margin: 0, minWidth: 0, overflowWrap: "anywhere" }}>{href ? <a href={href} className="ah-tap" style={{ display: "inline-flex", alignItems: "center", color: C.ink, textDecoration: "underline" }}>{value}</a> : value}</dd>
               </div>
             ))}
           </dl>

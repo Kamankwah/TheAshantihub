@@ -8,7 +8,7 @@ import { D, glassCard } from "../theme.js";
 // `renderCell(row, col)` to customize a cell's contents (badges, formatting).
 export default function DataTableCard({ columns, rows, keyField = "id", emptyText = "Nothing here yet.", renderCell }) {
   return (
-    <div style={{ ...glassCard, padding: 18, overflowX: "auto" }}>
+    <div style={{ ...glassCard, padding: 18, overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
       {(!rows || rows.length === 0) ? (
         <div style={{ color: D.textFaint, fontSize: "0.78rem" }}>{emptyText}</div>
       ) : (

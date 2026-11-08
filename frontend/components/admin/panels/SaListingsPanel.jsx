@@ -96,7 +96,7 @@ function ReviewSheet({ listing, canModerate, approving, onApprove, onClose }) {
       )}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button type="button" onClick={onClose} style={button(D.panelBg, D.text)}>Not now</button>
-        {canModerate && listing.status === "pending_review" && <button type="button" disabled={approving || !d} onClick={() => onApprove(listing)} style={button(D.green, D.white, approving || !d)}>{`Approve ${listing.name}`}</button>}
+        {canModerate && listing.status === "pending_review" && <button type="button" disabled={approving || !d} onClick={() => onApprove(listing)} style={button(D.greenFill, D.white, approving || !d)}>{`Approve ${listing.name}`}</button>}
       </div>
     </section>
   );
@@ -252,7 +252,7 @@ function AllListingsView({ auth, onOpenBusiness }) {
         <LoadState query={list} what="the listings" />
         {!list.isLoading && !list.isError && rows.length === 0 && <div style={dim}>No listing matches these filters.</div>}
         {rows.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table aria-label="Listings" style={{ ...tableStyle, minWidth: 1000 }}>
               <thead><tr><th style={th}>Listing</th><th style={th}>Type</th><th style={th}>Price</th><th style={th}>Status</th><th style={th}>Added by</th><th style={th}>Latest moderation</th><CountHead tip={PAID_TIP}>Paid</CountHead><CountHead tip={REFUNDED_TIP}>Refunded</CountHead><th style={th}>Actions</th></tr></thead>
               <tbody>
@@ -262,7 +262,7 @@ function AllListingsView({ auth, onOpenBusiness }) {
                     <tr key={l.id}>
                       <td style={td}>
                         <div style={{ fontWeight: 800 }}>{l.name}</div>
-                        <div style={dim}>{onOpenBusiness ? <button type="button" onClick={() => onOpenBusiness(l.business_id)} style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.75rem", color: D.deepGold, textDecoration: "underline" }}>{l.business_name}</button> : l.business_name}{` · ${l.category}`}</div>
+                        <div style={dim}>{onOpenBusiness ? <button type="button" onClick={() => onOpenBusiness(l.business_id)} style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.75rem", color: D.goldInk, textDecoration: "underline" }}>{l.business_name}</button> : l.business_name}{` · ${l.category}`}</div>
                       </td>
                       <td style={td}>{TYPE[l.type] || l.type}</td>
                       <td style={td}>{l.price_amount != null ? `${money(l.price_amount)}${l.price_unit ? ` / ${l.price_unit}` : ""}` : "—"}</td>
@@ -274,7 +274,7 @@ function AllListingsView({ auth, onOpenBusiness }) {
                       <td style={td}>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" aria-label={`History of ${l.name}`} onClick={() => setHistory(l)} style={button(D.panelBg, D.text)}>History</button>
-                          {canModerate && l.status === "pending_review" && <button type="button" aria-label={`View or approve ${l.name}`} onClick={() => { setNotice(null); setApproveError(null); setReviewing(l); }} style={button(D.green, D.white)}>View / Approve</button>}
+                          {canModerate && l.status === "pending_review" && <button type="button" aria-label={`View or approve ${l.name}`} onClick={() => { setNotice(null); setApproveError(null); setReviewing(l); }} style={button(D.greenFill, D.white)}>View / Approve</button>}
                           {canSponsor && isProductListing(l) && l.status === "published" && <SponsoredToggle id={l.id} name={l.name} sponsored={Boolean(l.sponsored)} onChanged={() => queryClient.invalidateQueries({ queryKey: ["sa-listings"] })} />}
                           {canMove && l.status !== "discontinued" && <button type="button" aria-label={`Move ${l.name} to another category`} onClick={() => { setNotice(null); setMoving(l); }} style={button(D.panelBg, D.text)}>Move category</button>}
                           {canModerate && l.status === "published" && <button type="button" aria-label={`Take down ${l.name}`} onClick={() => { setNotice(null); setTakingDown(l); }} style={button(D.panelBg, D.red)}>Take down</button>}

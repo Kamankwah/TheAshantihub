@@ -38,7 +38,7 @@ export default function UnsubscribePage({ token, onHome }) {
           </>
         )}
         {info && done && <p role="status" style={{ lineHeight: 1.6 }}>Done. You will not get {info.channel_label} offers from AshantiHub any more. You can turn them on again in your account settings.</p>}
-        {onHome && <p><button type="button" onClick={onHome} style={{ background: "none", border: 0, color: C.deepGold, textDecoration: "underline", cursor: "pointer", fontFamily: "inherit" }}>Go to AshantiHub</button></p>}
+        {onHome && <p><button type="button" onClick={onHome} className="ah-tap" style={{ background: "none", border: 0, color: C.goldInk, textDecoration: "underline", cursor: "pointer", fontFamily: "inherit" }}>Go to AshantiHub</button></p>}
       </div>
     </main>
   );

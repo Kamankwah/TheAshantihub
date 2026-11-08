@@ -57,7 +57,7 @@ export default function StaffDirectoryPanel({ auth, detailId, onOpenDetail, onNa
     <div style={col}>
       <ScreenHeader title="Staff directory" note={counts ? `${counts.all} people on the staff.` : "Everyone with a staff account."}>
         <ExportButton path="/api/people/staff/export/" params={{ ...filters, q }} filename="staff-directory.csv" label="Export (CSV) · asks for your password" onError={setError} />
-        <button type="button" onClick={() => onNavigate?.("invites")} style={button(D.gold, D.text)}>Invite staff</button>
+        <button type="button" onClick={() => onNavigate?.("invites")} style={button(D.gold, D.onGold)}>Invite staff</button>
       </ScreenHeader>
 
       {counts && (
@@ -77,7 +77,7 @@ export default function StaffDirectoryPanel({ auth, detailId, onOpenDetail, onNa
         <LoadState query={list} what="the staff" />
         {!list.isLoading && !list.isError && rows.length === 0 && <div style={dim}>Nobody matches these filters.</div>}
         {rows.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table aria-label="Staff" style={{ ...tableStyle, minWidth: 900 }}>
               <thead><tr><th style={th}>Name</th><th style={th}>Role</th><th style={th}>Manager</th><th style={th}>Team · area</th><th style={th}>Status</th><th style={th}>Last sign-in</th><th style={th}>2-step</th><th style={th}>Profile</th></tr></thead>
               <tbody>

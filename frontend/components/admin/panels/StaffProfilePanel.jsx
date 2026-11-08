@@ -151,7 +151,7 @@ function Access({ p, onEndSession, busy }) {
         <h3 style={h3}>Signed in on</h3>
         {p.sessions.length === 0 && <div style={dim}>No open sessions.</div>}
         {p.sessions.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table aria-label="Open sessions" style={tableStyle}>
               <thead><tr><th style={th}>Device</th><th style={th}>IP</th><th style={th}>Signed in</th><th style={th}>Last seen</th><th style={th}>Ends</th><th style={th}>{" "}</th></tr></thead>
               <tbody>

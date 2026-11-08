@@ -52,7 +52,7 @@ function Evidence({ dispute, editable, onChanged }) {
         <div key={e.id} style={{ display: "flex", gap: 8 }}><span aria-hidden="true">✓</span><div>
           <div style={{ color: D.text, fontWeight: 700, fontSize: "0.8rem" }}>{e.title}</div>
           <div style={dim}>{`${e.added_by_name || "Support"} · ${formatDateTime(e.created_at)}${e.body ? ` · ${e.body}` : ""}`}</div>
-          {e.file_url && <a href={e.file_url} target="_blank" rel="noreferrer" style={{ color: D.deepGold, fontSize: "0.75rem" }}>Open the file</a>}
+          {e.file_url && <a href={e.file_url} target="_blank" rel="noreferrer" style={{ color: D.goldInk, fontSize: "0.75rem" }}>Open the file</a>}
         </div></div>
       ))}
       {dispute.records.length === 0 && dispute.evidence.length === 0 && <div style={dim}>Nothing attached yet.</div>}
@@ -201,7 +201,7 @@ export default function SupportDisputeIntakePanel({ orderId: orderProp }) {
         {(open.isError || resolved.isError) && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the disputes.</div>}
         {!open.isLoading && rows.length === 0 && <div style={{ color: D.textDim, fontSize: "0.85rem" }}>{order ? "No disputes on this order." : "No disputes yet."}</div>}
         {rows.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>{["Dispute", "Raised by", "About", "Problem", "Order value", "Raised", "Status", "With"].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>
@@ -209,7 +209,7 @@ export default function SupportDisputeIntakePanel({ orderId: orderProp }) {
                   const [text, color, who] = STATUS[d.status] || [d.status, D.textDim, ""];
                   return (
                     <tr key={d.id}>
-                      <td style={td}><button type="button" onClick={() => setSelected(d.id)} style={{ background: "none", border: "none", padding: 0, color: D.deepGold, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>{`#${d.id}`}</button></td>
+                      <td style={td}><button type="button" onClick={() => setSelected(d.id)} style={{ background: "none", border: "none", padding: 0, color: D.goldInk, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>{`#${d.id}`}</button></td>
                       <td style={td}>{d.customer_name || "—"}<div style={dim}>{d.raised_by_kind === "staff" ? "Staff-logged" : "Customer"}</div></td>
                       <td style={td}>{d.businesses.join(", ") || "—"}<div style={dim}>{d.order ? `Order #${d.order}` : "No order"}</div></td>
                       <td style={td}>{label(PROBLEMS, d.problem_type) || label([["order_issue", "Order issue"], ["payment_issue", "Payment issue"], ["delivery_issue", "Delivery issue"], ["quality_issue", "Quality issue"], ["other", "Other"]], d.reason)}</td>

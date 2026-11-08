@@ -172,7 +172,7 @@ function StartCheckIn({ presetBusinessId }) {
             </select>
           </label>
           {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
-          <button type="button" onClick={submit} disabled={busy || !picked || !effectivePurpose || rough} style={{ ...button(D.gold, D.text, busy || !picked || !effectivePurpose || rough), minHeight: 48, fontSize: "0.95rem" }}>
+          <button type="button" onClick={submit} disabled={busy || !picked || !effectivePurpose || rough} style={{ ...button(D.gold, D.onGold, busy || !picked || !effectivePurpose || rough), minHeight: 48, fontSize: "0.95rem" }}>
             {busy ? "Checking in…" : picked ? `Check in at ${picked.name}` : "Check in"}
           </button>
         </section>
@@ -296,7 +296,7 @@ function OpenVisit({ visit, onDone, leadName }) {
         <div role="alert" style={callout(D.amber)}>{`Your phone's location is rough (about ${roughFix} m). Step outside, away from walls, then try again — a check-out needs ${MAX_ACCURACY_M} m or better.`}</div>
       )}
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
-      <button type="button" onClick={startCheckOut} disabled={busy || locating} style={{ ...button(D.gold, D.text, busy || locating), minHeight: 52, fontSize: "1rem" }}>
+      <button type="button" onClick={startCheckOut} disabled={busy || locating} style={{ ...button(D.gold, D.onGold, busy || locating), minHeight: 52, fontSize: "1rem" }}>
         {locating ? "Finding your location…" : busy ? "Checking out…" : roughFix != null ? "Try again" : "Check out"}
       </button>
     </>

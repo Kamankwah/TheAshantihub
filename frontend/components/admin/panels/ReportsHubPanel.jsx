@@ -60,7 +60,7 @@ export default function ReportsHubPanel() {
               <h3 id="by-team" style={sectionTitle}>{PERIODS.find(([id]) => id === period)?.[1]} reports by team · {dayShort(data.from)}{data.to !== data.from ? ` – ${dayShort(data.to)}` : ""}</h3>
               <span style={dim}>Due {data.due_time} · people on leave or off shift aren't expected</span>
               {data.teams.length === 0 ? <span style={dim}>Nobody owed a report for this period.</span> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Team", "Reviewed by", "Expected", "On time", "Late", "Missing", "Acknowledged", "On time %"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>
@@ -91,7 +91,7 @@ export default function ReportsHubPanel() {
               )}
             </section>
 
-            <div style={{ display: "grid", gridTemplateColumns: open ? "repeat(auto-fit, minmax(320px, 1fr))" : "1fr", gap: 14, alignItems: "start" }}>
+            <div style={{ display: "grid", gridTemplateColumns: open ? "repeat(auto-fit, minmax(min(320px, 100%), 1fr))" : "1fr", gap: 14, alignItems: "start" }}>
               <section aria-labelledby="reports" style={section}>
                 <h3 id="reports" style={sectionTitle}>Reports</h3>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -111,7 +111,7 @@ export default function ReportsHubPanel() {
                 </div>
                 {exportError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{exportError}</div>}
                 {data.rows.length === 0 ? <span style={dim}>No reports match.</span> : (
-                  <div style={scroll}>
+                  <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                     <table style={table}>
                       <thead><tr>{["Person", "Submitted", "Status", "Reviewer"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}<th scope="col" style={th}><span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>Actions</span></th></tr></thead>
                       <tbody>

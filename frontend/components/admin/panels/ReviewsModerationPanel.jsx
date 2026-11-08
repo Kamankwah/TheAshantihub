@@ -53,7 +53,7 @@ function ReviewRow({ review, state, canReReview, onDone }) {
             )}
           </div>
           {review.target_name && (
-            <div style={{ color: D.gold, fontSize: "0.68rem", fontWeight: 700, marginTop: 2 }}>{review.target_name}</div>
+            <div style={{ color: D.goldInk, fontSize: "0.68rem", fontWeight: 700, marginTop: 2 }}>{review.target_name}</div>
           )}
           {review.comment && (
             <div style={{ color: D.textDim, fontSize: "0.75rem", margin: "4px 0", maxWidth: 420 }}>"{review.comment}"</div>
@@ -78,7 +78,7 @@ function ReviewRow({ review, state, canReReview, onDone }) {
         <div style={{ display: "flex", gap: 6 }}>
           {state === "pending" && (
             <>
-              <button onClick={approve} style={{ background: D.green, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
+              <button onClick={approve} style={{ background: D.greenFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
               <button onClick={() => setRejecting(true)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
             </>
           )}

@@ -8,13 +8,13 @@ import { D, tint } from "../theme.js";
 // capped, so every row traces back to a real record.
 const TX_META = {
   success: { icon: "💚", color: D.green, label: "Payment successful" },
-  pending: { icon: "⏳", color: D.amber, label: "Payment pending" },
+  pending: { icon: "⏳", color: D.amberInk, label: "Payment pending" },
   failed: { icon: "❌", color: D.red, label: "Payment failed" },
 };
 
 export function buildActivity(transactions, reviews, limit = 6) {
   const txItems = (transactions || []).map((t) => {
-    const meta = TX_META[t.status] || { icon: "💰", color: D.gold, label: t.status };
+    const meta = TX_META[t.status] || { icon: "💰", color: D.goldInk, label: t.status };
     return {
       key: `tx-${t.id}`,
       icon: meta.icon,
@@ -27,7 +27,7 @@ export function buildActivity(transactions, reviews, limit = 6) {
   const reviewItems = (reviews || []).map((r) => ({
     key: `review-${r.id}`,
     icon: "⭐",
-    color: D.gold,
+    color: D.goldInk,
     title: `New ${r.rating}★ review`,
     sub: r.comment ? `"${r.comment}"` : "No comment left",
     date: r.created_at,

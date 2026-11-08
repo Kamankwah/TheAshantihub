@@ -61,7 +61,7 @@ export default function FraudAlertsPanel({ auth, onOpenBusiness }) {
       <section aria-label="Money and activity anomalies" style={section}>
         <h3 style={sectionTitle}>Money and activity anomalies</h3>
         <div style={dim}>Not monitored yet. These are listed so you know what is not being watched, not as alerts.</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))", gap: 10 }}>
           {NOT_MONITORED.map(([name, why]) => (
             <div key={name} style={{ border: `1px dashed ${D.cardBorder}`, borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 3 }}>
               <span style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text }}>{name}</span>

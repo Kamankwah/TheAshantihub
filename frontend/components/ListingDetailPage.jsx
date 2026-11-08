@@ -597,7 +597,7 @@ function ServiceListingDetail({
       {Array.isArray(related) && related.length > 0 && CardComponent && (
         <div data-testid="related-rail" style={{ marginTop: 40 }}>
           <h2 style={{ color: C.gold, fontSize: "0.95rem", fontWeight: 900, margin: "0 0 14px" }}>Related</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(230px, 100%), 1fr))", gap: 14 }}>
             {related.map((r) => (
               <CardComponent
                 key={r.id}
@@ -739,7 +739,7 @@ function SpecsSection({ item }) {
       {list.length === 0 ? (
         <EmptyNote text="No specs listed yet." />
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: "6px 24px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(240px, 100%), 1fr))", gap: "6px 24px" }}>
           {list.map((spec, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "8px 0", fontSize: "0.8rem" }}>
               <span style={{ color: "rgba(255,255,255,0.55)" }}>{spec.label}</span>

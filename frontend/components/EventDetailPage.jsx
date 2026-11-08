@@ -312,7 +312,7 @@ export default function EventDetailPage({ id, onBack, user, PaymentComponent }) 
               href={directionsUrl}
               target="_blank"
               rel="noreferrer"
-              style={{ display: "inline-block", background: C.whatsapp, color: "white", border: "none", borderRadius: 20, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 700, textDecoration: "none", minHeight: 44, lineHeight: "24px" }}
+              style={{ display: "inline-block", background: C.whatsapp, color: "#0B2E13", border: "none", borderRadius: 20, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 700, textDecoration: "none", minHeight: 44, lineHeight: "24px" }}
             >
               🧭 Get Directions
             </a>

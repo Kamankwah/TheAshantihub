@@ -219,7 +219,7 @@ function RaiseCaseForm({ onRaised, onCancel }) {
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
-        <button type="submit" disabled={!ready} style={button(D.gold, D.text, !ready)}>Raise case</button>
+        <button type="submit" disabled={!ready} style={button(D.gold, D.onGold, !ready)}>Raise case</button>
       </div>
     </form>
   );
@@ -247,7 +247,7 @@ export default function FraudCasesPanel({ auth, onOpenBusiness }) {
       <div style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <h2 style={h2}>Fraud cases</h2>
-          <button type="button" aria-expanded={raising} onClick={() => { setNotice(null); setRaising((r) => !r); }} style={button(D.gold, D.text)}>Raise a case</button>
+          <button type="button" aria-expanded={raising} onClick={() => { setNotice(null); setRaising((r) => !r); }} style={button(D.gold, D.onGold)}>Raise a case</button>
         </div>
         <div style={dim}>{canDecide ? INTRO_MANAGE : INTRO_FLAG}</div>
         <div role="group" aria-label="Which cases" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

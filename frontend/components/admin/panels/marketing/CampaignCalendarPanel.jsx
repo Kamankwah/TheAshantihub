@@ -52,7 +52,7 @@ export default function CampaignCalendarPanel({ onNavigate }) {
           <b style={{ minWidth: 130, textAlign: "center" }}>{month.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</b>
           <button type="button" aria-label="Next month" onClick={() => move(1)} style={button(D.panelBg, D.text)}>›</button>
         </div>
-        <button type="button" onClick={() => onNavigate?.("mk-new-campaign")} style={button(D.gold, D.text)}>New campaign</button>
+        <button type="button" onClick={() => onNavigate?.("mk-new-campaign")} style={button(D.gold, D.onGold)}>New campaign</button>
       </PageHead>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", fontSize: "0.8rem" }}>
         <b>Show</b>
@@ -65,7 +65,7 @@ export default function CampaignCalendarPanel({ onNavigate }) {
         <span style={{ ...dim, display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 14, height: 14, borderRadius: 4, background: D.panelBg3, border: `1px solid ${D.cardBorder}` }} />Quiet day: no messages</span>
       </div>
       <Section id="cal-month" title={month.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}>
-        <div style={{ overflowX: "auto" }}>
+        <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
           <div style={{ minWidth: 760, display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 5 }}>
             {DAY_NAMES.map((n) => <div key={n} style={{ ...dim, fontWeight: 800, padding: "2px 6px" }}>{n}</div>)}
             {days.map((d) => {
@@ -90,7 +90,7 @@ export default function CampaignCalendarPanel({ onNavigate }) {
           </div>
         </div>
       </Section>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="cal-clash" title="Overlaps to look at">
           {data.clashes.length === 0 ? <Honest>Nothing overlaps right now.</Honest> : data.clashes.map((c, i) => <div key={i} style={{ display: "flex", gap: 12, fontSize: "0.82rem", lineHeight: 1.5, padding: "6px 0", borderTop: `1px solid ${D.divider}` }}><b style={{ minWidth: 80 }}>{c.when}</b><span>{c.text}</span></div>)}
         </Section>

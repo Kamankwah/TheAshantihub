@@ -44,7 +44,7 @@ export default function EventPricingPanel({ auth }) {
         <div key={t.id} style={{ padding: "12px 0", borderBottom: `1px solid ${D.divider}` }}>
           <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{t.duration_days} days — GHS {t.live_price}</div>
           {t.events_paid_90d != null && <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 2 }}>{t.events_paid_90d} event{t.events_paid_90d === 1 ? "" : "s"} paid for with this window in the last 90 days</div>}
-          {t.pending_price && <div style={{ color: D.amber, fontSize: "0.72rem", marginTop: 4 }}>Pending: GHS {t.pending_price}{t.proposed_by_name ? ` (proposed by ${t.proposed_by_name})` : ""}</div>}
+          {t.pending_price && <div style={{ color: D.amberInk, fontSize: "0.72rem", marginTop: 4 }}>Pending: GHS {t.pending_price}{t.proposed_by_name ? ` (proposed by ${t.proposed_by_name})` : ""}</div>}
           {t.pending_price && t.events_paid_90d != null && (
             <div style={{ color: D.textDim, fontSize: "0.7rem", marginTop: 2 }}>
               If the same number of events were bought, the change is GHS {((Number(t.pending_price) - Number(t.live_price)) * t.events_paid_90d).toFixed(2)} over 90 days. This is arithmetic on past counts, not a forecast.
@@ -55,7 +55,7 @@ export default function EventPricingPanel({ auth }) {
             <button onClick={() => propose(t.id)} disabled={!draftById[t.id]} style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: draftById[t.id] ? "pointer" : "default" }}>Propose</button>
           </div>}
           {canApprove && t.pending_price && <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
-            <button onClick={() => approve(t.id)} style={{ background: D.green, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
+            <button onClick={() => approve(t.id)} style={{ background: D.greenFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
             <button onClick={() => reject(t.id)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
           </div>}
         </div>

@@ -78,7 +78,7 @@ export default function SupportContactPanel({ auth, onNavigate }) {
       </div>
       {items.length === 0 && <div style={{ color: D.textDim, fontSize: "0.85rem" }}>{tab === "new" && !topic ? "No unread messages. Nothing is waiting." : "No messages here."}</div>}
       {items.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 16, alignItems: "start" }}>
           <div role="list" aria-label="Messages" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {items.map((m) => {
               const [statusText, statusColor] = STATUS_CHIP[m.status] || [m.status, D.textDim];
@@ -148,7 +148,7 @@ export default function SupportContactPanel({ auth, onNavigate }) {
                 </label>
               )}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {selected.status !== "resolved" && selected.has_email && <button type="button" disabled={!body.trim()} onClick={send} style={button(D.green, D.white, !body.trim())}>Send email</button>}
+                {selected.status !== "resolved" && selected.has_email && <button type="button" disabled={!body.trim()} onClick={send} style={button(D.greenFill, D.white, !body.trim())}>Send email</button>}
                 {selected.status === "read" && <button type="button" onClick={() => act(`${base}/mark-unread/`, {}, "Could not mark this unread.")} style={button(D.panelBg, D.text)}>Mark unread</button>}
                 {selected.status === "new" && <button type="button" onClick={() => act(`${base}/read/`, {}, "Could not mark this read.")} style={button(D.panelBg, D.text)}>Mark read</button>}
                 {!selected.passed_to_operations_at && selected.status !== "resolved" && (passing

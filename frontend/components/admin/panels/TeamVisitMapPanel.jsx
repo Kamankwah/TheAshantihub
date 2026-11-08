@@ -95,7 +95,7 @@ export default function TeamVisitMapPanel({ onOpenBusiness }) {
               {open.business?.area && <div style={dim}>{`Area: ${open.business.area}`}</div>}
               {open.notes && <div style={{ fontSize: "0.8rem" }}>{open.notes}</div>}
               <div style={dim}>{open.photos?.length ? `${open.photos.length} ${open.photos.length === 1 ? "photo" : "photos"} taken` : "No photos"}</div>
-              {open.business && onOpenBusiness && <div><button type="button" onClick={() => onOpenBusiness(open.business.id)} style={{ ...button(D.gold, D.text), minHeight: 40 }}>Open the business</button></div>}
+              {open.business && onOpenBusiness && <div><button type="button" onClick={() => onOpenBusiness(open.business.id)} style={{ ...button(D.gold, D.onGold), minHeight: 40 }}>Open the business</button></div>}
             </section>
           )}
 

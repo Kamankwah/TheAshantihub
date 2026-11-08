@@ -76,7 +76,7 @@ function PlainHeroApproval({ auth }) {
         <div style={{ display: "flex", gap: 6 }}>
           {state === "pending" && (
             <>
-              <button onClick={() => approve(s.id)} style={{ background: D.green, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
+              <button onClick={() => approve(s.id)} style={{ background: D.greenFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
               <button onClick={() => setRejectingId(s.id)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
             </>
           )}

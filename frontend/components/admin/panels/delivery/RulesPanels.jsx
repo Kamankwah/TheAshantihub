@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { apiPost } from "../../../../apiClient.js";
 import { apiErrorMessage } from "../../../../lib/apiErrorMessage.js";
 import { useAutoAssignRules, useDeliveryDispatchQueue, useRateCard, useTimeLimits } from "../../../../hooks/useDelivery.js";
@@ -203,7 +203,7 @@ export function DeliveryPricingPanel({ auth }) {
           <section aria-label="Vehicle multipliers" style={section}>
             <h3 style={sectionTitle}>Vehicle multipliers</h3>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              {VEHICLES.map(([id, text]) => labelled(text, <input key={id} aria-label={`${text} multiplier`} inputMode="decimal" value={multipliers[id]} onChange={(e) => setMult({ ...multipliers, [id]: e.target.value })} style={{ ...field, maxWidth: 100 }} />, "×"))}
+              {VEHICLES.map(([id, text]) => <Fragment key={id}>{labelled(text, <input aria-label={`${text} multiplier`} inputMode="decimal" value={multipliers[id]} onChange={(e) => setMult({ ...multipliers, [id]: e.target.value })} style={{ ...field, maxWidth: 100 }} />, "×")}</Fragment>)}
             </div>
           </section>
           {data.cart_limits && (

@@ -68,7 +68,7 @@ function OtpCodesSection({ otp }) {
         </div>
       ))}
       <div>
-        <button type="button" disabled={!changedKeys.length || busy} onClick={save} style={button(D.gold, D.text, !changedKeys.length || busy)}>{busy ? "Saving…" : "Save code settings"}</button>
+        <button type="button" disabled={!changedKeys.length || busy} onClick={save} style={button(D.gold, D.onGold, !changedKeys.length || busy)}>{busy ? "Saving…" : "Save code settings"}</button>
       </div>
       {message && <div role="status" style={{ color: D.text, fontSize: "0.8rem" }}>{message}</div>}
       {error && <div role="alert" style={errorStyle}>{error}</div>}
@@ -128,7 +128,7 @@ export default function SecurityPolicySection() {
       <section aria-labelledby="who-heading" style={section}>
         <h2 id="who-heading" style={heading}>Who must use 2-step sign-in</h2>
         <div style={dim}>{`${using} of ${people} active people use it today.`}</div>
-        <div style={scroll}>
+        <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
           <table style={table}>
             <thead><tr>{["Role", "People", "Using it", "Required"].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>
@@ -154,7 +154,7 @@ export default function SecurityPolicySection() {
         {data.other_super_admins > 0 && <div style={dim}>The other Super Admin is told of every change.</div>}
         {data.updated_at && <div style={dim}>{`Last changed ${new Date(data.updated_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${data.updated_by ? ` by ${data.updated_by}` : ""}.`}</div>}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button type="button" disabled={!changed || busy} onClick={save} style={button(D.gold, D.text, !changed || busy)}>{busy ? "Saving…" : "Save changes"}</button>
+          <button type="button" disabled={!changed || busy} onClick={save} style={button(D.gold, D.onGold, !changed || busy)}>{busy ? "Saving…" : "Save changes"}</button>
           {changed && !busy && <button type="button" onClick={() => setChosen(null)} style={button(D.panelBg, D.text)}>Undo</button>}
         </div>
         {message && <div role="status" style={{ color: D.text, fontSize: "0.8rem" }}>{message}</div>}

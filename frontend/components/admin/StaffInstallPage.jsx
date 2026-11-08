@@ -121,7 +121,7 @@ export default function StaffInstallPage() {
         <header style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <img src="/icons/pwa-192x192.png" alt="" width={56} height={56} style={{ borderRadius: 14, boxShadow: D.shadow, flexShrink: 0 }} />
           <div>
-            <div style={{ color: D.deepGold, fontSize: "0.7rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>AshantiHub Staff</div>
+            <div style={{ color: D.goldInk, fontSize: "0.7rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>AshantiHub Staff</div>
             <h1 style={{ margin: 0, color: D.text, fontSize: "1.35rem", lineHeight: 1.15, letterSpacing: "-0.02em", fontWeight: 800 }}>Install the AshantiHub Staff app</h1>
           </div>
         </header>
@@ -162,7 +162,7 @@ export default function StaffInstallPage() {
 
         <footer style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <p style={noteText}>New to AshantiHub staff? Activate your account from your invite email first, then sign in to the app.</p>
-          <Link to="/staff" style={{ color: D.deepGold, fontSize: "0.85rem", fontWeight: 800, textDecoration: "none" }}>Continue in the browser instead →</Link>
+          <Link to="/staff" className="ah-tap" style={{ display: "inline-flex", alignItems: "center", color: D.goldInk, fontSize: "0.85rem", fontWeight: 800, textDecoration: "none" }}>Continue in the browser instead →</Link>
         </footer>
       </main>
     </div>

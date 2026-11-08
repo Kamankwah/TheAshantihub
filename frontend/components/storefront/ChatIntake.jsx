@@ -25,7 +25,7 @@ const btn = {
   minHeight: 44, padding: "10px 20px", borderRadius: 12, border: "none", background: C.gold, color: C.darkBrown,
   fontFamily: BODY_FONT, fontSize: 15, fontWeight: 700, cursor: "pointer",
 };
-const ghost = { ...btn, background: "transparent", border: `1px solid ${C.gold}`, color: C.deepGold };
+const ghost = { ...btn, background: "transparent", border: `1px solid ${C.gold}`, color: C.goldInk };
 
 export default function ChatIntake({ user, onClose, onContinue, bottom = 92 }) {
   const signedIn = Boolean(user) && user.accountType !== "staff";

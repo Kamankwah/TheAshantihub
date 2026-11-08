@@ -50,6 +50,7 @@ export default function DeliveryManagementPanel() {
             </div>
             {o.status === "paid" && (
               <select
+                aria-label={`Delivery status for order ${o.id}`}
                 value={o.delivery_status}
                 disabled={updatingId === o.id}
                 onChange={e => updateStatus(o.id, e.target.value)}

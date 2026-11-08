@@ -61,12 +61,12 @@ export default function SegmentsPanel({ onNavigate }) {
   return (
     <div style={page}>
       <PageHead title="Segments">
-        <button type="button" onClick={() => { setForm(blank); setNote(""); }} style={button(D.gold, D.text)}>New segment</button>
+        <button type="button" onClick={() => { setForm(blank); setNote(""); }} style={button(D.gold, D.onGold)}>New segment</button>
       </PageHead>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       {note && <div role="status" style={chip(D.green)}>{note}</div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="sg-build" title="Build a segment">
           <label style={labelStyle}>Name<input type="text" value={form.name} onChange={(e) => set({ name: e.target.value })} style={inputStyle} /></label>
           <fieldset style={{ border: 0, padding: 0, margin: 0, display: "flex", gap: 14, flexWrap: "wrap" }}>
@@ -115,7 +115,7 @@ export default function SegmentsPanel({ onNavigate }) {
             <div style={{ ...dim, marginTop: 4 }}>Only people with an opt-in on record for this channel are ever counted. People without one can't be added by hand.</div>
           </fieldset>
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-            <button type="button" disabled={busy || !form.name.trim()} onClick={save} style={button(D.gold, D.text, busy || !form.name.trim())}>{busy ? "Saving…" : "Save segment"}</button>
+            <button type="button" disabled={busy || !form.name.trim()} onClick={save} style={button(D.gold, D.onGold, busy || !form.name.trim())}>{busy ? "Saving…" : "Save segment"}</button>
             {onNavigate && <button type="button" onClick={() => onNavigate("mk-new-campaign")} style={linkStyle}>Use in a new campaign</button>}
           </div>
         </Section>
@@ -147,7 +147,7 @@ export default function SegmentsPanel({ onNavigate }) {
         {saved.isLoading && <Loading />}
         {saved.data && saved.data.results.length === 0 && <Honest>No segments saved yet. Build one above and save it to use it in a campaign.</Honest>}
         {saved.data && saved.data.results.length > 0 && (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{["Segment", "Who", "Rules", "Channel", "Size now", "Last used", ""].map((h, i) => <th key={i} scope="col" style={th}>{h}</th>)}</tr></thead>
               <tbody>

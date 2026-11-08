@@ -49,7 +49,7 @@ export default function SystemHealthPanel() {
             <section aria-labelledby="sh-jobs" style={section}>
               <h3 id="sh-jobs" style={sectionTitle}>Background jobs</h3>
               <div style={dim}>The last run of each scheduled job, as the worker recorded it. A job that has never run since this record began says so.</div>
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr><th style={th}>Job</th><th style={th}>Runs</th><th style={th}>Last run</th><th style={th}>Took</th><th style={th}>Result</th></tr></thead>
                   <tbody>

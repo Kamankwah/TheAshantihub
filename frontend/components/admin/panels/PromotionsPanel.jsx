@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { usePromotionsQueue } from "../../../hooks/usePromotionsQueue.js";
-import { D, tint } from "../theme.js";
+import { D, tint, inkOf } from "../theme.js";
 import ModerationQueueTabs from "../ModerationQueueTabs.jsx";
 import PromotionsMarketing from "./marketing/PromotionsMarketing.jsx";
 
@@ -13,7 +13,7 @@ import PromotionsMarketing from "./marketing/PromotionsMarketing.jsx";
 const PROMOTION_TABS = ["pending", "active", "rejected", "expired", "cancelled"];
 
 const KIND_META = {
-  featured: { label: "Featured", color: D.gold },
+  featured: { label: "Featured", color: D.goldInk },
   boost: { label: "Boost", color: D.blue },
 };
 
@@ -45,7 +45,7 @@ function PromotionRow({ promotion, state, canManage, onDone }) {
         <div>
           <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>
             {promotion.listing_name}
-            <span style={{ background: tint(kind.color, "22"), color: kind.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>{kind.label}</span>
+            <span style={{ background: tint(kind.color, "22"), color: inkOf(kind.color), borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>{kind.label}</span>
           </div>
           <div style={{ color: D.textDim, fontSize: "0.68rem", marginTop: 2 }}>
             🏢 {promotion.business_owner_name} • GHS {promotion.amount_paid} • {fmtDate(promotion.starts_at)} → {fmtDate(promotion.ends_at)}
@@ -56,10 +56,10 @@ function PromotionRow({ promotion, state, canManage, onDone }) {
           {/* An Active row whose window hasn't opened yet is paid for but not
               ranking anything — say so rather than implying it's running. */}
           {state === "active" && !promotion.is_currently_active && (
-            <div style={{ color: D.amber, fontSize: "0.65rem", fontWeight: 700, marginTop: 2 }}>Scheduled — not ranking yet</div>
+            <div style={{ color: D.amberInk, fontSize: "0.65rem", fontWeight: 700, marginTop: 2 }}>Scheduled — not ranking yet</div>
           )}
           {state === "pending" && (
-            <div style={{ color: D.amber, fontSize: "0.65rem", fontWeight: 700, marginTop: 2 }}>⏳ Awaiting approval — paid, not ranking yet</div>
+            <div style={{ color: D.amberInk, fontSize: "0.65rem", fontWeight: 700, marginTop: 2 }}>⏳ Awaiting approval — paid, not ranking yet</div>
           )}
           {state === "expired" && (
             <div style={{ color: D.textFaint, fontSize: "0.65rem", marginTop: 2 }}>Ran its full window</div>
@@ -76,7 +76,7 @@ function PromotionRow({ promotion, state, canManage, onDone }) {
           <button onClick={() => setViewing(v => !v)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>{viewing ? "Close" : "👁 View"}</button>
           {state === "pending" && canManage && !rejecting && (
             <>
-              <button onClick={approve} style={{ background: D.green, color: "#0b2e13", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer" }}>✓ Approve</button>
+              <button onClick={approve} style={{ background: D.greenFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer" }}>✓ Approve</button>
               <button onClick={() => setRejecting(true)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
             </>
           )}
@@ -121,7 +121,7 @@ function PromotionRow({ promotion, state, canManage, onDone }) {
 
       {/* Cancelling is not a refund — don't let the button imply it is. */}
       {confirming && (
-        <div style={{ color: D.amber, fontSize: "0.65rem", marginTop: 6 }}>
+        <div style={{ color: D.amberInk, fontSize: "0.65rem", marginTop: 6 }}>
           This stops the promotion immediately. It does not refund the GHS {promotion.amount_paid} already paid.
         </div>
       )}

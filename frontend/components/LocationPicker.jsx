@@ -60,7 +60,8 @@ export default function LocationPicker({ lat, lng, onChange, onAddress, height =
           <button
             type="button"
             onClick={useMyLocation}
-            style={{ background: C.surface2, border: "none", borderRadius: 14, padding: "4px 10px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+            className="ah-tap"
+            style={{ background: C.surface2, color: C.ink, border: "none", borderRadius: 14, padding: "4px 10px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
           >
             📡 Use my location
           </button>

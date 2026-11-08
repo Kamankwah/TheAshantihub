@@ -91,7 +91,7 @@ function VisitList({ onCheckIn }) {
             <button key={id} type="button" aria-pressed={range === id} onClick={() => choose(id)} style={{ ...pill(range === id), minHeight: 40 }}>{label}</button>
           ))}
         </div>
-        <button type="button" onClick={onCheckIn} style={{ ...button(D.gold, D.text), minHeight: 44, display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <button type="button" onClick={onCheckIn} style={{ ...button(D.gold, D.onGold), minHeight: 44, display: "inline-flex", alignItems: "center", gap: 6 }}>
           {openData?.visit ? "📍 Open visit" : "📍 Check in"}
         </button>
       </div>

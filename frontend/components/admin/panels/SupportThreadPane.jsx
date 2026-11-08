@@ -123,7 +123,7 @@ function Composer({ thread, team, error, onError, refresh }) {
           {mode === "reply" && <button type="button" aria-expanded={showCanned} onClick={() => setShowCanned((v) => !v)} style={button(D.panelBg, D.text)}>Canned replies</button>}
           <span style={dim}>{mode === "note" ? "Only staff see notes." : thread.kind === "guest" ? "Shown in their chat panel while their page is open. SMS is not connected." : `${who} sees this in Messages and by email. SMS is not connected.`}</span>
         </div>
-        <button type="button" disabled={!typed || unresolved} onClick={send} style={button(D.gold, D.text, !typed || unresolved)}>{mode === "note" ? "Save note" : "Send as AshantiHub Support"}</button>
+        <button type="button" disabled={!typed || unresolved} onClick={send} style={button(D.gold, D.onGold, !typed || unresolved)}>{mode === "note" ? "Save note" : "Send as AshantiHub Support"}</button>
       </div>
     </div>
   );
@@ -164,7 +164,7 @@ function ResolveForm({ id, onDone, onError }) {
         <select value={code} onChange={(e) => setCode(e.target.value)} style={field}>{RESOLUTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
       </label>
       <label style={{ ...labelStyle, flex: "1 1 180px" }}>Note (optional)<input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} style={field} /></label>
-      <button type="button" onClick={go} style={button(D.green, D.white)}>Resolve</button>
+      <button type="button" onClick={go} style={button(D.greenFill, D.white)}>Resolve</button>
       <div style={{ ...dim, flexBasis: "100%" }}>If they reply within 7 days it reopens by itself; later, a new linked conversation starts.</div>
     </div>
   );
@@ -352,7 +352,7 @@ export default function SupportThreadPane({ id, scope, team, me, onChanged, onOp
           {t.snoozed && <span style={chip(D.blue)}>{slaText(t)}</span>}
         </div>
         {t.unassigned_reason && <div style={callout(D.amber)}>{t.unassigned_reason}</div>}
-        <div role="log" aria-label="Messages" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto", padding: "4px 0" }}>
+        <div role="log" tabIndex={0} aria-label="Messages" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto", padding: "4px 0" }}>
           {t.messages.map((m) => <Bubble key={m.id} m={m} />)}
         </div>
         {closed && <div style={dim}>{`Resolved${t.resolved_by ? ` by ${t.resolved_by}` : ""}${t.resolution_code ? `: ${t.resolution_code.replace(/_/g, " ")}` : ""}${t.resolution_note ? `. ${t.resolution_note}` : ""}. If they reply within 7 days it reopens on its own and comes back to you.`}</div>}
@@ -361,7 +361,7 @@ export default function SupportThreadPane({ id, scope, team, me, onChanged, onOp
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", borderTop: `1px solid ${D.divider}`, paddingTop: 10 }}>
             <span style={dim}>{t.assignee ? `${t.assignee.name} owns this. You can reply, take it over, or escalate.` : "Previewing. Take it to reply."}</span>
             {t.assignee && <button type="button" onClick={() => setReplyAnyway(true)} style={button(D.panelBg, D.text)}>Reply</button>}
-            <button type="button" onClick={async () => { if (await act("assign", { assignee: me }, "Could not take it.")) setReplyAnyway(true); }} style={button(D.gold, D.text)}>{t.assignee ? "Take over" : "Assign to me and reply"}</button>
+            <button type="button" onClick={async () => { if (await act("assign", { assignee: me }, "Could not take it.")) setReplyAnyway(true); }} style={button(D.gold, D.onGold)}>{t.assignee ? "Take over" : "Assign to me and reply"}</button>
           </div>
         )}
         {!closed && !preview && <Composer key={t.id} thread={t} team={team} error={error} onError={setError} refresh={refresh} />}

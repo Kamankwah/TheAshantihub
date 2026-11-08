@@ -83,7 +83,7 @@ export default function SaInvitesPanel() {
           <FilterBar filters={[{ key: "role", label: "Role", options: [["", "All roles"], ...roles.map((r) => [r.name, r.label])] }]} values={{ role: roleFilter }} onChange={(_k, v) => setRoleFilter(v)} />
           {invites.length === 0 && <div style={dim}>No invites waiting.</div>}
           {invites.length > 0 && (
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table aria-label="Invites" style={{ ...tableStyle, minWidth: 820 }}>
                 <thead><tr><th style={th}>Invited</th><th style={th}>Role · manager</th><th style={th}>Invited by</th><th style={th}>Sent</th><th style={th}>Expires</th><th style={th}>Progress</th><th style={th}>Actions</th></tr></thead>
                 <tbody>
@@ -136,7 +136,7 @@ export default function SaInvitesPanel() {
       {data && (
         <form aria-label="Invite someone" onSubmit={send} noValidate style={card}>
           <h3 style={h3}>Invite someone</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))", gap: 10 }}>
             <label style={labelStyle}>Full name<input value={form.full_name} onChange={set("full_name")} style={field} required /></label>
             <label style={labelStyle}>Email<input type="email" value={form.email} onChange={set("email")} style={field} required /></label>
             <label style={labelStyle}>Phone (optional)<input type="tel" value={form.phone} onChange={set("phone")} style={field} />
@@ -168,7 +168,7 @@ export default function SaInvitesPanel() {
             </fieldset>
           )}
           <div style={note}>{`They get an email with a one-time link to set their own password, valid for ${data.link_days} days, and the staff app install link. ${form.role === "super_admin" ? "A new Super Admin also sets up 2-step sign-in before their first page. " : ""}${form.role === "cosigner" ? "The co-signer sees and decides only the requests above the co-sign limit. " : ""}Sending asks for your password.`}</div>
-          <div><button type="submit" disabled={!form.full_name.trim() || !form.email.trim() || !form.role || busy} style={button(D.gold, D.text, !form.full_name.trim() || !form.email.trim() || !form.role || busy)}>{busy ? "Sending…" : "Send invite"}</button></div>
+          <div><button type="submit" disabled={!form.full_name.trim() || !form.email.trim() || !form.role || busy} style={button(D.gold, D.onGold, !form.full_name.trim() || !form.email.trim() || !form.role || busy)}>{busy ? "Sending…" : "Send invite"}</button></div>
         </form>
       )}
 

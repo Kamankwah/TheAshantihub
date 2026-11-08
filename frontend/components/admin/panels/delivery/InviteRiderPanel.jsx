@@ -70,12 +70,12 @@ export default function InviteRiderPanel({ auth }) {
               </div>
               {label("Note for the rider (optional)", <textarea rows={2} value={form.invite_note} onChange={set("invite_note")} style={field} />)}
               <Note>The invite goes by email: {data.sms === "not_connected" ? "SMS is not connected." : ""} The rider sets a password, then uploads their papers. They cannot start a shift until every required paper is approved. Riders have the Dispatch role: they see only their own jobs, earnings and cash.</Note>
-              <div><button type="submit" disabled={!ready} style={button(D.gold, D.text, !ready)}>Send invite</button></div>
+              <div><button type="submit" disabled={!ready} style={button(D.gold, D.onGold, !ready)}>Send invite</button></div>
             </form>
             <section aria-labelledby="pend" style={section}>
               <h3 id="pend" style={sectionTitle}>Waiting to sign in ({data.pending.length})</h3>
               {data.pending.length === 0 ? <Empty>No invite is waiting.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Person", "State", "Vehicle", "First shift", "Sent", ""].map((h, i) => <th key={i} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>{data.pending.map((p) => {

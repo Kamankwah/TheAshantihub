@@ -73,7 +73,7 @@ function EventRow({ event, state, onDone, presetReasons = false }) {
           <button onClick={() => setExpanded(e => !e)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>{expanded ? "▲ Hide" : "👁️ View"}</button>
           {state === "pending" && (
             <>
-              <button onClick={approve} style={{ background: D.green, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
+              <button onClick={approve} style={{ background: D.greenFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
               <button onClick={() => setRejecting(true)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
             </>
           )}
@@ -112,7 +112,7 @@ function EventRow({ event, state, onDone, presetReasons = false }) {
                 <DetailField label="Coordinates" value={d.lat && d.lng ? `${d.lat}, ${d.lng}` : null} />
               </div>
 
-              <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "12px 0 8px" }}>Media ({d.media?.length || 0})</div>
+              <div style={{ color: D.goldInk, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "12px 0 8px" }}>Media ({d.media?.length || 0})</div>
               {d.media?.length ? (
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   {d.media.map(m => (

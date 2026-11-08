@@ -270,15 +270,34 @@ ads are Marketing's). Never hardcode `/api/listings/mine` in a panel.
 
 - **The home's department section is `DepartmentShowcase`** (cards, one per department from the home feed, up to four
   sub-category picture tiles each, "See all") followed later by `DepartmentShelves` (a product row per department,
-  each shelf asking for its own `useListings({kind:"product", category})` and hiding itself when empty). The heading
-  says "Most visited categories" only when the feed reports `ranked: true`. A category with no picture shows its icon
+  each shelf asking for its own `useListings({kind:"product", category})` and hiding itself when empty). The tiles carry no
+  heading of their own. A category with no picture shows its icon
   on a wash of its own `color`; never invent a picture.
 - **Category and zone pictures are uploaded in the staff panel** (`CategoryPictures`, `PictureSlot`; Marketing,
   Operations and Super Admin hold `categories.manage` / `zones.manage`). The server validates the file; show its message.
 - **`DeliverTo` is the header's location control.** The choice (`ashantihub.deliverTo`: country code + Ghana region) is
-  stored only on a tap; detection (`useDeliveryPlace`) only suggests: it asks the browser for the location once per session on arrival
-  (the browser's own prompt; a blocked site is never asked) and again from "Use my current location". Door-to-door delivery is Ashanti only (`lib/deliveryPlace.js` `deliveryNote`); never add a delivery time or fee
+  stored only on a tap; detection (`useDeliveryPlace`) only suggests, and only after the shopper taps "Use my current location"
+  (it never asks the browser for the location on arrival and never opens the popover by itself). Door-to-door delivery is Ashanti only (`lib/deliveryPlace.js` `deliveryNote`); never add a delivery time or fee
   there. Reverse geocoding is `reverseGeocodePlace` (Nominatim, a suggestion).
+
+## Accent colours, targets and landmarks (UX redesign, 2026-11)
+
+- **Gold, amber and purple as TEXT use the ink tokens** (`C.goldInk`/`amberInk`/`purpleInk`, `D.goldInk`/`amberInk`/`purpleInk`, or
+  `inkOf(color)` from `components/dashboard/theme.js` for a variable colour). Plain `gold`/`amber`/`green` stay for fills, borders and
+  chart series. A solid green button with white text uses `D.greenFill`/`C.trustFill`; text on a gold or amber fill is `D.onGold`.
+  Fixed-dark surfaces (business sidebar, detail pages, headers, the Messages header) keep brand gold text. A badge on an arbitrary
+  accent fill takes `readableOn(fill)` from `theme.js` (dark brown or white, whichever has more contrast), never a fixed white.
+- **Phone baseline:** every `.command-center` (staff shell, business dashboard, account hub) gets 44px controls under 760px from
+  `index.css` (`!important`, because many panels set a smaller inline `minHeight`). Elsewhere give a small control `className="ah-tap"`
+  (24px, 44px on a phone). Breadcrumb links use `ah-crumb-link`. Desktop and tablet staff UI follows WCAG 2.5.8 (24px).
+- **Every page has one `<main id="main-content">` and one `<h1>`.** Standalone early returns in `App.jsx` wrap in `<MainRegion own={false}>`;
+  the skip link targets it. A scroll wrapper over a table is `role="region" tabIndex={0} aria-label="... (scrolls sideways)"`.
+- **The footer reads the saved Site Settings** (`Footer2`, `useSiteSettings`): email, phone, address, support hours, WhatsApp and social
+  links render only when a Super Admin has filled them in. `/terms` and `/business-agreement` are real pages (`LegalDocPage`); the Terms
+  page does not publish the draft text, it links to the Privacy Notice, the Business Agreement and Support.
+- **Listing views are recorded only after the visitor accepts cookies** (`useRecordView` reads `ashantihub.cookie_consent`).
+- **Run the dev server from the worktree you edit.** Vite's file watcher can go stale under WSL after bulk `sed -i` edits: if a CSS or
+  JSX change does not show up in the browser, restart Vite (or `touch` the file) before trusting an audit.
 
 ## Resilience and safety conventions (principal review FE track)
 

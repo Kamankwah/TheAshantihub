@@ -80,7 +80,7 @@ export default function TaxRulingSection() {
           <div style={dim}>Recording asks for your password again and goes into the audit log.</div>
           {error && <div role="alert" style={errorStyle}>{error}</div>}
           {done && <div role="status" style={{ ...dim, color: D.green, fontWeight: 700 }}>{done}</div>}
-          <button type="submit" disabled={sending || !ready} style={{ ...button(D.gold, D.text, sending || !ready), alignSelf: "flex-start" }}>{sending ? "Recording…" : data.current ? "Record a new ruling" : "Record the ruling"}</button>
+          <button type="submit" disabled={sending || !ready} style={{ ...button(D.gold, D.onGold, sending || !ready), alignSelf: "flex-start" }}>{sending ? "Recording…" : data.current ? "Record a new ruling" : "Record the ruling"}</button>
         </form>
       )}
       {data.history.length > 1 && (

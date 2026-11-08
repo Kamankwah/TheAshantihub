@@ -80,7 +80,7 @@ export default function DataExportsLogPanel() {
         {isError && <div role="alert" style={errorStyle}>Could not load the exports. <button type="button" onClick={() => refetch()} style={{ ...button(D.panelBg, D.text), padding: "4px 10px" }}>Try again</button></div>}
         {data && rows.length === 0 && <div style={dim}>Nothing matches those filters.</div>}
         {rows.length > 0 && (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{["When", "Who", "What · filters", "Format", "Rows", "Personal data", "Link"].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>

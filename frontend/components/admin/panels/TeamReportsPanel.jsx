@@ -4,13 +4,13 @@ import { apiPost } from "../../../apiClient.js";
 import { useReport, useTeamMissing, useTeamReports } from "../../../hooks/useReports.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { formatDuration } from "../../../lib/timeAgo.js";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, inkOf } from "../theme.js";
 import { button, chip, dim, field, pill } from "./panelStyles.js";
 import { dayShort, figures, scroll, table, td, th } from "./opsPeopleParts.jsx";
 import { ExportButtons, PERIODS, ReportNarrative, StatusChip, SystemSections, localISODate, refreshReportCaches } from "./reportParts.jsx";
 
 const flag = { ...chip(D.amber), alignSelf: "flex-start" };
-const linkStyle = { background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", fontWeight: 800, color: D.deepGold, textDecoration: "underline" };
+const linkStyle = { background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", fontWeight: 800, color: D.goldInk, textDecoration: "underline" };
 const roleName = (role) => (role || "").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 const clock = (iso) => new Date(iso).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const reportName = (report) => (report.period === "day" ? `Day · ${dayShort(report.period_start)}` : report.period === "week" ? `Week · ${dayShort(report.period_start)} – ${dayShort(report.period_end)}` : `Month · ${dayShort(report.period_start)}`);
@@ -20,7 +20,7 @@ function Kpi({ label, value, sub, color }) {
     <div role="group" aria-label={label} style={{ ...glassCard, padding: 12, display: "flex", flexDirection: "column", gap: 2 }}>
       <span style={{ ...dim, fontWeight: 700 }}>{label}</span>
       <span style={{ fontSize: "1.4rem", fontWeight: 800, color: D.text, ...figures }}>{value}</span>
-      <span style={{ ...dim, color: color || D.textDim }}>{sub}</span>
+      <span style={{ ...dim, color: inkOf(color || D.textDim) }}>{sub}</span>
     </div>
   );
 }
@@ -135,12 +135,12 @@ export default function TeamReportsPanel({ auth }) {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: open ? "repeat(auto-fit, minmax(320px, 1fr))" : "1fr", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: open ? "repeat(auto-fit, minmax(min(320px, 100%), 1fr))" : "1fr", gap: 14, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {waiting.length > 0 && (
             <section aria-labelledby="waiting" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
               <h3 id="waiting" style={{ margin: 0, color: D.text, fontWeight: 700, fontSize: "0.95rem" }}>Waiting for you · {waiting.length}</h3>
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr>{["Person", "Report", "Submitted", "Flags"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}<th scope="col" style={th}><span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>Open</span></th></tr></thead>
                   <tbody>

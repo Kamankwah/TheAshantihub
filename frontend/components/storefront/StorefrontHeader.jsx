@@ -184,6 +184,10 @@ export default function StorefrontHeader({
 
       <style>{`
         .ah-sf-strip button:hover, .ah-sf-actions button:hover:not(:disabled) { box-shadow: inset 0 0 0 1px ${C.gold}88; }
+        /* Tablet: the one-row bar squeezes the search box to ~100px (its category picker alone is 150px), so search drops to its own row. */
+        @media (max-width: 1023px) {
+          .ah-sf-bar { grid-template-columns: auto minmax(0,1fr) auto !important; grid-template-areas: "logo deliver actions" "search search search" !important; }
+        }
         @media (max-width: ${MOBILE}px) {
           .ah-sf-bar { grid-template-columns: auto minmax(0,1fr) !important; grid-template-areas: "logo actions" "search search" "deliver deliver" !important; padding: 8px 12px !important; column-gap: 8px !important; }
           .ah-sf-actions { flex-wrap: wrap; justify-content: flex-end; gap: 2px !important; min-width: 0; }

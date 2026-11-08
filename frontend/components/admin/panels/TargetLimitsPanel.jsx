@@ -90,14 +90,14 @@ export default function TargetLimitsPanel({ onOpenApproval }) {
               {cuts.map((scout) => (
                 <div key={scout.id} style={{ ...glassCard, padding: 10, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <span style={{ color: D.text, fontWeight: 700 }}>{`Lower ${scout.full_name}'s daily targets`}</span>
-                  {onOpenApproval && <button type="button" onClick={() => onOpenApproval(scout.pending_cut.approval_id)} style={button(D.gold, D.text)}>Review and decide</button>}
+                  {onOpenApproval && <button type="button" onClick={() => onOpenApproval(scout.pending_cut.approval_id)} style={button(D.gold, D.onGold)}>Review and decide</button>}
                 </div>
               ))}
             </section>
 
             <section aria-labelledby="tl-limits" style={section}>
               <h3 id="tl-limits" style={sectionTitle}>Daily limits per scout</h3>
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr><th style={th}>Measure</th><th style={th}>How it's counted</th><th style={th}>Lowest a day</th><th style={th}>Highest a day</th></tr></thead>
                   <tbody>
@@ -116,14 +116,14 @@ export default function TargetLimitsPanel({ onOpenApproval }) {
               {problems.map((p) => <div key={p} role="alert" style={errorStyle}>{p}</div>)}
               {error && <div role="alert" style={errorStyle}>{error}</div>}
               {saved && <div role="status" style={callout(D.green)}>{saved}</div>}
-              <button type="button" disabled={saving || !changed || problems.length > 0} onClick={save} style={{ ...button(D.gold, D.text, saving || !changed || problems.length > 0), alignSelf: "flex-start" }}>{saving ? "Saving…" : "Save limits"}</button>
+              <button type="button" disabled={saving || !changed || problems.length > 0} onClick={save} style={{ ...button(D.gold, D.onGold, saving || !changed || problems.length > 0), alignSelf: "flex-start" }}>{saving ? "Saving…" : "Save limits"}</button>
             </section>
 
             <section aria-labelledby="tl-today" style={section}>
               <h3 id="tl-today" style={sectionTitle}>Daily targets in force today</h3>
               {scouts.length === 0 && <div style={dim}>No scout has a manager yet, so no targets are set.</div>}
               {scouts.length > 0 && (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr><th style={th}>Scout</th>{metrics.map((m) => <th key={m} style={th}>{LABEL[m] || m}</th>)}</tr></thead>
                     <tbody>

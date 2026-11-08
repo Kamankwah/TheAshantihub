@@ -93,7 +93,7 @@ function ReviewCard({ review, state, onDone }) {
       {error && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{error}</div>}
       {state !== "rejected" && !hiding && (
         <div style={{ display: "flex", gap: 6 }}>
-          {state === "pending" && <button type="button" onClick={publish} style={button(D.green, D.white)}>Publish</button>}
+          {state === "pending" && <button type="button" onClick={publish} style={button(D.greenFill, D.white)}>Publish</button>}
           <button type="button" onClick={() => setHiding(true)} style={button(D.panelBg, D.text)}>Hide…</button>
         </div>
       )}

@@ -102,7 +102,7 @@ export default function SaCustomersPanel({ auth }) {
         <LoadState query={list} what="the customers" />
         {!list.isLoading && !list.isError && rows.length === 0 && <div style={dim}>No customer matches these filters.</div>}
         {rows.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table aria-label="Customers" style={{ ...tableStyle, minWidth: 860 }}>
               <thead><tr><th style={th}>Customer</th><th style={th}>Phone</th><th style={th}>Orders</th><th style={th}>Disputes</th><th style={th}>Last order</th><th style={th}>Status</th><th style={th}>Actions</th></tr></thead>
               <tbody>
@@ -114,7 +114,7 @@ export default function SaCustomersPanel({ auth }) {
                       {c.phone && !revealed[c.id] && <button type="button" aria-label={`Show full phone of ${c.name}`} onClick={() => reveal(c.id)} style={{ ...button(D.panelBg, D.text), marginLeft: 6, padding: "2px 8px" }}>Show</button>}
                     </td>
                     <td style={td}>{c.orders}<div style={dim}>{money(c.spend)}</div></td>
-                    <td style={td}>{c.disputes}{c.open_disputes > 0 && <div style={{ color: D.amber, fontWeight: 800, fontSize: "0.7rem" }}>{`${c.open_disputes} open`}</div>}</td>
+                    <td style={td}>{c.disputes}{c.open_disputes > 0 && <div style={{ color: D.amberInk, fontWeight: 800, fontSize: "0.7rem" }}>{`${c.open_disputes} open`}</div>}</td>
                     <td style={td}>{c.last_order_at ? dateOnly(c.last_order_at) : "No orders yet"}</td>
                     <td style={td}>{c.is_suspended ? <><Chip color={D.red}>Suspended</Chip><div style={dim}>{c.suspension_reason}</div></> : <Chip color={D.green}>Active</Chip>}</td>
                     <td style={td}>

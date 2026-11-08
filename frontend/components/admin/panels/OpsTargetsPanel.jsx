@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiPut } from "../../../apiClient.js";
 import { useTargetPlans, useTargetsHistory, useTargetsPreview } from "../../../hooks/useOpsPeople.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, inkOf } from "../theme.js";
 import { button, callout, chip, dim, field } from "./panelStyles.js";
 import { addDays, dayShort, figures, isoDay, longDay, plural, scroll, table, td, th, toggleButton, toggleGroup } from "./opsPeopleParts.jsx";
 import { errorStyle, eyebrow, h2, h3, useDebounced } from "./portfolioParts.jsx";
@@ -16,7 +16,7 @@ import { errorStyle, eyebrow, h2, h3, useDebounced } from "./portfolioParts.jsx"
 // pattern); nothing here is a typed-in number except the targets themselves.
 const METRICS = [["registrations", "Registrations"], ["visits", "Visits"], ["calls", "Calls"], ["listings", "Listings"]];
 const LABEL = Object.fromEntries(METRICS);
-const ORANGE = "#E8621A";
+const ORANGE = "#E8621A"; // border only; text uses D.amberInk
 
 const asNumber = (text) => (text === "" || text == null ? null : Number(text));
 const isWhole = (text) => /^\d+$/.test(String(text));
@@ -148,7 +148,7 @@ export default function OpsTargetsPanel() {
             Changes apply from
             <input type="date" value={from} min={data.today} onChange={(e) => setFrom(e.target.value)} style={field} />
           </label>
-          <button type="button" onClick={save} disabled={saving || dirty.length === 0 || invalid || !from} style={button(D.gold, D.text, saving || dirty.length === 0 || invalid || !from)}>
+          <button type="button" onClick={save} disabled={saving || dirty.length === 0 || invalid || !from} style={button(D.gold, D.onGold, saving || dirty.length === 0 || invalid || !from)}>
             {saving ? "Saving…" : "Save targets"}
           </button>
         </div>
@@ -170,7 +170,7 @@ export default function OpsTargetsPanel() {
           <span style={dim}>Holidays and leave count as zero</span>
         </div>
         {scouts.length === 0 ? <div style={dim}>No scouts report to you yet.</div> : (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead>
                 <tr>
@@ -210,7 +210,7 @@ export default function OpsTargetsPanel() {
                           </td>
                         );
                       })}
-                      <td style={{ ...td, color: happens.tone, maxWidth: 260 }}>{happens.text}</td>
+                      <td style={{ ...td, color: inkOf(happens.tone), maxWidth: 260 }}>{happens.text}</td>
                     </tr>
                   );
                 })}
@@ -236,7 +236,7 @@ export default function OpsTargetsPanel() {
         </div>
       </section>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <section aria-labelledby="ops-preview" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <h3 id="ops-preview" style={{ ...h2, fontSize: "0.95rem" }}>Preview · week and month</h3>
@@ -245,7 +245,7 @@ export default function OpsTargetsPanel() {
             </div>
           </div>
           {!preview ? <div style={dim}>{scouts.length ? "Preparing the preview…" : "Nothing to preview yet."}</div> : (
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead>
                   <tr>

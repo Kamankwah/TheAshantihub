@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { apiPost, apiPatch } from "../../../apiClient.js";
 import { useSubscriptionPlansManageQueue } from "../../../hooks/useSubscriptionPlansManageQueue.js";
-import { D, glassCard, SUBSCRIPTION_PLAN_STATUS_META, tint } from "../theme.js";
+import { D, glassCard, SUBSCRIPTION_PLAN_STATUS_META, tint, inkOf } from "../theme.js";
 
 const EMPTY_SUBSCRIPTION_PLAN_FORM = {
   tier: "", name: "", kind: "product", monthly_price: "",
@@ -53,7 +53,7 @@ function SubscriptionPlanFormFields({ form, setField }) {
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input value={form.tier} onChange={e => setField("tier", e.target.value)} placeholder="Tier slug (e.g. product_basic)" style={{ ...fieldStyle, flex: 1, minWidth: 160 }} />
         <input value={form.name} onChange={e => setField("name", e.target.value)} placeholder="Plan name" style={{ ...fieldStyle, flex: 1, minWidth: 140 }} />
-        <select value={form.kind} onChange={e => setField("kind", e.target.value)} style={{ ...fieldStyle, width: 120 }}>
+        <select aria-label="Plan kind" value={form.kind} onChange={e => setField("kind", e.target.value)} style={{ ...fieldStyle, width: 120 }}>
           <option value="product">Product</option>
           <option value="service">Service</option>
         </select>
@@ -164,8 +164,8 @@ export default function SubscriptionPlansManagePanel() {
                   <div>
                     <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>
                       {p.name} <span style={{ color: D.textDim, fontWeight: 400 }}>({p.tier})</span>
-                      {p.is_recommended && <span style={{ background: `${D.gold}33`, color: D.gold, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>★ Recommended</span>}
-                      <span style={{ background: tint(statusMeta.color, "22"), color: statusMeta.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>{statusMeta.label}</span>
+                      {p.is_recommended && <span style={{ background: `${D.gold}33`, color: D.goldInk, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>★ Recommended</span>}
+                      <span style={{ background: tint(statusMeta.color, "22"), color: inkOf(statusMeta.color), borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>{statusMeta.label}</span>
                     </div>
                     <div style={{ color: D.textDim, fontSize: "0.72rem", margin: "3px 0" }}>{p.kind === "product" ? "Product" : "Service"} · GHS {p.monthly_price}/mo · Max listings: {p.max_active_listings ?? "Unlimited"} · Hero days: {p.hero_days} · Boost credits: {p.boost_credits_per_month}</div>
                     <div style={{ color: D.textDim, fontSize: "0.72rem" }}>{p.paying_businesses == null ? "" : `${p.paying_businesses} paying business${p.paying_businesses === 1 ? "" : "es"} (active, not on a free trial)`}</div>

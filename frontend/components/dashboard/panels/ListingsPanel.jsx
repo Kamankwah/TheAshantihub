@@ -13,7 +13,7 @@ import { canHaveVariants } from "./listingEditorShared.jsx";
 import BarcodeField from "../../catalogue/BarcodeField.jsx";
 import { displayBarcode, isGoodsCategory } from "../../catalogue/catalogueFormat.js";
 import { DecisionFields, inputStyle, labelStyle, textareaStyle, fieldGrid2, policyHint } from "./listingFormFields.jsx";
-import { D, glassCard, LISTING_STATUS_META, HERO_STATUS_META, tint } from "../theme.js";
+import { D, glassCard, LISTING_STATUS_META, HERO_STATUS_META, tint, inkOf } from "../theme.js";
 import { goToCheckout } from "../../../lib/safeRedirect.js";
 
 // Listings & Prices panel — ported from App.jsx's BusinessDashboard "listings"
@@ -98,10 +98,10 @@ function SpecsEditor({ specs, onChange }) {
         <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
           <input value={spec.label || ""} placeholder="Label (e.g. Material)" onChange={e => onChange(list.map((s, si) => si === i ? { ...s, label: e.target.value } : s))} style={inputStyle} />
           <input value={spec.value || ""} placeholder="Value (e.g. Cotton)" onChange={e => onChange(list.map((s, si) => si === i ? { ...s, value: e.target.value } : s))} style={inputStyle} />
-          <button onClick={() => onChange(list.filter((_, si) => si !== i))} style={{ background: tint(D.red, "26"), color: D.red, border: "none", borderRadius: 8, padding: "0 10px", fontWeight: 700, cursor: "pointer" }}>✕</button>
+          <button onClick={() => onChange(list.filter((_, si) => si !== i))} style={{ background: tint(D.red, "26"), color: inkOf(D.red), border: "none", borderRadius: 8, padding: "0 10px", fontWeight: 700, cursor: "pointer" }}>✕</button>
         </div>
       ))}
-      <button onClick={() => onChange([...list, { label: "", value: "" }])} style={{ background: "none", border: `1.5px dashed ${D.cardBorderStrong}`, color: D.gold, borderRadius: 8, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ Add spec</button>
+      <button onClick={() => onChange([...list, { label: "", value: "" }])} style={{ background: "none", border: `1.5px dashed ${D.cardBorderStrong}`, color: D.goldInk, borderRadius: 8, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ Add spec</button>
     </div>
   );
 }
@@ -312,11 +312,11 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         <h2 style={{ margin: 0, color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>🏷️ Listings &amp; Prices</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={() => { setShowCreate(s => !s); setCreateError(null); setCreateBarcodeError(null); }} style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "7px 16px", fontSize: "0.72rem", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>{createButtonLabel}</button>
-          {!direct && <a href="https://wa.me/233502481685?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>}
+          {!direct && <a href="https://wa.me/233502481685?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", minHeight: 44, display: "inline-flex", alignItems: "center", boxSizing: "border-box", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>}
         </div>
       </div>
 
-      {actionError && <div role="alert" style={{ background: tint(D.red, "1f"), color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ background: tint(D.red, "1f"), color: inkOf(D.red), borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
 
       {showCreate && (
         <div style={{ ...glassCard, padding: "16px", marginBottom: 14, border: `2px solid ${D.cardBorderStrong}` }}>
@@ -393,7 +393,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         <div style={{ ...glassCard, padding: "12px 16px", marginBottom: 14, borderLeft: `4px solid ${D.gold}` }}>
           <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text }}>🌟 Hero Spotlight</div>
           <div style={{ fontSize: "0.72rem", color: D.textDim, marginTop: 2, lineHeight: 1.5 }}>
-            Feature one of your listing photos in the big slider on the homepage. Scroll to any listing below and click the gold <b style={{ color: D.gold }}>Submit for Hero</b> button under a photo. Our team reviews it, then it goes live on the homepage.
+            Feature one of your listing photos in the big slider on the homepage. Scroll to any listing below and click the gold <b style={{ color: D.goldInk }}>Submit for Hero</b> button under a photo. Our team reviews it, then it goes live on the homepage.
           </div>
         </div>
       )}
@@ -402,14 +402,14 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         <div style={{ ...glassCard, padding: "14px 16px", marginBottom: 14, borderLeft: `4px solid ${HERO_STATUS_META[heroSubmission.status]?.color || D.textDim}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <div>
-              <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text }}>🌟 Hero Spotlight — <span style={{ color: HERO_STATUS_META[heroSubmission.status]?.color }}>{HERO_STATUS_META[heroSubmission.status]?.label || heroSubmission.status}</span></div>
+              <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text }}>🌟 Hero Spotlight — <span style={{ color: inkOf(HERO_STATUS_META[heroSubmission.status]?.color) }}>{HERO_STATUS_META[heroSubmission.status]?.label || heroSubmission.status}</span></div>
               {heroSubmission.caption && <div style={{ fontSize: "0.7rem", color: D.textDim, marginTop: 2 }}>"{heroSubmission.caption}"</div>}
               {heroSubmission.status === "approved" && heroSubmission.expires_at && <div style={{ fontSize: "0.68rem", color: D.textDim, marginTop: 2 }}>Live until {heroSubmission.expires_at.slice(0, 10)}</div>}
               {heroSubmission.status === "rejected" && heroSubmission.rejection_reason && <div style={{ fontSize: "0.68rem", color: D.red, marginTop: 2 }}>Rejected: {heroSubmission.rejection_reason}</div>}
             </div>
             {heroSubmission.status === "approved" && (
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <input type="number" min={1} value={heroExtendDays} onChange={e => setHeroExtendDays(Math.max(1, Number(e.target.value) || 1))} style={{ ...inputStyle, width: 56, padding: "6px 8px" }} />
+                <input type="number" aria-label="Days to extend the Hero Spotlight" min={1} value={heroExtendDays} onChange={e => setHeroExtendDays(Math.max(1, Number(e.target.value) || 1))} style={{ ...inputStyle, width: 56, padding: "6px 8px" }} />
                 <button onClick={() => setShowHeroExtendPay(true)} style={{ background: D.kente2, color: D.white, border: "none", borderRadius: 20, padding: "7px 14px", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer" }}>💰 Extend {heroExtendDays}d</button>
               </div>
             )}
@@ -479,7 +479,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                     {item.photos?.[0]?.image ? <img src={item.photos[0].image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "🏷️"}
                   </div>
                   <div style={{ flex: 1, minWidth: 160 }}>
-                    <div style={{ fontWeight: 800, fontSize: "0.85rem", color: D.text }}>{item.name} <span style={{ background: tint(statusMeta.color, "22"), color: statusMeta.color, borderRadius: 20, padding: "2px 7px", fontSize: "0.6rem", fontWeight: 700 }}>{statusMeta.label}</span></div>
+                    <div style={{ fontWeight: 800, fontSize: "0.85rem", color: D.text }}>{item.name} <span style={{ background: tint(statusMeta.color, "22"), color: inkOf(statusMeta.color), borderRadius: 20, padding: "2px 7px", fontSize: "0.6rem", fontWeight: 700 }}>{statusMeta.label}</span></div>
                     <div style={{ fontWeight: 900, color: D.price, fontSize: "0.95rem", marginTop: 2 }}>{item.price_amount != null ? `GHS ${item.price_amount}` : "No price set"} <span style={{ color: D.textFaint, fontWeight: 400, fontSize: "0.72rem" }}>{item.price_unit}</span></div>
                     {item.updated_at && (
                       <>
@@ -489,12 +489,12 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                         </div>
                       </>
                     )}
-                    {direct && ["draft", "pending_review"].includes(item.status) && <div style={{ fontSize: "0.68rem", color: D.amber, fontWeight: 700, marginTop: 3 }}>Needs a second person to approve</div>}
+                    {direct && ["draft", "pending_review"].includes(item.status) && <div style={{ fontSize: "0.68rem", color: D.amberInk, fontWeight: 700, marginTop: 3 }}>Needs a second person to approve</div>}
                     {item.status === "rejected" && item.rejection_reason && <div style={{ fontSize: "0.65rem", color: D.red, marginTop: 3 }}>Rejected: {item.rejection_reason}</div>}
                     {item.status === "pending_review" && item.hold_notice && <div style={{ fontSize: "0.72rem", color: D.textDim, marginTop: 3 }}>{item.hold_notice}</div>}
                     {["draft", "rejected"].includes(item.status) && Array.isArray(item.fix_reasons) && item.fix_reasons.length > 0 && (
                       <div style={{ marginTop: 4 }}>
-                        <div style={{ fontSize: "0.68rem", color: D.amber, fontWeight: 700 }}>From your last submit:</div>
+                        <div style={{ fontSize: "0.68rem", color: D.amberInk, fontWeight: 700 }}>From your last submit:</div>
                         <ul style={{ margin: "2px 0 0", paddingLeft: 16, fontSize: "0.72rem", color: D.textDim }}>
                           {item.fix_reasons.map((reason, i) => <li key={i}>{reason}</li>)}
                         </ul>
@@ -520,9 +520,9 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                       dimensions: item.dimensions || "", weight: item.weight || "",
                       stock_quantity: item.stock_quantity ?? "",
                       units_total: item.units_total ?? "",
-                    }); }} style={{ background: D.goldSoft, color: D.gold, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>✏️ Edit</button>}
+                    }); }} style={{ background: D.goldSoft, color: D.goldInk, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>✏️ Edit</button>}
                     {(item.status === "draft" || item.status === "rejected") && <button onClick={() => submitForReview(item.id)} style={{ background: D.kente2, color: D.white, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📤 Submit for Review</button>}
-                    {item.status === "published" && <button onClick={() => setPromoteListingId(item.id)} style={{ background: tint(D.red, "18"), color: D.red, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📣 Promote</button>}
+                    {item.status === "published" && <button onClick={() => setPromoteListingId(item.id)} style={{ background: tint(D.red, "18"), color: inkOf(D.red), border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📣 Promote</button>}
                   </div>
                 </div>
               )}
@@ -533,7 +533,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                     {item.photos.map(photo => (
                       <div key={photo.id} style={{ textAlign: "center" }}>
                         <img src={photo.image} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: heroSubmitPhoto?.id === photo.id ? `2px solid ${D.gold}` : `1px solid ${D.divider}`, display: "block", marginBottom: 4 }} />
-                        <button onClick={() => { setHeroSubmitPhoto({ id: photo.id, image: photo.image, listingId: item.id }); setHeroCaption(""); setHeroActionError(null); }} style={{ background: D.goldSoft, color: D.gold, border: `1px solid ${D.gold}55`, borderRadius: 20, padding: "4px 10px", fontSize: "0.62rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🌟 Submit for Hero</button>
+                        <button onClick={() => { setHeroSubmitPhoto({ id: photo.id, image: photo.image, listingId: item.id }); setHeroCaption(""); setHeroActionError(null); }} style={{ background: D.goldSoft, color: D.goldInk, border: `1px solid ${D.gold}55`, borderRadius: 20, padding: "4px 10px", fontSize: "0.62rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🌟 Submit for Hero</button>
                       </div>
                     ))}
                   </div>

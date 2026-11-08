@@ -58,7 +58,7 @@ export default function DailySummary() {
           {data.days.length === 0 ? (
             <div style={s.note}>Nothing moved in this range.</div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div style={{ overflowX: 'auto' }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                 <thead>
                   <tr>

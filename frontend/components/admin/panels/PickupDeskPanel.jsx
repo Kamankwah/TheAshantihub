@@ -63,7 +63,7 @@ function AddressLine({ canEdit }) {
           <span id="pickup-address-hint" style={dim}>Leave it empty to show 'address to be confirmed' everywhere.</span>
           {error && <div role="alert" style={callout(D.red)}>{error}</div>}
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="submit" disabled={busy} style={button(D.gold, D.text, busy)}>Save address</button>
+            <button type="submit" disabled={busy} style={button(D.gold, D.onGold, busy)}>Save address</button>
             <button type="button" onClick={() => setEditing(false)} style={button(D.panelBg, D.text, false)}>Cancel</button>
           </div>
         </form>
@@ -118,7 +118,7 @@ function HandOver({ order, onClose, onDone, onRefused }) {
             />
           </label>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" onClick={confirm} disabled={!ready || busy} style={button(D.gold, D.text, !ready || busy)}>Confirm hand-over</button>
+            <button type="button" onClick={confirm} disabled={!ready || busy} style={button(D.gold, D.onGold, !ready || busy)}>Confirm hand-over</button>
             <button type="button" onClick={onClose} style={button(D.panelBg, D.text, false)}>Cancel</button>
           </div>
         </>

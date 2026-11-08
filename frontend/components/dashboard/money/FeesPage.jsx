@@ -16,7 +16,7 @@ const money = (value) => <span data-amount style={s.amount}>{formatGhs(value)}</
 
 function Bands({ bands }) {
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div style={{ overflowX: 'auto' }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <thead>
           <tr>

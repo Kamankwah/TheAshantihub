@@ -67,7 +67,7 @@ export default function RolesPermissionsPanel() {
       <ScreenHeader title="Roles & permissions" note={data ? `${plural(data.roles.length, "role", "roles")} · ${data.permission_count} permissions that exist today.` : "What each role can do."}>
         {changes.length > 0 && <>
           <span role="status" style={{ ...dim, alignSelf: "center" }}>{`${plural(changes.length, "unsaved change", "unsaved changes")}`}</span>
-          <button type="button" onClick={review} disabled={busy} style={button(D.gold, D.text, busy)}>Review and save</button>
+          <button type="button" onClick={review} disabled={busy} style={button(D.gold, D.onGold, busy)}>Review and save</button>
           <button type="button" onClick={discard} style={button(D.panelBg, D.text)}>Discard changes</button>
         </>}
       </ScreenHeader>
@@ -89,7 +89,7 @@ export default function RolesPermissionsPanel() {
           <div style={note}>Saving applies the changes at once. Everyone affected is reconnected with their new permissions, and the change is recorded in the audit log with before and after. It asks for your password.</div>
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button type="button" onClick={discard} style={button(D.panelBg, D.text)}>Discard changes</button>
-            <button type="button" onClick={save} disabled={busy} style={button(D.gold, D.text, busy)}>{busy ? "Saving…" : `Save ${plural(preview.count, "change", "changes")}`}</button>
+            <button type="button" onClick={save} disabled={busy} style={button(D.gold, D.onGold, busy)}>{busy ? "Saving…" : `Save ${plural(preview.count, "change", "changes")}`}</button>
           </div>
         </section>
       )}
@@ -98,7 +98,7 @@ export default function RolesPermissionsPanel() {
         <section aria-label="What each role can do" style={card}>
           <h3 style={h3}>What each role can do</h3>
           <div style={dim}>Super Admin always holds every permission. Tick a box to change a role; a greyed box cannot be changed, and its tooltip says why. A person's own grants and revokes sit on top of their role.</div>
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table aria-label="Role permissions" style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.78rem", color: D.text, minWidth: 760 }}>
               <thead>
                 <tr>

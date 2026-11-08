@@ -64,7 +64,7 @@ export default function GrowthFunnelPanel() {
             </section>
             <section aria-labelledby="by-scout" style={section}>
               <h3 id="by-scout" style={sectionTitle}>By scout</h3>
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr><th scope="col" style={th}>Scout</th>{STAGE_KEYS.map((k) => <th key={k} scope="col" style={th}>{STAGE_HEADS[k]}</th>)}<th scope="col" style={th}>Visit → 3 months</th></tr></thead>
                   <tbody>
@@ -91,7 +91,7 @@ export default function GrowthFunnelPanel() {
             </section>
             <section aria-labelledby="by-zone" style={section}>
               <h3 id="by-zone" style={sectionTitle}>By zone</h3>
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr><th scope="col" style={th}>Zone</th>{STAGE_KEYS.map((k) => <th key={k} scope="col" style={th}>{STAGE_HEADS[k]}</th>)}</tr></thead>
                   <tbody>

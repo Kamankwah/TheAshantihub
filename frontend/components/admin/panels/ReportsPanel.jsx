@@ -50,7 +50,7 @@ export default function ReportsPanel({ auth }) {
             </div>
           ) : (
             <button type="button" onClick={() => setMore(true)}
-              style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 700, color: D.deepGold }}>Week &amp; month</button>
+              style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 700, color: D.goldInk }}>Week &amp; month</button>
           )}
         </div>
         {isLoading && <div role="status" style={dim}>Loading…</div>}
@@ -182,7 +182,7 @@ function ReportComposer({ report, period, leadName, isScout, isOps }) {
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         {!locked && <button type="button" disabled={busy} onClick={save} style={button(D.panelBg, D.text, busy)}>Save draft</button>}
-        {!locked && <button type="button" disabled={busy} onClick={submit} style={button(D.gold, D.text, busy)}>{leadName ? `Submit to ${leadName}` : "Submit"}</button>}
+        {!locked && <button type="button" disabled={busy} onClick={submit} style={button(D.gold, D.onGold, busy)}>{leadName ? `Submit to ${leadName}` : "Submit"}</button>}
         {report.id && <ExportButtons path={`/api/reports/${report.id}/export/`} stem={`report-${report.period}-${report.period_start}`} onError={setActionError} />}
       </div>
     </div>
@@ -267,7 +267,7 @@ function RangeExport({ auth }) {
         <label style={labelStyle}>To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={field} /></label>
         <label style={labelStyle}>Format<select value={format} onChange={(e) => setFormat(e.target.value)} style={field}><option value="xlsx">Excel</option><option value="csv">CSV</option><option value="pdf">PDF</option></select></label>
         {canIncludeTeam && <label style={{ ...labelStyle, flexDirection: "row", alignItems: "center" }}><input type="checkbox" checked={includeTeam} onChange={(e) => setIncludeTeam(e.target.checked)} />{viewAll ? "Include everyone's reports" : "Include my team's reports"}</label>}
-        <button type="button" disabled={busy} onClick={run} style={button(D.gold, D.text, busy)}>Export reports</button>
+        <button type="button" disabled={busy} onClick={run} style={button(D.gold, D.onGold, busy)}>Export reports</button>
       </div>
       <div style={dim}>Large ranges are prepared in the background and appear below when ready. Every export is recorded.</div>
       {message && <div role="status" style={{ color: D.green, fontSize: "0.8rem" }}>{message}</div>}

@@ -47,7 +47,7 @@ function Waiting({ kind, title, now, next, detail, proposer, onApprove, onReturn
         </div>
       ) : (
         <div style={{ display: "flex", gap: 6 }}>
-          <button type="button" disabled={busy} onClick={() => run(onApprove)} style={button(D.green, D.white, busy)}>Approve</button>
+          <button type="button" disabled={busy} onClick={() => run(onApprove)} style={button(D.greenFill, D.white, busy)}>Approve</button>
           <button type="button" disabled={busy} onClick={() => setReturning(true)} style={button(D.panelBg, D.text, busy)}>Return with note</button>
         </div>
       )}
@@ -102,7 +102,7 @@ export default function PlansPricesPanel() {
           {livePlans.isLoading && <div role="status" style={dim}>Loading…</div>}
           {livePlans.isError && <div role="alert" style={errorStyle}>Could not load the live plans.</div>}
           {livePlans.data && (
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr><th style={th}>Plan</th><th style={th}>For</th><th style={th}>Includes</th><th style={th}>Per month</th></tr></thead>
                 <tbody>
@@ -123,7 +123,7 @@ export default function PlansPricesPanel() {
 
         <section aria-labelledby="pp-events" style={section}>
           <h3 id="pp-events" style={sectionTitle}>Event visibility · price for the whole window</h3>
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr><th style={th}>Shown for</th><th style={th}>Live</th><th style={th}>Proposed</th></tr></thead>
               <tbody>

@@ -62,13 +62,13 @@ export default function FlashSaleEditor({ id, onBack, onOpenDetail }) {
         {!isNew && <span style={chip(statusColor)}>{statusLabel}</span>}
         {!isNew && data.status === "live" && <button type="button" disabled={busy} onClick={() => { if (window.confirm("End this sale now? Orders already placed keep the sale price.")) run(() => flashSaleAction(id, "end"), "The sale has ended."); }} style={button(D.panelBg, D.text, busy)}>End early</button>}
         {!isNew && ["draft", "waiting_sellers", "scheduled"].includes(data.status) && <button type="button" disabled={busy} onClick={() => { if (window.confirm("Cancel this sale?")) run(() => flashSaleAction(id, "cancel"), "The sale is cancelled."); }} style={button(D.panelBg, D.text, busy)}>Cancel sale</button>}
-        {editable && <button type="button" disabled={busy || !form.name} onClick={save} style={button(D.gold, D.text, busy || !form.name)}>{isNew ? "Create sale" : "Save changes"}</button>}
+        {editable && <button type="button" disabled={busy || !form.name} onClick={save} style={button(D.gold, D.onGold, busy || !form.name)}>{isNew ? "Create sale" : "Save changes"}</button>}
       </PageHead>
       <OffNotice data={data || { promos_enabled: false, off_notice: "Discounts are not applied at checkout yet. You can draft, edit and schedule here; nothing reaches customers until the owner switches checkout promotions on." }} />
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       {notice && <div role="status" style={chip(D.green)}>{notice}</div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
           <Section id="fe-det" title="Dates, discount and limits">
             <label style={labelStyle}>Name<input value={form.name} disabled={!editable} onChange={(e) => set({ name: e.target.value })} style={inputStyle} /></label>
@@ -103,11 +103,11 @@ export default function FlashSaleEditor({ id, onBack, onOpenDetail }) {
                     ))}
                   </div>
                 )}
-                {!isNew && <button type="button" disabled={busy || picked.length === 0} onClick={async () => { await run(() => addFlashListings(id, picked), "Added. Sellers are asked about the new listings."); setPicked([]); }} style={button(D.gold, D.text, busy || picked.length === 0)}>Add {picked.length} to the sale</button>}
+                {!isNew && <button type="button" disabled={busy || picked.length === 0} onClick={async () => { await run(() => addFlashListings(id, picked), "Added. Sellers are asked about the new listings."); setPicked([]); }} style={button(D.gold, D.onGold, busy || picked.length === 0)}>Add {picked.length} to the sale</button>}
               </div>
             )}
             {!isNew && (data.listings.length === 0 ? <Honest>No listing yet. Only live listings from verified businesses with tracked stock can join; otherwise the cap can't be enforced.</Honest> : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr>{["Listing", "Business", "Normal price", "Sale price", "In stock", "Seller", ""].map((h, i) => <th key={i} scope="col" style={th}>{h}</th>)}</tr></thead>
                   <tbody>
@@ -135,7 +135,7 @@ export default function FlashSaleEditor({ id, onBack, onOpenDetail }) {
               </div>
             ))}
             {!isNew && <div style={dim}>Sellers are told in their dashboard that AshantiHub is asking them to take part. They can withdraw until {whenWord(data.withdraw_until)} ({data.withdraw_cutoff_hours} hours before the start). Changing the discount, dates or listings asks them again.</div>}
-            {!isNew && editable && <button type="button" disabled={busy || data.listing_count === 0} onClick={() => run(() => flashSaleAction(id, "ask"), "Sellers have been asked.")} style={button(D.gold, D.text, busy || data.listing_count === 0)}>{data.status === "draft" ? "Ask the sellers" : "Ask the sellers who haven't answered"}</button>}
+            {!isNew && editable && <button type="button" disabled={busy || data.listing_count === 0} onClick={() => run(() => flashSaleAction(id, "ask"), "Sellers have been asked.")} style={button(D.gold, D.onGold, busy || data.listing_count === 0)}>{data.status === "draft" ? "Ask the sellers" : "Ask the sellers who haven't answered"}</button>}
           </Section>
           <Section id="fe-prev" title="Preview on the site">
             <div style={{ border: `1px solid ${D.cardBorder}`, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8, background: D.panelBg }}>

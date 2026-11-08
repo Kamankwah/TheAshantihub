@@ -56,7 +56,7 @@ function Ranking({ orderId, row, onDone, canForce }) {
             {row.offer && <Note>Offered to <b>{row.offer.rider}</b>, {span(row.offer.seconds_left)} left. If time runs out the offer passes to the next rider.</Note>}
             {short && <Note tone="warn"><b>Time is short.</b> Under {SHORT_MINUTES} minutes to spare. You can force-assign a rider now: they are told the job is assigned, not offered.</Note>}
             <QueueMap orderId={orderId} onSelectRider={setMarked} />
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr>{["Rider", "Distance", "Fairness", "Idle", "Score"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                 <tbody>
@@ -88,7 +88,7 @@ function Ranking({ orderId, row, onDone, canForce }) {
                   {eligible.map((e) => <option key={e.rider_id} value={e.rider_id}>{e.full_name} · score {e.total}</option>)}
                 </select>
               </label>
-              <button type="button" disabled={busy || !chosen} onClick={() => act("offer", { rider: Number(chosen) }, "Could not send the offer.")} style={button(D.gold, D.text, busy || !chosen)}>{pick ? `Offer to ${pick.full_name}` : "Offer"}</button>
+              <button type="button" disabled={busy || !chosen} onClick={() => act("offer", { rider: Number(chosen) }, "Could not send the offer.")} style={button(D.gold, D.onGold, busy || !chosen)}>{pick ? `Offer to ${pick.full_name}` : "Offer"}</button>
               {canForce && <button type="button" disabled={busy || !chosen} onClick={() => act("force-assign", { rider: Number(chosen) }, "Could not assign the order.")} style={button(D.panelBg, D.text, busy || !chosen)}>Force-assign now</button>}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -128,7 +128,7 @@ export default function DispatchQueuePanel({ auth, onNavigate }) {
             <section aria-labelledby="wait" style={section}>
               <h3 id="wait" style={sectionTitle}>Waiting for a rider ({data.total}), least time to spare first</h3>
               {rows.length === 0 ? <Empty>No order is waiting for a rider.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Order", "Route", "Time", "State", "Pick", ""].map((h, i) => <th key={i} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>

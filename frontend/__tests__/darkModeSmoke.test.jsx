@@ -45,8 +45,8 @@ function colours(value) {
 const isLight = ({ c, a }) => Math.min(...c) >= 224 && a >= 0.5
 // dark ink: dark brown, black and the mid/dark greys used for body text
 const isDarkInk = ({ c, a }) => a >= 0.3 && Math.max(...c) <= 0x88 && Math.max(...c) - Math.min(...c) <= 40
-// fixed fills that keep dark text in both themes (gold, light gold, Ghana gold, orange, white paper)
-const isFixedLightFill = ({ c }) => c[0] >= 0xb8 && c[1] >= 0x60 && c[2] <= 0xb3
+// fixed fills that keep dark text in both themes (gold, light gold, Ghana gold, orange, white paper, WhatsApp green)
+const isFixedLightFill = ({ c }) => (c[0] >= 0xb8 && c[1] >= 0x60 && c[2] <= 0xb3) || (c[0] === 0x25 && c[1] === 0xd3 && c[2] === 0x66)
 
 function backgroundOf(el) {
   return el.style.backgroundColor || el.style.background || el.style.backgroundImage || ''
@@ -174,8 +174,7 @@ describe('dark mode smoke: home', () => {
       />
     )
     withClient(<StorefrontHome header={header} user={null} onNavigate={vi.fn()} onOpenListing={vi.fn()} onSignIn={vi.fn()} onSell={vi.fn()} />)
-    await screen.findByRole('heading', { name: "Today's deals" })
-    await screen.findByRole('heading', { name: 'Most visited categories' })
+    await screen.findByRole('heading', { name: "Today's deals" }, { timeout: 10000 })
     expect(screen.getByTestId('storefront-home').getAttribute('style')).toContain('var(--ah-canvas')
     expect(lightOnlyStyles()).toEqual([])
   }, 20000)

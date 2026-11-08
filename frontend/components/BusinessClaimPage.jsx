@@ -37,7 +37,7 @@ export default function BusinessClaimPage({ onSignIn }) {
     <div style={pageStyle}>
       <div style={sheetStyle}>
         <div style={{ background: `linear-gradient(135deg, ${C.kente1}, ${C.kente3})`, padding: "20px 24px" }}>
-          <div style={{ color: C.gold, fontWeight: 900, fontSize: "1.1rem" }}>Set up your AshantiHub login</div>
+          <h1 style={{ color: C.gold, fontWeight: 900, fontSize: "1.1rem", margin: 0 }}>Set up your AshantiHub login</h1>
         </div>
         <div style={bodyStyle}>
           {claimed ? (

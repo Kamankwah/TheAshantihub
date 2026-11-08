@@ -94,7 +94,7 @@ function EntryDetail({ entry, onClose }) {
         <dt style={dim}>Device</dt><dd style={{ margin: 0 }}>{entry.user_agent ? describeAgent(entry.user_agent) : "Not recorded"}</dd>
       </dl>
       {rows.length === 0 ? <div style={dim}>This entry recorded no before and after values.</div> : (
-        <div style={scroll}>
+        <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
           <table style={table}>
             <thead><tr>{["Field", "Before", "After"].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>{rows.map((r) => <tr key={r.field}><td style={{ ...td, ...mono }}>{r.field}</td><td style={td}>{show(r.before)}</td><td style={td}>{show(r.after)}</td></tr>)}</tbody>
@@ -203,7 +203,7 @@ export default function StaffActivityPanel({ live = false, superAdmin = false })
         {isError && <div role="alert" style={errorStyle}>Could not load activity. <button type="button" onClick={() => refetch()} style={{ ...button(D.panelBg, D.text), padding: "4px 10px" }}>Try again</button></div>}
         {!isLoading && !isError && events.length === 0 && <div style={dim}>Nothing matches those filters.</div>}
         {events.length > 0 && (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{(superAdmin ? ["Time", "Who", "Action", "On", "Detail", "Device · address", "Outcome"] : ["Time", "Who", "Action", "On", "Detail"]).map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>

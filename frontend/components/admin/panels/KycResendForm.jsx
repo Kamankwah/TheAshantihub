@@ -67,7 +67,7 @@ export default function KycResendForm({ business, onSent, onCancel }) {
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
-        <button type="submit" disabled={busy} style={button(D.gold, D.text, busy)}>{busy ? "Sending…" : "Send the KYC request"}</button>
+        <button type="submit" disabled={busy} style={button(D.gold, D.onGold, busy)}>{busy ? "Sending…" : "Send the KYC request"}</button>
       </div>
     </form>
   );

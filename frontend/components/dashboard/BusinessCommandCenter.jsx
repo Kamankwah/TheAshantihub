@@ -234,7 +234,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
             </div>
           </div>
 
-          {saved && <div style={{ position: "fixed", top: 70, right: 20, background: D.green, color: D.white, borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, zIndex: 999, boxShadow: "0 6px 24px rgba(0,100,0,0.28)" }}>✓ Saved!</div>}
+          {saved && <div style={{ position: "fixed", top: 70, right: 20, background: D.greenFill, color: D.white, borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, zIndex: 999, boxShadow: "0 6px 24px rgba(0,100,0,0.28)" }}>✓ Saved!</div>}
 
           <div style={{ maxWidth: 1080, width: "100%", margin: "0 auto", padding: "22px 18px 72px", flex: 1 }}>
             {/* The go-live rule's email blocker, on every tab: the server lists it until the link is opened. */}
@@ -262,7 +262,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                         <ul style={{ listStyle: "none", margin: "0 auto", padding: 0, maxWidth: 460, textAlign: "left", display: "flex", flexDirection: "column", gap: 8 }}>
                           {blockers.map((b, i) => (
                             <li key={b?.code || i} style={{ color: D.textDim, fontSize: "0.85rem", lineHeight: 1.5, display: "flex", gap: 8 }}>
-                              <span aria-hidden="true" style={{ color: D.amber, fontWeight: 900 }}>•</span>
+                              <span aria-hidden="true" style={{ color: D.amberInk, fontWeight: 900 }}>•</span>
                               <span>{typeof b === "string" ? b : b?.message}</span>
                             </li>
                           ))}

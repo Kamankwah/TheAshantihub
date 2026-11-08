@@ -52,7 +52,7 @@ export default function MarketingOverviewPanel({ auth, onNavigate }) {
         <div role="group" aria-label="Period" style={toggleGroup}>
           {PERIODS.map(([id, label]) => <button key={id} type="button" aria-pressed={days === id} onClick={() => setDays(id)} style={toggleButton(days === id)}>{label}</button>)}
         </div>
-        {canCompose && <button type="button" onClick={() => onNavigate?.("mk-new-campaign")} style={button(D.gold, D.text)}>New campaign</button>}
+        {canCompose && <button type="button" onClick={() => onNavigate?.("mk-new-campaign")} style={button(D.gold, D.onGold)}>New campaign</button>}
       </PageHead>
 
       {(isLoading || isError) && <Loading error={isError} onRetry={refetch} what="the overview" />}
@@ -69,18 +69,18 @@ export default function MarketingOverviewPanel({ auth, onNavigate }) {
             ))}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))", gap: 10 }}>
             {kpiList(data).map(({ key, ...kpi }) => <Kpi key={key} {...kpi} />)}
           </div>
           <div style={{ ...dim, lineHeight: 1.5 }}>
             Orders count when they are placed within 7 days of a click on a campaign link. {data.simulated_payments ? "Payments are simulated until Hubtel payments are connected, so order value and promotion revenue are simulated amounts." : ""}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
               <Section id="mk-ch" title={`Delivered by channel · last ${days} days`} action={canCompose && <button type="button" onClick={() => onNavigate?.("mk-results")} style={linkStyle}>Campaign results</button>}>
                 {tracked(data.messages) && data.messages.by_channel?.length ? (
-                  <div style={scroll}>
+                  <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                     <table style={table}>
                       <thead><tr>{["Channel", "Sent", "Delivered", "Failed", "Cost", "Opt-outs"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                       <tbody>
