@@ -36,7 +36,7 @@ export function RidersList({ onOpenRider, onNavigate }) {
       <Title right={(
         <>
           {data && <button type="button" onClick={csv} style={button(D.panelBg, D.text)}>Export list</button>}
-          <button type="button" onClick={() => onNavigate?.("dm-invite")} style={button(D.gold, D.text)}>Invite a rider</button>
+          <button type="button" onClick={() => onNavigate?.("dm-invite")} style={button(D.gold, D.onGold)}>Invite a rider</button>
         </>
       )}>Riders &amp; drivers</Title>
       <Status isLoading={isLoading} isError={isError}>
@@ -136,7 +136,7 @@ export function RiderProfile({ id, onBack, onOpenDelivery, onNavigate }) {
               <>
                 <span style={chip(STATUS_COLOR[r.status])}>{r.status_label}</span>
                 <Suspend staff={s} suspended={r.suspended} onDone={refetch} />
-                {r.suspended && r.suspension_source === "documents" && <button type="button" onClick={() => act(() => apiPost(`/api/delivery/riders/${id}/reinstate/`, {}), "Could not reinstate this rider.")} style={button(D.gold, D.text)}>Reinstate (papers are in order)</button>}
+                {r.suspended && r.suspension_source === "documents" && <button type="button" onClick={() => act(() => apiPost(`/api/delivery/riders/${id}/reinstate/`, {}), "Could not reinstate this rider.")} style={button(D.gold, D.onGold)}>Reinstate (papers are in order)</button>}
               </>
             )}>{s.full_name}</Title>
             <div style={{ fontSize: "0.82rem", color: D.text }}>

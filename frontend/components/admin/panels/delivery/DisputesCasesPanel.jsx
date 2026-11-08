@@ -139,7 +139,7 @@ function DecisionForm({ detail, onDone }) {
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={2000} style={field} />
       </label>
       <Note><span style={NUM}>{detail.payments}{order.refundable == null ? " A refund goes to Accounting as a request and Super Admin approves it." : ""} You will be asked for your password.</span></Note>
-      <div><button type="button" disabled={!ready || busy} onClick={submit} style={button(D.gold, D.text, !ready || busy)}>Record decision</button></div>
+      <div><button type="button" disabled={!ready || busy} onClick={submit} style={button(D.gold, D.onGold, !ready || busy)}>Record decision</button></div>
     </section>
   );
 }

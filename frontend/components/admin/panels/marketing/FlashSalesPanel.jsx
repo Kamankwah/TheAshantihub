@@ -24,7 +24,7 @@ export default function FlashSalesPanel({ detailId, onOpenDetail }) {
   return (
     <div style={page}>
       <PageHead title="Flash sales">
-        <button type="button" onClick={() => onOpenDetail?.("new")} style={button(D.gold, D.text)}>New flash sale</button>
+        <button type="button" onClick={() => onOpenDetail?.("new")} style={button(D.gold, D.onGold)}>New flash sale</button>
       </PageHead>
       <OffNotice data={data} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14, alignItems: "start" }}>

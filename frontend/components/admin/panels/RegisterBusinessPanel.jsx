@@ -490,7 +490,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
           <div style={card}>
             <div style={{ fontWeight: 800, color: D.text }}>Now set up {owner}'s login</div>
             <div style={actions}>
-              <button type="button" onClick={() => setOwnerStep("handover")} style={button(D.gold, D.text)}>Hand the phone to {owner}</button>
+              <button type="button" onClick={() => setOwnerStep("handover")} style={button(D.gold, D.onGold)}>Hand the phone to {owner}</button>
               <button type="button" onClick={() => setOwnerStep("link")} style={button(D.panelBg, D.text)}>Owner not here? Send a link</button>
             </div>
             {ownerStep === "link" && <SendClaimLinkCard businessId={submitted.id} ownerFirstName={owner} ownerEmail={submitted.ownerEmail} />}
@@ -537,7 +537,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
             <div style={{ fontWeight: 900 }}>You have a registration in progress.</div>
             <div style={{ fontWeight: 600, marginTop: 4 }}>{`Start from ${prospect.name} instead? What you typed so far on this phone is replaced.`}</div>
             <div style={{ ...actions, marginTop: 8 }}>
-              <button type="button" onClick={() => startFromProspect(prospect)} style={button(D.gold, D.text)}>{`Start from ${prospect.name}`}</button>
+              <button type="button" onClick={() => startFromProspect(prospect)} style={button(D.gold, D.onGold)}>{`Start from ${prospect.name}`}</button>
               <button type="button" onClick={() => { setAskProspect(false); onOpenDetail?.(null); }} style={button(D.panelBg, D.text)}>Keep my draft</button>
             </div>
           </div>
@@ -596,7 +596,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
               )}
             </div>
             <div style={actions}>
-              <button type="button" onClick={next} style={button(D.gold, D.text)}>Next: Location</button>
+              <button type="button" onClick={next} style={button(D.gold, D.onGold)}>Next: Location</button>
               <button type="button" onClick={saveForLater} style={button(D.panelBg, D.text)}>Save and finish later</button>
               {savedAt && <button type="button" onClick={resetWizard} style={linkButton}>Discard this draft</button>}
             </div>
@@ -619,13 +619,13 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
                 <div style={{ fontWeight: 900 }}>Location too rough: ±{accuracy} m</div>
                 <div style={{ fontWeight: 600, marginTop: 4 }}>Step outside, away from walls, and wait a few seconds for a better fix. Or place the pin by hand — it will be marked “placed by hand” for Operations.</div>
                 <div style={{ ...actions, marginTop: 8 }}>
-                  <button type="button" onClick={locate} disabled={locating} style={button(D.gold, D.text, locating)}>Try again</button>
+                  <button type="button" onClick={locate} disabled={locating} style={button(D.gold, D.onGold, locating)}>Try again</button>
                   <button type="button" onClick={placeByHand} style={button(D.panelBg, D.text)}>Place pin by hand</button>
                 </div>
               </div>
             ) : (
               <div style={actions}>
-                <button type="button" onClick={locate} disabled={locating} style={button(D.gold, D.text, locating)}>
+                <button type="button" onClick={locate} disabled={locating} style={button(D.gold, D.onGold, locating)}>
                   {hasPin && !form.location_is_manual ? "Use my location again" : "Use my location"}
                 </button>
                 {!form.location_is_manual && <button type="button" onClick={placeByHand} style={button(D.panelBg, D.text)}>Place pin by hand</button>}
@@ -654,7 +654,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
             </Field>
             <div style={actions}>
               <button type="button" onClick={back} style={button(D.panelBg, D.text)}>Back</button>
-              <button type="button" onClick={next} style={button(D.gold, D.text)}>Next: Photos</button>
+              <button type="button" onClick={next} style={button(D.gold, D.onGold)}>Next: Photos</button>
             </div>
           </>
         )}
@@ -678,7 +678,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
             </div>
             <div style={actions}>
               <button type="button" onClick={back} style={button(D.panelBg, D.text)}>Back</button>
-              <button type="button" onClick={next} style={button(D.gold, D.text)}>Next: Review</button>
+              <button type="button" onClick={next} style={button(D.gold, D.onGold)}>Next: Review</button>
             </div>
           </>
         )}
@@ -722,7 +722,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
             {actionError && <div role="alert" style={callout(D.red)}>{actionError}</div>}
             <div style={actions}>
               <button type="button" onClick={back} style={button(D.panelBg, D.text)}>Back</button>
-              <button type="button" onClick={submit} disabled={!canSubmit} style={button(D.gold, D.text, !canSubmit)}>{submitting ? "Submitting…" : "Submit for KYC"}</button>
+              <button type="button" onClick={submit} disabled={!canSubmit} style={button(D.gold, D.onGold, !canSubmit)}>{submitting ? "Submitting…" : "Submit for KYC"}</button>
             </div>
             <div style={hintStyle}>{`It counts as your registration${earnsCommission ? " and earns commission" : ""} once Operations approves KYC.`}</div>
           </>

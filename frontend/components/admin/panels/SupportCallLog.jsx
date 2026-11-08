@@ -155,7 +155,7 @@ export default function SupportCallLog({ onLogCall, counterpart: initialCounterp
             <button type="button" onClick={() => download("csv")} style={button(D.panelBg, D.text)}>Export CSV</button>
             <button type="button" onClick={() => download("xlsx")} style={button(D.panelBg, D.text)}>Export Excel</button>
           </div>
-          <button type="button" onClick={() => onLogCall?.()} style={button(D.gold, D.text)}>Log a call</button>
+          <button type="button" onClick={() => onLogCall?.()} style={button(D.gold, D.onGold)}>Log a call</button>
         </div>
       </div>
       {exportNotice && <div role="status" style={{ ...dim, color: D.text, fontWeight: 700 }}>{exportNotice}</div>}

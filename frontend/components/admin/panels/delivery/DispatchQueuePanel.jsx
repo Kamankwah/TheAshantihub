@@ -88,7 +88,7 @@ function Ranking({ orderId, row, onDone, canForce }) {
                   {eligible.map((e) => <option key={e.rider_id} value={e.rider_id}>{e.full_name} · score {e.total}</option>)}
                 </select>
               </label>
-              <button type="button" disabled={busy || !chosen} onClick={() => act("offer", { rider: Number(chosen) }, "Could not send the offer.")} style={button(D.gold, D.text, busy || !chosen)}>{pick ? `Offer to ${pick.full_name}` : "Offer"}</button>
+              <button type="button" disabled={busy || !chosen} onClick={() => act("offer", { rider: Number(chosen) }, "Could not send the offer.")} style={button(D.gold, D.onGold, busy || !chosen)}>{pick ? `Offer to ${pick.full_name}` : "Offer"}</button>
               {canForce && <button type="button" disabled={busy || !chosen} onClick={() => act("force-assign", { rider: Number(chosen) }, "Could not assign the order.")} style={button(D.panelBg, D.text, busy || !chosen)}>Force-assign now</button>}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>

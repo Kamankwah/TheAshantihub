@@ -1,4 +1,4 @@
-import { C, tint } from "../theme.js";
+import { C, tint, readableOn } from "../theme.js";
 
 // ─── starString ─────────────────────────────────────────────────────────────
 // EventCard can't import Stars from App.jsx — this codebase's established
@@ -72,7 +72,7 @@ export default function EventCard({ item, onOpen }) {
           </div>
         )}
         {dateLabel && (
-          <span style={{ position: "absolute", top: 8, right: 8, background: accentColor, color: "white", fontSize: "0.6rem", fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
+          <span style={{ position: "absolute", top: 8, right: 8, background: accentColor, color: readableOn(accentColor), fontSize: "0.6rem", fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
             {dateLabel}
           </span>
         )}

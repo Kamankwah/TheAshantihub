@@ -74,7 +74,7 @@ function ResolveSheet({ row, onClose, onSent, onStale }) {
       </div>
       {error && <div role="alert" style={s.error}>{error}</div>}
       <div style={{ display: "flex", gap: 8 }}>
-        <button type="button" onClick={send} disabled={!ready || busy} style={button(D.gold, D.text, !ready || busy)}>Send for approval</button>
+        <button type="button" onClick={send} disabled={!ready || busy} style={button(D.gold, D.onGold, !ready || busy)}>Send for approval</button>
         <button type="button" onClick={onClose} style={button(D.panelBg, D.text, false)}>Cancel</button>
       </div>
     </div>

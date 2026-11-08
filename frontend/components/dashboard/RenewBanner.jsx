@@ -1,4 +1,4 @@
-import { D, glassCard, tint } from "./theme.js";
+import { D, glassCard, tint, inkOf } from "./theme.js";
 
 // "Renew by …": the clock sends an ISO date (YYYY-MM-DD). Read it as that
 // calendar day, not as a UTC midnight a browser west of Greenwich would show

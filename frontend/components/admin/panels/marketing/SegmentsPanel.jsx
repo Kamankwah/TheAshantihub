@@ -61,7 +61,7 @@ export default function SegmentsPanel({ onNavigate }) {
   return (
     <div style={page}>
       <PageHead title="Segments">
-        <button type="button" onClick={() => { setForm(blank); setNote(""); }} style={button(D.gold, D.text)}>New segment</button>
+        <button type="button" onClick={() => { setForm(blank); setNote(""); }} style={button(D.gold, D.onGold)}>New segment</button>
       </PageHead>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       {note && <div role="status" style={chip(D.green)}>{note}</div>}
@@ -115,7 +115,7 @@ export default function SegmentsPanel({ onNavigate }) {
             <div style={{ ...dim, marginTop: 4 }}>Only people with an opt-in on record for this channel are ever counted. People without one can't be added by hand.</div>
           </fieldset>
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-            <button type="button" disabled={busy || !form.name.trim()} onClick={save} style={button(D.gold, D.text, busy || !form.name.trim())}>{busy ? "Saving…" : "Save segment"}</button>
+            <button type="button" disabled={busy || !form.name.trim()} onClick={save} style={button(D.gold, D.onGold, busy || !form.name.trim())}>{busy ? "Saving…" : "Save segment"}</button>
             {onNavigate && <button type="button" onClick={() => onNavigate("mk-new-campaign")} style={linkStyle}>Use in a new campaign</button>}
           </div>
         </Section>

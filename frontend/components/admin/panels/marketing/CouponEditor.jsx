@@ -106,7 +106,7 @@ export default function CouponEditor({ id, onBack, onOpenDetail }) {
           {editable && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button type="button" disabled={busy || !form.code} onClick={() => save("draft")} style={button(D.panelBg, D.text, busy || !form.code)}>Save draft</button>
-              <button type="button" disabled={busy || !form.code} onClick={() => save("activate")} style={button(D.gold, D.text, busy || !form.code)}>{needsApproval ? "Send to Super Admin for approval" : "Save and make it live"}</button>
+              <button type="button" disabled={busy || !form.code} onClick={() => save("activate")} style={button(D.gold, D.onGold, busy || !form.code)}>{needsApproval ? "Send to Super Admin for approval" : "Save and make it live"}</button>
             </div>
           )}
         </Section>

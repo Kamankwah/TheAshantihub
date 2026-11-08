@@ -52,7 +52,7 @@ export default function RecoveryRequestForm({ kind, id, name }) {
         <textarea value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3} style={field} />
       </label>
       <div>
-        <button type="submit" disabled={busy} style={button(D.gold, D.text, busy)}>{busy ? "Sending…" : "Send for approval"}</button>
+        <button type="submit" disabled={busy} style={button(D.gold, D.onGold, busy)}>{busy ? "Sending…" : "Send for approval"}</button>
       </div>
       {done && (
         <div role="status" style={{ color: D.text, fontSize: "0.8rem" }}>

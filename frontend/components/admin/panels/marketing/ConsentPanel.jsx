@@ -49,7 +49,7 @@ export default function ConsentPanel() {
     <div style={page}>
       <PageHead title="Consent & opt-outs">
         <span style={dim}>Asks for your password again · recorded in the activity log</span>
-        <button type="button" disabled={busy} onClick={exportProof} style={button(D.gold, D.text, busy)}>{busy ? "Preparing…" : "Export consent proof for an audit"}</button>
+        <button type="button" disabled={busy} onClick={exportProof} style={button(D.gold, D.onGold, busy)}>{busy ? "Preparing…" : "Export consent proof for an audit"}</button>
       </PageHead>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       {(summary.isLoading || summary.isError) && <Loading error={summary.isError} onRetry={summary.refetch} what="the consent summary" />}

@@ -88,7 +88,7 @@ export default function OperationsOverviewPanel({ auth, onNavigate, onOpenApprov
           <div role="group" aria-label="Period" style={toggleGroup}>
             {PERIODS.map(([id, label]) => <button key={id} type="button" aria-pressed={period === id} onClick={() => setPeriod(id)} style={toggleButton(period === id)}>{label}</button>)}
           </div>
-          {canInvite && <button type="button" onClick={() => onNavigate?.("my-team")} style={button(D.gold, D.text)}>Invite to your team</button>}
+          {canInvite && <button type="button" onClick={() => onNavigate?.("my-team")} style={button(D.gold, D.onGold)}>Invite to your team</button>}
         </div>
       </div>
 

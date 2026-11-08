@@ -57,7 +57,7 @@ export default function StaffDirectoryPanel({ auth, detailId, onOpenDetail, onNa
     <div style={col}>
       <ScreenHeader title="Staff directory" note={counts ? `${counts.all} people on the staff.` : "Everyone with a staff account."}>
         <ExportButton path="/api/people/staff/export/" params={{ ...filters, q }} filename="staff-directory.csv" label="Export (CSV) · asks for your password" onError={setError} />
-        <button type="button" onClick={() => onNavigate?.("invites")} style={button(D.gold, D.text)}>Invite staff</button>
+        <button type="button" onClick={() => onNavigate?.("invites")} style={button(D.gold, D.onGold)}>Invite staff</button>
       </ScreenHeader>
 
       {counts && (

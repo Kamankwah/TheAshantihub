@@ -36,7 +36,7 @@ export const THEME_TOKENS = {
     "ah-green": "#006400",                   // C.kente2 — trust/verified/success
     "ah-green-fill": "#006400",              // solid green button/badge fill (white text)
     "ah-gold-ink": "#80600A",                // gold as TEXT: deepGold darkened to AA on white, canvas and wells
-    "ah-amber-ink": "#A84A0C",               // C.orange as TEXT, AA on white and its own tint
+    "ah-amber-ink": "#8F3F09",               // C.orange as TEXT, AA on white and its own tint
     "ah-purple-ink": "#6B4E8E",              // purple as TEXT
     "ah-red": "#CC0000",                     // C.kente1 — error/destructive text and borders
     "ah-red-fill": "#CC0000",                // destructive button fill (white text)
@@ -63,7 +63,7 @@ export const THEME_TOKENS = {
     "ah-green": "#5CC15C",                   // kente green as text on dark: 5.5:1 on the green-tinted wells too
     "ah-green-fill": "#237A23",              // solid green fill in dark (white text 5.4:1)
     "ah-gold-ink": "#D4A017",                // gold text is native on dark surfaces (4.9:1 on the strongest well)
-    "ah-amber-ink": "#F08A4B",               // C.orange as text on dark
+    "ah-amber-ink": "#F5A068",               // C.orange as text on dark
     "ah-purple-ink": "#B79BE0",              // purple as text on dark
     "ah-red": "#F57474",                     // kente red retuned for dark text: 4.5:1 on canvas, surface and wells
     "ah-red-fill": "#C62828",                // destructive button fill in dark (white text 5.6:1)
@@ -131,6 +131,16 @@ export const C = {
 // `${hex}${alpha}` form; a theme token (a var()) is mixed with transparent,
 // since a hex alpha suffix after `var(...)` is invalid CSS.
 const HEX6 = /^#[0-9a-f]{6}$/i;
+// Text colour for a solid fill: white or dark brown, whichever has the higher WCAG contrast. Category and promotion
+// accents are arbitrary hex fills (gold, orange, teal...), so a fixed white label fails AA on the light ones.
+export function readableOn(fill) {
+  const m = /^#([0-9a-f]{6})$/i.exec(String(fill || "").trim());
+  if (!m) return "#2C1810";
+  const lin = (i) => { const v = parseInt(m[1].slice(i, i + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(0) + 0.7152 * lin(2) + 0.0722 * lin(4);
+  return (L + 0.05) / 0.0623 >= 1.05 / (L + 0.05) ? "#2C1810" : "#FFFFFF";
+}
+
 export function tint(color, alpha) {
   if (HEX6.test(color)) return `${color}${alpha}`;
   const pct = Math.round((parseInt(alpha, 16) / 255) * 1000) / 10;

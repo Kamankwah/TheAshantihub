@@ -84,7 +84,7 @@ function BookForm({ grid, canManage, onBooked }) {
         <div style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 8 }}>
           {chosen?.blockers.length > 0 && <div role="alert" style={errorStyle}>{chosen.blockers.map((b) => b.message).join(" ")}</div>}
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <button type="submit" disabled={busy || !form.promotion_id || chosen?.blockers.length > 0} style={button(D.gold, D.text, busy || !form.promotion_id || chosen?.blockers.length > 0)}>{busy ? "Booking…" : "Book the place"}</button>
+            <button type="submit" disabled={busy || !form.promotion_id || chosen?.blockers.length > 0} style={button(D.gold, D.onGold, busy || !form.promotion_id || chosen?.blockers.length > 0)}>{busy ? "Booking…" : "Book the place"}</button>
             <span style={dim}>Booking does not charge anyone or change what the owner paid. A promotion can hold as many weeks as it paid for.</span>
           </div>
           {error && <div role="alert" style={errorStyle}>{error}</div>}

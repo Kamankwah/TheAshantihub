@@ -87,7 +87,7 @@ function BannerForm({ data, banner, onDone, onCancel }) {
         About one business that paid for it (shows “Sponsored”)
       </label>
       <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button type="submit" disabled={busy} style={button(D.gold, D.text, busy)}>{busy ? "Saving…" : "Save draft"}</button>
+        <button type="submit" disabled={busy} style={button(D.gold, D.onGold, busy)}>{busy ? "Saving…" : "Save draft"}</button>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
         {error && <span role="alert" style={errorStyle}>{error}</span>}
       </div>
@@ -131,7 +131,7 @@ function FlashForm({ onDone, onCancel }) {
       <label style={labelStyle}>Ends (leave empty for always on)<input type="datetime-local" value={form.ends_at} onChange={(e) => set({ ends_at: e.target.value })} style={inputStyle} /></label>
       <label style={labelStyle}>Countdown ends (optional)<input type="datetime-local" value={form.countdown_ends_at} onChange={(e) => set({ countdown_ends_at: e.target.value })} style={inputStyle} /><span style={dim}>Shows a countdown to this moment. Leave empty for a plain message.</span></label>
       <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button type="submit" disabled={busy} style={button(D.gold, D.text, busy)}>{busy ? "Publishing…" : "Publish flash banner"}</button>
+        <button type="submit" disabled={busy} style={button(D.gold, D.onGold, busy)}>{busy ? "Publishing…" : "Publish flash banner"}</button>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
         {error && <span role="alert" style={errorStyle}>{error}</span>}
       </div>
@@ -153,7 +153,7 @@ function RescheduleForm({ banner, onDone, onCancel }) {
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginTop: 6 }}>
       <label style={labelStyle}>New start<input type="datetime-local" value={starts} onChange={(e) => setStarts(e.target.value)} style={inputStyle} /></label>
       <label style={labelStyle}>New end<input type="datetime-local" value={ends} onChange={(e) => setEnds(e.target.value)} style={inputStyle} /></label>
-      <button type="button" onClick={save} style={button(D.gold, D.text)}>Save dates</button>
+      <button type="button" onClick={save} style={button(D.gold, D.onGold)}>Save dates</button>
       <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
       {error && <span role="alert" style={errorStyle}>{error}</span>}
     </div>
@@ -192,7 +192,7 @@ export default function BannersPanel({ auth }) {
     <div style={page}>
       <PageHead title="Banners">
         {canManage && <button type="button" onClick={() => setEditing("flash")} style={button(D.panelBg, D.text)}>Flash banner</button>}
-        {canManage && <button type="button" onClick={() => setEditing("new")} style={button(D.gold, D.text)}>New banner</button>}
+        {canManage && <button type="button" onClick={() => setEditing("new")} style={button(D.gold, D.onGold)}>New banner</button>}
       </PageHead>
       {notice && <div role="status" style={chip(D.green)}>{notice}</div>}
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}

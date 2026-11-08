@@ -58,7 +58,7 @@ export default function PhotoCapture({ businessId, onStaged, max = 8, uploadUrl,
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <label style={{ ...button(D.gold, D.text, full || uploading), position: "relative", display: "inline-flex", alignItems: "center", gap: 6, alignSelf: "flex-start", overflow: "hidden" }}>
+      <label style={{ ...button(D.gold, D.onGold, full || uploading), position: "relative", display: "inline-flex", alignItems: "center", gap: 6, alignSelf: "flex-start", overflow: "hidden" }}>
         📷 {uploading ? "Uploading…" : "Take photo"}
         <input type="file" accept="image/*" capture="environment" disabled={full || uploading}
           onClick={() => locate?.()} onChange={take}

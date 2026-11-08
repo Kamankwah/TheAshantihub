@@ -68,7 +68,7 @@ function OtpCodesSection({ otp }) {
         </div>
       ))}
       <div>
-        <button type="button" disabled={!changedKeys.length || busy} onClick={save} style={button(D.gold, D.text, !changedKeys.length || busy)}>{busy ? "Saving…" : "Save code settings"}</button>
+        <button type="button" disabled={!changedKeys.length || busy} onClick={save} style={button(D.gold, D.onGold, !changedKeys.length || busy)}>{busy ? "Saving…" : "Save code settings"}</button>
       </div>
       {message && <div role="status" style={{ color: D.text, fontSize: "0.8rem" }}>{message}</div>}
       {error && <div role="alert" style={errorStyle}>{error}</div>}
@@ -154,7 +154,7 @@ export default function SecurityPolicySection() {
         {data.other_super_admins > 0 && <div style={dim}>The other Super Admin is told of every change.</div>}
         {data.updated_at && <div style={dim}>{`Last changed ${new Date(data.updated_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${data.updated_by ? ` by ${data.updated_by}` : ""}.`}</div>}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button type="button" disabled={!changed || busy} onClick={save} style={button(D.gold, D.text, !changed || busy)}>{busy ? "Saving…" : "Save changes"}</button>
+          <button type="button" disabled={!changed || busy} onClick={save} style={button(D.gold, D.onGold, !changed || busy)}>{busy ? "Saving…" : "Save changes"}</button>
           {changed && !busy && <button type="button" onClick={() => setChosen(null)} style={button(D.panelBg, D.text)}>Undo</button>}
         </div>
         {message && <div role="status" style={{ color: D.text, fontSize: "0.8rem" }}>{message}</div>}

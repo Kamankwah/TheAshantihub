@@ -52,7 +52,7 @@ export default function MarketingOverviewPanel({ auth, onNavigate }) {
         <div role="group" aria-label="Period" style={toggleGroup}>
           {PERIODS.map(([id, label]) => <button key={id} type="button" aria-pressed={days === id} onClick={() => setDays(id)} style={toggleButton(days === id)}>{label}</button>)}
         </div>
-        {canCompose && <button type="button" onClick={() => onNavigate?.("mk-new-campaign")} style={button(D.gold, D.text)}>New campaign</button>}
+        {canCompose && <button type="button" onClick={() => onNavigate?.("mk-new-campaign")} style={button(D.gold, D.onGold)}>New campaign</button>}
       </PageHead>
 
       {(isLoading || isError) && <Loading error={isError} onRetry={refetch} what="the overview" />}

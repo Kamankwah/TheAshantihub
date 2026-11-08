@@ -194,7 +194,7 @@ export default function LogCallSheet({ preset = null, call = null, onClose, onSa
         </div>
 
         {error && <div role="alert" style={errorStyle}>{error}</div>}
-        <button type="submit" disabled={busy} style={{ ...button(D.gold, D.text, busy), minHeight: 48, fontSize: "0.95rem" }}>{busy ? "Saving…" : "Save call"}</button>
+        <button type="submit" disabled={busy} style={{ ...button(D.gold, D.onGold, busy), minHeight: 48, fontSize: "0.95rem" }}>{busy ? "Saving…" : "Save call"}</button>
         <div style={{ ...dim, textAlign: "center", lineHeight: 1.45 }}>Time is stamped by the server. You can edit this call for 24 hours.</div>
       </form>
     </BottomSheet>

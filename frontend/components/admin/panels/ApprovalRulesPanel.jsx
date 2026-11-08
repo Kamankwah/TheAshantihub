@@ -106,7 +106,7 @@ export default function ApprovalRulesPanel({ onNavigate }) {
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {dirty && <button type="button" onClick={discard} disabled={busy} style={button(D.panelBg, D.text, busy)}>Discard</button>}
-            <button type="button" onClick={save} disabled={!dirty || busy} style={button(D.gold, D.text, !dirty || busy)}>Save changes</button>
+            <button type="button" onClick={save} disabled={!dirty || busy} style={button(D.gold, D.onGold, !dirty || busy)}>Save changes</button>
           </div>
         </div>
         {error && <div role="alert" style={errorStyle}>{error}</div>}

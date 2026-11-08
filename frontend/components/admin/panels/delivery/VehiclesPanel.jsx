@@ -44,7 +44,7 @@ function Add({ onDone, onCancel }) {
         {label("Insurance expires", <input type="date" value={form.insurance_expires} onChange={set("insurance_expires")} style={field} />)}
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <button type="button" disabled={!form.plate.trim()} onClick={save} style={button(D.gold, D.text, !form.plate.trim())}>Add vehicle</button>
+        <button type="button" disabled={!form.plate.trim()} onClick={save} style={button(D.gold, D.onGold, !form.plate.trim())}>Add vehicle</button>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
       </div>
     </section>
@@ -76,7 +76,7 @@ export default function VehiclesPanel() {
   const people = (riders.data?.results || []).filter((r) => !r.invited && !r.suspended);
   return (
     <div style={page}>
-      <Title right={<button type="button" onClick={() => setAdding(true)} style={button(D.gold, D.text)}>Add a vehicle</button>}>Vehicles</Title>
+      <Title right={<button type="button" onClick={() => setAdding(true)} style={button(D.gold, D.onGold)}>Add a vehicle</button>}>Vehicles</Title>
       <ErrorLine>{error}</ErrorLine>
       {adding && <Add onDone={() => { setAdding(false); refetch(); }} onCancel={() => setAdding(false)} />}
       <Status isLoading={isLoading} isError={isError}>

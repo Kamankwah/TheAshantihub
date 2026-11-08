@@ -98,7 +98,7 @@ function Drafts({ businessId, auth, onBack }) {
         <div style={dim}>Draft a product, service, event or stay. The owner confirms by text, then a second person approves it. Nothing here goes live on its own.</div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", flexDirection: phone ? "column" : "row" }}>
-        <button type="button" onClick={() => { setActionError(null); setView("new"); }} style={{ ...button(D.gold, D.text), ...touch }}>Draft a listing</button>
+        <button type="button" onClick={() => { setActionError(null); setView("new"); }} style={{ ...button(D.gold, D.onGold), ...touch }}>Draft a listing</button>
         <button type="button" disabled={unsent.length === 0 || busy === "send"} onClick={send} style={{ ...button(D.panelBg, D.text, unsent.length === 0 || busy === "send"), ...touch }}>Send for owner confirmation</button>
       </div>
       {unsent.length > 0 && <div style={dim}>{`One text to the owner covers all ${unsent.length} unsent ${unsent.length === 1 ? "draft" : "drafts"}.`}</div>}

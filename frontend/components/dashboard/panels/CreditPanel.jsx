@@ -66,7 +66,7 @@ function ScoreGauge({ score }) {
         <text x={cx} y={cy+8} textAnchor="middle" fontSize="10" fontWeight="700" fill={D.textDim}>out of 1000</text>
       </svg>
       <div style={{ marginTop:-8 }}>
-        <span style={{ background:tint(color, "20"), color, borderRadius:20, padding:"3px 12px", fontSize:"0.75rem", fontWeight:900 }}>{grade} — {label}</span>
+        <span style={{ background:tint(color, "20"), color: inkOf(color), borderRadius:20, padding:"3px 12px", fontSize:"0.75rem", fontWeight:900 }}>{grade} — {label}</span>
       </div>
     </div>
   );
@@ -218,7 +218,7 @@ export default function CreditPanel({ user }) {
                   { range:"300–499", grade:"D", label:"Building", color:D.red },
                 ].map(b => (
                   <div key={b.range} style={{ display:"flex", gap:10, alignItems:"center", padding:"10px 12px", borderRadius:12, background:tint(b.color, "1e"), border:`1px solid ${tint(b.color, "55")}` }}>
-                    <div style={{ width:50, height:50, borderRadius:"50%", background:tint(b.color, "20"), display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:inkOf(b.color), fontSize:"0.82rem", flexShrink:0 }}>{b.grade}</div>
+                    <div style={{ width:50, height:50, borderRadius:"50%", background:tint(b.color, "20"), display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:D.text, fontSize:"0.82rem", flexShrink:0 }}>{b.grade}</div>
                     <div style={{ flex:1 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:2 }}>
                         <span style={{ fontWeight:800, fontSize:"0.8rem", color:D.text }}>{b.range} — {b.label}</span>

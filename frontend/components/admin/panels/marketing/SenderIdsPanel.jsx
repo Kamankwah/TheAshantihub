@@ -78,7 +78,7 @@ export default function SenderIdsPanel() {
             </div>
           )}
           <div style={dim}>MTN has blocked SMS from unregistered sender IDs since 8 July 2026; registering takes about two weeks. A sender ID is at most 11 characters and one-way, so every SMS carries the stop link. Businesses never get a sender ID here: every message comes from AshantiHub.</div>
-          <div><button type="button" onClick={() => setForm({ ...blank })} style={button(D.gold, D.text)}>Record a sender ID</button></div>
+          <div><button type="button" onClick={() => setForm({ ...blank })} style={button(D.gold, D.onGold)}>Record a sender ID</button></div>
           {form && (
             <div role="group" aria-label="Record a sender ID" style={{ border: `1px solid ${D.cardBorder}`, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -92,7 +92,7 @@ export default function SenderIdsPanel() {
               </div>
               <label style={labelStyle}>Used for<input type="text" value={form.used_for} onChange={(e) => setForm({ ...form, used_for: e.target.value })} style={inputStyle} /></label>
               <label style={labelStyle}>Note<input type="text" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} style={inputStyle} /></label>
-              <div style={{ display: "flex", gap: 8 }}><button type="button" disabled={busy || !form.name.trim()} onClick={saveSender} style={button(D.gold, D.text, busy)}>Save</button><button type="button" onClick={() => setForm(null)} style={button(D.panelBg, D.text)}>Cancel</button></div>
+              <div style={{ display: "flex", gap: 8 }}><button type="button" disabled={busy || !form.name.trim()} onClick={saveSender} style={button(D.gold, D.onGold, busy)}>Save</button><button type="button" onClick={() => setForm(null)} style={button(D.panelBg, D.text)}>Cancel</button></div>
             </div>
           )}
           <div style={dim}>Backup SMS provider: none. {sms.status === "not_connected" ? "" : "If the provider is down, SMS waits."}</div>
@@ -117,7 +117,7 @@ export default function SenderIdsPanel() {
               <div role="group" aria-label={`Update ${step.title}`} style={{ border: `1px solid ${D.cardBorder}`, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                 <label style={labelStyle}>{step.title}<select value={step.status} onChange={(e) => setStep({ ...step, status: e.target.value })} style={inputStyle}>{Object.entries(STEP).map(([k, [, l]]) => <option key={k} value={k}>{l}</option>)}</select></label>
                 <label style={labelStyle}>Note<input type="text" value={step.note} onChange={(e) => setStep({ ...step, note: e.target.value })} style={inputStyle} /></label>
-                <div style={{ display: "flex", gap: 8 }}><button type="button" disabled={busy} onClick={saveStep} style={button(D.gold, D.text, busy)}>Record</button><button type="button" onClick={() => setStep(null)} style={button(D.panelBg, D.text)}>Cancel</button></div>
+                <div style={{ display: "flex", gap: 8 }}><button type="button" disabled={busy} onClick={saveStep} style={button(D.gold, D.onGold, busy)}>Record</button><button type="button" onClick={() => setStep(null)} style={button(D.panelBg, D.text)}>Cancel</button></div>
               </div>
             )}
             <div style={dim}>Meta's prices (from 1 Oct 2026, Rest of Africa), per delivered message: marketing USD {wa.price_marketing_usd} · utility USD {wa.price_utility_usd}, billed in US dollars. Sending starts at a daily limit that rises while quality stays good, and Meta may hold back marketing messages to someone who has had many lately.</div>

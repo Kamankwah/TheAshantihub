@@ -70,7 +70,7 @@ function ZoneCard({ zone, others, onDone }) {
               <textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} style={field} />
             </label>
           </details>
-          <div style={{ display: "flex", gap: 8 }}><button type="button" onClick={save} style={button(D.gold, D.text)}>Save zone</button><button type="button" onClick={() => setEdit(false)} style={button(D.panelBg, D.text)}>Cancel</button></div>
+          <div style={{ display: "flex", gap: 8 }}><button type="button" onClick={save} style={button(D.gold, D.onGold)}>Save zone</button><button type="button" onClick={() => setEdit(false)} style={button(D.panelBg, D.text)}>Cancel</button></div>
         </>
       ) : (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -102,7 +102,7 @@ export default function DeliveryZonesPanel() {
             {data.results.length === 0 ? <Empty>No delivery zone has been added.</Empty> : data.results.map((z) => <ZoneCard key={z.id} zone={z} others={data.results.filter((o) => o.id !== z.id).map((o) => o.boundary).filter(Array.isArray)} onDone={refetch} />)}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700, color: D.text }}>New zone<input value={name} onChange={(e) => setName(e.target.value)} style={field} /></label>
-              <button type="button" disabled={!name.trim()} onClick={add} style={button(D.gold, D.text, !name.trim())}>Add zone</button>
+              <button type="button" disabled={!name.trim()} onClick={add} style={button(D.gold, D.onGold, !name.trim())}>Add zone</button>
             </div>
           </>
         )}

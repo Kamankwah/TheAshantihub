@@ -113,7 +113,7 @@ function LogCallForm({ onDone, onSeeLog, onAnother, preset = null, presetLink = 
         <div role="status" style={{ color: D.text, fontWeight: 800 }}>Call saved.</div>
         {form.remind && <div style={dim}>A follow-up task is in My work.</div>}
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" onClick={() => onSeeLog?.()} style={button(D.gold, D.text)}>See the call log</button>
+          <button type="button" onClick={() => onSeeLog?.()} style={button(D.gold, D.onGold)}>See the call log</button>
           <button type="button" onClick={() => onAnother()} style={button(D.panelBg, D.text)}>Log another</button>
         </div>
       </div>
@@ -214,7 +214,7 @@ function LogCallForm({ onDone, onSeeLog, onAnother, preset = null, presetLink = 
           {error && <div role="alert" style={errorStyle}>{error}</div>}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button type="button" onClick={() => onDone?.()} style={button(D.panelBg, D.text)}>Cancel</button>
-            <button type="submit" disabled={busy} style={{ ...button(D.gold, D.text, busy), minHeight: 44 }}>{busy ? "Saving…" : "Save call"}</button>
+            <button type="submit" disabled={busy} style={{ ...button(D.gold, D.onGold, busy), minHeight: 44 }}>{busy ? "Saving…" : "Save call"}</button>
           </div>
         </form>
 

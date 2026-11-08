@@ -33,7 +33,7 @@ export default function SupportTeamPanel({ onNavigate }) {
       <div style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <h2 style={h2}>Support team</h2>
-          {onNavigate && <button type="button" onClick={() => onNavigate("my-team")} style={button(D.gold, D.text)}>Invite a support agent</button>}
+          {onNavigate && <button type="button" onClick={() => onNavigate("my-team")} style={button(D.gold, D.onGold)}>Invite a support agent</button>}
         </div>
         <div style={callout(D.amber)}>{SOON}</div>
       </div>

@@ -121,7 +121,7 @@ function RecordForm({ team, auth, onDone, everyone }) {
         </div>
       )}
       {error && <div role="alert" style={errorStyle}>{error}</div>}
-      <button type="submit" disabled={!person || saving} style={button(D.gold, D.text, !person || saving)}>{saving ? "Recording…" : "Record leave"}</button>
+      <button type="submit" disabled={!person || saving} style={button(D.gold, D.onGold, !person || saving)}>{saving ? "Recording…" : "Record leave"}</button>
       <div style={dim}>{everyone ? "As Super Admin you record leave for anyone on the staff. The person sees it, and it's in the activity log." : "You record leave for your own team only. The person sees it, and it's in the activity log."}</div>
     </form>
   );
@@ -163,7 +163,7 @@ function LeaveRow({ row, mineId, onChanged, onMessage, showEffect }) {
             <input aria-label="From" type="date" value={start} disabled={started} onChange={(e) => setStart(e.target.value)} style={field} />
             <input aria-label="To" type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} style={field} />
             <div style={{ display: "flex", gap: 6 }}>
-              <button type="button" onClick={() => act(() => apiPatch(`/api/targets/leave/${row.id}/`, { kind, start, end }), `Leave changed for ${row.staff_name}.`)} style={button(D.gold, D.text)}>Save</button>
+              <button type="button" onClick={() => act(() => apiPatch(`/api/targets/leave/${row.id}/`, { kind, start, end }), `Leave changed for ${row.staff_name}.`)} style={button(D.gold, D.onGold)}>Save</button>
               <button type="button" onClick={() => setMode(null)} style={button(D.panelBg, D.text)}>Close</button>
             </div>
           </div>
@@ -226,7 +226,7 @@ function AddHoliday({ onDone }) {
       <label style={labelStyle}>Holiday name<input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} style={field} /></label>
       <label style={labelStyle}>Day off (the observed date)<input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={field} /></label>
       {error && <div role="alert" style={errorStyle}>{error}</div>}
-      <div><button type="submit" disabled={!name.trim() || !date || busy} style={button(D.gold, D.text, !name.trim() || !date || busy)}>{busy ? "Adding…" : "Add a public holiday"}</button></div>
+      <div><button type="submit" disabled={!name.trim() || !date || busy} style={button(D.gold, D.onGold, !name.trim() || !date || busy)}>{busy ? "Adding…" : "Add a public holiday"}</button></div>
     </form>
   );
 }

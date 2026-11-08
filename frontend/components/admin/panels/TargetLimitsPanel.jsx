@@ -90,7 +90,7 @@ export default function TargetLimitsPanel({ onOpenApproval }) {
               {cuts.map((scout) => (
                 <div key={scout.id} style={{ ...glassCard, padding: 10, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <span style={{ color: D.text, fontWeight: 700 }}>{`Lower ${scout.full_name}'s daily targets`}</span>
-                  {onOpenApproval && <button type="button" onClick={() => onOpenApproval(scout.pending_cut.approval_id)} style={button(D.gold, D.text)}>Review and decide</button>}
+                  {onOpenApproval && <button type="button" onClick={() => onOpenApproval(scout.pending_cut.approval_id)} style={button(D.gold, D.onGold)}>Review and decide</button>}
                 </div>
               ))}
             </section>
@@ -116,7 +116,7 @@ export default function TargetLimitsPanel({ onOpenApproval }) {
               {problems.map((p) => <div key={p} role="alert" style={errorStyle}>{p}</div>)}
               {error && <div role="alert" style={errorStyle}>{error}</div>}
               {saved && <div role="status" style={callout(D.green)}>{saved}</div>}
-              <button type="button" disabled={saving || !changed || problems.length > 0} onClick={save} style={{ ...button(D.gold, D.text, saving || !changed || problems.length > 0), alignSelf: "flex-start" }}>{saving ? "Saving…" : "Save limits"}</button>
+              <button type="button" disabled={saving || !changed || problems.length > 0} onClick={save} style={{ ...button(D.gold, D.onGold, saving || !changed || problems.length > 0), alignSelf: "flex-start" }}>{saving ? "Saving…" : "Save limits"}</button>
             </section>
 
             <section aria-labelledby="tl-today" style={section}>

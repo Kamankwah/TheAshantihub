@@ -41,7 +41,7 @@ export default function LegalDocPage({ kind, onNavigate, onSupport }) {
   return (
     <main id="main-content" style={{ maxWidth: 720, margin: "0 auto", padding: "28px 16px 64px", boxSizing: "border-box", fontFamily: BODY_FONT, color: C.ink }}>
       <p style={{ margin: "0 0 6px" }}>
-        <a href="/" onClick={go("/")} style={{ ...link, fontSize: "0.85rem" }}>{"← Back to AshantiHub"}</a>
+        <a href="/" className="ah-tap" onClick={go("/")} style={{ ...link, display: "inline-flex", alignItems: "center", fontSize: "0.85rem" }}>{"← Back to AshantiHub"}</a>
       </p>
       <h1 style={{ margin: "8px 0 4px", fontFamily: HEADING_FONT, fontWeight: 600, fontSize: "clamp(1.9rem, 5vw, 2.5rem)", lineHeight: 1.1, letterSpacing: "-0.02em" }}>{title}</h1>
 

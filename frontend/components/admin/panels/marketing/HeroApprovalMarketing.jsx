@@ -53,7 +53,7 @@ export default function HeroApprovalMarketing({ auth }) {
   return (
     <div style={page}>
       <PageHead title="Hero approval">
-        {canCreate && <button type="button" onClick={() => setCreating((v) => !v)} aria-expanded={creating} style={button(D.gold, D.text)}>{creating ? "Close" : "New slide"}</button>}
+        {canCreate && <button type="button" onClick={() => setCreating((v) => !v)} aria-expanded={creating} style={button(D.gold, D.onGold)}>{creating ? "Close" : "New slide"}</button>}
         <QueueSwitch value={tab} onChange={setTab} options={[["pending", `Waiting ${count(pending)}`.trim()], ["approved", "Approved"], ["rejected", "Rejected"]]} />
       </PageHead>
       <div style={dim}>Businesses send a slide for the home page slider: a picture, a video or a YouTube link, with the dates they want. A slide goes live on its start date once approved and runs at most 30 days. Oldest first.</div>

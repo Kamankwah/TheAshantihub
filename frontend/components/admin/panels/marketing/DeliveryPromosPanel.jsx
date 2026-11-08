@@ -74,7 +74,7 @@ function PlatformForm({ onDone }) {
       <div style={dim}>Covers every item of this business.</div>
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>{actionError}</div>}
       {notice && <div role="status" style={chip(D.green)}>{notice}</div>}
-      <div><button type="submit" disabled={busy || !ready} style={button(D.gold, D.text, busy || !ready)}>Send for approval</button></div>
+      <div><button type="submit" disabled={busy || !ready} style={button(D.gold, D.onGold, busy || !ready)}>Send for approval</button></div>
     </form>
   );
 }
@@ -130,7 +130,7 @@ export default function DeliveryPromosPanel({ auth }) {
             <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
               {p.status === "pending" && !p.awaiting_approval && (
                 <>
-                  <button type="button" disabled={busyId === p.id} onClick={() => act(p.id, "approve")} style={button(D.gold, D.text, busyId === p.id)}>Approve</button>
+                  <button type="button" disabled={busyId === p.id} onClick={() => act(p.id, "approve")} style={button(D.gold, D.onGold, busyId === p.id)}>Approve</button>
                   <button type="button" disabled={busyId === p.id} onClick={() => { setRejecting(rejecting === p.id ? null : p.id); setReason(""); }} style={button(D.panelBg, D.text)}>Not approve</button>
                 </>
               )}

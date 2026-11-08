@@ -91,7 +91,7 @@ export default function SupportTagsPanel() {
             <label style={labelStyle}>Name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="pickup-delay" style={field} /></label>
             <label style={labelStyle}>Use it for<input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Pickup order not ready at the promised time" style={field} /></label>
             <div style={dim}>Lower case, words joined with a dash. Short and specific beats clever.</div>
-            <button type="submit" disabled={!name.trim()} style={button(D.gold, D.text, !name.trim())}>Add tag</button>
+            <button type="submit" disabled={!name.trim()} style={button(D.gold, D.onGold, !name.trim())}>Add tag</button>
           </form>
           <section aria-labelledby="tag-merge" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
             <h3 id="tag-merge" style={{ margin: 0, color: D.text, fontSize: "1rem", fontWeight: 800 }}>Merge</h3>

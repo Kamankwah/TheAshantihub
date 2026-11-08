@@ -52,7 +52,7 @@ export default function CampaignCalendarPanel({ onNavigate }) {
           <b style={{ minWidth: 130, textAlign: "center" }}>{month.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</b>
           <button type="button" aria-label="Next month" onClick={() => move(1)} style={button(D.panelBg, D.text)}>›</button>
         </div>
-        <button type="button" onClick={() => onNavigate?.("mk-new-campaign")} style={button(D.gold, D.text)}>New campaign</button>
+        <button type="button" onClick={() => onNavigate?.("mk-new-campaign")} style={button(D.gold, D.onGold)}>New campaign</button>
       </PageHead>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", fontSize: "0.8rem" }}>
         <b>Show</b>

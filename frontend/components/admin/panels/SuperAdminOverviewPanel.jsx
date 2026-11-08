@@ -95,7 +95,7 @@ export default function SuperAdminOverviewPanel({ auth, onNavigate, onOpenApprov
                   </div>
                   <div style={dim}>{`Made by ${item.maker} (${roleName(item.maker_role)}) · waiting ${age(item.created_at)}${item.amount != null ? ` · ${money(item.amount)}` : ""}`}</div>
                 </div>
-                <button type="button" aria-label={`Review: ${item.title}`} onClick={() => onOpenApproval?.(item.id)} style={button(D.gold, D.text)}>Review</button>
+                <button type="button" aria-label={`Review: ${item.title}`} onClick={() => onOpenApproval?.(item.id)} style={button(D.gold, D.onGold)}>Review</button>
               </div>
             ))}
           </section>

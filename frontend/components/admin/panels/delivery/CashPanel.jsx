@@ -69,7 +69,7 @@ export function CashPanel() {
                   {labelled("Rider", <select value={rider} onChange={(e) => setRider(e.target.value)} style={field}><option value="">Choose a rider</option>{holders.map((r) => <option key={r.id} value={r.id}>{r.full_name} · holds {money(r.holding)}</option>)}</select>)}
                   {labelled("Amount you counted (GH₵)", <input aria-label="Amount you counted (GH₵)" inputMode="decimal" value={counted} onChange={(e) => setCounted(e.target.value)} style={{ ...field, maxWidth: 140 }} />)}
                   {labelled("Note (needed for a shortfall)", <input value={note} onChange={(e) => setNote(e.target.value)} style={field} />)}
-                  <button type="button" disabled={!rider || !counted} onClick={confirm} style={button(D.gold, D.text, !rider || !counted)}>Confirm</button>
+                  <button type="button" disabled={!rider || !counted} onClick={confirm} style={button(D.gold, D.onGold, !rider || !counted)}>Confirm</button>
                 </div>
               )}
               <span style={dim}>You will be asked for your password. A shortfall tells the rider&apos;s manager and every Super Admin. This is a count of cash, not a ledger; matching hand-overs to bank deposits is not connected.</span>

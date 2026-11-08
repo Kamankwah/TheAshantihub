@@ -93,7 +93,7 @@ function Reassign({ chart, onDone }) {
         <div style={note}>{`From today ${target.name} reviews ${chosen.name}'s day reports and is first to decide their requests. Requests already waiting stay with ${current ? current.name : "whoever has them"}. ${chosen.name}${current ? `, ${current.name}` : ""} and ${target.name} are told; it asks for your password and is recorded in the audit log.`}</div>
       )}
       {error && <div role="alert" style={errorStyle}>{error}</div>}
-      <div><button type="submit" disabled={!ready} style={button(D.gold, D.text, !ready)}>{busy ? "Saving…" : "Reassign"}</button></div>
+      <div><button type="submit" disabled={!ready} style={button(D.gold, D.onGold, !ready)}>{busy ? "Saving…" : "Reassign"}</button></div>
     </form>
   );
 }

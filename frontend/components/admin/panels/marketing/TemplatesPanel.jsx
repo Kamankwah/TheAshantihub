@@ -40,7 +40,7 @@ export default function TemplatesPanel({ onNavigate }) {
     <div style={page}>
       <PageHead title="Templates">
         <button type="button" onClick={() => setForm({ ...blank })} style={button(D.panelBg, D.text)}>New SMS template</button>
-        <button type="button" onClick={() => setForm({ ...blank, channel: "whatsapp" })} style={button(D.gold, D.text)}>New WhatsApp template</button>
+        <button type="button" onClick={() => setForm({ ...blank, channel: "whatsapp" })} style={button(D.gold, D.onGold)}>New WhatsApp template</button>
       </PageHead>
       {error && <div role="alert" style={errorStyle}>{error}</div>}
       {form && (
@@ -57,7 +57,7 @@ export default function TemplatesPanel({ onNavigate }) {
             </>
           )}
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" disabled={busy || !form.name.trim() || !form.body.trim()} onClick={saveForm} style={button(D.gold, D.text, busy)}>Save template</button>
+            <button type="button" disabled={busy || !form.name.trim() || !form.body.trim()} onClick={saveForm} style={button(D.gold, D.onGold, busy)}>Save template</button>
             <button type="button" onClick={() => setForm(null)} style={button(D.panelBg, D.text)}>Cancel</button>
           </div>
         </Section>
@@ -96,7 +96,7 @@ export default function TemplatesPanel({ onNavigate }) {
               <select value={meta.status} onChange={(e) => setMeta({ ...meta, status: e.target.value })} style={inputStyle}>{Object.entries(META).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</select>
             </label>
             <label style={labelStyle}>Note <span style={dim}>Meta's reason if rejected</span><input type="text" value={meta.note} onChange={(e) => setMeta({ ...meta, note: e.target.value })} style={inputStyle} /></label>
-            <div style={{ display: "flex", gap: 8 }}><button type="button" disabled={busy} onClick={saveMeta} style={button(D.gold, D.text, busy)}>Record</button><button type="button" onClick={() => setMeta(null)} style={button(D.panelBg, D.text)}>Cancel</button></div>
+            <div style={{ display: "flex", gap: 8 }}><button type="button" disabled={busy} onClick={saveMeta} style={button(D.gold, D.onGold, busy)}>Record</button><button type="button" onClick={() => setMeta(null)} style={button(D.panelBg, D.text)}>Cancel</button></div>
           </div>
         )}
       </Section>

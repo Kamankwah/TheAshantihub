@@ -37,7 +37,7 @@ import { useMyTickets } from "./hooks/useMyTickets.js";
 import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
-import { C, FONTS, optionStyle } from "./theme.js";
+import { C, FONTS, optionStyle, readableOn } from "./theme.js";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 import VerifiedMark from "./components/VerifiedMark.jsx";
 import Flag from "./components/Flag.jsx";
@@ -306,7 +306,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose,
                   <input value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g,"").slice(0,10))}
                     placeholder="0244 000 000" maxLength={10}
                     style={{ flex:1, padding:"11px 12px", border:"none", fontSize:"0.88rem", outline:"none", fontFamily:"inherit", letterSpacing:1 }}/>
-                  {phone.length>=10 && <div style={{ padding:"11px 12px", color:"#22c55e", fontSize:"1rem" }}>✓</div>}
+                  {phone.length>=10 && <div style={{ padding:"11px 12px", color:C.trust, fontSize:"1rem" }}>✓</div>}
                 </div>
               </div>
 
@@ -374,13 +374,13 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose,
               ) : (
                 <>
                   <div style={{ fontSize:"3.5rem", marginBottom:12 }}>✅</div>
-                  <div style={{ fontWeight:900, color:"#22c55e", fontSize:"1.1rem", marginBottom:6 }}>Payment Successful!</div>
+                  <div style={{ fontWeight:900, color:C.trust, fontSize:"1.1rem", marginBottom:6 }}>Payment Successful!</div>
                   <div style={{ color:C.inkDim, fontSize:"0.78rem", marginBottom:16, lineHeight:1.6 }}>
                     Your payment of <strong>GHS {totalText}</strong> has been received.<br/>
                     A receipt has been sent to your WhatsApp.
                   </div>
                   <div style={{ background:C.okBg, border:"1px solid #22c55e33", borderRadius:14, padding:"14px", marginBottom:16, textAlign:"left" }}>
-                    <div style={{ fontWeight:800, color:"#22c55e", marginBottom:8, fontSize:"0.82rem" }}>📋 Payment Receipt</div>
+                    <div style={{ fontWeight:800, color:C.trust, marginBottom:8, fontSize:"0.82rem" }}>📋 Payment Receipt</div>
                     {[
                       ["Transaction Ref", txnRef],
                       ["Network", selectedNetwork?.name],
@@ -437,9 +437,9 @@ function Stars({rating,size="0.85rem"}) {
 
 function WABtn({phone,name,style={}}) {
   const msg = encodeURIComponent(`Hello! I found ${name} on AshantiHub and I'd like to enquire.`);
-  return <a href={`https://wa.me/${phone}?text=${msg}`} target="_blank" rel="noopener noreferrer"
-    style={{display:"inline-flex",alignItems:"center",gap:5,background:C.whatsapp,color:"white",borderRadius:20,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,textDecoration:"none",...style}}>
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+  return <a href={`https://wa.me/${phone}?text=${msg}`} target="_blank" rel="noopener noreferrer" className="ah-tap"
+    style={{display:"inline-flex",alignItems:"center",gap:5,background:C.whatsapp,color:"#0B2E13",borderRadius:20,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,textDecoration:"none",...style}}>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="#0B2E13"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
     WhatsApp
   </a>;
 }
@@ -628,7 +628,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
               <div style={{color:C.gold,fontWeight:900,fontSize:"0.9rem"}}>💬 Messages</div>
               <div style={{display:"flex",gap:6,alignItems:"center"}}>
                 {totalUnread>0&&<span style={{background:C.kente1,color:"white",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.6rem",fontWeight:900}}>{totalUnread}</span>}
-                <button onClick={onClose} style={{background:"none",border:"none",color:"white",fontSize:"1.1rem",cursor:"pointer",opacity:0.7}}>✕</button>
+                <button onClick={onClose} aria-label="Close messages" style={{background:"none",border:"none",color:"white",fontSize:"1.1rem",cursor:"pointer",opacity:0.7,minWidth:44,minHeight:44}}>✕</button>
               </div>
             </div>
             <input value={searchConv} onChange={e=>setSearchConv(e.target.value)} placeholder="Search conversations..."
@@ -641,7 +641,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
               conversations yet the compose state is already showing, so
               without the focus jump this click looked like it did nothing. */}
           <button onClick={()=>{setActiveConvId(null);setNewMessage("");setPhonePane("chat");setTimeout(()=>inputRef.current?.focus(),0);}}
-            style={{margin:"10px 12px 4px",background:`${C.gold}15`,color:C.deepGold,border:`1.5px dashed ${C.gold}`,borderRadius:12,padding:"9px",fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            style={{margin:"10px 12px 4px",background:`${C.gold}15`,color:C.goldInk,border:`1.5px dashed ${C.gold}`,borderRadius:12,padding:"9px",fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ✉️ Start New Conversation
           </button>
 
@@ -671,7 +671,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                       <span style={{fontWeight:800,fontSize:"0.78rem",color:C.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>AshantiHub Support</span>
                       <span style={{fontSize:"0.6rem",color:C.inkFaint,flexShrink:0,marginLeft:4}}>{formatConvTime(lastMsg?.created_at||conv.updated_at)}</span>
                     </div>
-                    {conv.subject&&<div style={{fontSize:"0.64rem",color:C.deepGold,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{subjectLine(conv.subject)}</div>}
+                    {conv.subject&&<div style={{fontSize:"0.64rem",color:C.goldInk,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{subjectLine(conv.subject)}</div>}
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <span style={{fontSize:"0.68rem",color:C.inkDim,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{lastMsg?.body||"No messages yet"}</span>
                       {attention&&<span style={{width:10,height:10,borderRadius:"50%",background:C.kente2,flexShrink:0,marginLeft:4}}/>}
@@ -690,7 +690,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
             </div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontWeight:700,fontSize:"0.72rem",color:C.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.fullName||"Guest"}</div>
-              <div style={{fontSize:"0.6rem",color:"#22c55e",fontWeight:600}}>● Online</div>
+              <div style={{fontSize:"0.6rem",color:C.trust,fontWeight:600}}>● Online</div>
             </div>
           </div>
         </div>
@@ -719,7 +719,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                 </div>
                 <div style={{flex:1}}>
                   <div style={{fontWeight:900,fontSize:"0.88rem",color:C.ink}}>AshantiHub Support</div>
-                  <div style={{fontSize:"0.68rem",color:C.deepGold,fontWeight:700,marginBottom:1}}>{activeConv?.subject ? subjectLine(activeConv.subject) : "New conversation"}</div>
+                  <div style={{fontSize:"0.68rem",color:C.goldInk,fontWeight:700,marginBottom:1}}>{activeConv?.subject ? subjectLine(activeConv.subject) : "New conversation"}</div>
                   {/* "Starts once staff replies" status (messaging fixes work) —
                       an open conversation with zero staff messages yet is
                       waiting, not "online"; a brand-new (no activeConv at all)
@@ -728,11 +728,11 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                   {activeConv && !activeConv.messages.some(m=>m.sender_type==="staff") ? (
                     <div style={{fontSize:"0.65rem",color:"#f59e0b",fontWeight:600}}>🕐 Waiting for a staff reply...</div>
                   ) : (
-                    <div style={{fontSize:"0.65rem",color:"#22c55e",fontWeight:600}}>● Support team online now</div>
+                    <div style={{fontSize:"0.65rem",color:C.trust,fontWeight:600}}>● Support team online now</div>
                   )}
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={onClose} style={{background:C.surface2,border:"none",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:C.inkDim,fontSize:"0.9rem"}}>✕</button>
+                  <button onClick={onClose} className="ah-tap" aria-label="Close messages" style={{background:C.surface2,border:"none",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:C.inkDim,fontSize:"0.9rem"}}>✕</button>
                 </div>
               </div>
 
@@ -805,7 +805,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                 <div style={{padding:"8px 14px",borderTop:`1px solid ${C.line}`,display:"flex",gap:6,flexWrap:"wrap",background:C.surface}}>
                   {QUICK_REPLIES.map(r=>(
                     <button key={r} onClick={()=>{setNewMessage(r);setShowQuickReplies(false);inputRef.current?.focus();}}
-                      style={{background:`${C.gold}15`,color:C.deepGold,border:`1px solid ${C.gold}33`,borderRadius:20,padding:"4px 10px",fontSize:"0.68rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                      style={{background:`${C.gold}15`,color:C.goldInk,border:`1px solid ${C.gold}33`,borderRadius:20,padding:"4px 10px",fontSize:"0.68rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                       {r}
                     </button>
                   ))}
@@ -841,10 +841,11 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                       onChange={e=>setNewMessage(e.target.value)}
                       onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!sending)sendMessage();}}}
                       placeholder="Type a message..."
+                      aria-label="Message"
                       disabled={sending}
-                      style={{flex:1,minWidth:0,border:"none",background:"transparent",outline:"none",fontSize:"0.82rem",fontFamily:"inherit",color:C.ink}}/>
+                      style={{flex:1,minWidth:0,minHeight:32,border:"none",background:"transparent",outline:"none",fontSize:"0.82rem",fontFamily:"inherit",color:C.ink}}/>
                     {newMessage&&(
-                      <button onClick={()=>setNewMessage("")} style={{background:"none",border:"none",color:C.inkFaint,cursor:"pointer",fontSize:"0.9rem",padding:0}}>✕</button>
+                      <button onClick={()=>setNewMessage("")} aria-label="Clear message" style={{background:"none",border:"none",color:C.inkDim,cursor:"pointer",fontSize:"0.9rem",padding:0,minWidth:44,minHeight:44}}>✕</button>
                     )}
                   </div>
                   <button
@@ -964,7 +965,7 @@ function ReviewsModal({item,user,onClose}) {
           <div key={r.id} style={{borderBottom:`1px solid ${C.line}`,paddingBottom:14,marginBottom:14}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <div style={{width:30,height:30,borderRadius:"50%",background:`${C.gold}22`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.deepGold,fontSize:"0.8rem"}}>{r.author_name?.[0]}</div>
+                <div style={{width:30,height:30,borderRadius:"50%",background:`${C.gold}22`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.goldInk,fontSize:"0.8rem"}}>{r.author_name?.[0]}</div>
                 <div>
                   <div style={{fontWeight:700,fontSize:"0.8rem"}}>{r.author_name}</div>
                   <Stars rating={r.rating} size="0.7rem"/>
@@ -1048,9 +1049,9 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
             staff both ranks the listing first (server-side) and shows this
             ribbon so customers can see it's promoted. */}
         {item.is_promoted&&(
-          <span style={{position:"absolute",top:8,left:40,background:"linear-gradient(90deg,#f59e0b,#d97706)",color:"white",fontSize:"0.58rem",fontWeight:800,padding:"2px 8px",borderRadius:20,zIndex:2,boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>⭐ Promoted</span>
+          <span style={{position:"absolute",top:8,left:40,background:"linear-gradient(90deg,#f59e0b,#d97706)",color:"#2C1810",fontSize:"0.58rem",fontWeight:800,padding:"2px 8px",borderRadius:20,zIndex:2,boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>⭐ Promoted</span>
         )}
-        <span style={{position:"absolute",top:8,right:8,background:accentColor,color:"white",fontSize:"0.6rem",fontWeight:700,padding:"2px 7px",borderRadius:20,zIndex:2}}>{item.tag}</span>
+        <span style={{position:"absolute",top:8,right:8,background:accentColor,color:readableOn(accentColor),fontSize:"0.6rem",fontWeight:700,padding:"2px 7px",borderRadius:20,zIndex:2}}>{item.tag}</span>
         <button aria-label={isFav?"Remove from Your Lists":"Save to Your Lists"} title={favFailed?"We couldn't update Your Lists. Tap to try again.":undefined} onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:0,left:0,background:"transparent",border:"none",width:44,height:44,padding:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:2}}>
           <span aria-hidden="true" style={{background:C.surface,borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem"}}>{isFav?"❤️":"🤍"}</span>
         </button>
@@ -1319,7 +1320,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
         </form>}
 
         {lockedAccountType==="staff" && onGoToMarketplace && <div style={{textAlign:"center",marginTop:16,paddingTop:12,borderTop:`1px solid ${C.gold}33`}}>
-          <button type="button" onClick={onGoToMarketplace} style={{background:"none",border:"none",color:C.ink,opacity:0.7,fontSize:"0.74rem",fontWeight:600,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit",padding:"6px 8px"}}>Go to marketplace</button>
+          <button type="button" onClick={onGoToMarketplace} className="ah-tap" style={{background:"none",border:"none",color:C.ink,opacity:0.7,fontSize:"0.74rem",fontWeight:600,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit",padding:"6px 8px"}}>Go to marketplace</button>
         </div>}
       </div>
     </div>
@@ -1376,7 +1377,7 @@ function StaffActivatePage({auth,onSuccess}) {
   return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:16}}>
     <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"20px 24px"}}>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Activate Your Staff Account</div>
+        <h1 style={{margin:0,color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Activate Your Staff Account</h1>
       </div>
       <div style={{padding:"20px 24px"}}>
         {twoStep && <PageBoundary><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setConfirmPassword("");if(typeof message==="string"){setNotice(message);}else{setAccountActive(true);}}}/></PageBoundary>}
@@ -1436,7 +1437,7 @@ function ResetPasswordPage({auth,setPage,setAuthModal}) {
   return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:16}}>
     <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"20px 24px"}}>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Reset Your Password</div>
+        <h1 style={{margin:0,color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Reset Your Password</h1>
       </div>
       <div style={{padding:"20px 24px"}}>
         {success ? (
@@ -1682,8 +1683,8 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     <div style={{background:tint(D.pageBg, "e6"),backdropFilter:"blur(8px)",borderBottom:`1px solid ${D.divider}`,padding:"0 16px",display:"flex",alignItems:"center",gap:12,height:64,position:"sticky",top:0,zIndex:80}}>
       <button onClick={()=>navigate(ACCOUNT_ROOT)} aria-label="Your Account home" style={{display:"flex",alignItems:"center",gap:10,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>
         <Flag w={30} h={20}/>
-        <div style={{textAlign:"left"}}>
-          <div style={{color:D.gold,fontWeight:900,fontSize:"0.88rem",lineHeight:1}}>AshantiHub</div>
+        <div className="acct-logo-text" style={{textAlign:"left"}}>
+          <div style={{color:D.goldInk,fontWeight:900,fontSize:"0.88rem",lineHeight:1}}>AshantiHub</div>
           <div style={{color:D.textFaint,fontSize:"0.6rem",letterSpacing:"0.06em",textTransform:"uppercase"}}>My Account</div>
         </div>
       </button>
@@ -1691,7 +1692,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
       <div style={{flex:1}}/>
 
       <div style={{position:"relative"}}>
-        <button onClick={()=>setShowNotifs(v=>!v)} title="Notifications" style={{background:"none",border:`1px solid ${D.divider}`,borderRadius:10,width:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text}}>🔔</button>
+        <button onClick={()=>setShowNotifs(v=>!v)} title="Notifications" aria-label="Notifications" style={{background:"none",border:`1px solid ${D.divider}`,borderRadius:10,width:44,height:44,cursor:"pointer",fontSize:"0.9rem",color:D.text}}>🔔</button>
         {showNotifs && <NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       </div>
 
@@ -1718,16 +1719,16 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
       <button onClick={onExit} style={{background:"none",border:`1px solid ${D.divider}`,color:D.textDim,borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← Exit</button>
     </div>
 
-    <div style={{padding:"22px 20px 60px",flex:1,width:"100%",maxWidth:1100,margin:"0 auto",boxSizing:"border-box"}}>
+    <main id="main-content" style={{padding:"22px 20px 60px",flex:1,width:"100%",maxWidth:1100,margin:"0 auto",boxSizing:"border-box"}}>
       <PageBoundary><AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport(null,{startNew:true})} onOpenPage={onOpenPage} onStartRegistration={onStartRegistration}/></PageBoundary>
-    </div>
+    </main>
   </div>;
 }
 
 const ACCOUNT_MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 const ORDER_STATUS_META = {
-  pending: { label: "Pending", color: D.amber },
+  pending: { label: "Pending", color: D.amberInk },
   paid: { label: "Paid", color: D.green },
   cancelled: { label: "Cancelled", color: D.red },
 };
@@ -1824,7 +1825,7 @@ function OverviewPanel({ user, favourites }) {
 // request's status; an accepted request gets a "Pay to start" button that runs
 // the simulated payment then POSTs the pay endpoint (moving it to in_progress).
 const SR_STATUS_META = {
-  requested: { label: "Awaiting response", color: D.amber },
+  requested: { label: "Awaiting response", color: D.amberInk },
   accepted: { label: "Accepted — pay to start", color: D.blue },
   declined: { label: "Declined", color: D.red },
   in_progress: { label: "In progress", color: D.blue },
@@ -1875,7 +1876,7 @@ export function ServiceRequestsTab({ PaymentComponent, onContactSupport }) {
 // The customer's accommodation bookings (business item 2 / Wave H3). A future
 // booking (confirmed, not yet checked in) can be cancelled, freeing the dates.
 const BK_STATUS_META = {
-  pending: { label: "Pending payment", color: D.amber },
+  pending: { label: "Pending payment", color: D.amberInk },
   confirmed: { label: "Confirmed", color: D.blue },
   checked_in: { label: "Checked in", color: D.green },
   checked_out: { label: "Checked out", color: D.textFaint },
@@ -1936,7 +1937,7 @@ function accountTicketStatus(t) {
   if (t.refunded_at) return { label: "Refunded", color: D.red };
   if (t.delivered_at) return { label: "Delivered", color: D.green };
   if (t.escrow_status === "released") return { label: "Released", color: D.green };
-  return { label: "Held", color: D.gold };
+  return { label: "Held", color: D.goldInk };
 }
 
 function TicketsTab({ searchQuery, onContactSupport }) {
@@ -1977,7 +1978,7 @@ function TicketsTab({ searchQuery, onContactSupport }) {
           </div>
           <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontFamily:FONTS.mono,fontSize:"0.8rem",fontWeight:800,color:D.text,background:D.panelBg2,borderRadius:8,padding:"4px 10px"}}>{t.code}</span>
-            <button onClick={()=>copyCode(t)} style={{background:"none",border:`1px solid ${D.cardBorderStrong}`,color:D.gold,borderRadius:20,padding:"3px 11px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            <button onClick={()=>copyCode(t)} style={{background:"none",border:`1px solid ${D.cardBorderStrong}`,color:D.goldInk,borderRadius:20,padding:"3px 11px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
               {copiedId===t.id ? "Copied ✓" : "Copy"}
             </button>
           </div>
@@ -2001,9 +2002,11 @@ function NotificationToggleRow({ label, checked, onToggle, disabled }) {
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      style={{width:40,height:22,borderRadius:20,border:"none",cursor:disabled?"wait":"pointer",background:checked?D.gold:D.divider,position:"relative",flexShrink:0,padding:0}}
+      style={{width:48,height:44,border:"none",cursor:disabled?"wait":"pointer",background:"none",display:"flex",alignItems:"center",justifyContent:"flex-end",flexShrink:0,padding:0}}
     >
-      <span style={{position:"absolute",top:2,left:checked?20:2,width:18,height:18,borderRadius:"50%",background:C.surface,transition:"left .15s ease"}}/>
+      <span aria-hidden="true" style={{display:"block",width:40,height:22,borderRadius:20,background:checked?D.gold:D.divider,position:"relative"}}>
+        <span style={{position:"absolute",top:2,left:checked?20:2,width:18,height:18,borderRadius:"50%",background:C.surface,transition:"left .15s ease"}}/>
+      </span>
     </button>
   </div>;
 }
@@ -2057,7 +2060,7 @@ function SettingsTab({ user, auth, lang, setLang, onSignOut }) {
       <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:10}}>Language</div>
       <div style={{display:"flex",gap:8}}>
         {[{id:"en",label:"English"},{id:"tw",label:"Twi"}].map(l=>(
-          <button key={l.id} onClick={()=>setLang?.(l.id)} style={{background:lang===l.id?D.goldSoft:"none",border:`1px solid ${lang===l.id?D.cardBorderStrong:D.divider}`,color:lang===l.id?D.gold:D.textDim,borderRadius:20,padding:"6px 16px",fontSize:"0.76rem",fontWeight:lang===l.id?800:600,cursor:"pointer",fontFamily:"inherit"}}>{l.label}</button>
+          <button key={l.id} onClick={()=>setLang?.(l.id)} style={{background:lang===l.id?D.goldSoft:"none",border:`1px solid ${lang===l.id?D.cardBorderStrong:D.divider}`,color:lang===l.id?D.goldInk:D.textDim,borderRadius:20,padding:"6px 16px",fontSize:"0.76rem",fontWeight:lang===l.id?800:600,cursor:"pointer",fontFamily:"inherit"}}>{l.label}</button>
         ))}
       </div>
     </div>
@@ -2149,7 +2152,7 @@ function NotFoundPage({ onHome, user }) {
         <div style={{fontSize:"4rem",marginBottom:12}}>👑</div>
         <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,borderRadius:20,padding:"28px 24px",marginBottom:20,color:"white"}}>
           <div style={{fontSize:"3rem",fontWeight:900,color:C.gold,marginBottom:4}}>404</div>
-          <div style={{fontWeight:900,fontSize:"1.1rem",marginBottom:8}}>Page Not Found</div>
+          <h1 style={{margin:"0 0 8px",fontWeight:900,fontSize:"1.1rem"}}>Page Not Found</h1>
           <div style={{fontSize:"0.8rem",opacity:0.85,lineHeight:1.6}}>
             The page you're looking for doesn't exist or has been moved. Let's get you back to the marketplace.
           </div>
@@ -2163,8 +2166,8 @@ function NotFoundPage({ onHome, user }) {
           </button>
           {/* WhatsApp support is an account-holder channel — guests use the
               in-app chat (open to everyone) instead. */}
-          {user && <a href="https://wa.me/233502481685?text=Hello AshantiHub, I need help." target="_blank" rel="noopener noreferrer"
-            style={{display:"block",background:C.whatsapp,color:"white",border:"none",borderRadius:30,padding:"11px 28px",fontWeight:700,fontSize:"0.82rem",textDecoration:"none"}}>
+          {user && <a href="https://wa.me/233502481685?text=Hello AshantiHub, I need help." target="_blank" rel="noopener noreferrer" className="ah-tap"
+            style={{display:"block",background:C.whatsapp,color:"#0B2E13",border:"none",borderRadius:30,padding:"11px 28px",fontWeight:700,fontSize:"0.82rem",textDecoration:"none"}}>
             📱 Contact Support on WhatsApp
           </a>}
         </div>
@@ -2879,9 +2882,9 @@ function AshantiHubApp() {
   }
   if(page==="register" && user?.accountType==="customer"){
     return (
-      <div style={{minHeight:"100vh",background:C.void,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:24,textAlign:"center"}}>
-        <div style={{fontSize:"2.2rem"}}>🏪</div>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"1.35rem"}}>Register your business</div>
+      <MainRegion own={false}><div style={{minHeight:"100vh",background:C.void,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:24,textAlign:"center"}}>
+        <div aria-hidden="true" style={{fontSize:"2.2rem"}}>🏪</div>
+        <h1 style={{margin:0,color:C.gold,fontWeight:900,fontSize:"1.35rem"}}>Register your business</h1>
         <div style={{color:C.lightGold,fontSize:"0.9rem",maxWidth:440,lineHeight:1.6}}>
           You're signed in as a customer. A business on AshantiHub uses its own <strong>Business Owner</strong> account — separate from your shopping account. Sign out to register one.
         </div>
@@ -2893,13 +2896,13 @@ function AshantiHubApp() {
             Back
           </button>
         </div>
-      </div>
+      </div></MainRegion>
     );
   }
 
   const showRegistrationFlow = (page==="register" && !user) ||
     (user?.accountType==="business_owner" && user.registrationStep && user.registrationStep!=="complete");
-  if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
+  if(showRegistrationFlow) return <MainRegion own={false}><BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/></MainRegion>;
 
   // The user check keeps the dashboard from rendering for the one commit
   // between logout() and the URL → isAdmin effect flipping isAdmin off — with
@@ -2928,21 +2931,21 @@ function AshantiHubApp() {
     user={user} auth={auth} PaymentComponent={MoMoPayment} theme={theme} toggleTheme={toggleTheme}/>;
   // Staff onboarding + account-recovery work — two more standalone early
   // returns, same convention as showAccount/showBizDash above.
-  if(page==="staff-activate") return <StaffActivatePage auth={auth} onSuccess={handleAuthSuccess}/>;
+  if(page==="staff-activate") return <MainRegion own={false}><StaffActivatePage auth={auth} onSuccess={handleAuthSuccess}/></MainRegion>;
   if(page==="staff-install") return <StaffInstallPage/>;
-  if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
-  if(page==="payment-return"||page==="checkout-verify") return <PaymentVerifyPage/>;
+  if(page==="reset-password") return <MainRegion own={false}><ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/></MainRegion>;
+  if(page==="payment-return"||page==="checkout-verify") return <MainRegion own={false}><PaymentVerifyPage/></MainRegion>;
   if(page==="checkout") return <CheckoutPage user={user} currency={currency} PaymentComponent={MoMoPayment} authLoading={auth.isLoading} onNavigate={navigate} onSignIn={()=>{setAuthReturn("/checkout");setAuthModal("login");setPage("home");}}/>;
-  if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
-  if(page==="business-confirm") return <OwnerConfirmPage/>;
-  if(page==="share-location") return <ShareLocationPage/>;
-  if(page==="confirm-email") return <ConfirmEmailPage/>;
+  if(page==="business-claim") return <MainRegion own={false}><BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/></MainRegion>;
+  if(page==="business-confirm") return <MainRegion own={false}><OwnerConfirmPage/></MainRegion>;
+  if(page==="share-location") return <MainRegion own={false}><ShareLocationPage/></MainRegion>;
+  if(page==="confirm-email") return <MainRegion own={false}><ConfirmEmailPage/></MainRegion>;
   if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
   if(unsubscribeMatch) return <UnsubscribePage token={unsubscribeMatch.params.token} onHome={()=>navigate("/")}/>;
   if(notifyStopMatch) return <NotifyStopPage token={notifyStopMatch.params.token} onHome={()=>navigate("/")}/>;
   if(isLoading) return <LoadingScreen/>;
   if(sellerMatch) return (
-    <SellerPage
+    <MainRegion own={false}><SellerPage
       id={sellerMatch.params.id}
       onBack={()=>navigate("/business")}
       user={user}
@@ -2953,9 +2956,9 @@ function AshantiHubApp() {
       onOpenListing={(listingId)=>navigate(`/business/${listingId}`)}
       onOpenEvent={(eventId)=>navigate(`/events/${eventId}`)}
       CardComponent={Card}
-    />
+    /></MainRegion>
   );
-  if(show404) return <NotFoundPage onHome={()=>setPage("home")} user={user}/>;
+  if(show404) return <MainRegion own={false}><NotFoundPage onHome={()=>setPage("home")} user={user}/></MainRegion>;
 
   const activeCatObj=categories?.find(c=>c.slug===filters.category);
 
@@ -3166,7 +3169,7 @@ function AshantiHubApp() {
                     gets a sign-up prompt button instead of a dead WhatsApp
                     button (in-app chat stays open to everyone). */}
                 {user ? (
-                <button onClick={staffGated(()=>handleConciergeWA("233244999000","AshantiHub Grocery Concierge"))} style={{marginTop:16,background:C.whatsapp,color:"white",border:"none",borderRadius:30,padding:"11px 24px",fontWeight:900,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+                <button onClick={staffGated(()=>handleConciergeWA("233244999000","AshantiHub Grocery Concierge"))} style={{marginTop:16,background:C.whatsapp,color:"#0B2E13",border:"none",borderRadius:30,padding:"11px 24px",fontWeight:900,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
                   📱 Order via WhatsApp
                 </button>
                 ) : (
@@ -3436,7 +3439,7 @@ function AshantiHubApp() {
       {/* Floating WhatsApp — an account-holder channel only; guests use the
           in-app chat (ChatLauncher above, open to everyone) instead. */}
       {user && <div onClick={()=>window.open("https://wa.me/233502481685","_blank")}
-        style={{position:"fixed",bottom:cookieDismissed?24:100,right:20,background:C.whatsapp,color:"white",borderRadius:"50%",width:50,height:50,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 20px rgba(37,211,102,0.5)",zIndex:998,cursor:"pointer"}}>
+        style={{position:"fixed",bottom:cookieDismissed?24:100,right:20,background:C.whatsapp,color:"#0B2E13",borderRadius:"50%",width:50,height:50,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 20px rgba(37,211,102,0.5)",zIndex:998,cursor:"pointer"}}>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
       </div>}
     </div>

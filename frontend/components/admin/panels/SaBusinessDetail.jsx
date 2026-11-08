@@ -61,7 +61,7 @@ function FlagFraudForm({ business, onDone, onCancel }) {
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
-        <button type="submit" disabled={!ready} style={button(D.gold, D.text, !ready)}>Raise case</button>
+        <button type="submit" disabled={!ready} style={button(D.gold, D.onGold, !ready)}>Raise case</button>
       </div>
     </form>
   );

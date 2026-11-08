@@ -91,7 +91,7 @@ function ActionsCard({ canCheckIn, canRegister, onCheckIn, onRegister }) {
   return (
     <section aria-label="Quick actions" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "grid", gridTemplateColumns: canCheckIn && canRegister ? "1fr 1fr" : "1fr", gap: 8 }}>
-        {canCheckIn && <button type="button" onClick={onCheckIn} style={{ ...button(D.gold, D.text), minHeight: 52, fontSize: "0.95rem" }}>Check in</button>}
+        {canCheckIn && <button type="button" onClick={onCheckIn} style={{ ...button(D.gold, D.onGold), minHeight: 52, fontSize: "0.95rem" }}>Check in</button>}
         {canRegister && <button type="button" onClick={onRegister} style={{ ...button(D.panelBg, D.text), minHeight: 52, fontSize: "0.95rem" }}>Register a business</button>}
       </div>
       {canCheckIn && <div style={{ ...dim, textAlign: "center" }}>Your location is recorded only when you check in or out.</div>}

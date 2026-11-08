@@ -39,7 +39,7 @@ function Row({ d, onDone, setError }) {
           {d.status === "uploaded" && !rejecting && (
             <>
               <label style={{ fontSize: "0.7rem", fontWeight: 700, color: D.text }}>Expires<input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} style={{ ...field, marginLeft: 4 }} /></label>
-              <button type="button" onClick={() => run(() => apiPost(`/api/delivery/documents/${d.id}/review/`, { decision: "approve", expires_on: expires || undefined }), "Could not approve this paper.")} style={button(D.gold, D.text)}>Approve</button>
+              <button type="button" onClick={() => run(() => apiPost(`/api/delivery/documents/${d.id}/review/`, { decision: "approve", expires_on: expires || undefined }), "Could not approve this paper.")} style={button(D.gold, D.onGold)}>Approve</button>
               <button type="button" onClick={() => setRejecting(true)} style={button(D.panelBg, D.text)}>Send back</button>
             </>
           )}

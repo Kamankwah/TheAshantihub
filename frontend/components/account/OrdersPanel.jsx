@@ -15,7 +15,7 @@ import { ReviewWriteForm } from "../ReviewComponents.jsx";
 import StaffGateNotice from "../StaffGateNotice.jsx";
 
 const ORDER_STATUS_META = {
-  pending: { label: "Pending", color: D.amber },
+  pending: { label: "Pending", color: D.amberInk },
   paid: { label: "Paid", color: D.green },
   cancelled: { label: "Cancelled", color: D.red },
 };

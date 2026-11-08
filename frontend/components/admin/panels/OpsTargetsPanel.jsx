@@ -148,7 +148,7 @@ export default function OpsTargetsPanel() {
             Changes apply from
             <input type="date" value={from} min={data.today} onChange={(e) => setFrom(e.target.value)} style={field} />
           </label>
-          <button type="button" onClick={save} disabled={saving || dirty.length === 0 || invalid || !from} style={button(D.gold, D.text, saving || dirty.length === 0 || invalid || !from)}>
+          <button type="button" onClick={save} disabled={saving || dirty.length === 0 || invalid || !from} style={button(D.gold, D.onGold, saving || dirty.length === 0 || invalid || !from)}>
             {saving ? "Saving…" : "Save targets"}
           </button>
         </div>

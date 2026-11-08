@@ -36,7 +36,7 @@ function reasonOf(error) {
 
 const pageStyle = { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.canvas, padding: 16, boxSizing: "border-box" };
 const sheetStyle = { background: C.surface, color: C.ink, borderRadius: 22, width: "100%", maxWidth: 460, boxShadow: "0 20px 60px rgba(0,0,0,0.25)", overflow: "hidden" };
-const bandStyle = { background: `linear-gradient(135deg, ${C.kente1}, ${C.kente3})`, padding: "20px 24px", color: C.gold, fontWeight: 900, fontSize: "1.1rem" };
+const bandStyle = { background: `linear-gradient(135deg, ${C.kente1}, ${C.kente3})`, padding: "20px 24px", color: C.gold, fontWeight: 900, fontSize: "1.1rem", margin: 0 };
 const bodyStyle = { padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14, color: C.ink };
 const primaryStyle = { minHeight: 48, width: "100%", background: C.gold, color: C.darkBrown, border: "none", borderRadius: 24, padding: "12px 18px", fontWeight: 900, fontSize: "0.9rem", cursor: "pointer", fontFamily: "inherit", textAlign: "center", textDecoration: "none", boxSizing: "border-box", display: "block" };
 const noticeStyle = (color) => ({ background: tint(color, "12"), border: `1px solid ${color}`, color: C.ink, borderRadius: 10, padding: "10px 12px", fontSize: "0.85rem", fontWeight: 700, lineHeight: 1.5 });
@@ -108,7 +108,7 @@ export default function ConfirmEmailPage() {
   return (
     <div style={pageStyle}>
       <div style={sheetStyle}>
-        <div style={bandStyle}>Confirm your email</div>
+        <h1 style={bandStyle}>Confirm your email</h1>
         <div style={bodyStyle}>{content}</div>
       </div>
     </div>

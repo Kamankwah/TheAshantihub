@@ -98,7 +98,7 @@ export default function ConfigScreen({ query, endpoint, title, intro, fields, st
                   ))}
                 </div>
                 {labelled("Note for the approver (optional)", <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} style={field} />)}
-                <div><button type="button" disabled={busy || Boolean(data.pending)} onClick={send} style={button(D.gold, D.text, busy || Boolean(data.pending))}>{isSuperAdmin ? "Apply now" : "Send for approval"}</button>{data.pending && <span style={{ ...dim, marginLeft: 8 }}>One change at a time: withdraw the waiting one first.</span>}</div>
+                <div><button type="button" disabled={busy || Boolean(data.pending)} onClick={send} style={button(D.gold, D.onGold, busy || Boolean(data.pending))}>{isSuperAdmin ? "Apply now" : "Send for approval"}</button>{data.pending && <span style={{ ...dim, marginLeft: 8 }}>One change at a time: withdraw the waiting one first.</span>}</div>
               </section>
             )}
             <section aria-label="History" style={section}>

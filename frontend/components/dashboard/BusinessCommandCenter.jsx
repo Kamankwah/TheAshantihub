@@ -168,7 +168,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
           <div style={{ padding: "20px 18px 16px", display: "flex", alignItems: "center", gap: 10 }}>
             <Flag w={40} h={27} />
             <div style={{ minWidth: 0 }}>
-              <div style={{ color: D.goldInk, fontWeight: 900, fontSize: "0.92rem", lineHeight: 1 }}>AshantiHub</div>
+              <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.92rem", lineHeight: 1 }}>AshantiHub</div>
               <div style={{ color: "rgba(253,246,227,0.55)", fontSize: "0.58rem", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 4 }}>Business Command Center</div>
             </div>
             {mobileNavOpen && <button onClick={() => setMobileNavOpen(false)} aria-label="Close menu" style={{ marginLeft: "auto", background: "rgba(255,255,255,0.08)", color: D.white, border: "none", borderRadius: "50%", width: 28, height: 28, cursor: "pointer", fontSize: "0.85rem" }}>✕</button>}

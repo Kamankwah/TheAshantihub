@@ -39,7 +39,7 @@ function Row({ zone, onDone, onMessage }) {
       <td style={td}>
         {mode === "rename" && (
           <span style={{ display: "inline-flex", gap: 6 }}>
-            <button type="button" disabled={busy || !name.trim() || name.trim() === zone.name} style={button(D.gold, D.text, busy || !name.trim() || name.trim() === zone.name)}
+            <button type="button" disabled={busy || !name.trim() || name.trim() === zone.name} style={button(D.gold, D.onGold, busy || !name.trim() || name.trim() === zone.name)}
               onClick={() => act(() => apiPatch(`/api/listings/zones/${zone.id}/`, { name: name.trim() }), `Renamed ${zone.name} to ${name.trim()}.`)}>Save name</button>
             <button type="button" style={button(D.panelBg, D.text)} onClick={() => { setMode(null); setName(zone.name); setError(null); }}>Cancel</button>
           </span>
@@ -83,7 +83,7 @@ function AddZone({ onDone, onMessage }) {
       </label>
       <div style={dim}>Up to 50 characters; each name is used once.</div>
       {error && <div role="alert" style={errorStyle}>{error}</div>}
-      <button type="submit" disabled={busy || !name.trim()} style={button(D.gold, D.text, busy || !name.trim())}>Add zone</button>
+      <button type="submit" disabled={busy || !name.trim()} style={button(D.gold, D.onGold, busy || !name.trim())}>Add zone</button>
     </form>
   );
 }

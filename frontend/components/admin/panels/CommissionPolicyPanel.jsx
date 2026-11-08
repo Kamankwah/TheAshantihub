@@ -88,7 +88,7 @@ export default function CommissionPolicyPanel({ canPropose = false, showTaxRulin
           {policies.data.pending.map((p) => (
             <div key={p.id} style={{ fontSize: "0.82rem", color: D.text, ...figures }}>
               {`${KINDS.find(([k]) => k === p.kind)?.[1] || p.kind}: GH₵ ${p.amount} from ${shortDate(p.effective_from)} · proposed by ${p.maker}`}
-              {onOpenApproval && <> <button type="button" onClick={() => onOpenApproval(p.id)} style={{ ...button(D.gold, D.text), padding: "3px 10px", fontSize: "0.7rem" }}>Review and decide</button></>}
+              {onOpenApproval && <> <button type="button" onClick={() => onOpenApproval(p.id)} style={{ ...button(D.gold, D.onGold), padding: "3px 10px", fontSize: "0.7rem" }}>Review and decide</button></>}
             </div>
           ))}
         </section>
@@ -114,7 +114,7 @@ export default function CommissionPolicyPanel({ canPropose = false, showTaxRulin
           <div style={dim}>A new amount applies from its date onward. Lines already earned keep the amount they were earned at.</div>
           {error && <div role="alert" style={errorStyle}>{error}</div>}
           {done && <div role="status" style={{ ...dim, color: D.green, fontWeight: 700 }}>{done}</div>}
-          <button type="submit" disabled={sending || !form.amount.trim()} style={{ ...button(D.gold, D.text, sending || !form.amount.trim()), alignSelf: "flex-start" }}>
+          <button type="submit" disabled={sending || !form.amount.trim()} style={{ ...button(D.gold, D.onGold, sending || !form.amount.trim()), alignSelf: "flex-start" }}>
             {sending ? "Sending…" : "Send for approval"}
           </button>
         </form>

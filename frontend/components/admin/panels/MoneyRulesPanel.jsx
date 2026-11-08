@@ -69,7 +69,7 @@ export function SettingRow({ setting, pending, onSaved, canPropose = true, super
             onChange={(e) => { setText(e.target.value); setNotice(""); }} style={{ ...field, width: 150 }}
           />
           {UNIT_WORDS[unit] && <span style={dim}>{UNIT_WORDS[unit]}</span>}
-          <button type="button" onClick={save} disabled={busy || text === stored} style={button(D.gold, D.text, busy || text === stored)}>{superAdmin ? "Save" : "Propose"}</button>
+          <button type="button" onClick={save} disabled={busy || text === stored} style={button(D.gold, D.onGold, busy || text === stored)}>{superAdmin ? "Save" : "Propose"}</button>
           {notice && <span role="status" style={{ color: D.green, fontWeight: 700, fontSize: "0.8rem" }}>{notice}</span>}
         </div>
       )}

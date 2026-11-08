@@ -312,7 +312,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         <h2 style={{ margin: 0, color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>🏷️ Listings &amp; Prices</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={() => { setShowCreate(s => !s); setCreateError(null); setCreateBarcodeError(null); }} style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "7px 16px", fontSize: "0.72rem", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>{createButtonLabel}</button>
-          {!direct && <a href="https://wa.me/233502481685?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>}
+          {!direct && <a href="https://wa.me/233502481685?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", minHeight: 44, display: "inline-flex", alignItems: "center", boxSizing: "border-box", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>}
         </div>
       </div>
 
@@ -402,14 +402,14 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         <div style={{ ...glassCard, padding: "14px 16px", marginBottom: 14, borderLeft: `4px solid ${HERO_STATUS_META[heroSubmission.status]?.color || D.textDim}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <div>
-              <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text }}>🌟 Hero Spotlight — <span style={{ color: HERO_STATUS_META[heroSubmission.status]?.color }}>{HERO_STATUS_META[heroSubmission.status]?.label || heroSubmission.status}</span></div>
+              <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text }}>🌟 Hero Spotlight — <span style={{ color: inkOf(HERO_STATUS_META[heroSubmission.status]?.color) }}>{HERO_STATUS_META[heroSubmission.status]?.label || heroSubmission.status}</span></div>
               {heroSubmission.caption && <div style={{ fontSize: "0.7rem", color: D.textDim, marginTop: 2 }}>"{heroSubmission.caption}"</div>}
               {heroSubmission.status === "approved" && heroSubmission.expires_at && <div style={{ fontSize: "0.68rem", color: D.textDim, marginTop: 2 }}>Live until {heroSubmission.expires_at.slice(0, 10)}</div>}
               {heroSubmission.status === "rejected" && heroSubmission.rejection_reason && <div style={{ fontSize: "0.68rem", color: D.red, marginTop: 2 }}>Rejected: {heroSubmission.rejection_reason}</div>}
             </div>
             {heroSubmission.status === "approved" && (
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <input type="number" min={1} value={heroExtendDays} onChange={e => setHeroExtendDays(Math.max(1, Number(e.target.value) || 1))} style={{ ...inputStyle, width: 56, padding: "6px 8px" }} />
+                <input type="number" aria-label="Days to extend the Hero Spotlight" min={1} value={heroExtendDays} onChange={e => setHeroExtendDays(Math.max(1, Number(e.target.value) || 1))} style={{ ...inputStyle, width: 56, padding: "6px 8px" }} />
                 <button onClick={() => setShowHeroExtendPay(true)} style={{ background: D.kente2, color: D.white, border: "none", borderRadius: 20, padding: "7px 14px", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer" }}>💰 Extend {heroExtendDays}d</button>
               </div>
             )}

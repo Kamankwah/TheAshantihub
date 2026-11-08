@@ -131,7 +131,7 @@ function CatalogueRow({ request, state, onDone, onRefusal }) {
             </div>
           )}
           <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-            <button type="button" disabled={busy} onClick={approve} style={small(button(D.gold, D.text, busy))}>Approve</button>
+            <button type="button" disabled={busy} onClick={approve} style={small(button(D.gold, D.onGold, busy))}>Approve</button>
             <button type="button" disabled={busy} onClick={() => { setRejecting(true); setError(null); }} style={small({ color: D.red })}>Reject</button>
           </div>
           {conflict && (

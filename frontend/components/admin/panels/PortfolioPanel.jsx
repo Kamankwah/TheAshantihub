@@ -265,7 +265,7 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button type="button" aria-label={`Open ${b.business_name}`} onClick={() => onOpen(b.id)} style={button(D.panelBg, D.text)}>Open</button>
                         {canReassign && !b.account_manager && (
-                          <button type="button" aria-label={`Assign a scout to ${b.business_name}`} onClick={() => setSelected([{ id: b.id, business_name: b.business_name }])} style={button(D.gold, D.text)}>Assign a scout</button>
+                          <button type="button" aria-label={`Assign a scout to ${b.business_name}`} onClick={() => setSelected([{ id: b.id, business_name: b.business_name }])} style={button(D.gold, D.onGold)}>Assign a scout</button>
                         )}
                       </div>
                     </td>
@@ -332,7 +332,7 @@ function AtRisk({ auth, onOpen }) {
               {flags > 0 && <li>{plural(flags, "open fraud case", "open fraud cases")}</li>}
             </ul>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" onClick={() => show(b.id, "follow-up")} style={button(D.gold, D.text)}>Create follow-up task</button>
+              <button type="button" onClick={() => show(b.id, "follow-up")} style={button(D.gold, D.onGold)}>Create follow-up task</button>
               <button type="button" onClick={() => show(b.id, "reassign")} style={button(D.panelBg, D.text)}>Reassign to another scout</button>
               <button type="button" onClick={() => onOpen(b.id)} style={button(D.panelBg, D.text)}>Open business</button>
             </div>

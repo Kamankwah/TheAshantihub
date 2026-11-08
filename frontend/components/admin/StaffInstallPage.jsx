@@ -162,7 +162,7 @@ export default function StaffInstallPage() {
 
         <footer style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <p style={noteText}>New to AshantiHub staff? Activate your account from your invite email first, then sign in to the app.</p>
-          <Link to="/staff" style={{ color: D.goldInk, fontSize: "0.85rem", fontWeight: 800, textDecoration: "none" }}>Continue in the browser instead →</Link>
+          <Link to="/staff" className="ah-tap" style={{ display: "inline-flex", alignItems: "center", color: D.goldInk, fontSize: "0.85rem", fontWeight: 800, textDecoration: "none" }}>Continue in the browser instead →</Link>
         </footer>
       </main>
     </div>

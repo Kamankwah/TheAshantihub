@@ -67,7 +67,7 @@ export default function RolesPermissionsPanel() {
       <ScreenHeader title="Roles & permissions" note={data ? `${plural(data.roles.length, "role", "roles")} · ${data.permission_count} permissions that exist today.` : "What each role can do."}>
         {changes.length > 0 && <>
           <span role="status" style={{ ...dim, alignSelf: "center" }}>{`${plural(changes.length, "unsaved change", "unsaved changes")}`}</span>
-          <button type="button" onClick={review} disabled={busy} style={button(D.gold, D.text, busy)}>Review and save</button>
+          <button type="button" onClick={review} disabled={busy} style={button(D.gold, D.onGold, busy)}>Review and save</button>
           <button type="button" onClick={discard} style={button(D.panelBg, D.text)}>Discard changes</button>
         </>}
       </ScreenHeader>
@@ -89,7 +89,7 @@ export default function RolesPermissionsPanel() {
           <div style={note}>Saving applies the changes at once. Everyone affected is reconnected with their new permissions, and the change is recorded in the audit log with before and after. It asks for your password.</div>
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button type="button" onClick={discard} style={button(D.panelBg, D.text)}>Discard changes</button>
-            <button type="button" onClick={save} disabled={busy} style={button(D.gold, D.text, busy)}>{busy ? "Saving…" : `Save ${plural(preview.count, "change", "changes")}`}</button>
+            <button type="button" onClick={save} disabled={busy} style={button(D.gold, D.onGold, busy)}>{busy ? "Saving…" : `Save ${plural(preview.count, "change", "changes")}`}</button>
           </div>
         </section>
       )}

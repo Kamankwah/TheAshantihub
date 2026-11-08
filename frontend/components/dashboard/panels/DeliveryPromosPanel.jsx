@@ -76,7 +76,7 @@ function NewPromo({ onDone }) {
         AshantiHub reviews each promo before it applies.
       </div>
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>{actionError}</div>}
-      <div><button type="submit" disabled={busy || !name || !startsAt || !endsAt || (!allItems && picked.length === 0)} style={btn(D.gold, D.text, busy)}>Send for review</button></div>
+      <div><button type="submit" disabled={busy || !name || !startsAt || !endsAt || (!allItems && picked.length === 0)} style={btn(D.gold, D.onGold, busy)}>Send for review</button></div>
     </form>
   );
 }
@@ -107,7 +107,7 @@ export default function DeliveryPromosPanel() {
           <div style={{ color: D.text, fontWeight: 800, fontSize: "1.05rem" }}>Free delivery</div>
           <div style={{ color: D.textDim, fontSize: "0.74rem" }}>Waive the delivery fee on your own items for a set time.</div>
         </div>
-        <button type="button" onClick={() => setShowForm((v) => !v)} style={btn(D.gold, D.text)}>{showForm ? "Close" : "New promo"}</button>
+        <button type="button" onClick={() => setShowForm((v) => !v)} style={btn(D.gold, D.onGold)}>{showForm ? "Close" : "New promo"}</button>
       </div>
       {showForm && <NewPromo onDone={() => { setShowForm(false); refetch(); }} />}
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.78rem", marginBottom: 8 }}>{actionError}</div>}
@@ -121,7 +121,7 @@ export default function DeliveryPromosPanel() {
           <div key={p.id} style={{ ...glassCard, padding: 16, marginBottom: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem" }}>{p.name}</div>
-              <span style={{ background: tint(color, "22"), color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{label}{p.live ? " · running now" : ""}</span>
+              <span style={{ background: tint(color, "22"), color: inkOf(color), borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{label}{p.live ? " · running now" : ""}</span>
             </div>
             {p.funded_by === "platform" && <div style={{ marginTop: 4 }}><span style={{ background: `${D.green}22`, color: inkOf(D.green), borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>AshantiHub pays</span></div>}
             <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 4 }}>{when(p.starts_at)} to {when(p.ends_at)}</div>

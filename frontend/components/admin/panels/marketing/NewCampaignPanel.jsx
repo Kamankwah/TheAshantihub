@@ -141,7 +141,7 @@ export default function NewCampaignPanel({ detailId, onOpenDetail, onNavigate })
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button type="button" disabled={busy || !form.name.trim()} onClick={saveDraft} style={button(D.panelBg, D.text, busy || !form.name.trim())}>Save draft</button>
               <button type="button" disabled={busy || !form.name.trim() || !form.body.trim()} onClick={test} style={button(D.panelBg, D.text, busy || !form.name.trim() || !form.body.trim())}>Send a test to me</button>
-              <button type="button" disabled={busy || !form.name.trim()} onClick={go} style={button(D.gold, D.text, busy || !form.name.trim())}>{needsApproval ? "Send to Super Admin for approval" : "Schedule"}</button>
+              <button type="button" disabled={busy || !form.name.trim()} onClick={go} style={button(D.gold, D.onGold, busy || !form.name.trim())}>{needsApproval ? "Send to Super Admin for approval" : "Schedule"}</button>
             </div>
           )}
         </Section>

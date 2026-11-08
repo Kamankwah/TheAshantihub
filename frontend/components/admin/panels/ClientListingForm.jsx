@@ -247,7 +247,7 @@ export default function ClientListingForm({ businessId, draft = null, onBack, on
           )}
           <div style={dim}>Saving a draft publishes nothing. Send it to the owner to confirm by text, then a second person approves it.</div>
           {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
-          <button type="submit" disabled={!ready} style={{ ...button(D.gold, D.text, !ready), ...touch, alignSelf: "flex-start" }}>{editing ? "Save changes" : "Save draft"}</button>
+          <button type="submit" disabled={!ready} style={{ ...button(D.gold, D.onGold, !ready), ...touch, alignSelf: "flex-start" }}>{editing ? "Save changes" : "Save draft"}</button>
         </>
       )}
     </form>

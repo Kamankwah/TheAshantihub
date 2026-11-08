@@ -108,7 +108,7 @@ function Compose({ data, onDone }) {
       )}
       {error && <div role="alert" style={errorStyle}>{error}</div>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="submit" disabled={busy} style={button(D.gold, D.text, busy)}>{form.when === "schedule" ? "Schedule" : "Send now"}</button>
+        <button type="submit" disabled={busy} style={button(D.gold, D.onGold, busy)}>{form.when === "schedule" ? "Schedule" : "Send now"}</button>
         <button type="button" disabled={busy || !form.title || !form.body} onClick={(e) => submit(e, "draft")} style={button(D.panelBg, D.text, busy || !form.title || !form.body)}>Save draft</button>
       </div>
     </form>

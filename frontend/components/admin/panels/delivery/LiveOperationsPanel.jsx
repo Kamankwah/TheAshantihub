@@ -54,7 +54,7 @@ export default function LiveOperationsPanel({ auth, onNavigate, onOpenDelivery, 
         <>
           {autoOn !== undefined && <span style={chip(autoOn ? D.green : D.amber)}>{autoOn ? "Auto-assign on" : "Auto-assign off"}</span>}
           {canSwitch && autoOn !== undefined && <button type="button" disabled={pending} onClick={toggle} style={button(D.panelBg, D.text, pending)}>{autoOn ? "Switch to manual" : "Switch auto-assign on"}</button>}
-          <button type="button" onClick={() => onNavigate?.("dm-queue")} style={button(D.gold, D.text)}>Open dispatch queue</button>
+          <button type="button" onClick={() => onNavigate?.("dm-queue")} style={button(D.gold, D.onGold)}>Open dispatch queue</button>
         </>
       )}>Live operations</Title>
       <ErrorLine>{actionError}</ErrorLine>

@@ -168,7 +168,7 @@ export default function SaInvitesPanel() {
             </fieldset>
           )}
           <div style={note}>{`They get an email with a one-time link to set their own password, valid for ${data.link_days} days, and the staff app install link. ${form.role === "super_admin" ? "A new Super Admin also sets up 2-step sign-in before their first page. " : ""}${form.role === "cosigner" ? "The co-signer sees and decides only the requests above the co-sign limit. " : ""}Sending asks for your password.`}</div>
-          <div><button type="submit" disabled={!form.full_name.trim() || !form.email.trim() || !form.role || busy} style={button(D.gold, D.text, !form.full_name.trim() || !form.email.trim() || !form.role || busy)}>{busy ? "Sending…" : "Send invite"}</button></div>
+          <div><button type="submit" disabled={!form.full_name.trim() || !form.email.trim() || !form.role || busy} style={button(D.gold, D.onGold, !form.full_name.trim() || !form.email.trim() || !form.role || busy)}>{busy ? "Sending…" : "Send invite"}</button></div>
         </form>
       )}
 

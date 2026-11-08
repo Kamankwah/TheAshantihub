@@ -22,7 +22,7 @@ export default function CouponsPanel({ detailId, onOpenDetail }) {
   const k = data.kpis;
   return (
     <div style={page}>
-      <PageHead title="Coupons"><button type="button" onClick={() => onOpenDetail?.("new")} style={button(D.gold, D.text)}>New coupon</button></PageHead>
+      <PageHead title="Coupons"><button type="button" onClick={() => onOpenDetail?.("new")} style={button(D.gold, D.onGold)}>New coupon</button></PageHead>
       <OffNotice data={data} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
         <Kpi label="Live coupons" value={k.live} sub={`${k.waiting} waiting for Super Admin · ${k.paused} paused`} />

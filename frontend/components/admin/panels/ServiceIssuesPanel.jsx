@@ -46,7 +46,7 @@ function TaskForm({ issue, onDone, onCancel }) {
       <label style={labelStyle}>Due<input type="date" value={due} min={dateInputValue()} onChange={(e) => setDue(e.target.value)} style={field} /></label>
       {error && <div role="alert" style={errorStyle}>{error}</div>}
       <div style={{ display: "flex", gap: 8 }}>
-        <button type="submit" disabled={busy || !title.trim() || !due} style={button(D.gold, D.text, busy)}>{`Give to ${issue.account_manager}`}</button>
+        <button type="submit" disabled={busy || !title.trim() || !due} style={button(D.gold, D.onGold, busy)}>{`Give to ${issue.account_manager}`}</button>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
       </div>
     </form>
@@ -102,7 +102,7 @@ function Detail({ issue, auth, onOpenBusiness, onNotice }) {
       {!mode && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {onOpenBusiness && issue.business_id && can("portfolio.manage") && <button type="button" onClick={() => onOpenBusiness(issue.business_id)} style={button(D.panelBg, D.text)}>{`Open ${issue.business}`}</button>}
-          {issue.account_manager_id && can("staff.invite_team") && <button type="button" onClick={() => setMode("task")} style={button(D.gold, D.text)}>{`Create task for ${issue.account_manager}`}</button>}
+          {issue.account_manager_id && can("staff.invite_team") && <button type="button" onClick={() => setMode("task")} style={button(D.gold, D.onGold)}>{`Create task for ${issue.account_manager}`}</button>}
           {issue.business_id && can("calls.log") && <button type="button" onClick={() => setMode("call")} style={button(D.panelBg, D.text)}>Log a call with the owner</button>}
           {issue.business_id && (can("fraud.flag") || can("fraud.manage")) && <button type="button" onClick={() => setMode("fraud")} style={button(D.panelBg, D.red)}>Flag as fraud</button>}
         </div>

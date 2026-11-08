@@ -72,7 +72,7 @@ function StatusEditor({ row, choices, onDone, onError }) {
           {choices.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
       </label>
-      <button type="button" disabled={busy || value === row.delivery_status} onClick={save} style={button(D.gold, D.text, busy || value === row.delivery_status)}>Save</button>
+      <button type="button" disabled={busy || value === row.delivery_status} onClick={save} style={button(D.gold, D.onGold, busy || value === row.delivery_status)}>Save</button>
       <button type="button" onClick={() => setEditing(false)} style={button(D.panelBg, D.text)}>Cancel</button>
     </div>
   );

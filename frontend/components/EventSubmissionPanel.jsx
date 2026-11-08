@@ -640,7 +640,7 @@ function statusColor(status) {
   if (status === "approved") return C.kente2;
   if (status === "rejected") return C.kente1;
   if (status === "expired" || status === "cancelled") return "#666";
-  return C.deepGold;
+  return "#7A5800"; // pending: deep gold darkened so white text is AA (6.5:1)
 }
 
 const labelStyle = {

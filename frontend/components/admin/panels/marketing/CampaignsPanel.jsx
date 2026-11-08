@@ -47,7 +47,7 @@ export default function CampaignsPanel({ onNavigate }) {
     <div style={page}>
       <PageHead title="Campaigns">
         <span style={dim}>SMS this month (estimated) <b style={{ color: D.text }}>GH₵ {d.sms_month_estimate}</b></span>
-        <button type="button" onClick={() => onNavigate?.("mk-new-campaign")} style={button(D.gold, D.text)}>New campaign</button>
+        <button type="button" onClick={() => onNavigate?.("mk-new-campaign")} style={button(D.gold, D.onGold)}>New campaign</button>
       </PageHead>
       <Honest>{d.sms_note}</Honest>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}

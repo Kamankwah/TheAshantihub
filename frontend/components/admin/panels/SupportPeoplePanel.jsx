@@ -112,7 +112,7 @@ function Profile({ kind, id, auth, onBack, onLogCall, onNavigate, canRecover }) 
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {onLogCall && <button type="button" onClick={() => onLogCall(null, profile.name)} style={button(D.panelBg, D.text)}>Log a call</button>}
-            {customer && <button type="button" onClick={() => setStarting(!starting)} style={button(D.gold, D.text)}>Start a conversation</button>}
+            {customer && <button type="button" onClick={() => setStarting(!starting)} style={button(D.gold, D.onGold)}>Start a conversation</button>}
           </div>
         </div>
         {starting && customer && <StartConversation profile={profile} orders={q.data.orders} onDone={() => setStarting(false)} />}

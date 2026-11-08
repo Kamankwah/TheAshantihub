@@ -139,7 +139,7 @@ export default function InvitePanel({ auth }) {
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span style={dim}>{`The link lasts ${days} days. Sent by email · SMS: not connected.`}</span>
-          <button type="submit" disabled={!chosen || sending} style={button(D.gold, D.text, !chosen || sending)}>{sending ? "Sending…" : "Send invite"}</button>
+          <button type="submit" disabled={!chosen || sending} style={button(D.gold, D.onGold, !chosen || sending)}>{sending ? "Sending…" : "Send invite"}</button>
         </div>
       </form>
 
