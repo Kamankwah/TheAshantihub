@@ -65,7 +65,7 @@ export default function TemplatesPanel({ onNavigate }) {
       <Section id="tp-wa" title="WhatsApp templates · reviewed by Meta" action={<span style={dim}>{c.approved} approved · {c.waiting} waiting for Meta · {c.rejected} rejected · {c.not_submitted} not sent</span>}>
         <Honest tone="warn">WhatsApp: {STATE_WORD[wa.status].toLowerCase()}. {wa.status === "not_connected" ? "Meta's review is recorded here by hand, and nothing can be sent until the connection exists. " : ""}Every marketing template must carry a “Stop offers” button.</Honest>
         {data.whatsapp.length === 0 && <Honest>No WhatsApp template yet.</Honest>}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 12 }}>
           {data.whatsapp.map((t) => {
             const [label, color] = META[t.meta_status] || META.not_submitted;
             return (
@@ -102,14 +102,14 @@ export default function TemplatesPanel({ onNavigate }) {
       </Section>
       <Section id="tp-sms" title="SMS templates" action={<span style={dim}>No outside review · the stop link ({data.stop_footer_length} characters) is added to every SMS</span>}>
         {data.sms.length === 0 ? <Honest>No SMS template yet.</Honest> : (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{["Template", "Text", "Room for fill-ins", "Used", "Last edited", ""].map((h, i) => <th key={i} scope="col" style={th}>{h}</th>)}</tr></thead>
               <tbody>
                 {data.sms.map((t) => (
                   <tr key={t.id}>
                     <th scope="row" style={{ ...td, textAlign: "left" }}>{t.name}</th>
-                    <td style={td}>{t.body}{t.cedi_sign && <div style={{ ...dim, color: D.amber }}>Contains ₵: this becomes a 70-character SMS.</div>}</td>
+                    <td style={td}>{t.body}{t.cedi_sign && <div style={{ ...dim, color: D.amberInk }}>Contains ₵: this becomes a 70-character SMS.</div>}</td>
                     <td style={td}>{t.room} characters</td><td style={td}>{t.used}</td>
                     <td style={td}>{day(t.updated_at)}{t.updated_by ? ` · ${t.updated_by}` : ""}</td>
                     <td style={td}><button type="button" onClick={() => edit(t)} style={linkStyle}>Edit</button> <button type="button" onClick={() => remove(t)} aria-label={`Remove ${t.name}`} style={linkStyle}>Remove</button></td>

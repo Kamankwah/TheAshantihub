@@ -284,8 +284,10 @@ describe('AdminCommandCenter — phone baseline CSS', () => {
   it('ships the phone touch-target, input-zoom and wrapping rules', () => {
     renderShell()
     const css = Array.from(document.querySelectorAll('style')).map((s) => s.textContent).join('\n')
-    expect(css).toMatch(/\.staff-shell\[data-bp="phone"\] \.staff-content button \{ min-height: 44px; \}/)
-    expect(css).toMatch(/min-height: 44px; max-width: 100%/)
+    // !important: many panels set an inline minHeight (36/38px) that would otherwise beat the baseline.
+    expect(css).toMatch(/\.staff-shell\[data-bp="phone"\] \.staff-content button[^{]*\{ min-height: 44px !important;/)
+    expect(css).toMatch(/min-height: 44px !important; max-width: 100%/)
+    expect(css).toMatch(/header button \{ min-height: 44px !important; min-width: 44px !important; \}/)
     expect(css).toMatch(/overflow-wrap: anywhere/)
   })
 })

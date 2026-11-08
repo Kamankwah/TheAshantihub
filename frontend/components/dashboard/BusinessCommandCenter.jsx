@@ -168,7 +168,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
           <div style={{ padding: "20px 18px 16px", display: "flex", alignItems: "center", gap: 10 }}>
             <Flag w={40} h={27} />
             <div style={{ minWidth: 0 }}>
-              <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.92rem", lineHeight: 1 }}>AshantiHub</div>
+              <div style={{ color: D.goldInk, fontWeight: 900, fontSize: "0.92rem", lineHeight: 1 }}>AshantiHub</div>
               <div style={{ color: "rgba(253,246,227,0.55)", fontSize: "0.58rem", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 4 }}>Business Command Center</div>
             </div>
             {mobileNavOpen && <button onClick={() => setMobileNavOpen(false)} aria-label="Close menu" style={{ marginLeft: "auto", background: "rgba(255,255,255,0.08)", color: D.white, border: "none", borderRadius: "50%", width: 28, height: 28, cursor: "pointer", fontSize: "0.85rem" }}>✕</button>}
@@ -234,7 +234,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
             </div>
           </div>
 
-          {saved && <div style={{ position: "fixed", top: 70, right: 20, background: D.green, color: D.white, borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, zIndex: 999, boxShadow: "0 6px 24px rgba(0,100,0,0.28)" }}>✓ Saved!</div>}
+          {saved && <div style={{ position: "fixed", top: 70, right: 20, background: D.greenFill, color: D.white, borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, zIndex: 999, boxShadow: "0 6px 24px rgba(0,100,0,0.28)" }}>✓ Saved!</div>}
 
           <div style={{ maxWidth: 1080, width: "100%", margin: "0 auto", padding: "22px 18px 72px", flex: 1 }}>
             {/* The go-live rule's email blocker, on every tab: the server lists it until the link is opened. */}
@@ -262,7 +262,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                         <ul style={{ listStyle: "none", margin: "0 auto", padding: 0, maxWidth: 460, textAlign: "left", display: "flex", flexDirection: "column", gap: 8 }}>
                           {blockers.map((b, i) => (
                             <li key={b?.code || i} style={{ color: D.textDim, fontSize: "0.85rem", lineHeight: 1.5, display: "flex", gap: 8 }}>
-                              <span aria-hidden="true" style={{ color: D.amber, fontWeight: 900 }}>•</span>
+                              <span aria-hidden="true" style={{ color: D.amberInk, fontWeight: 900 }}>•</span>
                               <span>{typeof b === "string" ? b : b?.message}</span>
                             </li>
                           ))}

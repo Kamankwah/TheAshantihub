@@ -29,7 +29,7 @@ const SMS_TEXT = {
 };
 const REOPEN_TEXT = "This decision reopens only when the owner shares a new location. You can send the owner a new location link.";
 
-const sectionHead = { color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 8px" };
+const sectionHead = { color: D.goldInk, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 8px" };
 
 const when = (iso) => (iso ? `${shortDay(iso)}, ${clockTime(iso)}` : "");
 
@@ -151,7 +151,7 @@ function Decision({ row, onDecided, onChanged }) {
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button type="button" disabled={blocked} onClick={() => open("verify")} style={button(D.green, D.white, blocked)}>Mark verified</button>
+        <button type="button" disabled={blocked} onClick={() => open("verify")} style={button(D.greenFill, D.white, blocked)}>Mark verified</button>
         <button type="button" disabled={blocked} onClick={() => open("wrong")} style={button(D.panelBg, D.red, blocked)}>Mark wrong</button>
         {blocked && row.blocked_reason && <span style={{ color: D.text, fontSize: "0.76rem", fontWeight: 600 }}>{row.blocked_reason}</span>}
       </div>

@@ -1581,7 +1581,7 @@ function StaffNotificationsSlot({ user }) {
   const unread = data?.unread_count ?? 0;
   return <>
     <button type="button" onClick={()=>setOpen(v=>!v)} aria-haspopup="dialog" aria-expanded={open} aria-label={unread>0?`Notifications (${unread} unread)`:"Notifications"} title="Notifications"
-      style={{position:"relative",background:"none",border:`1px solid ${D.divider}`,borderRadius:10,minWidth:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text,fontFamily:"inherit"}}>
+      style={{position:"relative",background:"none",border:`1px solid ${D.divider}`,borderRadius:10,minWidth:44,height:44,cursor:"pointer",fontSize:"0.9rem",color:D.text,fontFamily:"inherit"}}>
       🔔
       {unread>0&&<span aria-hidden="true" style={{position:"absolute",top:-6,right:-6,background:D.redFill,color:D.cream,borderRadius:20,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>{unread}</span>}
     </button>
@@ -1795,7 +1795,7 @@ function OverviewPanel({ user, favourites }) {
         {kpis.map(k=><KpiCard key={k.label} {...k}/>)}
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(300px, 100%), 1fr))",gap:14}}>
         <ChartFrame title="Your spend over time" icon="💸">
           <PageBoundary><SpendAreaChart data={spendSeries}/></PageBoundary>
         </ChartFrame>
@@ -2268,7 +2268,7 @@ const resultsCountStyle = { color: tint(C.lightGold, "b3"), fontWeight: 400, fon
 
 // ─── Listings loading skeleton ────────────────────────────────────────────────
 function ListingsSkeleton() {
-  return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
+  return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(215px, 100%), 1fr))",gap:14}}>
     {Array.from({length:6}).map((_,i)=>(
       <div key={i} style={{background:C.surface,borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.10)"}}>
         <div style={{height:140,background:C.surface2}}/>
@@ -3245,7 +3245,7 @@ function AshantiHubApp() {
                       const renderCard=(item)=><Card key={item.id} item={item} accentColor={activeCatObj?.color||C.gold} user={user} favourites={favourites} onFavourite={toggleFav} favFailed={favFailedId===item.id} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>;
                       return listings.some((l)=>"cart_tier" in l)
                         ? <PageBoundary><CartTieredResults listings={listings} renderCard={renderCard}/></PageBoundary>
-                        : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>{listings.map(renderCard)}</div>;
+                        : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(215px, 100%), 1fr))",gap:14}}>{listings.map(renderCard)}</div>;
                     })()}
                     {hasNextPage&&(
                       <div style={{textAlign:"center",marginTop:18}}>
@@ -3365,7 +3365,7 @@ function AshantiHubApp() {
                 ) : (
                   <>
                     {eventsFetching&&<div style={{height:3,background:C.gold,marginBottom:10,borderRadius:2}}/>}
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(215px, 100%), 1fr))",gap:14}}>
                       {events.map(item=><EventCard key={item.id} item={item} onOpen={(id)=>setSelectedEventId(id)}/>)}
                     </div>
                     {hasNextEventsPage&&(

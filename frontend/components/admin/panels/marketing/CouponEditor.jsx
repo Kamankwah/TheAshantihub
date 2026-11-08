@@ -70,7 +70,7 @@ export default function CouponEditor({ id, onBack, onOpenDetail }) {
       {data?.paused_reason && <Honest tone="warn">{data.paused_reason}</Honest>}
       {!isNew && !editable && <Honest>A coupon can only be edited while it is a draft. Pause or end it, then make a new one.</Honest>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="ce-rules" title="Rules">
           <fieldset style={{ border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }} disabled={!editable}>
             <legend style={{ ...labelStyle, padding: 0 }}>Codes</legend>

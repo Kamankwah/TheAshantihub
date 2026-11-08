@@ -77,7 +77,7 @@ function Documents({ detail }) {
         <Fact label="TIN">{p.tin || <Missing />}</Fact>
         <Fact label="Business registration certificate">
           {p.business_reg_certificate
-            ? <a href={p.business_reg_certificate} target="_blank" rel="noreferrer" style={{ color: D.deepGold, fontWeight: 700 }}>📄 View business registration certificate</a>
+            ? <a href={p.business_reg_certificate} target="_blank" rel="noreferrer" style={{ color: D.goldInk, fontWeight: 700 }}>📄 View business registration certificate</a>
             : <Missing />}
         </Fact>
       </div>
@@ -165,7 +165,7 @@ function IdentityRow({ row, state, onDone }) {
       </div>
 
       {state === "pending" && !gateReady && (
-        <div style={{ color: D.amber, fontSize: "0.68rem", marginTop: 6 }}>{GATE_HINT}</div>
+        <div style={{ color: D.amberInk, fontSize: "0.68rem", marginTop: 6 }}>{GATE_HINT}</div>
       )}
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
 

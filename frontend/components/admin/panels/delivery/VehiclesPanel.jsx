@@ -89,7 +89,7 @@ export default function VehiclesPanel() {
             <section aria-labelledby="veh" style={section}>
               <h3 id="veh" style={sectionTitle}>Fleet</h3>
               {data.results.length === 0 ? <Empty>No vehicle has been added.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Vehicle", "Owner", "Rider", "Papers", "Move"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>

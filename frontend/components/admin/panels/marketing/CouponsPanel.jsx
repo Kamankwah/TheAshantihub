@@ -38,7 +38,7 @@ export default function CouponsPanel({ detailId, onOpenDetail }) {
         </label>
       }>
         {rows.length === 0 ? <Honest>{data.results.length === 0 ? "No coupon yet." : "No coupon in this status."}</Honest> : (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{["Code", "Value", "Minimum spend", "Uses / limit", "Per customer", "Expiry", "Cost so far", "Status"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
               <tbody>

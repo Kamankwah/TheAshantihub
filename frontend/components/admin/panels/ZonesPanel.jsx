@@ -35,7 +35,7 @@ function Row({ zone, onDone, onMessage }) {
       </td>
       <td style={{ ...td, ...figures }}>{zone.listings}</td>
       <td style={{ ...td, ...figures }}>{zone.businesses}</td>
-      <td style={td}>{zone.scouts.length ? zone.scouts.join(", ") : <span style={{ color: D.deepGold, fontWeight: 700 }}>No scout yet</span>}</td>
+      <td style={td}>{zone.scouts.length ? zone.scouts.join(", ") : <span style={{ color: D.goldInk, fontWeight: 700 }}>No scout yet</span>}</td>
       <td style={td}>
         {mode === "rename" && (
           <span style={{ display: "inline-flex", gap: 6 }}>
@@ -108,11 +108,11 @@ export default function ZonesPanel() {
       {isLoading && <div style={dim}>Loading…</div>}
       {isError && <div role="alert" style={errorStyle}>Could not load zones. <button type="button" onClick={() => refetch()} style={button(D.panelBg, D.text)}>Try again</button></div>}
       {data && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
           <section aria-labelledby="zone-list" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 10, gridColumn: "1 / -1" }}>
             <h3 id="zone-list" style={{ ...h2, fontSize: "1rem" }}>{`${zones.length} ${zones.length === 1 ? "zone" : "zones"} A–Z`}</h3>
             {zones.length === 0 ? <div style={dim}>No zones yet. Add the first one below.</div> : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr><th style={th}>Zone</th><th style={th}>Listings</th><th style={th}>Businesses</th><th style={th}>Scouts working it</th><th style={th}>Actions</th></tr></thead>
                   <tbody>{zones.map((z) => <Row key={z.id} zone={z} onDone={done} onMessage={setMessage} />)}</tbody>

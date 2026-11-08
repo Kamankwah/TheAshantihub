@@ -91,7 +91,7 @@ function Rows({ status, holderType, canManage, onResolve }) {
   if (!rows.length) return <div style={dim}>No withdrawals here.</div>;
   return (
     <>
-      <div style={{ overflowX: "auto" }}>
+      <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>{["Reference", "Holder", "Amount", "Charge", "Status", "Destination", "Submitted", ""].map((h) => <th key={h || "action"} style={th}>{h}</th>)}</tr>

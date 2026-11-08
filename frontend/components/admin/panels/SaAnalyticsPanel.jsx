@@ -38,7 +38,7 @@ export default function SaAnalyticsPanel() {
             </div>
             <section aria-labelledby="gmv" style={section}>
               <h3 id="gmv" style={sectionTitle}>Month by month</h3>
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr>{["Month", "Verified businesses", "New customers", "Orders", "GMV", "Repeat rate"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}<th scope="col" style={th}><span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>Bar</span></th></tr></thead>
                   <tbody>
@@ -62,7 +62,7 @@ export default function SaAnalyticsPanel() {
               <h3 id="zones" style={sectionTitle}>By zone</h3>
               <span style={dim}>Orders and GMV: this month so far · buyers: last 90 days</span>
               {data.zones.length === 0 ? <span style={dim}>Nothing to show for this zone yet.</span> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Zone", "Verified businesses", "Buyers", "Orders", "GMV", "Repeat rate"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>

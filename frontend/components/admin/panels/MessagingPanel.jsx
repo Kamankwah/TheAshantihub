@@ -5,7 +5,7 @@ import { D, glassCard } from "../theme.js";
 
 // A chat-assistant visitor's contact details: AshantiHub staff may call, text
 // or email them (the reply box below stays as the in-app route).
-const contactLink = { color: D.gold, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "3px 12px", fontSize: "0.7rem", fontWeight: 700, textDecoration: "none" };
+const contactLink = { color: D.goldInk, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "3px 12px", fontSize: "0.7rem", fontWeight: 700, textDecoration: "none" };
 const SENDER_LABEL = { guest: "Visitor", customer: "Customer", business_owner: "Business Owner", staff: "Staff" };
 
 // Staff support-ticket view (messaging app, messaging.manage permission).
@@ -99,7 +99,7 @@ export default function MessagingPanel() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
                     {thread.messages?.map(msg => (
                       <div key={msg.id} style={{ fontSize: "0.75rem" }}>
-                        <span style={{ fontWeight: 700, color: msg.sender_type === "staff" ? D.gold : D.text }}>{SENDER_LABEL[msg.sender_type] || msg.sender_type}:</span>{" "}
+                        <span style={{ fontWeight: 700, color: msg.sender_type === "staff" ? D.goldInk : D.text }}>{SENDER_LABEL[msg.sender_type] || msg.sender_type}:</span>{" "}
                         <span style={{ color: D.textDim }}>{msg.body}</span>
                         <span style={{ color: D.textFaint, fontSize: "0.62rem", marginLeft: 6 }}>{msg.created_at?.slice(0, 16).replace("T", " ")}</span>
                       </div>

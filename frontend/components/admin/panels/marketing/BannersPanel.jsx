@@ -59,7 +59,7 @@ function BannerForm({ data, banner, onDone, onCancel }) {
   }
 
   return (
-    <form onSubmit={save} aria-label={banner ? "Edit banner" : "New banner"} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, alignItems: "start" }}>
+    <form onSubmit={save} aria-label={banner ? "Edit banner" : "New banner"} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))", gap: 12, alignItems: "start" }}>
       <label style={labelStyle}>Where it goes
         <select value={form.slot} onChange={(e) => set({ slot: e.target.value })} style={inputStyle}>
           {data.slots.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
@@ -124,7 +124,7 @@ function FlashForm({ onDone, onCancel }) {
   }
 
   return (
-    <form onSubmit={save} aria-label="Flash banner" noValidate style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, alignItems: "start" }}>
+    <form onSubmit={save} aria-label="Flash banner" noValidate style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))", gap: 12, alignItems: "start" }}>
       <label style={labelStyle}>Title<input value={form.title} maxLength={140} onChange={(e) => set({ title: e.target.value })} style={inputStyle} /></label>
       <label style={labelStyle}>Message (up to 200 characters)<input value={form.message} maxLength={200} onChange={(e) => set({ message: e.target.value })} style={inputStyle} /><span style={dim}>No phone numbers, web addresses or WhatsApp links.</span></label>
       <label style={labelStyle}>Starts<input type="datetime-local" value={form.starts_at} onChange={(e) => set({ starts_at: e.target.value })} style={inputStyle} /></label>
@@ -200,7 +200,7 @@ export default function BannersPanel({ auth }) {
       {editing === "flash" && <Section id="bn-flash" title="Flash banner"><FlashForm onDone={done} onCancel={() => setEditing(null)} /></Section>}
       {editing && editing !== "flash" && <Section id="bn-form" title={editingBanner ? "Edit banner" : "New banner"}><BannerForm data={data} banner={editingBanner} onDone={done} onCancel={() => setEditing(null)} /></Section>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="bn-map" title="Where banners go">
           <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7, fontSize: "0.8rem" }}>
             <li><strong>Home page, hero</strong>: a banner above the hero.</li>
@@ -225,7 +225,7 @@ export default function BannersPanel({ auth }) {
       <Section id="bn-all" title="Banners by slot" action={<span style={dim}>A view counts when at least half the banner is on screen</span>}>
         <div style={dim}>{data.counters_note}</div>
         {data.banners.length === 0 ? <Honest>No banners yet. {canManage ? "Choose New banner to make the first one." : ""}</Honest> : (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>
                 <th scope="col" style={th}>Slot</th><th scope="col" style={th}>Banner</th><th scope="col" style={th}>Schedule</th><th scope="col" style={th}>Approval</th>

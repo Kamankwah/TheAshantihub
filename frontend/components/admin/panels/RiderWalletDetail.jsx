@@ -88,7 +88,7 @@ export default function RiderWalletDetail({ riderId, onBack }) {
 
       <Section label="Earnings">
         {earnings.length === 0 ? <div style={dim}>No delivery has been paid to this wallet yet.</div> : (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{["Order", "Delivered", "Fee", "Commission", "Rider got", "Status"].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>
@@ -114,7 +114,7 @@ export default function RiderWalletDetail({ riderId, onBack }) {
 
       <Section label="Withdrawals">
         {withdrawals.length === 0 ? <div style={dim}>This rider has made no withdrawal.</div> : (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{["Reference", "Amount", "Charge", "Rider receives", "Status", "Paid to"].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>

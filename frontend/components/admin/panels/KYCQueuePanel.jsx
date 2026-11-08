@@ -74,7 +74,7 @@ function pinText(d) {
   return parts.join(" · ");
 }
 
-const sectionHead = { color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em" };
+const sectionHead = { color: D.goldInk, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em" };
 
 const dayText = shortDay;
 const timeText = clockTime;
@@ -198,7 +198,7 @@ function KYCRow({ owner, state, onDone, canSendScout }) {
         </div>
       )}
       {state === "pending" && !gateReady && (
-        <div style={{ color: D.amber, fontSize: "0.68rem", marginTop: 6 }}>
+        <div style={{ color: D.amberInk, fontSize: "0.68rem", marginTop: 6 }}>
           {expanded ? "Verify the Ghana Post address below to enable Approve / Reject." : "Open Details and verify the Ghana Post address to enable Approve / Reject."}
         </div>
       )}
@@ -214,7 +214,7 @@ function KYCRow({ owner, state, onDone, canSendScout }) {
           {detail.isError && <div style={{ color: D.red, fontSize: "0.78rem" }}>Could not load this applicant's details.</div>}
           {detail.data && (
             <>
-              <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Applicant</div>
+              <div style={{ color: D.goldInk, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Applicant</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0 20px" }}>
                 <DetailField label="Full name" value={detail.data.full_name} />
                 <DetailField label="Login phone" value={fullPhone || detail.data.login_phone} />
@@ -254,7 +254,7 @@ function KYCRow({ owner, state, onDone, canSendScout }) {
               )}
 
               {/* Item 8: Ghana Post address verification control. */}
-              <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 8px" }}>Ghana Post address verification</div>
+              <div style={{ color: D.goldInk, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 8px" }}>Ghana Post address verification</div>
               <div style={{ color: D.textDim, fontSize: "0.72rem", marginBottom: 8 }}>Confirm the digital address <strong style={{ color: D.text }}>{p?.gps_address || "—"}</strong> before approving or rejecting.</div>
               {detail.data.address_correction && (
                 <div style={{ ...callout(D.amber), fontSize: "0.72rem", marginBottom: 8 }}>{addressCorrectionText(detail.data.address_correction, addressDecided)}</div>
@@ -273,7 +273,7 @@ function KYCRow({ owner, state, onDone, canSendScout }) {
               )}
               {state === "pending" && canSendScout && <SendScout ownerId={owner.id} />}
 
-              <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 10px" }}>Ghana Card</div>
+              <div style={{ color: D.goldInk, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 10px" }}>Ghana Card</div>
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                 <CardImage label="Front" url={p?.ghana_card_front_image} />
                 <CardImage label="Back" url={p?.ghana_card_back_image} />
@@ -281,9 +281,9 @@ function KYCRow({ owner, state, onDone, canSendScout }) {
 
               {p?.is_formal && (
                 <div style={{ marginTop: 12 }}>
-                  <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Registration document</div>
+                  <div style={{ color: D.goldInk, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Registration document</div>
                   {p?.business_reg_certificate
-                    ? <a href={p.business_reg_certificate} target="_blank" rel="noreferrer" style={{ color: D.gold, fontSize: "0.78rem", fontWeight: 700 }}>📄 View business registration certificate</a>
+                    ? <a href={p.business_reg_certificate} target="_blank" rel="noreferrer" style={{ color: D.goldInk, fontSize: "0.78rem", fontWeight: 700 }}>📄 View business registration certificate</a>
                     : <div style={{ color: D.textDim, fontSize: "0.75rem" }}>Not provided</div>}
                 </div>
               )}

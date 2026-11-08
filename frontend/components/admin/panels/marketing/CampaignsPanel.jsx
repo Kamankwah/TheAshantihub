@@ -65,7 +65,7 @@ export default function CampaignsPanel({ onNavigate }) {
       </div>
       <Section id="cp-all" title={`${status ? TABS.find(([k]) => k === status)[1] : "All campaigns"} · ${d.results.length}`}>
         {d.results.length === 0 ? <Honest>{d.total === 0 ? "No campaign yet. Start one with “New campaign”." : "No campaign matches this filter."}</Honest> : (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={{ ...table, minWidth: 900 }}>
               <thead><tr>{["Campaign", "Channel", "Audience", "Status", "Send time", "Cost", "Results"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
               <tbody>

@@ -79,7 +79,7 @@ export default function MoneyRulesFees({ category, pending, onSaved, canPropose 
     <div data-fees={category.category} style={{ ...card, gap: 8 }}>
       <h3 style={h3}>{category.label}</h3>
       {pending.map((p) => (
-        <div key={p.id} style={{ ...dim, color: D.amber, fontWeight: 700 }}>
+        <div key={p.id} style={{ ...dim, color: D.amberInk, fontWeight: 700 }}>
           {`Waiting for approval, proposed by ${p.maker}: ${p.bands.length} ${p.bands.length === 1 ? "tier" : "tiers"}`}
         </div>
       ))}

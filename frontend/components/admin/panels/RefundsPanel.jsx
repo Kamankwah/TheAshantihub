@@ -65,7 +65,7 @@ export default function RefundsPanel({ onNavigate }) {
             <section aria-labelledby="all-refunds" style={section}>
               <h3 id="all-refunds" style={sectionTitle}>All recorded refunds</h3>
               {data.rows.length === 0 ? <span style={dim}>No refunds were recorded in this period.</span> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Refund", "Customer · business", "Source", "Raised by", "Decided by", "Date", "Amount", "Status"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>

@@ -16,7 +16,7 @@ const STATE = {
   down: ["Down", D.red], not_connected: ["Not connected", D.textFaint], not_tracked: ["Not tracked yet", D.textFaint],
 };
 const warn = D.warnInk;
-const linkStyle = { background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", fontWeight: 800, color: D.deepGold, textDecoration: "underline" };
+const linkStyle = { background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", fontWeight: 800, color: D.goldInk, textDecoration: "underline" };
 
 function Kpi({ label, value, sub, subColor, onClick }) {
   const body = (
@@ -100,7 +100,7 @@ export default function SuperAdminOverviewPanel({ auth, onNavigate, onOpenApprov
             ))}
           </section>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14 }}>
             <section aria-labelledby="sa-platform" style={section}>
               <h3 id="sa-platform" style={{ ...h2, fontSize: "0.95rem" }}>Platform status</h3>
               {data.platform.map((s) => {
@@ -136,8 +136,8 @@ export default function SuperAdminOverviewPanel({ auth, onNavigate, onOpenApprov
           <section aria-labelledby="sa-teams" style={section}>
             <h3 id="sa-teams" style={{ ...h2, fontSize: "0.95rem" }}>Teams right now</h3>
             {canStepIn && <div style={dim}>Open a team to see its workspace read-only.</div>}
-            <div style={scroll}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))", gap: 10 }}>
                 {data.teams.map((t) => (
                   <div key={t.role} role="group" aria-label={t.label} style={{ border: `1px solid ${D.cardBorder}`, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 4 }}>
                     <div style={{ fontWeight: 800, color: D.text }}>{t.label}</div>

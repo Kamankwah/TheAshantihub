@@ -117,7 +117,7 @@ export default function OperationsOverviewPanel({ auth, onNavigate, onOpenApprov
             {data.scouts.length === 0 ? (
               <div style={dim}>No scouts report to you yet. Invite one from the Invite screen.</div>
             ) : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead>
                     <tr>
@@ -155,7 +155,7 @@ export default function OperationsOverviewPanel({ auth, onNavigate, onOpenApprov
             </div>
           </section>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14 }}>
             <section aria-labelledby="ov-waiting" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <h3 id="ov-waiting" style={{ ...h2, fontSize: "0.95rem" }}>Waiting for you</h3>
@@ -203,7 +203,7 @@ export default function OperationsOverviewPanel({ auth, onNavigate, onOpenApprov
             {data.issues.length === 0 ? (
               <div style={dim}>{data.kpis.issues.support != null ? "No open fraud cases or service issues on your team's businesses." : "No open fraud cases on your team's businesses."}</div>
             ) : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr>{["Type", "Business", "What happened", "Account manager", "Open for"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                   <tbody>
@@ -229,4 +229,4 @@ export default function OperationsOverviewPanel({ auth, onNavigate, onOpenApprov
   );
 }
 
-const linkStyle = { background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", fontWeight: 800, color: D.deepGold, textDecoration: "underline" };
+const linkStyle = { background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", fontWeight: 800, color: D.goldInk, textDecoration: "underline" };

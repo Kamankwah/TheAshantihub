@@ -54,7 +54,7 @@ export default function SupportTeamPanel({ onNavigate }) {
           <section aria-labelledby="st-agents" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
             <h3 id="st-agents" style={{ ...h2, fontSize: "0.95rem" }}>Agents reporting to you</h3>
             {data.agents.length === 0 ? <div style={dim}>No support agent reports to you yet.</div> : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr>{["Agent", "Calls logged today", "Report today", "Last report"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                   <tbody>

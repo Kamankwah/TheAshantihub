@@ -44,10 +44,13 @@ function Calendar({ month, leave, holidays, today, onMonth }) {
           <button type="button" aria-label="Next month" onClick={() => onMonth(1)} style={button(D.panelBg, D.text)}>›</button>
         </div>
       </div>
-      <div style={scroll}>
+      <div style={scroll} tabIndex={0} role="region" aria-label="Leave calendar (scrolls sideways on a narrow screen)">
         <div role="grid" aria-labelledby="leave-cal" style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(84px, 1fr))", gap: 4, minWidth: 620 }}>
-          {WEEKDAYS.map((w) => <div key={w} role="columnheader" style={{ ...dim, fontWeight: 800, textAlign: "center" }}>{w}</div>)}
-          {cells.map((n, i) => {
+          <div role="row" style={{ display: "contents" }}>
+            {WEEKDAYS.map((w) => <div key={w} role="columnheader" style={{ ...dim, fontWeight: 800, textAlign: "center" }}>{w}</div>)}
+          </div>
+          {Array.from({ length: Math.ceil(cells.length / 7) }, (_, wk) => <div key={wk} role="row" style={{ display: "contents" }}>{cells.slice(wk * 7, wk * 7 + 7).map((n, j) => {
+            const i = wk * 7 + j;
             if (n < 1 || n > count) return <div key={i} role="gridcell" aria-hidden="true" />;
             const iso = isoDay(new Date(month.getFullYear(), month.getMonth(), n));
             const sunday = i % 7 === 6;
@@ -64,7 +67,7 @@ function Calendar({ month, leave, holidays, today, onMonth }) {
                 ))}
               </div>
             );
-          })}
+          })}</div>)}
         </div>
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", ...dim }}>
@@ -269,7 +272,7 @@ export default function LeavePanel({ auth }) {
       {isSa && all && <LeaveKpis all={all} inMonth={inMonth || []} holidays={holidays} todayIso={todayIso} year={month.getFullYear()} />}
       {message && <div role="status" style={{ color: D.green, fontSize: "0.82rem", fontWeight: 700 }}>{message}</div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Calendar month={month} leave={inMonth || []} holidays={holidays} today={todayIso} onMonth={(n) => setMonth(new Date(month.getFullYear(), month.getMonth() + n, 1))} />
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <section aria-labelledby="leave-hol" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -309,7 +312,7 @@ export default function LeavePanel({ auth }) {
         {isError && <div role="alert" style={errorStyle}>Couldn't load the leave. <button type="button" onClick={() => refetch()} style={button(D.panelBg, D.text)}>Try again</button></div>}
         {all && rows.length === 0 && <div style={dim}>{isSa ? "No leave recorded in the last 90 days, and none coming up." : "No leave recorded for your team in the last 90 days, and none coming up."}</div>}
         {rows.length > 0 && (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead>
                 <tr>

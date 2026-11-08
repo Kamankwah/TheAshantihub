@@ -14,26 +14,26 @@ import AnalyticsMarketing from "./marketing/AnalyticsMarketing.jsx";
 
 const LISTING_STATUS_META = [
   { key: "published", name: "Published", color: D.green },
-  { key: "pending_review", name: "Pending Review", color: D.amber },
+  { key: "pending_review", name: "Pending Review", color: D.amberInk },
   { key: "draft", name: "Draft", color: D.textDim },
   { key: "rejected", name: "Rejected", color: D.red },
 ];
 
 const LISTING_KIND_META = [
-  { key: "product", name: "Products", color: D.gold },
+  { key: "product", name: "Products", color: D.goldInk },
   { key: "service", name: "Services", color: D.blue },
-  { key: "event", name: "Events", color: D.purple },
+  { key: "event", name: "Events", color: D.purpleInk },
 ];
 
 const ORDER_STATUS_META = [
   { key: "paid", name: "Paid", color: D.green },
-  { key: "pending", name: "Pending", color: D.amber },
+  { key: "pending", name: "Pending", color: D.amberInk },
   { key: "cancelled", name: "Cancelled", color: D.red },
 ];
 
 const EVENT_STATUS_META = [
   { key: "approved", name: "Approved", color: D.green },
-  { key: "pending", name: "Pending", color: D.amber },
+  { key: "pending", name: "Pending", color: D.amberInk },
   { key: "rejected", name: "Rejected", color: D.red },
 ];
 
@@ -79,7 +79,7 @@ function Snapshot() {
         {kpis.map(k => <KpiCard key={k.label} {...k} />)}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(260px, 100%), 1fr))", gap: 16 }}>
         <ChartFrame title="Listings by status" icon="📋">
           <ListingsDonut data={toSlices(data.listings_by_status, LISTING_STATUS_META)} centerLabel="Listings" emptyMessage="No listings yet." />
         </ChartFrame>

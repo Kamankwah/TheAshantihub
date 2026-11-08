@@ -55,7 +55,7 @@ export function SettingRow({ setting, pending, onSaved, canPropose = true, super
         </div>
       </div>
       {pending.map((p) => (
-        <div key={p.id} style={{ ...dim, color: D.amber, fontWeight: 700 }}>
+        <div key={p.id} style={{ ...dim, color: D.amberInk, fontWeight: 700 }}>
           {`Waiting for approval: ${showValue(setting.key, p.value === null || p.value === "" ? null : Number(p.value))}, proposed by ${p.maker}`}
         </div>
       ))}

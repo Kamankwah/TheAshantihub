@@ -84,7 +84,7 @@ export default function NewCampaignPanel({ detailId, onOpenDetail, onNavigate })
       {error && <div role="alert" style={errorStyle}>{error}</div>}
       {note && <div role="status" style={chip(D.green)}>{note}</div>}
       {locked && <ApprovalNote>This campaign is {status?.[0].toLowerCase()}, so it can't be changed. {["waiting_approval", "scheduled"].includes(c.status) && <button type="button" onClick={withdraw} style={linkStyle}>Withdraw it to edit</button>}</ApprovalNote>}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(360px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="nc-compose" title="Compose">
           <fieldset disabled={locked || busy} style={{ border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
             <label style={labelStyle}>Campaign name <span style={dim}>Only staff see this</span><input type="text" value={form.name} onChange={(e) => set({ name: e.target.value })} style={inputStyle} /></label>

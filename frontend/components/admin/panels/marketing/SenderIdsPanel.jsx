@@ -43,7 +43,7 @@ export default function SenderIdsPanel() {
         <span style={dim}>Provider accounts and keys are managed by Super Admin under Integrations. Nobody sees a key here.</span>
       </PageHead>
       {error && <div role="alert" style={errorStyle}>{error}</div>}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="pv-sms" title="SMS" action={<Dot status={sms.status} />}>
           <Honest tone={sms.status === "not_connected" ? "warn" : undefined}>{sms.note || "SMS is connected."} {sms.balance_note}</Honest>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
@@ -53,7 +53,7 @@ export default function SenderIdsPanel() {
           </div>
           <h4 style={{ margin: "6px 0 0", fontSize: "0.85rem" }}>Sender IDs</h4>
           {data.senders.length === 0 ? <Honest>No sender ID recorded yet. Record each one and where each network has got to.</Honest> : (
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr><th scope="col" style={th}>Sender ID</th>{data.networks.map((n) => <th key={n.key} scope="col" style={th}>{n.label}</th>)}<th scope="col" style={th}>Used for</th></tr></thead>
                 <tbody>

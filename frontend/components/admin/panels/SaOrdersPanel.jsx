@@ -90,7 +90,7 @@ export default function SaOrdersPanel() {
         <LoadState query={list} what="the orders" />
         {!list.isLoading && !list.isError && rows.length === 0 && <div style={dim}>No order matches these filters.</div>}
         {rows.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table aria-label="Orders" style={{ ...tableStyle, minWidth: 900 }}>
               <thead><tr><th style={th}>Order</th><th style={th}>Items</th><th style={th}>Payment</th><th style={th}>Delivery</th><th style={th}>Rider</th><th style={th}>Placed</th><th style={th} /></tr></thead>
               <tbody>
@@ -100,7 +100,7 @@ export default function SaOrdersPanel() {
                     <tr key={o.id}>
                       <td style={td}><div style={{ fontWeight: 800 }}>{`#${o.id} · ${o.businesses.join(", ")}`}</div><div style={dim}>{`to ${o.customer}`}</div></td>
                       <td style={td}>{o.items.map((i) => `${i.quantity} × ${i.name}`).join(", ")}<div style={dim}>{money(o.total)}</div></td>
-                      <td style={td}><Chip color={payColor}>{pay}</Chip>{o.open_case && <div style={{ color: D.amber, fontWeight: 800, fontSize: "0.7rem" }}>Open case</div>}</td>
+                      <td style={td}><Chip color={payColor}>{pay}</Chip>{o.open_case && <div style={{ color: D.amberInk, fontWeight: 800, fontSize: "0.7rem" }}>Open case</div>}</td>
                       <td style={td}>{DELIVERY[o.delivery_status] || o.delivery_status}<div style={dim}>{METHOD[o.delivery_method]}</div>{o.waiting_for_rider && <Chip color={D.amber}>Waiting for a rider</Chip>}</td>
                       <td style={td}>{o.rider || "—"}</td>
                       <td style={td}>{dateOnly(o.placed_at)}</td>

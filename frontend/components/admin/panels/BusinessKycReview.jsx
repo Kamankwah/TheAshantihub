@@ -245,7 +245,7 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
         )}
         {location.lat != null && (
           <a href={`https://www.openstreetmap.org/?mlat=${location.lat}&mlon=${location.lng}#map=18/${location.lat}/${location.lng}`}
-            target="_blank" rel="noreferrer" style={{ color: D.deepGold, fontSize: "0.78rem", fontWeight: 700, alignSelf: "flex-start" }}>Open the pin on a map</a>
+            target="_blank" rel="noreferrer" style={{ color: D.goldInk, fontSize: "0.78rem", fontWeight: 700, alignSelf: "flex-start" }}>Open the pin on a map</a>
         )}
         <div style={text}>{`Ghana Post address as typed: ${location.gps_address || "—"}`}</div>
         {sheet.address_correction && <div style={callout(D.amber)}>{addressCorrectionText(sheet.address_correction, decided)}</div>}
@@ -263,7 +263,7 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
 
       <div style={section}>
         <h3 style={h3}>Duplicate and self-dealing checks</h3>
-        <div style={{ overflowX: "auto" }}>
+        <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
           <table aria-label="Duplicate and self-dealing checks" style={{ borderCollapse: "collapse", width: "100%", minWidth: 480, ...text }}>
             <thead>
               <tr style={{ color: D.textDim }}>

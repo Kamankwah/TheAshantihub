@@ -91,7 +91,7 @@ export function TaxTablesPanel({ onNavigate }) {
       <div role="status" style={callout(D.amber)}>No tax is calculated anywhere in AshantiHub yet. No PAYE, SSNIT, withholding or VAT rate is stored, because none has been confirmed by the accountant. Rates marked "to confirm" are not used.</div>
       <section aria-labelledby="tt-charges" style={section}>
         <h3 id="tt-charges" style={sectionTitle}>Tax on each kind of charge</h3>
-        <div style={scroll}>
+        <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
           <table style={table}>
             <thead><tr><th style={th}>Charge</th><th style={th}>Tax</th><th style={th}>Decided by</th></tr></thead>
             <tbody>

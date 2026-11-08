@@ -125,7 +125,7 @@ export default function DeliveryPromosPanel({ auth }) {
             <div style={dim}>{p.all_items ? "All of the business's items" : p.listings.map((l) => l.name).join(", ")}</div>
             <div style={dim}>Covered so far: GH₵ {p.covered_total} on {p.covered_orders} {p.covered_orders === 1 ? "order" : "orders"}</div>
             {p.funded_by === "platform" && p.budget_cap != null && <div style={dim}>Spent GH₵ {p.spent ?? "0.00"} of GH₵ {p.budget_cap}</div>}
-            {p.awaiting_approval && <div style={{ ...dim, color: D.amber }}>Waiting for Operations or Super Admin.</div>}
+            {p.awaiting_approval && <div style={{ ...dim, color: D.amberInk }}>Waiting for Operations or Super Admin.</div>}
             {p.rejection_reason && <div style={{ ...dim, color: D.red }}>Reason: {p.rejection_reason}</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
               {p.status === "pending" && !p.awaiting_approval && (

@@ -3,7 +3,7 @@ import { useOwnerOrders } from "../../../hooks/useOwnerOrders.js";
 import { useOwnerOrderTracking } from "../../../hooks/useTracking.js";
 import TrackMap from "../../maps/TrackMap.jsx";
 import EtaLine from "../../maps/EtaLine.jsx";
-import { D, glassCard, tint } from "../theme.js";
+import { D, glassCard, tint, inkOf } from "../theme.js";
 
 // ─── Deliveries panel — the owner's fulfilment view (pre-prod bug fix 5) ──────
 // Wired to the real owner-orders spine (Wave F/G). GET /api/orders/owner/
@@ -16,7 +16,7 @@ import { D, glassCard, tint } from "../theme.js";
 const STATUS_META = {
   processing: { label: "Processing", icon: "🧾", color: D.textDim },
   shipped: { label: "Shipped", icon: "📦", color: D.blue },
-  out_for_delivery: { label: "Out for delivery", icon: "🛵", color: D.purple },
+  out_for_delivery: { label: "Out for delivery", icon: "🛵", color: D.purpleInk },
   delivered: { label: "Delivered", icon: "✅", color: D.green },
 };
 const PIPELINE = ["processing", "shipped", "out_for_delivery", "delivered"];
@@ -79,7 +79,7 @@ function PickupCodeBox({ code, orderId }) {
   const spaced = String(code).split("").join(" ");
   return (
     <div data-testid="pickup-code-box" style={{ marginTop: 10, padding: "12px 14px", borderRadius: 12, background: `${D.gold}1e`, border: `1.5px solid ${D.gold}` }}>
-      <div style={{ fontSize: "0.7rem", fontWeight: 800, color: D.deepGold, textTransform: "uppercase", letterSpacing: "0.06em" }}>Pickup code</div>
+      <div style={{ fontSize: "0.7rem", fontWeight: 800, color: D.goldInk, textTransform: "uppercase", letterSpacing: "0.06em" }}>Pickup code</div>
       <div aria-label={`Pickup code ${spaced}`} style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: "2rem", fontWeight: 700, letterSpacing: "0.3em", color: D.text, margin: "4px 0" }}>{spaced}</div>
       <div style={{ fontSize: "0.72rem", color: D.text, lineHeight: 1.5 }}>
         Read this to the rider when they collect order #{orderId}. Only give it to the rider who is at your shop.
@@ -102,7 +102,7 @@ function OrderRow({ order }) {
             {order.placed_at?.slice(0, 10)} · {doorToDoor ? "🛵 Door-to-door" : "🏬 Store pickup"} · GHS {order.owner_subtotal}
           </div>
         </div>
-        <span style={{ background: tint(meta.color, "22"), color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.icon} {meta.label}</span>
+        <span style={{ background: tint(meta.color, "22"), color: inkOf(meta.color), borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.icon} {meta.label}</span>
       </div>
 
       <div style={{ color: D.textFaint, fontSize: "0.72rem", marginTop: 8 }}>

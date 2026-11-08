@@ -35,7 +35,7 @@ export default function SupportTagsPanel() {
   const into = liveTags.find((t) => String(t.id) === mergeInto);
   const th = { padding: "8px 10px", fontSize: "0.7rem", fontWeight: 800 };
   const td = { padding: "9px 10px" };
-  const link = { border: 0, background: "none", cursor: "pointer", color: D.deepGold, fontWeight: 700, fontSize: "0.78rem", textDecoration: "underline", fontFamily: "inherit", padding: 0 };
+  const link = { border: 0, background: "none", cursor: "pointer", color: D.goldInk, fontWeight: 700, fontSize: "0.78rem", textDecoration: "underline", fontFamily: "inherit", padding: 0 };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div>
@@ -53,7 +53,7 @@ export default function SupportTagsPanel() {
           {(archived ? gone : live).isLoading && <div style={dim}>Loading…</div>}
           {!(archived ? gone : live).isLoading && tags.length === 0 && <div style={dim}>{archived ? "No archived tags." : "No tags yet. Add the first one."}</div>}
           {tags.length > 0 && (
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse", fontSize: "0.82rem", color: D.text }}>
                 <thead><tr style={{ textAlign: "left", color: D.textDim }}><th scope="col" style={th}>Tag</th><th scope="col" style={th}>Use it for</th><th scope="col" style={{ ...th, textAlign: "right" }}>Open now</th><th scope="col" style={{ ...th, textAlign: "right" }}>Last 30 days</th><th scope="col" style={th}><span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>Actions</span></th></tr></thead>
                 <tbody>

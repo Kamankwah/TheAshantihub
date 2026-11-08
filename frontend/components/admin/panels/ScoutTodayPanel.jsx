@@ -13,7 +13,7 @@ import { errorStyle, eyebrow, h3 } from "./portfolioParts.jsx";
 // says so, and nothing is filled in with a plausible number.
 const figures = { fontVariantNumeric: "tabular-nums" };
 const card = { ...glassCard, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 };
-const link = { background: "none", border: "none", padding: 0, color: D.deepGold, fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit", textDecoration: "underline", minHeight: 44 };
+const link = { background: "none", border: "none", padding: 0, color: D.goldInk, fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit", textDecoration: "underline", minHeight: 44 };
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 export function greeting(hour) {

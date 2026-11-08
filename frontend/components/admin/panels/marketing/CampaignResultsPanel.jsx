@@ -56,7 +56,7 @@ export default function CampaignResultsPanel({ detailId, onOpenDetail, onNavigat
         <Kpi label="Cost per order" value={r.cost_per_order ? money(r.cost_per_order) : "—"} sub={r.cost_per_order ? "Message cost only" : "Needs a reported cost and an order"} />
         <Kpi label="Opt-outs caused" value={n(r.opt_outs)} sub={r.opt_out_rate != null ? `${r.opt_out_rate}% of sent` : ""} subColor={D.amber} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
           <Section id="rs-funnel" title={reported ? "From sent to ordered" : "From sent to ordered (delivery not reported)"}>
             {funnel.map(([label, value, note]) => (
@@ -69,7 +69,7 @@ export default function CampaignResultsPanel({ detailId, onOpenDetail, onNavigat
           </Section>
           <Section id="rs-net" title="Delivery by network">
             {r.networks.length === 0 ? <Honest>No network breakdown: it needs sent SMS or WhatsApp messages with a known network.</Honest> : (
-              <div style={scroll}><table style={table}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)"><table style={table}>
                 <thead><tr>{["Network", "Sent", "Delivered", "Failed"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                 <tbody>{r.networks.map((x) => <tr key={x.name}><th scope="row" style={{ ...td, textAlign: "left" }}>{x.name}</th><td style={td}>{n(x.sent)}</td><td style={td}>{reported ? n(x.delivered) : "Not reported"}</td><td style={td}>{n(x.failed)}</td></tr>)}</tbody>
               </table></div>

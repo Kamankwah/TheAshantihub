@@ -27,13 +27,17 @@ export const THEME_TOKENS = {
     "ah-surface-3": "#EADFC6",               // stronger well (disabled buttons, tracks)
     "ah-ink": "#2C1810",                     // C.darkBrown — body text
     "ah-ink-dim": "rgba(44, 24, 16, 0.72)",
-    "ah-ink-faint": "rgba(44, 24, 16, 0.62)",    // AA (4.5:1) on canvas, surface and wells
+    "ah-ink-faint": "rgba(44, 24, 16, 0.66)",    // AA (4.5:1) on canvas, surface and every well
     "ah-line": "rgba(44, 24, 16, 0.12)",     // dividers, neutral input borders
     "ah-border": "rgba(212, 160, 23, 0.35)", // C.gold, low opacity — card borders
     "ah-border-strong": "rgba(212, 160, 23, 0.6)",
     "ah-shadow": "0 10px 28px rgba(44, 24, 16, 0.12)",
     "ah-price": "#2C1810",                   // DESIGN.md: prices dark brown on light
     "ah-green": "#006400",                   // C.kente2 — trust/verified/success
+    "ah-green-fill": "#006400",              // solid green button/badge fill (white text)
+    "ah-gold-ink": "#80600A",                // gold as TEXT: deepGold darkened to AA on white, canvas and wells
+    "ah-amber-ink": "#A84A0C",               // C.orange as TEXT, AA on white and its own tint
+    "ah-purple-ink": "#6B4E8E",              // purple as TEXT
     "ah-red": "#CC0000",                     // C.kente1 — error/destructive text and borders
     "ah-red-fill": "#CC0000",                // destructive button fill (white text)
     "ah-blue": "#000080",                    // C.kente3 — info
@@ -56,7 +60,11 @@ export const THEME_TOKENS = {
     "ah-border-strong": "rgba(212, 160, 23, 0.65)",
     "ah-shadow": "0 10px 28px rgba(0, 0, 0, 0.45)",
     "ah-price": "#F5DEB3",                   // C.lightGold — prices on dark surfaces
-    "ah-green": "#2F9E2F",                   // kente green retuned for dark (index.css .dark --chart-3)
+    "ah-green": "#5CC15C",                   // kente green as text on dark: 5.5:1 on the green-tinted wells too
+    "ah-green-fill": "#237A23",              // solid green fill in dark (white text 5.4:1)
+    "ah-gold-ink": "#D4A017",                // gold text is native on dark surfaces (4.9:1 on the strongest well)
+    "ah-amber-ink": "#F08A4B",               // C.orange as text on dark
+    "ah-purple-ink": "#B79BE0",              // purple as text on dark
     "ah-red": "#F57474",                     // kente red retuned for dark text: 4.5:1 on canvas, surface and wells
     "ah-red-fill": "#C62828",                // destructive button fill in dark (white text 5.6:1)
     "ah-blue": "#9A9AFF",                    // kente navy retuned for dark (navy is unreadable on brown)
@@ -107,6 +115,10 @@ export const C = {
   shadow: token("ah-shadow"),
   price: token("ah-price"),
   trust: token("ah-green"),
+  trustFill: token("ah-green-fill"),
+  goldInk: token("ah-gold-ink"),
+  amberInk: token("ah-amber-ink"),
+  purpleInk: token("ah-purple-ink"),
   danger: token("ah-red"),
   dangerFill: token("ah-red-fill"),
   info: token("ah-blue"),

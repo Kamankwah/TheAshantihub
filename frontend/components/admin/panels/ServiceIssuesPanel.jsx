@@ -158,7 +158,7 @@ export default function ServiceIssuesPanel({ auth, onOpenBusiness }) {
           {issues.length === 0 ? (
             <div style={dim}>{status === "open" ? "Nothing open on your team's businesses." : "Nothing was resolved in the last 7 days."}</div>
           ) : (
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr>{["Type", "Business · what happened", "Account manager", "Being handled by", status === "open" ? "Open for" : "Opened"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                 <tbody>

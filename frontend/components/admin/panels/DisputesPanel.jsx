@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useDisputesQueue } from "../../../hooks/useDisputesQueue.js";
-import { D, tint } from "../theme.js";
+import { D, tint, inkOf } from "../theme.js";
 import ModerationQueueTabs, { ReviewAgainButton } from "../ModerationQueueTabs.jsx";
 
 // Dispute status → label+color, dark-surface hues (same shape as
@@ -10,7 +10,7 @@ import ModerationQueueTabs, { ReviewAgainButton } from "../ModerationQueueTabs.j
 // two distinct statuses (open and investigating) the tab name can't convey.
 const DISPUTE_STATUS_META = {
   open: { label: "Open", color: D.blue },
-  investigating: { label: "Investigating", color: D.amber },
+  investigating: { label: "Investigating", color: D.amberInk },
   resolved: { label: "Resolved", color: D.green },
   rejected: { label: "Rejected", color: D.red },
 };
@@ -76,7 +76,7 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
             {/* Pending holds both open and investigating — the badge is what
                 tells them apart, so it stays on that tab. */}
             {state === "pending" && (
-              <span style={{ background: tint(statusMeta.color, "22"), color: statusMeta.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>{statusMeta.label}</span>
+              <span style={{ background: tint(statusMeta.color, "22"), color: inkOf(statusMeta.color), borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>{statusMeta.label}</span>
             )}
           </div>
           {dispute.description && (
@@ -105,7 +105,7 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
           )}
           {state === "pending" && canResolve && (
             <>
-              <button onClick={() => setResolving(r => !r)} style={{ background: D.green, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Resolve</button>
+              <button onClick={() => setResolving(r => !r)} style={{ background: D.greenFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Resolve</button>
               {confirmingReject ? (
                 <>
                   <button onClick={() => resolve("rejected")} style={{ background: D.redFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm reject</button>
@@ -125,7 +125,7 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
       {/* Rejecting is final from this row's point of view — only a rejected
           dispute can be reopened, from the Rejected tab. */}
       {confirmingReject && (
-        <div style={{ color: D.amber, fontSize: "0.8rem", marginTop: 6 }}>
+        <div style={{ color: D.amberInk, fontSize: "0.8rem", marginTop: 6 }}>
           Reject this dispute? It moves to the Rejected tab with no refund. You can reopen it from there with "Review Again".
         </div>
       )}
@@ -150,7 +150,7 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
               </span>
             </label>
           )}
-          <button onClick={() => resolve("resolved")} style={{ background: D.green, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm resolve</button>
+          <button onClick={() => resolve("resolved")} style={{ background: D.greenFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm resolve</button>
         </div>
       )}
     </div>

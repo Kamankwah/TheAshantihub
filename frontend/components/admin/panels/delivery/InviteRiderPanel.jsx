@@ -75,7 +75,7 @@ export default function InviteRiderPanel({ auth }) {
             <section aria-labelledby="pend" style={section}>
               <h3 id="pend" style={sectionTitle}>Waiting to sign in ({data.pending.length})</h3>
               {data.pending.length === 0 ? <Empty>No invite is waiting.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Person", "State", "Vehicle", "First shift", "Sent", ""].map((h, i) => <th key={i} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>{data.pending.map((p) => {

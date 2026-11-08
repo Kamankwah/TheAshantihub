@@ -45,7 +45,7 @@ function BookForm({ grid, canManage, onBooked }) {
 
   return (
     <Section id="ft-book" title="Give a featured promotion a place">
-      <form onSubmit={book} aria-label="Book a slot" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, alignItems: "start" }}>
+      <form onSubmit={book} aria-label="Book a slot" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))", gap: 12, alignItems: "start" }}>
         <label style={labelStyle}>Find a promotion<input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Business or listing" style={inputStyle} /></label>
         <label style={labelStyle}>Featured promotion
           <select value={form.promotion_id} onChange={(e) => set({ promotion_id: e.target.value })} required style={inputStyle}>
@@ -124,7 +124,7 @@ export default function FeaturedListingsPanel({ auth }) {
         </span>
       }>
         <div style={dim}>Booked for {summary.week_label}: {summary.booked} {summary.booked === 1 ? "slot" : "slots"} · {money(summary.list_price_total)} at list price{summary.waiting ? ` · ${summary.waiting} waiting in Promotions` : ""}. List price is the price of the places, not money received.</div>
-        <div style={scroll}>
+        <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
           <table style={table}>
             <thead><tr>
               <th scope="col" style={th}>Slot</th>
@@ -159,7 +159,7 @@ export default function FeaturedListingsPanel({ auth }) {
 
       <BookForm key={data.weeks[0].start} grid={data} canManage={canManage} onBooked={refetch} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="ft-look" title="Paid and verified must never look alike">
           <div><span style={{ border: "2px solid #D4A017", borderRadius: 6, padding: "1px 8px", fontWeight: 800, fontSize: "0.75rem" }}>Featured</span> Paid placement: gold outline, the word “Featured”, no tick. It means the business paid for the spot, nothing more.</div>
           <div><span style={{ color: D.okInk, fontWeight: 800, fontSize: "0.75rem" }}>✓ Verified</span> Verification: a green tick on a plain field. Earned when AshantiHub staff approve the business's Ghana Card. It can never be bought and never turns gold.</div>

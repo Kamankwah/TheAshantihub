@@ -50,7 +50,7 @@ export default function ReportsPanel({ auth }) {
             </div>
           ) : (
             <button type="button" onClick={() => setMore(true)}
-              style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 700, color: D.deepGold }}>Week &amp; month</button>
+              style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 700, color: D.goldInk }}>Week &amp; month</button>
           )}
         </div>
         {isLoading && <div role="status" style={dim}>Loading…</div>}

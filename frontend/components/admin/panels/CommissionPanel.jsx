@@ -119,7 +119,7 @@ export default function CommissionPanel() {
               <h3 id="commission-lines" style={{ ...h3, fontSize: "0.95rem" }}>Lines</h3>
               {data.count > 4 && (
                 <button type="button" onClick={() => setAll((v) => !v)}
-                  style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 700, color: D.deepGold }}>
+                  style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 700, color: D.goldInk }}>
                   {all ? "Show fewer" : `All ${data.count}`}
                 </button>
               )}

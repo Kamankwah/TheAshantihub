@@ -73,7 +73,7 @@ function CallRow({ call, onEarlier }) {
         <div style={{ fontWeight: 700, overflowWrap: "anywhere" }}>{call.counterpart_name || "Unknown"}</div>
         <div style={dim}>{TYPE_LABEL[call.counterpart_type] || label(call.counterpart_type)}{call.counterpart_phone ? ` · ${call.counterpart_phone}` : ""}</div>
         {call.counterpart_id && call.counterpart_type !== "guest" && (
-          <button type="button" onClick={() => onEarlier(call)} style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.7rem", fontWeight: 700, color: D.deepGold }}>Earlier calls with them</button>
+          <button type="button" onClick={() => onEarlier(call)} style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.7rem", fontWeight: 700, color: D.goldInk }}>Earlier calls with them</button>
         )}
       </td>
       <td style={td}>{label(call.purpose)}</td>

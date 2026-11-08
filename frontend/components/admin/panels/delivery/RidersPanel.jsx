@@ -60,7 +60,7 @@ export function RidersList({ onOpenRider, onNavigate }) {
             <section aria-labelledby="roster" style={section}>
               <h3 id="roster" style={sectionTitle}>Roster · {data.results.length} {data.results.length === 1 ? "person" : "people"}</h3>
               {data.results.length === 0 ? <Empty>No rider matches. Riders you invite appear here.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Rider or driver", "Status", "Vehicle", "Zone", "Jobs today", "On time · 30 d", "Acceptance · 30 d", "Cash held", "Location"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>
@@ -155,7 +155,7 @@ export function RiderProfile({ id, onBack, onOpenDelivery, onNavigate }) {
             <section aria-labelledby="docs" style={section}>
               <h3 id="docs" style={sectionTitle}>Documents</h3>
               {data.documents.length === 0 ? <Empty>No paper has been uploaded.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Document", "Number", "Expires", "Status"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>{data.documents.map((d) => (
@@ -172,7 +172,7 @@ export function RiderProfile({ id, onBack, onOpenDelivery, onNavigate }) {
             <section aria-labelledby="jobs" style={section}>
               <h3 id="jobs" style={sectionTitle}>Recent jobs</h3>
               {data.recent_jobs.length === 0 ? <Empty>No job yet.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Order", "Address", "Result", "Assigned"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>{data.recent_jobs.map((j) => (

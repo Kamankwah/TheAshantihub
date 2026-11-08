@@ -118,7 +118,7 @@ export default function ApprovalRulesPanel({ onNavigate }) {
 
       <section aria-labelledby="limits-h" style={card}>
         <h3 id="limits-h" style={{ ...h2, fontSize: "1rem" }}>Money limits</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(230px, 100%), 1fr))", gap: 16 }}>
           {LIMITS.map((l) => (
             <label key={l.key} style={labelStyle}>
               {l.label}
@@ -143,7 +143,7 @@ export default function ApprovalRulesPanel({ onNavigate }) {
       <section aria-labelledby="rules-h" style={card}>
         <h3 id="rules-h" style={{ ...h2, fontSize: "1rem" }}>Who approves what, and how fast</h3>
         {data.kinds.length === 0 && <div style={dim}>No kind of request is registered yet.</div>}
-        <div style={{ overflowX: "auto" }}>
+        <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
           <table aria-label="Approval rules" style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.78rem", color: D.text, fontVariantNumeric: "tabular-nums" }}>
             <thead>
               <tr><th scope="col" style={th}>Request</th><th scope="col" style={th}>Approval chain</th><th scope="col" style={th}>Response time (hours per step)</th><th scope="col" style={th}>If nobody acts</th></tr>

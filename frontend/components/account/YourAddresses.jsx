@@ -56,7 +56,7 @@ export default function YourAddresses() {
     <section aria-label="Your addresses" style={{ display: 'grid', gap: 12 }}>
       {actionError && <div role="alert" style={s.error}>{actionError}</div>}
       {editing === 'new' && <AddressForm onSave={saved} onCancel={cancelEdit} />}
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(min(240px, 100%), 1fr))' }}>
         {editing !== 'new' && (
           <button
             type="button" onClick={() => setEditing('new')}

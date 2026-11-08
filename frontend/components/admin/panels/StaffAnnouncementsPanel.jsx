@@ -166,7 +166,7 @@ export default function StaffAnnouncementsPanel() {
           <h3 style={sectionTitle}>Scheduled and sent</h3>
           {data.announcements.length === 0 && <div style={dim}>No announcements yet.</div>}
           {data.announcements.length > 0 && (
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr>{["Announcement", "To", "When", "Opened", "Confirmed", "Not opened yet", ""].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
                 <tbody>

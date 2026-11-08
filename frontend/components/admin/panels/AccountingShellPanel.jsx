@@ -190,7 +190,7 @@ function Decided() {
   return (
     <section aria-labelledby="as-decided" style={section}>
       <h3 id="as-decided" style={sectionTitle}>Tax on each kind of charge, as recorded</h3>
-      <div style={scroll}>
+      <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
         <table style={table}>
           <thead><tr><th style={th}>Charge</th><th style={th}>Tax</th><th style={th}>Decided by</th></tr></thead>
           <tbody>

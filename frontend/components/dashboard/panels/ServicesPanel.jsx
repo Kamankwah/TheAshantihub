@@ -5,7 +5,7 @@ import { formatAccra } from "../../../lib/bookingTerms.js";
 import { useIncomingServiceRequests } from "../../../hooks/useIncomingServiceRequests.js";
 import { useMyListings, DEFAULT_LISTINGS_PATH } from "../../../hooks/useMyListings.js";
 import { useCategories } from "../../../hooks/useCategories.js";
-import { D, glassCard, sectionTitle, tint } from "../theme.js";
+import { D, glassCard, sectionTitle, tint, inkOf } from "../theme.js";
 import OwnerListingCard from "./OwnerListingCard.jsx";
 
 // Services management (business item 2 / Wave H2): a service business's
@@ -17,7 +17,7 @@ const inputStyle = { padding: "8px 10px", borderRadius: 8, border: `1.5px solid 
 const btn = { border: "none", borderRadius: 20, padding: "7px 14px", fontSize: "0.74rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
 
 const STATUS_META = {
-  requested: { label: "New request", color: D.amber },
+  requested: { label: "New request", color: D.amberInk },
   accepted: { label: "Awaiting payment", color: D.blue },
   declined: { label: "Declined", color: D.red },
   in_progress: { label: "In progress", color: D.blue },
@@ -56,7 +56,7 @@ function RequestCard({ sr, onChanged }) {
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem" }}>{sr.listing_name}</div>
           <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 2 }}>From {sr.customer_name} · {sr.created_at?.slice(0, 10)}</div>
         </div>
-        <span style={{ background: tint(meta.color, "22"), color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.label}</span>
+        <span style={{ background: tint(meta.color, "22"), color: inkOf(meta.color), borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.label}</span>
       </div>
 
       <div style={{ color: D.text, fontSize: "0.78rem", margin: "8px 0" }}>"{sr.message}"</div>
@@ -74,8 +74,8 @@ function RequestCard({ sr, onChanged }) {
       <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
         {sr.status === "requested" && (
           <>
-            <button onClick={() => setMode(mode === "accept" ? null : "accept")} style={{ ...btn, background: D.green, color: D.white }}>✓ Accept & quote</button>
-            <button onClick={() => setMode(mode === "decline" ? null : "decline")} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>✕ Decline</button>
+            <button onClick={() => setMode(mode === "accept" ? null : "accept")} style={{ ...btn, background: D.greenFill, color: D.white }}>✓ Accept & quote</button>
+            <button onClick={() => setMode(mode === "decline" ? null : "decline")} style={{ ...btn, background: tint(D.red, "22"), color: inkOf(D.red) }}>✕ Decline</button>
           </>
         )}
         {sr.status === "in_progress" && (
@@ -89,7 +89,7 @@ function RequestCard({ sr, onChanged }) {
       {mode === "accept" && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <input type="text" inputMode="decimal" value={price} onChange={e => setPrice(e.target.value)} placeholder="Your price (GHS)" style={{ ...inputStyle, width: 160 }} />
-          <button onClick={() => call("respond", { action: "accept", price: price.trim() })} disabled={!price.trim()} style={{ ...btn, background: D.green, color: D.white, cursor: price.trim() ? "pointer" : "default" }}>Send quote</button>
+          <button onClick={() => call("respond", { action: "accept", price: price.trim() })} disabled={!price.trim()} style={{ ...btn, background: D.greenFill, color: D.white, cursor: price.trim() ? "pointer" : "default" }}>Send quote</button>
         </div>
       )}
       {mode === "decline" && (

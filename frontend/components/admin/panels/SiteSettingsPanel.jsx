@@ -106,7 +106,7 @@ function SiteSettingsForm({ initial, onSaved, showToast }) {
         </div>
       )}
       {error && <div role="alert" style={errorStyle}>{error}</div>}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <section aria-labelledby="ss-contact" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
           <h3 id="ss-contact" style={{ ...h2, fontSize: "1rem" }}>Footer contact details</h3>
           {CONTACT.map((f) => input(f))}

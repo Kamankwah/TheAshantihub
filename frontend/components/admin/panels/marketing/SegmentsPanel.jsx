@@ -66,7 +66,7 @@ export default function SegmentsPanel({ onNavigate }) {
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       {note && <div role="status" style={chip(D.green)}>{note}</div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="sg-build" title="Build a segment">
           <label style={labelStyle}>Name<input type="text" value={form.name} onChange={(e) => set({ name: e.target.value })} style={inputStyle} /></label>
           <fieldset style={{ border: 0, padding: 0, margin: 0, display: "flex", gap: 14, flexWrap: "wrap" }}>
@@ -147,7 +147,7 @@ export default function SegmentsPanel({ onNavigate }) {
         {saved.isLoading && <Loading />}
         {saved.data && saved.data.results.length === 0 && <Honest>No segments saved yet. Build one above and save it to use it in a campaign.</Honest>}
         {saved.data && saved.data.results.length > 0 && (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{["Segment", "Who", "Rules", "Channel", "Size now", "Last used", ""].map((h, i) => <th key={i} scope="col" style={th}>{h}</th>)}</tr></thead>
               <tbody>

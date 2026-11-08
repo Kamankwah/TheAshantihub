@@ -87,7 +87,7 @@ export default function SellerPage({ id, onBack, user, favourites = [], onFavour
           {loadingRows ? (
             <div style={{ color: "rgba(255,255,255,0.7)" }}>Loading…</div>
           ) : (
-            <div role="tabpanel" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 14 }}>
+            <div role="tabpanel" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(230px, 100%), 1fr))", gap: 14 }}>
               {active.id === "events"
                 ? (events || []).map((e) => <EventCard key={e.id} item={e} onOpen={onOpenEvent} />)
                 : rows.map((r) => (

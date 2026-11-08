@@ -234,7 +234,7 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
         {isError && <div role="alert" style={errorStyle}>Could not load the portfolios.</div>}
         {!isLoading && !isError && rows.length === 0 && <div style={dim}>No business matches these filters.</div>}
         {rows.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table aria-label="Businesses" style={{ borderCollapse: "collapse", width: "100%", minWidth: 900, fontSize: "0.78rem", color: D.text, fontVariantNumeric: "tabular-nums" }}>
               <thead>
                 <tr>
@@ -250,7 +250,7 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
                       <div style={{ fontWeight: 800 }}>{b.business_name}</div>
                       <div style={dim}>{[b.zone?.name, b.registration_channel === "self" ? "registered online" : null, b.needs_claim ? "owner hasn't set a login" : null].filter(Boolean).join(" · ")}</div>
                     </td>
-                    <td style={td}>{b.account_manager?.full_name || <span style={{ color: D.amber, fontWeight: 800 }}>No account manager</span>}</td>
+                    <td style={td}>{b.account_manager?.full_name || <span style={{ color: D.amberInk, fontWeight: 800 }}>No account manager</span>}</td>
                     <td style={td}>
                       <HealthChip rating={b.health?.rating} />
                       <div style={dim}>{b.health?.reasons?.[0] || ""}</div>

@@ -21,7 +21,7 @@ export const errorStyle = { color: D.red, fontSize: "0.8rem", fontWeight: 700 };
 
 export const HEALTH = {
   at_risk: { label: "At risk", color: D.red },
-  needs_attention: { label: "Needs attention", color: D.amber },
+  needs_attention: { label: "Needs attention", color: D.amberInk },
   new: { label: "New · KYC waiting", color: D.blue },
   healthy: { label: "Healthy", color: D.green },
 };

@@ -7,7 +7,7 @@ import { noPlansOffered } from "../../../lib/plansOffered.js";
 import { useMyHeroSubmission } from "../../../hooks/useMyHeroSubmission.js";
 import { useOwnerReviews } from "../../../hooks/useOwnerReviews.js";
 import { useBusinessProfile } from "../../../hooks/useBusinessProfile.js";
-import { D, glassCard, LISTING_STATUS_META, CREDIT_FACTOR_META, getScoreColor, ghs, tint } from "../theme.js";
+import { D, glassCard, LISTING_STATUS_META, CREDIT_FACTOR_META, getScoreColor, ghs, tint, inkOf } from "../theme.js";
 import KpiCard from "../charts/KpiCard.jsx";
 import ChartFrame from "../charts/ChartFrame.jsx";
 import SpendAreaChart from "../charts/SpendAreaChart.jsx";
@@ -84,9 +84,9 @@ export default function AnalyticsPanel({ user, onNavigate, businessKind }) {
   const planEnt = sub?.plan || {};
   const heroActive = heroSubmission?.status === "approved" || heroSubmission?.status === "pending";
   const usageData = sub ? [
-    { label: "Active listings", used: publishedCount, limit: planEnt.max_active_listings ?? null, unit: "", color: D.gold },
+    { label: "Active listings", used: publishedCount, limit: planEnt.max_active_listings ?? null, unit: "", color: D.goldInk },
     { label: "Hero spotlight", used: heroActive ? 1 : 0, limit: 1, unit: "slot", color: D.blue },
-    planEnt.hero_days != null ? { label: "Hero days / cycle", used: heroSubmission?.extended_days || 0, limit: planEnt.hero_days, unit: "days", color: D.purple } : null,
+    planEnt.hero_days != null ? { label: "Hero days / cycle", used: heroSubmission?.extended_days || 0, limit: planEnt.hero_days, unit: "days", color: D.purpleInk } : null,
   ].filter(Boolean) : [];
 
   const reviewCount = reviews?.review_count ?? 0;
@@ -121,7 +121,7 @@ export default function AnalyticsPanel({ user, onNavigate, businessKind }) {
         display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12,
       }}>
         <div>
-          <div style={{ color: D.deepGold, fontWeight: 900, fontSize: "1.12rem", marginBottom: 3 }}>Akwaaba, {firstName}! 👋</div>
+          <div style={{ color: D.goldInk, fontWeight: 900, fontSize: "1.12rem", marginBottom: 3 }}>Akwaaba, {firstName}! 👋</div>
           <div style={{ fontSize: "0.74rem", color: D.textDim }}>
             {profile?.gps_address ? `📍 ${profile.gps_address}` : "Your business at a glance"}
             {profile?.business_contact_phone ? ` • ${profile.business_contact_phone}` : ""}
@@ -144,7 +144,7 @@ export default function AnalyticsPanel({ user, onNavigate, businessKind }) {
       </div>
 
       {/* Main chart + recent activity */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(300px, 100%), 1fr))", gap: 14 }}>
         <ChartFrame title="Your AshantiHub spend" icon="💸" aside={<span style={{ fontSize: "0.62rem", color: D.textFaint }}>subscriptions &amp; promotions</span>}>
           <SpendAreaChart data={spendSeries} />
         </ChartFrame>
@@ -154,7 +154,7 @@ export default function AnalyticsPanel({ user, onNavigate, businessKind }) {
       </div>
 
       {/* Listings status + credit gauge + factors */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(260px, 100%), 1fr))", gap: 14 }}>
         <ChartFrame title="Listings by status" icon="📦">
           <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <ListingsDonut data={donutData} />
@@ -204,7 +204,7 @@ export default function AnalyticsPanel({ user, onNavigate, businessKind }) {
                       <div style={{ height: "100%", width: item.status === "published" ? "100%" : item.status === "pending_review" ? "60%" : "25%", background: statusMeta.color, borderRadius: 10 }} />
                     </div>
                   </div>
-                  <span style={{ background: tint(statusMeta.color, "20"), color: statusMeta.color, borderRadius: 20, padding: "3px 9px", fontSize: "0.6rem", fontWeight: 800, whiteSpace: "nowrap" }}>{statusMeta.label}</span>
+                  <span style={{ background: tint(statusMeta.color, "20"), color: inkOf(statusMeta.color), borderRadius: 20, padding: "3px 9px", fontSize: "0.6rem", fontWeight: 800, whiteSpace: "nowrap" }}>{statusMeta.label}</span>
                 </div>
               );
             })}

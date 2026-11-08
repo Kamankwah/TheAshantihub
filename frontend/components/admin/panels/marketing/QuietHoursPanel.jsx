@@ -67,7 +67,7 @@ export default function QuietHoursPanel() {
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       {waiting && <Honest>{data.pending.maker} proposed a change on {whenWord(data.pending.created_at)}. It is waiting for Super Admin; the rules below are the ones in force.</Honest>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
           <Section id="qh-win" title="Send window">
             <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>

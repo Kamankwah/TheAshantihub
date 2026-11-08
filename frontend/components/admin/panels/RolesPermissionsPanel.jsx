@@ -98,7 +98,7 @@ export default function RolesPermissionsPanel() {
         <section aria-label="What each role can do" style={card}>
           <h3 style={h3}>What each role can do</h3>
           <div style={dim}>Super Admin always holds every permission. Tick a box to change a role; a greyed box cannot be changed, and its tooltip says why. A person's own grants and revokes sit on top of their role.</div>
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table aria-label="Role permissions" style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.78rem", color: D.text, minWidth: 760 }}>
               <thead>
                 <tr>

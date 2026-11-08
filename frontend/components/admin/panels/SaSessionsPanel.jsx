@@ -110,7 +110,7 @@ export default function SaSessionsPanel() {
           </div>
           {rows.length === 0 && <div style={dim}>{all.length <= 1 ? "Nobody else is signed in right now." : "No session matches these filters."}</div>}
           {rows.length > 0 && (
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table aria-label="Sessions" style={{ ...tableStyle, minWidth: 860 }}>
                 <thead><tr><th style={th}>Person</th><th style={th}>Device</th><th style={th}>IP</th><th style={th}>Signed in</th><th style={th}>Last seen</th><th style={th}>Ends</th><th style={th}>Actions</th></tr></thead>
                 <tbody>

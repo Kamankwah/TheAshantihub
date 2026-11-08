@@ -4,7 +4,7 @@ import { useMyDeliveries } from "../../../hooks/useMyDeliveries.js";
 import { useDispatchMap } from "../../../hooks/useTracking.js";
 import DeliveryRouteMap from "../../DeliveryRouteMap.jsx";
 import EtaLine from "../../maps/EtaLine.jsx";
-import { D, glassCard, tint } from "../theme.js";
+import { D, glassCard, tint, inkOf } from "../theme.js";
 
 // A Dispatch's assigned deliveries (punch-list item 11, delivery.dispatch).
 // Each shows the pickup(s) and drop-off with a route map, and the two actions
@@ -14,7 +14,7 @@ import { D, glassCard, tint } from "../theme.js";
 const bigBtn = { border: "none", borderRadius: 20, padding: "11px 16px", fontSize: "0.82rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit", width: "100%" };
 
 const STATUS_META = {
-  assigned: { label: "Awaiting pickup", color: D.amber },
+  assigned: { label: "Awaiting pickup", color: D.amberInk },
   picked_up: { label: "Out for delivery", color: D.blue },
   delivered: { label: "Delivered — awaiting customer", color: D.green },
   confirmed: { label: "Confirmed by customer", color: D.green },
@@ -55,12 +55,12 @@ function DeliveryCard({ delivery, onDone }) {
     <div style={{ ...glassCard, padding: 16, marginBottom: 14, maxWidth: 560 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem" }}>Order #{delivery.order_id}</div>
-        <span style={{ background: tint(meta.color, "22"), color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.label}</span>
+        <span style={{ background: tint(meta.color, "22"), color: inkOf(meta.color), borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.label}</span>
       </div>
 
       {/* Pickups */}
       <div style={{ marginTop: 10 }}>
-        <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>Pickup</div>
+        <div style={{ color: D.goldInk, fontWeight: 800, fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>Pickup</div>
         {(delivery.pickups || []).map((p, i) => (
           <div key={i} style={{ color: D.text, fontSize: "0.76rem", marginBottom: 3 }}>
             📦 {p.business_name} · 📞 {p.phone}
@@ -92,7 +92,7 @@ function DeliveryCard({ delivery, onDone }) {
           <button onClick={() => act("pickup")} disabled={busy} style={{ ...bigBtn, background: D.gold, color: D.onGold, opacity: busy ? 0.6 : 1 }}>📦 Confirm pickup</button>
         )}
         {delivery.status === "picked_up" && (
-          <button onClick={() => act("deliver")} disabled={busy} style={{ ...bigBtn, background: D.green, color: D.white, opacity: busy ? 0.6 : 1 }}>✓ Confirm delivered</button>
+          <button onClick={() => act("deliver")} disabled={busy} style={{ ...bigBtn, background: D.greenFill, color: D.white, opacity: busy ? 0.6 : 1 }}>✓ Confirm delivered</button>
         )}
         {delivery.status === "delivered" && (
           <div style={{ color: D.textDim, fontSize: "0.74rem", textAlign: "center" }}>Waiting for the customer to confirm receipt.</div>

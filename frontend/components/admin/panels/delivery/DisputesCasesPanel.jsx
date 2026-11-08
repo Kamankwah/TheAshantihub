@@ -37,7 +37,7 @@ export function CasesList({ onOpenCase }) {
             <section aria-labelledby="open" style={section}>
               <h3 id="open" style={sectionTitle}>{status === "open" ? "Open cases, soonest due first" : "Closed in the last 7 days"}</h3>
               {data.results.length === 0 ? <Empty>No case matches.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Case", "Order", "Rider", "Raised", "Answer due", "Where it is"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>
@@ -170,7 +170,7 @@ export function CaseDetail({ id, onBack, onOpenDelivery }) {
                     <Kpi label="Wrong code tries" value={ev.code_tries.pickup + ev.code_tries.drop} sub={`pickup ${ev.code_tries.pickup} · customer ${ev.code_tries.drop}`} />
                     <Kpi label="Rider's other cases" value={data.rider?.other_cases ?? 0} />
                   </div>
-                  <div style={scroll}>
+                  <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                     <table style={table}>
                       <thead><tr>{["Check-in", "Time", "From the stop", "GPS accuracy", "Result"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                       <tbody>

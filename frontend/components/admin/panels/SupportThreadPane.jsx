@@ -164,7 +164,7 @@ function ResolveForm({ id, onDone, onError }) {
         <select value={code} onChange={(e) => setCode(e.target.value)} style={field}>{RESOLUTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
       </label>
       <label style={{ ...labelStyle, flex: "1 1 180px" }}>Note (optional)<input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} style={field} /></label>
-      <button type="button" onClick={go} style={button(D.green, D.white)}>Resolve</button>
+      <button type="button" onClick={go} style={button(D.greenFill, D.white)}>Resolve</button>
       <div style={{ ...dim, flexBasis: "100%" }}>If they reply within 7 days it reopens by itself; later, a new linked conversation starts.</div>
     </div>
   );
@@ -352,7 +352,7 @@ export default function SupportThreadPane({ id, scope, team, me, onChanged, onOp
           {t.snoozed && <span style={chip(D.blue)}>{slaText(t)}</span>}
         </div>
         {t.unassigned_reason && <div style={callout(D.amber)}>{t.unassigned_reason}</div>}
-        <div role="log" aria-label="Messages" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto", padding: "4px 0" }}>
+        <div role="log" tabIndex={0} aria-label="Messages" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto", padding: "4px 0" }}>
           {t.messages.map((m) => <Bubble key={m.id} m={m} />)}
         </div>
         {closed && <div style={dim}>{`Resolved${t.resolved_by ? ` by ${t.resolved_by}` : ""}${t.resolution_code ? `: ${t.resolution_code.replace(/_/g, " ")}` : ""}${t.resolution_note ? `. ${t.resolution_note}` : ""}. If they reply within 7 days it reopens on its own and comes back to you.`}</div>}

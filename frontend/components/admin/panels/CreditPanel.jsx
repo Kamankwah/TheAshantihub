@@ -3,7 +3,7 @@ import { apiPatch, apiPost } from "../../../apiClient.js";
 import { useCreditScoresAdmin } from "../../../hooks/useCreditScoresAdmin.js";
 import { useLendingPartners } from "../../../hooks/useLendingPartners.js";
 import { useLoanApplicationsAdmin } from "../../../hooks/useLoanApplicationsAdmin.js";
-import { D, glassCard, getScoreColor, getScoreGrade, tint } from "../theme.js";
+import { D, glassCard, getScoreColor, getScoreGrade, tint, inkOf } from "../theme.js";
 
 // Admin Credit panel (punch-list item 16). Three sections: manage business
 // owners' credit scores (view + manual adjustment), manage the lending-partner
@@ -16,7 +16,7 @@ import { D, glassCard, getScoreColor, getScoreGrade, tint } from "../theme.js";
 const pillBtn = { border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
 const inputStyle = { padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.74rem", fontFamily: "inherit", background: D.panelBg2, color: D.text, boxSizing: "border-box" };
 const LOAN_STATUS_META = {
-  submitted: { label: "Submitted", color: D.amber },
+  submitted: { label: "Submitted", color: D.amberInk },
   under_review: { label: "Under review", color: D.blue },
   approved: { label: "Approved", color: D.green },
   declined: { label: "Declined", color: D.red },
@@ -164,7 +164,7 @@ function PartnersSection() {
               <button onClick={() => setEditingId(editingId === p.id ? null : p.id)} style={{ ...pillBtn, background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}` }}>✏️ Edit</button>
               {p.is_active
                 ? <button onClick={() => update(p.id, { is_active: false })} style={{ ...pillBtn, background: "rgba(248,113,113,0.14)", color: D.red }}>Deactivate</button>
-                : <button onClick={() => update(p.id, { is_active: true })} style={{ ...pillBtn, background: D.green, color: D.white }}>Reactivate</button>}
+                : <button onClick={() => update(p.id, { is_active: true })} style={{ ...pillBtn, background: D.greenFill, color: D.white }}>Reactivate</button>}
             </div>
           </div>
           {editingId === p.id && <PartnerForm initial={{ ...BLANK_PARTNER, ...p }} onSubmit={(form) => update(p.id, form)} onCancel={() => setEditingId(null)} submitLabel="Save" />}
@@ -194,7 +194,7 @@ function LoanRow({ app, onChanged }) {
         <div>
           <div style={{ color: D.text, fontWeight: 700, fontSize: "0.8rem" }}>
             {app.business_owner_name} · GHS {app.amount}
-            <span style={{ background: tint(meta.color, "22"), color: meta.color, borderRadius: 20, padding: "1px 8px", fontSize: "0.58rem", fontWeight: 800, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>{meta.label}</span>
+            <span style={{ background: tint(meta.color, "22"), color: inkOf(meta.color), borderRadius: 20, padding: "1px 8px", fontSize: "0.58rem", fontWeight: 800, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>{meta.label}</span>
           </div>
           <div style={{ color: D.textDim, fontSize: "0.66rem" }}>{app.purpose} · {app.lending_partner_name || "no partner"} · score {app.score_at_application} · {app.created_at?.slice(0, 10)}</div>
           {isFinal && app.reviewed_by_name && <div style={{ color: D.textFaint, fontSize: "0.62rem", marginTop: 1 }}>Decided by {app.reviewed_by_name}{app.decision_notes ? ` — ${app.decision_notes}` : ""}</div>}
@@ -209,7 +209,7 @@ function LoanRow({ app, onChanged }) {
       {reviewing && !isFinal && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Decision notes (optional)" style={{ ...inputStyle, flex: 1, minWidth: 160 }} />
-          <button onClick={() => review("approved")} style={{ ...pillBtn, background: D.green, color: D.white }}>Approve</button>
+          <button onClick={() => review("approved")} style={{ ...pillBtn, background: D.greenFill, color: D.white }}>Approve</button>
           <button onClick={() => review("declined")} style={{ ...pillBtn, background: D.redFill, color: D.white }}>Decline</button>
         </div>
       )}

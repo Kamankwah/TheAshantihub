@@ -161,7 +161,7 @@ function CategoriesAndZones({ auth }) {
       <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${D.divider}` }}>
         <span style={{ color: D.text, fontSize: "0.8rem", flex: 1 }}>
           {c.icon} {c.label}
-          {c.is_accommodation && <span style={{ marginLeft: 6, background: `${D.gold}22`, color: D.gold, borderRadius: 20, padding: "1px 7px", fontSize: "0.58rem", fontWeight: 800 }}>🏨 Accommodation</span>}
+          {c.is_accommodation && <span style={{ marginLeft: 6, background: `${D.gold}22`, color: D.goldInk, borderRadius: 20, padding: "1px 7px", fontSize: "0.58rem", fontWeight: 800 }}>🏨 Accommodation</span>}
         </span>
         <span style={{ width: 12, height: 12, borderRadius: "50%", background: c.color, flexShrink: 0 }} title={c.color} />
         {canManageCategories && (

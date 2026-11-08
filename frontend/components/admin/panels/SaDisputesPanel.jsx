@@ -96,7 +96,7 @@ export default function SaDisputesPanel({ auth }) {
         <LoadState query={list} what="the cases" />
         {!list.isLoading && !list.isError && rows.length === 0 && <div style={dim}>No case matches.</div>}
         {rows.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table aria-label="Cases" style={{ ...tableStyle, minWidth: 820 }}>
               <thead><tr><th style={th}>Case</th><th style={th}>Order · business · customer</th><th style={th}>With</th><th style={th}>Stage</th><th style={th}>Opened</th><th style={th}>At stake</th><th style={th} /></tr></thead>
               <tbody>

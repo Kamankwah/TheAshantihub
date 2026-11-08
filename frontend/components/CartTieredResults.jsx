@@ -7,7 +7,7 @@ import { C } from "../theme.js";
 // and everyone else behind an always-available "See other shops too". A shop the cart cannot take now stays visible
 // with the server's reason.
 const heading = { margin: "18px 0 8px", color: C.lightGold, fontSize: "0.82rem", fontWeight: 900 };
-const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(215px,1fr))", gap: 14 };
+const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(215px, 100%), 1fr))", gap: 14 };
 const tag = { marginTop: 6, fontSize: "0.7rem", fontWeight: 700, color: C.lightGold };
 
 function Row({ item, renderCard }) {

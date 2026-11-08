@@ -61,7 +61,7 @@ function SponsoredAd({ listings, listingId, promoteBase, PaymentComponent, user,
         <PaymentComponent amount={Number(paying.amount_paid)} purpose={`${paying.kind === "boost" ? "Boost" : "Featured"} promotion — ${paying.kind === "boost" ? paying.keywords : "listing"}`} businessName={user?.fullName || "Your Business"} onSuccess={confirmPaid} onClose={() => setPaying(null)} />
       )}
       {paying && !PaymentComponent && (
-        <div role="alert" style={{ color: D.amber, fontSize: "0.74rem", lineHeight: 1.5, marginBottom: 10 }}>
+        <div role="alert" style={{ color: D.amberInk, fontSize: "0.74rem", lineHeight: 1.5, marginBottom: 10 }}>
           {`This promotion costs GHS ${paying.amount_paid} and needs a payment, but paying is not available on this screen yet. The request was created and stays unpaid and not live until it is paid.`}
         </div>
       )}

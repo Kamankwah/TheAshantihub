@@ -59,7 +59,7 @@ export default function AccountingOverviewPanel({ auth, onNavigate }) {
 
           <section aria-labelledby="ad-revenue" style={section}>
             <h3 id="ad-revenue" style={sectionTitle}>Revenue by type, this month so far</h3>
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr><th scope="col" style={th}>Type</th><th scope="col" style={{ ...th, textAlign: "right" }}>Amount, before tax</th></tr></thead>
                 <tbody>

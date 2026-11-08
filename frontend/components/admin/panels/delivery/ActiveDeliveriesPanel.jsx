@@ -38,7 +38,7 @@ export function ActiveDeliveriesPanel({ onOpenDelivery }) {
             <section aria-labelledby="tbl" style={section}>
               <h3 id="tbl" style={sectionTitle}>In flight</h3>
               {data.results.length === 0 ? <Empty>No delivery matches.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Order", "Rider", "Current step", "Last stamp", "Deliver by", "Payment", "Flag"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>

@@ -69,7 +69,7 @@ export default function PromotionsMarketing({ auth }) {
           action={tab === "pending" ? <span style={dim}>Approved late? The end date moves so the business gets every day it paid for.</span> : null}>
           {rows.length === 0 && <Honest>{{ pending: "No promotions are waiting for approval.", active: "No promotions are running.", rejected: "No promotions have been rejected.", cancelled: "No promotions have been cancelled.", expired: "No promotions have finished yet." }[tab]}</Honest>}
           {rows.length > 0 && (
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr>
                   <th scope="col" style={th}>Business and listing</th><th scope="col" style={th}>Kind</th>

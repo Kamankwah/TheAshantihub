@@ -79,7 +79,7 @@ export default function DocumentsPanel({ onNavigate }) {
             <section aria-labelledby="docs" style={section}>
               <h3 id="docs" style={sectionTitle}>Needs action, then expiring soonest</h3>
               {data.results.length === 0 ? <Empty>No paper in this list.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Rider", "Document", "Expiry", "Status", "Actions"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>{data.results.map((d) => <Row key={d.id} d={d} onDone={refetch} setError={setError} />)}</tbody>

@@ -68,7 +68,7 @@ export default function FlashSaleEditor({ id, onBack, onOpenDetail }) {
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       {notice && <div role="status" style={chip(D.green)}>{notice}</div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
           <Section id="fe-det" title="Dates, discount and limits">
             <label style={labelStyle}>Name<input value={form.name} disabled={!editable} onChange={(e) => set({ name: e.target.value })} style={inputStyle} /></label>
@@ -107,7 +107,7 @@ export default function FlashSaleEditor({ id, onBack, onOpenDetail }) {
               </div>
             )}
             {!isNew && (data.listings.length === 0 ? <Honest>No listing yet. Only live listings from verified businesses with tracked stock can join; otherwise the cap can't be enforced.</Honest> : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr>{["Listing", "Business", "Normal price", "Sale price", "In stock", "Seller", ""].map((h, i) => <th key={i} scope="col" style={th}>{h}</th>)}</tr></thead>
                   <tbody>

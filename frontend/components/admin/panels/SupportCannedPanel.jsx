@@ -116,7 +116,7 @@ export default function SupportCannedPanel() {
               <div style={{ background: D.panelBg2, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <span style={{ fontSize: "0.65rem", fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: D.textDim }}>Preview with a real conversation</span>
-                  <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0, maxWidth: "100%" }}>
                     <select aria-label="Conversation" value={previewId} onChange={(e) => setPreviewId(e.target.value)} style={{ ...field, padding: "3px 6px" }}>
                       <option value="">No conversation</option>
                       {convs.map((c) => <option key={c.id} value={c.id}>{`${c.display_name}${c.about.order ? ` · Order #${c.about.order.id}` : ""}`}</option>)}

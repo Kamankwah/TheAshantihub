@@ -188,7 +188,7 @@ export default function OpsScoutsPanel({ auth, onNavigate, onOpenScout }) {
             {rows.length === 0 ? (
               <div style={dim}>{scope === "team" ? "No scouts report to you yet. Invite one from the Invite screen." : "There are no active scouts yet."}</div>
             ) : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead>
                     <tr>

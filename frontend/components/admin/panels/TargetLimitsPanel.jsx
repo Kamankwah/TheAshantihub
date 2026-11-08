@@ -97,7 +97,7 @@ export default function TargetLimitsPanel({ onOpenApproval }) {
 
             <section aria-labelledby="tl-limits" style={section}>
               <h3 id="tl-limits" style={sectionTitle}>Daily limits per scout</h3>
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr><th style={th}>Measure</th><th style={th}>How it's counted</th><th style={th}>Lowest a day</th><th style={th}>Highest a day</th></tr></thead>
                   <tbody>
@@ -123,7 +123,7 @@ export default function TargetLimitsPanel({ onOpenApproval }) {
               <h3 id="tl-today" style={sectionTitle}>Daily targets in force today</h3>
               {scouts.length === 0 && <div style={dim}>No scout has a manager yet, so no targets are set.</div>}
               {scouts.length > 0 && (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr><th style={th}>Scout</th>{metrics.map((m) => <th key={m} style={th}>{LABEL[m] || m}</th>)}</tr></thead>
                     <tbody>

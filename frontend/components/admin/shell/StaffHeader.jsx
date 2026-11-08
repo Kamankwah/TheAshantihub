@@ -25,7 +25,7 @@ export default function StaffHeader({ title, role, roleColor, fullName, onExit, 
       position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 12px rgba(44,24,16,0.08)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${D.cardBorder}`,
     }}>
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg,#CC0000 33%,#D4A017 33%,#D4A017 66%,#006400 66%)" }} />
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: isPhone ? 56 : 60, gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minHeight: isPhone ? 56 : 60, gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           {showMenu && (
             <button ref={menuButtonRef} type="button" aria-label="Open navigation" aria-expanded={drawerOpen} onClick={onOpenMenu}
@@ -35,7 +35,7 @@ export default function StaffHeader({ title, role, roleColor, fullName, onExit, 
           )}
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap", gap: "4px 12px", minWidth: 0 }}>
           {status}
           {actions}
           <RoleChip role={role} roleColor={roleColor} />

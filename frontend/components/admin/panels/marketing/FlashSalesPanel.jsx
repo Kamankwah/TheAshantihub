@@ -27,7 +27,7 @@ export default function FlashSalesPanel({ detailId, onOpenDetail }) {
         <button type="button" onClick={() => onOpenDetail?.("new")} style={button(D.gold, D.text)}>New flash sale</button>
       </PageHead>
       <OffNotice data={data} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="fs-next" title={next ? `${next.status === "live" ? "On now" : "Next up"}: ${next.name}` : "Next up"}>
           {next ? (
             <>
@@ -55,7 +55,7 @@ export default function FlashSalesPanel({ detailId, onOpenDetail }) {
       </div>
       <Section id="fs-all" title={`All flash sales · ${shown.length}`}>
         {shown.length === 0 ? <Honest>{sales.length === 0 ? "No flash sale yet." : "No flash sale in this status."}</Honest> : (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{["Sale", "When", "Countdown", "Listings", "Stock cap", "Per customer", "Status"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
               <tbody>

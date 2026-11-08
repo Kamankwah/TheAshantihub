@@ -92,7 +92,7 @@ function DetailField({ label, value }) {
 
 function SectionTitle({ children }) {
   return (
-    <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 8px" }}>{children}</div>
+    <div style={{ color: D.goldInk, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 8px" }}>{children}</div>
   );
 }
 
@@ -110,7 +110,7 @@ function CustomerPaymentHistory({ history }) {
           <div key={i} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 10px", padding: "5px 0", borderBottom: `1px solid ${D.divider}`, fontSize: "0.72rem" }}>
             <span style={{ color: D.text, flex: "1 1 120px", minWidth: 0, overflowWrap: "anywhere" }}>{p.purpose || p.kind}</span>
             <span style={{ color: D.textDim, whiteSpace: "nowrap" }}>
-              GHS {p.amount} • <span style={{ color: p.status === "success" ? D.green : p.status === "failed" ? D.red : D.amber }}>{p.status}</span> • {p.created_at?.slice(0, 10)}
+              GHS {p.amount} • <span style={{ color: p.status === "success" ? D.green : p.status === "failed" ? D.red : D.amberInk }}>{p.status}</span> • {p.created_at?.slice(0, 10)}
             </span>
           </div>
         ))
@@ -259,7 +259,7 @@ function UserRow({ user, config, canManage, onChanged }) {
           <button onClick={openView} style={{ ...pillBtn, background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}` }}>{mode === "view" ? "▲ Hide" : "👁️ View"}</button>
           {canManage && <button onClick={openEdit} style={{ ...pillBtn, background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}` }}>✏️ Edit</button>}
           {canManage && (user.is_suspended
-            ? <button onClick={unsuspend} style={{ ...pillBtn, background: D.green, color: D.white }}>↩️ Unsuspend</button>
+            ? <button onClick={unsuspend} style={{ ...pillBtn, background: D.greenFill, color: D.white }}>↩️ Unsuspend</button>
             : <button onClick={() => setSuspending(s => !s)} style={{ ...pillBtn, background: "rgba(248,113,113,0.14)", color: D.red }}>🚫 Suspend</button>)}
         </div>
       </div>

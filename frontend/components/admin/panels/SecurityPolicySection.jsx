@@ -128,7 +128,7 @@ export default function SecurityPolicySection() {
       <section aria-labelledby="who-heading" style={section}>
         <h2 id="who-heading" style={heading}>Who must use 2-step sign-in</h2>
         <div style={dim}>{`${using} of ${people} active people use it today.`}</div>
-        <div style={scroll}>
+        <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
           <table style={table}>
             <thead><tr>{["Role", "People", "Using it", "Required"].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>

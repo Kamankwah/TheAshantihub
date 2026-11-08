@@ -22,7 +22,7 @@ const inputStyle = {
 };
 const labelStyle = { display: "block", fontSize: "0.68rem", fontWeight: 700, color: D.textDim, marginBottom: 3 };
 const STATUS = {
-  pending: { label: "Waiting for approval", color: D.amber },
+  pending: { label: "Waiting for approval", color: D.amberInk },
   approved: { label: "Approved", color: D.green },
   rejected: { label: "Rejected", color: D.red },
 };

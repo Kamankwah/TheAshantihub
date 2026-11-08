@@ -75,7 +75,7 @@ export default function CommissionsPanel({ onNavigate }) {
             <section aria-labelledby="by-scout" style={section}>
               <h3 id="by-scout" style={sectionTitle}>By scout</h3>
               {data.scouts.length === 0 ? <span style={dim}>No scout has a commission record yet.</span> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Scout", "On hold", "Payable", "In batch", "Paid", "Reversed", "Statement"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>
@@ -114,7 +114,7 @@ export default function CommissionsPanel({ onNavigate }) {
               </div>
               <Status isLoading={lines.isLoading} isError={lines.isError}>
                 {lines.data && (lines.data.results.length === 0 ? <span style={dim}>No accruals match.</span> : (
-                  <div style={scroll}>
+                  <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                     <table style={table}>
                       <thead><tr>{["Scout", "Business", "Earned for", "Hold", "Status", "Amount"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                       <tbody>

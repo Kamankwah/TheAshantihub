@@ -97,7 +97,7 @@ export default function LiveOperationsPanel({ auth, onNavigate, onOpenDelivery, 
                 <button type="button" onClick={() => onNavigate?.("dm-queue")} style={linkStyle}>All {k.waiting}</button>
               </div>
               {data.queue.length === 0 ? <Empty>No order is waiting for a rider.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Order", "Waiting", "Route", "Zone"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>
