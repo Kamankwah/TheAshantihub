@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 
 from accounts.views import IsBusinessOwner
 from listings.models import Listing
-from listings.visibility import hidden_business_q
+from listings.visibility import hidden_business_q, unpriced_q
 
 from . import attach, offers, stock
 from .errors import CatalogueError
@@ -77,7 +77,7 @@ class OtherSellersView(APIView):
 
     def get(self, request, listing_id):
         listing = generics.get_object_or_404(
-            Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q()).select_related("catalogue_product"),
+            Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q()).exclude(unpriced_q()).select_related("catalogue_product"),
             pk=listing_id,
         )
         return Response(offers.other_sellers(listing, request.query_params))

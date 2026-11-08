@@ -156,7 +156,7 @@ class ListingDecisionFieldsTests(TestCase):
     # ── Edit: pragmatic enforcement against pre-existing rows ───────────────
 
     def _existing_product_listing(self):
-        return Listing.objects.create(
+        return Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.shops, zone=self.manhyia,
             name="Old Product", description="Created before this feature.",
             contact_phone="+233207445599",
@@ -214,7 +214,7 @@ class ListingDecisionFieldsTests(TestCase):
     # ── Public exposure ─────────────────────────────────────────────────────
 
     def test_public_detail_exposes_decision_fields(self):
-        listing = Listing.objects.create(
+        listing = Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.shops, zone=self.manhyia,
             name="Public Product", description="D.", contact_phone="+233207445599",
             status=Listing.PUBLISHED,

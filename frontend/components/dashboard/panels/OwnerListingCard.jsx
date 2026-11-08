@@ -114,6 +114,7 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
     }
     const priceChanged = !listing.has_variants && String(price) !== String(listing.price_amount ?? "");
     if (!priceChanged && Object.keys(changes).length === 0) { setError("You have not changed anything yet."); return; }
+    if (priceChanged && !(Number(price) > 0)) { setError("Set a price above GH₵ 0.00. A listing without a price is not shown in the marketplace."); return; }
     let priceSaved = false;
     try {
       if (priceChanged) { await apiPatch(`${basePath}/${listing.id}/manage/`, { price_amount: price === "" ? null : price }); priceSaved = true; }

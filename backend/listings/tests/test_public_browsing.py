@@ -27,7 +27,7 @@ class PublicBrowsingTests(TestCase):
             name="Afia's Kitchen", description="Authentic fufu and light soup.",
             contact_phone="+233207334455", price_amount="25.00", status=Listing.PUBLISHED,
         )
-        self.draft_listing = Listing.objects.create(
+        self.draft_listing = Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name="Unfinished Lodge", description="Not ready.",
             contact_phone="+233207334455", status=Listing.DRAFT,
@@ -102,7 +102,7 @@ class PublicBrowsingTests(TestCase):
 
     def test_listings_endpoint_is_paginated(self):
         for i in range(25):
-            Listing.objects.create(
+            Listing.objects.create(price_amount="10.00",
                 business_owner=self.owner, category=self.hotels, zone=self.manhyia,
                 name=f"Extra Lodge {i}", description="Filler.",
                 contact_phone="+233207334455", status=Listing.PUBLISHED,
@@ -124,7 +124,7 @@ class PublicBrowsingTests(TestCase):
         self.assertEqual(response.json()["name"], "Royal Lodge")
 
     def test_default_ordering_is_deterministic_and_newest_first(self):
-        newer_listing = Listing.objects.create(
+        newer_listing = Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name="Newest Lodge", description="Just published.",
             contact_phone="+233207334455", status=Listing.PUBLISHED,

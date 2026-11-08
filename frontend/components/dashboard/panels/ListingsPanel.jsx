@@ -181,9 +181,12 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
     (createForm.has_warranty !== "yes" || createForm.warranty_details.trim() !== "") &&
     (createForm.has_expiry !== "yes" || createForm.expiry_date !== "")
   );
+  // An item without a price is not shown in the marketplace, so the price is required; a goods listing with variants
+  // takes its price from them (the server checks again when it is submitted).
+  const createPriceOk = Number(createForm.price_amount) > 0 || (createCanHaveVariants && createVariants.length > 0);
   const canSubmitCreate = Boolean(
     createForm.category && createForm.zone && createForm.name.trim() &&
-    createForm.description.trim() && productAnswersComplete &&
+    createForm.description.trim() && productAnswersComplete && createPriceOk &&
     (!createIsAccommodation || createForm.cancellation_policy),
   );
 
@@ -345,8 +348,8 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
               <input value={createForm.tag} placeholder="e.g. Best Seller" onChange={e => updateCreate("tag", e.target.value)} style={inputStyle} />
             </div>
             <div>
-              <label style={labelStyle}>Price (GHS)</label>
-              <input type="number" min={0} value={createForm.price_amount} placeholder="Leave blank if unpriced" onChange={e => updateCreate("price_amount", e.target.value)} style={inputStyle} />
+              <label style={labelStyle}>Price (GHS) *</label>
+              <input type="number" min={0.01} step="0.01" required value={createForm.price_amount} placeholder="e.g. 25.00" onChange={e => updateCreate("price_amount", e.target.value)} style={inputStyle} />
             </div>
             <div>
               <label style={labelStyle}>Unit</label>

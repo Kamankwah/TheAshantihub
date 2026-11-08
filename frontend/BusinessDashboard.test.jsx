@@ -493,6 +493,7 @@ describe('BusinessDashboard Listings & Prices — create a new listing', () => {
     fireEvent.change(screen.getByDisplayValue('Choose a zone…'), { target: { value: '1' } })
     fireEvent.change(screen.getByPlaceholderText('e.g. Hand-woven Kente Scarf'), { target: { value: 'Kente Scarf' } })
     fireEvent.change(screen.getByPlaceholderText("Describe what you're offering — customers see this on your listing page"), { target: { value: 'Hand-woven.' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. 25.00'), { target: { value: '25' } })
   }
 
   it('keeps Create disabled for a product until warranty/expiry/return-policy are consciously answered', async () => {

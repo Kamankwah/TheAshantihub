@@ -43,7 +43,7 @@ class GoLiveGateTests(TestCase):
         )
 
     def draft(self, owner, status=Listing.DRAFT):
-        return Listing.objects.create(
+        return Listing.objects.create(price_amount="10.00",
             business_owner=owner, category=self.hotels, zone=self.manhyia, name="Lodge", description="D.",
             contact_phone=owner.login_phone, status=status,
         )

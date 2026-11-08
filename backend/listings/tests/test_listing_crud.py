@@ -94,11 +94,11 @@ class ListingCRUDTests(TestCase):
         self.assertIn("Unsupported file type: expected an image, got image/gif.", response.json()["main_photo"][0])
 
     def test_list_mine_returns_only_own_listings_any_status(self):
-        Listing.objects.create(
+        Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name="Mine", description="D.", contact_phone="+233207445566", status=Listing.DRAFT,
         )
-        Listing.objects.create(
+        Listing.objects.create(price_amount="10.00",
             business_owner=self.other_owner, category=self.hotels, zone=self.manhyia,
             name="Not Mine", description="D.", contact_phone="+233207445577", status=Listing.PUBLISHED,
         )
@@ -110,7 +110,7 @@ class ListingCRUDTests(TestCase):
     def test_list_mine_includes_gallery_photos(self):
         from listings.models import ListingPhoto
 
-        listing = Listing.objects.create(
+        listing = Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name="Mine With Photos", description="D.", contact_phone="+233207445566",
         )
@@ -132,7 +132,7 @@ class ListingCRUDTests(TestCase):
         self.assertIn("image", item["photos"][0])
 
     def test_owner_can_edit_own_draft_listing(self):
-        listing = Listing.objects.create(
+        listing = Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name="Old Name", description="D.", contact_phone="+233207445566",
         )
@@ -143,7 +143,7 @@ class ListingCRUDTests(TestCase):
         self.assertEqual(listing.name, "New Name")
 
     def test_other_owner_cannot_edit_listing(self):
-        listing = Listing.objects.create(
+        listing = Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name="Old Name", description="D.", contact_phone="+233207445566",
         )
@@ -152,7 +152,7 @@ class ListingCRUDTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_cannot_edit_published_listing(self):
-        listing = Listing.objects.create(
+        listing = Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name="Live Listing", description="D.", contact_phone="+233207445566",
             status=Listing.PUBLISHED,
@@ -164,7 +164,7 @@ class ListingCRUDTests(TestCase):
     def test_submit_moves_draft_to_pending_review(self):
         # A KYC-verified owner is grandfathered live (accounts.golive), so no email or pin is needed here.
         BusinessOwner.objects.filter(pk=self.owner.pk).update(kyc_status=BusinessOwner.VERIFIED)
-        listing = Listing.objects.create(
+        listing = Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name="Ready Listing", description="D.", contact_phone="+233207445566",
         )
@@ -175,7 +175,7 @@ class ListingCRUDTests(TestCase):
         self.assertEqual(listing.status, Listing.PENDING_REVIEW)
 
     def test_cannot_submit_a_published_listing(self):
-        listing = Listing.objects.create(
+        listing = Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name="Live Listing", description="D.", contact_phone="+233207445566",
             status=Listing.PUBLISHED,
@@ -187,7 +187,7 @@ class ListingCRUDTests(TestCase):
         self.assertEqual(listing.status, Listing.PUBLISHED)
 
     def test_customer_cannot_edit_any_listing(self):
-        listing = Listing.objects.create(
+        listing = Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name="Old Name", description="D.", contact_phone="+233207445566",
         )
@@ -237,7 +237,7 @@ class ListingCRUDTests(TestCase):
     def test_cannot_edit_listing_to_mismatched_category_kind(self):
         self.owner.profile.business_kind = BusinessOwnerProfile.PRODUCT
         self.owner.profile.save()
-        listing = Listing.objects.create(
+        listing = Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.shops, zone=self.manhyia,
             name="My Shop Item", description="D.", contact_phone="+233207445566",
         )
@@ -285,7 +285,7 @@ class ListingCRUDTests(TestCase):
         self.owner.subscription.plan = basic_plan
         self.owner.subscription.save()
         for i in range(basic_plan.max_active_listings):
-            Listing.objects.create(
+            Listing.objects.create(price_amount="10.00",
                 business_owner=self.owner, category=self.shops, zone=self.manhyia,
                 name=f"Published {i}", description="D.", contact_phone="+233207445566",
                 status=Listing.PUBLISHED,
@@ -354,7 +354,7 @@ class ListingCRUDTests(TestCase):
             full_name="Old Owner", login_phone="+233207445501", password_hash="x",
         )
         BusinessOwnerProfile.objects.create(business_owner=typeless, business_contact_phone="+233207445501")
-        draft = Listing.objects.create(
+        draft = Listing.objects.create(price_amount="10.00",
             business_owner=typeless, category=self.hotels, zone=self.manhyia, name="Old", description="D.",
             contact_phone="+233207445501",
         )
@@ -381,7 +381,7 @@ class ListingCRUDTests(TestCase):
         self.owner.subscription.plan = basic_plan
         self.owner.subscription.save()
         for i in range(basic_plan.max_active_listings):
-            Listing.objects.create(
+            Listing.objects.create(price_amount="10.00",
                 business_owner=self.owner, category=self.shops, zone=self.manhyia,
                 name=f"Published {i}", description="D.", contact_phone="+233207445566",
                 status=Listing.PUBLISHED,
@@ -401,7 +401,7 @@ class ListingCRUDTests(TestCase):
         self.owner.subscription.plan = unlimited_plan
         self.owner.subscription.save()
         for i in range(20):
-            Listing.objects.create(
+            Listing.objects.create(price_amount="10.00",
                 business_owner=self.owner, category=self.shops, zone=self.manhyia,
                 name=f"Published {i}", description="D.", contact_phone="+233207445566",
                 status=Listing.PUBLISHED,
