@@ -11,7 +11,7 @@ import { ExportBar, Kpi, NotRecorded, Select, ShareBar, SimulatedBanner, Status,
 // are counted from successful payments (simulated until Hubtel). Commission on
 // sales, delivery fees and VAT have no record, so they are listed as not recorded
 // instead of drawn as rows.
-const TYPE_COLORS = { subscriptions: "#B8860B", promotions: "#3949AB", hero: "#1E7B3A", event_fees: "#8A5FA8" };
+const TYPE_COLORS = { subscriptions: D.deepGold, promotions: "#3949AB", hero: "#1E7B3A", event_fees: "#8A5FA8" };
 const PERIODS = [
   ["month", "This month so far"],
   ["last", "Last month"],

@@ -151,7 +151,7 @@ function Decision({ row, onDecided, onChanged }) {
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button type="button" disabled={blocked} onClick={() => open("verify")} style={button(D.green, "#fff", blocked)}>Mark verified</button>
+        <button type="button" disabled={blocked} onClick={() => open("verify")} style={button(D.green, D.white, blocked)}>Mark verified</button>
         <button type="button" disabled={blocked} onClick={() => open("wrong")} style={button(D.panelBg, D.red, blocked)}>Mark wrong</button>
         {blocked && row.blocked_reason && <span style={{ color: D.text, fontSize: "0.76rem", fontWeight: 600 }}>{row.blocked_reason}</span>}
       </div>
@@ -185,7 +185,7 @@ function Decision({ row, onDecided, onChanged }) {
           )}
           {error && <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>{error}</div>}
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="submit" disabled={busy} style={button(mode === "verify" ? D.green : D.red, "#fff", busy)}>{mode === "verify" ? "Confirm verified" : "Confirm wrong"}</button>
+            <button type="submit" disabled={busy} style={button(mode === "verify" ? D.green : D.red, D.white, busy)}>{mode === "verify" ? "Confirm verified" : "Confirm wrong"}</button>
             <button type="button" onClick={() => setMode(null)} style={button(D.panelBg, D.text, false)}>Cancel</button>
           </div>
         </form>

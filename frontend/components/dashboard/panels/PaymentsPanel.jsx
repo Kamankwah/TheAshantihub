@@ -177,7 +177,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
                   <option value="service">Services</option>
                 </select>
               </label>
-              <button onClick={exportCsv} disabled={exporting} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit", opacity: exporting ? 0.6 : 1 }}>{exporting ? "Exporting…" : "⬇ Export CSV"}</button>
+              <button onClick={exportCsv} disabled={exporting} style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit", opacity: exporting ? 0.6 : 1 }}>{exporting ? "Exporting…" : "⬇ Export CSV"}</button>
             </div>
 
             {report.isLoading && <div style={{ color: D.textDim, fontSize: "0.82rem" }}>Loading your sales…</div>}
@@ -329,7 +329,7 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
                     <div style={{ fontWeight: 800, fontSize: "0.8rem", color: r.color }}>{r.title}</div>
                     <div style={{ fontSize: "0.72rem", color: D.textDim, marginTop: 2 }}>{r.body}</div>
                   </div>
-                  {r.action && <button onClick={r.action} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Resolve</button>}
+                  {r.action && <button onClick={r.action} style={{ background: D.green, color: D.white, border: "none", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Resolve</button>}
                 </div>
               ))}
             </div>

@@ -178,7 +178,7 @@ function DetailsForm({ listing, basePath, kind, staged, waiting, onSaved, onCanc
       )}
       {error && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginBottom: 6 }}>{error}</div>}
       <div style={{ display: "flex", gap: 6 }}>
-        <button type="button" onClick={save} style={{ ...btn, background: D.gold, color: "#1a1205" }}>Save changes</button>
+        <button type="button" onClick={save} style={{ ...btn, background: D.gold, color: D.onGold }}>Save changes</button>
         <button type="button" onClick={onCancel} style={quietBtn}>Cancel</button>
       </div>
     </div>
@@ -261,11 +261,11 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
 
       {!discontinued && !hasVariants && isProduct && (
         <div style={{ marginTop: 12 }}>
-          <button type="button" onClick={() => setRestockOpen(o => !o)} style={{ ...btn, background: D.gold, color: "#1a1205" }}>📦 Restock</button>
+          <button type="button" onClick={() => setRestockOpen(o => !o)} style={{ ...btn, background: D.gold, color: D.onGold }}>📦 Restock</button>
           {restockOpen && (
             <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center" }}>
               <input type="number" min={1} value={restockQty} onChange={e => setRestockQty(e.target.value)} placeholder="Add quantity" style={{ ...inputStyle, width: 140 }} />
-              <button type="button" onClick={restock} disabled={!restockQty || busy} style={{ ...btn, background: D.green, color: "#fff", cursor: restockQty ? "pointer" : "default" }}>Add to stock</button>
+              <button type="button" onClick={restock} disabled={!restockQty || busy} style={{ ...btn, background: D.green, color: D.white, cursor: restockQty ? "pointer" : "default" }}>Add to stock</button>
               <Chip color={D.green}>Live now</Chip>
             </div>
           )}
@@ -286,7 +286,7 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
           )}
           <button type="button" onClick={() => setEditing(e => !e)} style={quietBtn}>{editing ? "Close" : "✏️ Edit price & specs"}</button>
           {dropped
-            ? <button type="button" disabled={busy} onClick={() => lifecycle("restore")} style={{ ...btn, background: D.green, color: "#fff" }}>Restore</button>
+            ? <button type="button" disabled={busy} onClick={() => lifecycle("restore")} style={{ ...btn, background: D.green, color: D.white }}>Restore</button>
             : <button type="button" disabled={busy} onClick={() => setConfirm("drop")} style={quietBtn}>Drop</button>}
           <button type="button" disabled={busy} onClick={() => setConfirm("discontinue")} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>Discontinue</button>
         </div>
@@ -302,7 +302,7 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
         <div role="alertdialog" aria-label={`Confirm ${confirm}`} style={{ marginTop: 10, padding: "10px 12px", border: `1px solid ${D.red}`, borderRadius: 10, color: D.text, fontSize: "0.76rem" }}>
           <div>{CONFIRM_TEXT[confirm].text}</div>
           <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-            <button type="button" disabled={busy} onClick={() => lifecycle(confirm)} style={{ ...btn, background: D.red, color: "#fff" }}>{CONFIRM_TEXT[confirm].action}</button>
+            <button type="button" disabled={busy} onClick={() => lifecycle(confirm)} style={{ ...btn, background: D.redFill, color: D.white }}>{CONFIRM_TEXT[confirm].action}</button>
             <button type="button" onClick={() => setConfirm(null)} style={quietBtn}>Cancel</button>
           </div>
         </div>

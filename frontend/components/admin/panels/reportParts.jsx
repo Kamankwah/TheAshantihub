@@ -67,7 +67,7 @@ function Row({ row }) {
 }
 
 // Support's "Calls by outcome" (canvas 17): one bar per outcome, scaled to the largest, with the number.
-const OUTCOME_COLOUR = { Connected: "#006400", "No answer": "#E8621A", "Left voicemail": "#8A7A6B" };
+const OUTCOME_COLOUR = { Connected: D.kente2, "No answer": "#E8621A", "Left voicemail": "#8A7A6B" };
 function OutcomeBars({ section }) {
   const top = Math.max(1, ...section.rows.map((row) => Number(row.value) || 0));
   return (

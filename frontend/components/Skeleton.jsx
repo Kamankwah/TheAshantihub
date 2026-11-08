@@ -53,3 +53,21 @@ export function SkeletonCard({ lines = 3 }) {
     </div>
   );
 }
+
+// A product page's shape: gallery square beside a title, price and buy-box block (stacked on a phone).
+export function SkeletonProduct({ label = "Loading this product…" }) {
+  return (
+    <SkeletonStatus label={label} style={{ maxWidth: 1280, margin: "0 auto", padding: "16px 16px 48px", boxSizing: "border-box" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 24, alignItems: "start" }}>
+        <Skeleton height={0} style={{ paddingBottom: "100%", borderRadius: 16 }} />
+        <div style={{ display: "grid", gap: 14 }}>
+          <Skeleton width="80%" height={28} />
+          <Skeleton width="35%" height={14} />
+          <Skeleton width="30%" height={26} />
+          <Skeleton width="100%" height={44} radius={24} />
+          <Skeleton width="100%" height={44} radius={24} />
+        </div>
+      </div>
+    </SkeletonStatus>
+  );
+}

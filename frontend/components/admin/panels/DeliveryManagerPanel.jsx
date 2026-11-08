@@ -60,7 +60,7 @@ function OrderCard({ order, dispatches, onDone, canSend }) {
           <option value="">Choose a dispatch…</option>
           {dispatches.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
         </select>
-        <button onClick={assign} disabled={!dispatchId} style={{ ...pillBtn, background: dispatchId ? D.gold : D.panelBg2, color: dispatchId ? "#1a1205" : D.textFaint, cursor: dispatchId ? "pointer" : "default" }}>
+        <button onClick={assign} disabled={!dispatchId} style={{ ...pillBtn, background: dispatchId ? D.gold : D.panelBg2, color: dispatchId ? D.onGold : D.textFaint, cursor: dispatchId ? "pointer" : "default" }}>
           {assignment ? "Reassign" : "Assign"}
         </button>
       </div>

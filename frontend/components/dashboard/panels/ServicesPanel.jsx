@@ -74,14 +74,14 @@ function RequestCard({ sr, onChanged }) {
       <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
         {sr.status === "requested" && (
           <>
-            <button onClick={() => setMode(mode === "accept" ? null : "accept")} style={{ ...btn, background: D.green, color: "#fff" }}>✓ Accept & quote</button>
+            <button onClick={() => setMode(mode === "accept" ? null : "accept")} style={{ ...btn, background: D.green, color: D.white }}>✓ Accept & quote</button>
             <button onClick={() => setMode(mode === "decline" ? null : "decline")} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>✕ Decline</button>
           </>
         )}
         {sr.status === "in_progress" && (
           <>
             <button onClick={() => setMode(mode === "progress" ? null : "progress")} style={{ ...btn, background: D.panelBg2, color: D.text, border: `1px solid ${D.divider}` }}>📝 Update progress</button>
-            <button onClick={() => call("complete")} style={{ ...btn, background: D.gold, color: "#1a1205" }}>✓ Mark complete</button>
+            <button onClick={() => call("complete")} style={{ ...btn, background: D.gold, color: D.onGold }}>✓ Mark complete</button>
           </>
         )}
       </div>
@@ -89,19 +89,19 @@ function RequestCard({ sr, onChanged }) {
       {mode === "accept" && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <input type="text" inputMode="decimal" value={price} onChange={e => setPrice(e.target.value)} placeholder="Your price (GHS)" style={{ ...inputStyle, width: 160 }} />
-          <button onClick={() => call("respond", { action: "accept", price: price.trim() })} disabled={!price.trim()} style={{ ...btn, background: D.green, color: "#fff", cursor: price.trim() ? "pointer" : "default" }}>Send quote</button>
+          <button onClick={() => call("respond", { action: "accept", price: price.trim() })} disabled={!price.trim()} style={{ ...btn, background: D.green, color: D.white, cursor: price.trim() ? "pointer" : "default" }}>Send quote</button>
         </div>
       )}
       {mode === "decline" && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason (optional)" style={{ ...inputStyle, flex: 1, minWidth: 160 }} />
-          <button onClick={() => call("respond", { action: "decline", reason })} style={{ ...btn, background: D.red, color: "#fff" }}>Confirm decline</button>
+          <button onClick={() => call("respond", { action: "decline", reason })} style={{ ...btn, background: D.redFill, color: D.white }}>Confirm decline</button>
         </div>
       )}
       {mode === "progress" && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <input value={note} onChange={e => setNote(e.target.value)} placeholder="Progress note for the customer" style={{ ...inputStyle, flex: 1, minWidth: 160 }} />
-          <button onClick={() => call("progress", { note })} disabled={!note} style={{ ...btn, background: D.gold, color: "#1a1205", cursor: note ? "pointer" : "default" }}>Post update</button>
+          <button onClick={() => call("progress", { note })} disabled={!note} style={{ ...btn, background: D.gold, color: D.onGold, cursor: note ? "pointer" : "default" }}>Post update</button>
         </div>
       )}
     </div>

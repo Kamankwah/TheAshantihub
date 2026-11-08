@@ -130,7 +130,7 @@ const InlineFallback = <div role="status" aria-label="Loading" style={{minHeight
 
 // ─── Payment System ───────────────────────────────────────────────────────────
 const MOMO_NETWORKS = [
-  { id:"mtn", name:"MTN MoMo", color:"#FCD116", textColor:"#1A1A1A", logo:"🟡", ussd:"*170#", fee:"1.5%" },
+  { id:"mtn", name:"MTN MoMo", color:C.ghGold, textColor:"#1A1A1A", logo:"🟡", ussd:"*170#", fee:"1.5%" },
   { id:"telecel", name:"Telecel Cash", color:"#E31837", textColor:"white", logo:"🔴", ussd:"*110#", fee:"1.5%" },
   { id:"airteltigo", name:"AirtelTigo Money", color:"#E87722", textColor:"white", logo:"🟠", ussd:"*500#", fee:"1.5%" },
 ];
@@ -1069,7 +1069,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
         {item.review_count>0&&(
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
             <Stars rating={item.avg_rating}/>
-            <button onClick={()=>setShowReviews(true)} style={{background:"none",border:"none",color:accentColor,fontSize:"0.68rem",cursor:"pointer",fontWeight:600,padding:"0 4px",minHeight:44}}>
+            <button onClick={()=>setShowReviews(true)} style={{background:"none",border:"none",color:C.lightGold,textDecoration:"underline",fontSize:"0.68rem",cursor:"pointer",fontWeight:600,padding:"0 4px",minHeight:44}}>
               ({item.review_count} reviews)
             </button>
           </div>
@@ -1086,7 +1086,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
                 framed as an AshantiHub Support conversation about this listing,
                 not a direct line to the business. */}
             <button onClick={()=>{ if(onMessage) onMessage(item); }}
-              style={{background:`${C.kente3}22`,color:"#fff",border:`1px solid ${C.kente3}66`,borderRadius:20,padding:"5px 12px",minHeight:44,fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+              style={{background:`${C.kente3}22`,color:C.white,border:`1px solid ${C.kente3}66`,borderRadius:20,padding:"5px 12px",minHeight:44,fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
               🎧 Contact Support
             </button>
           </div>
@@ -1582,7 +1582,7 @@ function StaffNotificationsSlot({ user }) {
     <button type="button" onClick={()=>setOpen(v=>!v)} aria-haspopup="dialog" aria-expanded={open} aria-label={unread>0?`Notifications (${unread} unread)`:"Notifications"} title="Notifications"
       style={{position:"relative",background:"none",border:`1px solid ${D.divider}`,borderRadius:10,minWidth:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text,fontFamily:"inherit"}}>
       🔔
-      {unread>0&&<span aria-hidden="true" style={{position:"absolute",top:-6,right:-6,background:D.red,color:D.cream,borderRadius:20,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>{unread}</span>}
+      {unread>0&&<span aria-hidden="true" style={{position:"absolute",top:-6,right:-6,background:D.redFill,color:D.cream,borderRadius:20,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>{unread}</span>}
     </button>
     {open&&<NotificationsPanel user={user} onClose={()=>setOpen(false)}/>}
   </>;
@@ -1654,7 +1654,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     return (
       <div style={{minHeight:"100vh",background:D.pageBg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20,textAlign:"center"}}>
         <div style={{fontSize:"1.15rem",fontWeight:700,color:D.text}}>Sign in with a customer account to view this page.</div>
-        <button onClick={onExit} style={{padding:"10px 24px",borderRadius:8,border:"none",background:D.gold,color:"#1a1205",fontWeight:700,cursor:"pointer",fontSize:"0.85rem"}}>← Back to AshantiHub</button>
+        <button onClick={onExit} style={{padding:"10px 24px",borderRadius:8,border:"none",background:D.gold,color:C.onGold,fontWeight:700,cursor:"pointer",fontSize:"0.85rem"}}>← Back to AshantiHub</button>
       </div>
     );
   }
@@ -1696,7 +1696,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
 
       <div style={{position:"relative"}}>
         <button onClick={()=>setShowProfileMenu(v=>!v)} aria-label="Account menu" style={{display:"flex",alignItems:"center",gap:6,background:"none",border:`1px solid ${D.divider}`,borderRadius:20,padding:"4px 10px 4px 4px",cursor:"pointer"}}>
-          <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",background:D.gold,color:"#1a1205",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.72rem"}}>
+          <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",background:D.gold,color:C.onGold,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.72rem"}}>
             {user?.avatar ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (user?.fullName?.[0]?.toUpperCase()||"U")}
           </div>
           <span style={{color:D.text,fontSize:"0.7rem"}}>▾</span>
@@ -2299,6 +2299,13 @@ function ListingsSkeleton() {
 // real routing in a follow-up slice (see DASH_PATH_TO_FLAG/FLAG_TO_DASH_PATH
 // and the businessDetailMatch/eventDetailMatch useMatch()es below) so every
 // page in the app is hard-reload-safe, per an explicit scope override.
+// Pages whose component already renders its own <main id="main-content">; every other page is wrapped in one
+// here so each screen has exactly one main landmark (and the "Skip to content" link has a target).
+const MAIN_OWNERS = new Set(["home", "cart", "checkout", "privacy"]);
+function MainRegion({ own, children }) {
+  return own ? <>{children}</> : <main id="main-content" tabIndex={-1} style={{ display: "block", outline: "none" }}>{children}</main>;
+}
+
 const PATH_TO_PAGE = {
   "/": "home",
   "/business": "business",
@@ -2997,6 +3004,7 @@ function AshantiHubApp() {
   return (
     <div style={{fontFamily:FONTS.body,background:C.canvas,minHeight:"100vh",
       ...(showStaffBar ? {"--ah-top-offset":`${STAFF_VIEW_ONLY_BAR_HEIGHT}px`,paddingTop:STAFF_VIEW_ONLY_BAR_HEIGHT} : {})}}>
+      <a href="#main-content" className="ah-skip-link" onClick={(e)=>{const el=document.getElementById("main-content");if(el){e.preventDefault();if(!el.hasAttribute("tabindex"))el.setAttribute("tabindex","-1");el.style.outline="none";el.focus({preventScroll:false});el.scrollIntoView?.({block:"start"});}}}>Skip to main content</a>
       {showStaffBar&&<StaffViewOnlyBar onBackToDashboard={()=>navigate("/staff")} onSignOut={staffSignOut}/>}
       {appStaffGate.shownFor&&<StaffGateNotice floating onDismiss={appStaffGate.dismiss}/>}
       {!cookieDismissed&&<CookieBanner onOpenPrivacy={()=>setPage("privacy")} onAccept={()=>{saveCookieConsent("accepted");setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{saveCookieConsent("essential");setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
@@ -3012,6 +3020,8 @@ function AshantiHubApp() {
           it is passed into StorefrontHome (below) so it sits under the
           opening countdown; every other page renders it here. */}
       {page!=="home"&&storefrontHeader}
+
+      <MainRegion own={MAIN_OWNERS.has(page)}>
 
       {/* A staff session can't register a business — same notice the
           "Register Your Business" CTAs show, for a direct /register visit. */}
@@ -3285,8 +3295,8 @@ function AshantiHubApp() {
               the mobile filters trigger + the Submit-an-Event toggle. */}
           <div style={{background:C.darkBrown,padding:"12px 16px"}}>
             <div style={{maxWidth:1280,margin:"0 auto",display:"flex",justifyContent:"flex-end",gap:8}}>
-              <button onClick={()=>setShowEventFilters(f=>!f)} className="ah-event-filter-trigger" aria-expanded={showEventFilters} style={{background:"rgba(255,255,255,0.12)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}} title="Filters">⚙️ Filters & Search</button>
-              <button onClick={showEventSubmit?()=>setShowEventSubmit(false):openEventSubmit} style={{background:showEventSubmit?C.gold:"rgba(255,255,255,0.12)",color:showEventSubmit?C.darkBrown:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}}>
+              <button onClick={()=>setShowEventFilters(f=>!f)} className="ah-event-filter-trigger" aria-expanded={showEventFilters} style={{background:"rgba(255,255,255,0.12)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",minHeight:44,fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}} title="Filters">⚙️ Filters & Search</button>
+              <button onClick={showEventSubmit?()=>setShowEventSubmit(false):openEventSubmit} style={{background:showEventSubmit?C.gold:"rgba(255,255,255,0.12)",color:showEventSubmit?C.darkBrown:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",minHeight:44,fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}}>
                 {showEventSubmit?"✕ Close":"📅 Submit an Event"}
               </button>
             </div>
@@ -3401,6 +3411,8 @@ function AshantiHubApp() {
       )}
 
       {/* Footer — every public page, home included: Support, About us, Contact + legal */}
+      </MainRegion>
+
       <Footer2 setPage={setPage} setLegalDoc={openLegalDoc} onSupport={()=>setShowIntake(true)}/>
 
       {/* Floating chat launcher — opens the Support intake (name, email, phone,

@@ -53,7 +53,7 @@ export default function ScoutAssignmentsPanel() {
               <option key={s.id} value={s.id}>{s.full_name}</option>
             ))}
           </select>
-          <button onClick={assign} disabled={!businessId || !scoutId} style={{ ...pillBtn, background: businessId && scoutId ? D.gold : D.panelBg2, color: businessId && scoutId ? "#1a1205" : D.textFaint, cursor: businessId && scoutId ? "pointer" : "default" }}>Assign</button>
+          <button onClick={assign} disabled={!businessId || !scoutId} style={{ ...pillBtn, background: businessId && scoutId ? D.gold : D.panelBg2, color: businessId && scoutId ? D.onGold : D.textFaint, cursor: businessId && scoutId ? "pointer" : "default" }}>Assign</button>
         </div>
         {(scouts.data || []).length === 0 && <div style={{ color: D.amber, fontSize: "0.72rem", marginTop: 8 }}>No scouts exist yet — invite a staff member with the Scout role first.</div>}
       </div>

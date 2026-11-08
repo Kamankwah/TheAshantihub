@@ -101,7 +101,7 @@ export default function ModerationQueueTabs({
               onClick={() => onTab(key)}
               style={{
                 background: isActive ? D.gold : D.panelBg2,
-                color: isActive ? "#1a1205" : D.textDim,
+                color: isActive ? D.onGold : D.textDim,
                 border: `1px solid ${isActive ? D.gold : D.cardBorder}`,
                 borderRadius: 20,
                 padding: "6px 16px",

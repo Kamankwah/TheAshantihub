@@ -18,7 +18,7 @@ const CATEGORIES: { id: Category; label: string }[] = [
 ];
 
 const inputClass =
-  "w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "w-full min-h-11 rounded-md border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function ContactEnquiryForm() {
   const [category, setCategory] = useState<Category>("general");
@@ -92,9 +92,10 @@ export function ContactEnquiryForm() {
                 <button
                   key={c.id}
                   type="button"
+                  aria-pressed={category === c.id}
                   onClick={() => setCategory(c.id)}
                   className={cn(
-                    "rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors",
+                    "min-h-11 rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors",
                     category === c.id
                       ? "bg-primary text-primary-foreground border-primary"
                       : "bg-transparent text-muted-foreground hover:bg-accent",
@@ -108,17 +109,17 @@ export function ContactEnquiryForm() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-semibold text-muted-foreground">Name *</span>
-                <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" />
+                <input autoComplete="name" className={inputClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" />
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-semibold text-muted-foreground">Email *</span>
-                <input type="email" className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+                <input type="email" autoComplete="email" className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
               </label>
             </div>
 
             <label className="flex flex-col gap-1">
               <span className="text-xs font-semibold text-muted-foreground">Phone (optional)</span>
-              <input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0244 000 000" />
+              <input type="tel" autoComplete="tel" className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0244 000 000" />
             </label>
 
             <label className="flex flex-col gap-1">
@@ -139,7 +140,7 @@ export function ContactEnquiryForm() {
 
             {error && <div className="text-sm text-destructive">{error}</div>}
 
-            <Button type="submit" disabled={!valid || submitting} className="self-start">
+            <Button type="submit" disabled={!valid || submitting} className="self-start min-h-11">
               {submitting ? "Sending…" : "Send Message"}
             </Button>
           </form>

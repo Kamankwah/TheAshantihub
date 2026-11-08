@@ -36,7 +36,7 @@ function BannerBody({ banner, slot, onNavigate }) {
   const inner = (
     <>
       <img src={banner.image} alt={banner.alt_text} style={{ width: "100%", height: HEIGHT[slot] || 150, objectFit: "cover", display: "block" }} />
-      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "18px 16px 12px", background: "linear-gradient(transparent, rgba(0,0,0,0.65))", color: "#fff", textAlign: "left", fontWeight: 800, fontSize: slot === "home_hero" ? "1.5rem" : "1rem" }}>
+      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "18px 16px 12px", background: "linear-gradient(transparent, rgba(0,0,0,0.65))", color: C.white, textAlign: "left", fontWeight: 800, fontSize: slot === "home_hero" ? "1.5rem" : "1rem" }}>
         {banner.title}
       </div>
       {banner.sponsored && <span style={{ position: "absolute", top: 8, right: 8, background: C.surface, color: C.ink, borderRadius: 6, padding: "2px 8px", fontSize: "0.65rem", fontWeight: 800, letterSpacing: "0.04em" }}>Sponsored</span>}

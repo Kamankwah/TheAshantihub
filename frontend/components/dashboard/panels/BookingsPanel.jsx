@@ -45,8 +45,8 @@ function BookingCard({ booking, onChanged }) {
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
 
       <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-        {booking.status === "confirmed" && <button onClick={() => act("check-in")} style={{ ...btn, background: D.green, color: "#fff" }}>🔑 Check in</button>}
-        {booking.status === "checked_in" && <button onClick={() => act("check-out")} style={{ ...btn, background: D.gold, color: "#1a1205" }}>✓ Check out</button>}
+        {booking.status === "confirmed" && <button onClick={() => act("check-in")} style={{ ...btn, background: D.green, color: D.white }}>🔑 Check in</button>}
+        {booking.status === "checked_in" && <button onClick={() => act("check-out")} style={{ ...btn, background: D.gold, color: D.onGold }}>✓ Check out</button>}
       </div>
     </div>
   );

@@ -184,7 +184,7 @@ export default function OperationsOverviewPanel({ auth, onNavigate, onOpenApprov
               {!feed.isLoading && !feed.isError && events.length === 0 && <div style={dim}>No activity yet.</div>}
               {events.map((e) => (
                 <div key={e.id} style={{ display: "flex", gap: 8, alignItems: "baseline", borderTop: `1px solid ${D.divider}`, paddingTop: 6, fontSize: "0.8rem", flexWrap: "wrap" }}>
-                  {e.actor_role && <span style={{ background: ROLE_ACCENTS[e.actor_role] || D.textDim, color: ROLE_BADGE_TEXT[e.actor_role] || "#fff", borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 800 }}>{e.actor_role.replace("_", " ")}</span>}
+                  {e.actor_role && <span style={{ background: ROLE_ACCENTS[e.actor_role] || D.textDim, color: ROLE_BADGE_TEXT[e.actor_role] || D.white, borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 800 }}>{e.actor_role.replace("_", " ")}</span>}
                   <span style={{ color: D.text, flex: 1, minWidth: 140 }}>{`${e.actor_label} · ${e.verb.replace(/[._-]+/g, " ").trim()}${e.target_label ? ` · ${e.target_label}` : ""}`}</span>
                   <span style={{ ...dim, ...figures }}>{timeShort(e.occurred_at)}</span>
                 </div>

@@ -311,7 +311,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <h2 style={{ margin: 0, color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>🏷️ Listings &amp; Prices</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={() => { setShowCreate(s => !s); setCreateError(null); setCreateBarcodeError(null); }} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "7px 16px", fontSize: "0.72rem", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>{createButtonLabel}</button>
+          <button onClick={() => { setShowCreate(s => !s); setCreateError(null); setCreateBarcodeError(null); }} style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "7px 16px", fontSize: "0.72rem", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>{createButtonLabel}</button>
           {!direct && <a href="https://wa.me/233502481685?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>}
         </div>
       </div>
@@ -374,7 +374,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
           {createError && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8, marginTop: 8 }}>{createError}</div>}
           <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
             <button onClick={() => { setShowCreate(false); setCreateError(null); }} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-            <button onClick={submitCreate} disabled={!canSubmitCreate || creating} style={{ flex: 2, background: canSubmitCreate && !creating ? D.gold : D.panelBg2, color: canSubmitCreate && !creating ? "#1a1205" : D.textFaint, border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: canSubmitCreate && !creating ? "pointer" : "default", fontFamily: "inherit" }}>{creating ? "Creating…" : "✓ Create Listing"}</button>
+            <button onClick={submitCreate} disabled={!canSubmitCreate || creating} style={{ flex: 2, background: canSubmitCreate && !creating ? D.gold : D.panelBg2, color: canSubmitCreate && !creating ? D.onGold : D.textFaint, border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: canSubmitCreate && !creating ? "pointer" : "default", fontFamily: "inherit" }}>{creating ? "Creating…" : "✓ Create Listing"}</button>
           </div>
         </div>
       )}
@@ -410,7 +410,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
             {heroSubmission.status === "approved" && (
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <input type="number" min={1} value={heroExtendDays} onChange={e => setHeroExtendDays(Math.max(1, Number(e.target.value) || 1))} style={{ ...inputStyle, width: 56, padding: "6px 8px" }} />
-                <button onClick={() => setShowHeroExtendPay(true)} style={{ background: D.kente2, color: "#fff", border: "none", borderRadius: 20, padding: "7px 14px", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer" }}>💰 Extend {heroExtendDays}d</button>
+                <button onClick={() => setShowHeroExtendPay(true)} style={{ background: D.kente2, color: D.white, border: "none", borderRadius: 20, padding: "7px 14px", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer" }}>💰 Extend {heroExtendDays}d</button>
               </div>
             )}
           </div>
@@ -470,7 +470,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                     : <MediaManager listing={item} basePath={basePath} onChanged={refetchListings} />}
                   <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                     <button onClick={() => setEditingId(null)} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-                    <button onClick={() => saveEdit(item.id)} style={{ flex: 2, background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>✓ Save</button>
+                    <button onClick={() => saveEdit(item.id)} style={{ flex: 2, background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>✓ Save</button>
                   </div>
                 </div>
               ) : (
@@ -521,7 +521,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                       stock_quantity: item.stock_quantity ?? "",
                       units_total: item.units_total ?? "",
                     }); }} style={{ background: D.goldSoft, color: D.gold, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>✏️ Edit</button>}
-                    {(item.status === "draft" || item.status === "rejected") && <button onClick={() => submitForReview(item.id)} style={{ background: D.kente2, color: "#fff", border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📤 Submit for Review</button>}
+                    {(item.status === "draft" || item.status === "rejected") && <button onClick={() => submitForReview(item.id)} style={{ background: D.kente2, color: D.white, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📤 Submit for Review</button>}
                     {item.status === "published" && <button onClick={() => setPromoteListingId(item.id)} style={{ background: tint(D.red, "18"), color: D.red, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📣 Promote</button>}
                   </div>
                 </div>
@@ -548,7 +548,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
               {heroActionError && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{heroActionError}</div>}
               <div style={{ display: "flex", gap: 6 }}>
                 <button onClick={() => { setHeroSubmitPhoto(null); setHeroCaption(""); setHeroActionError(null); }} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-                <button onClick={submitHeroPhoto} disabled={!heroCaption.trim()} style={{ flex: 2, background: heroCaption.trim() ? D.gold : D.panelBg2, color: heroCaption.trim() ? "#1a1205" : D.textFaint, border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: heroCaption.trim() ? "pointer" : "default", fontFamily: "inherit" }}>✓ Submit for Hero</button>
+                <button onClick={submitHeroPhoto} disabled={!heroCaption.trim()} style={{ flex: 2, background: heroCaption.trim() ? D.gold : D.panelBg2, color: heroCaption.trim() ? D.onGold : D.textFaint, border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: heroCaption.trim() ? "pointer" : "default", fontFamily: "inherit" }}>✓ Submit for Hero</button>
               </div>
             </div>
           </div>

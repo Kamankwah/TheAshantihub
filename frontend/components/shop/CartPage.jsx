@@ -105,26 +105,26 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn,
   const sponsoredRow = <ProductCarousel title="Sponsored products" items={sponsored} sponsored currency={currency} onOpen={(id) => go(`/business/${id}`)} />;
 
   if (!user && authLoading) {
-    return <main style={shell} aria-busy="true"><h1 style={h1}>Shopping Cart</h1><SkeletonStatus label={"Loading your cart…"} style={{ marginTop: 12 }}><SkeletonRow photo={phone ? 84 : 120} /><SkeletonRow photo={phone ? 84 : 120} /></SkeletonStatus></main>;
+    return <main id="main-content" style={shell} aria-busy="true"><h1 style={h1}>Shopping Cart</h1><SkeletonStatus label={"Loading your cart…"} style={{ marginTop: 12 }}><SkeletonRow photo={phone ? 84 : 120} /><SkeletonRow photo={phone ? 84 : 120} /></SkeletonStatus></main>;
   }
   if (!user) {
     return (
-      <main style={shell}>
+      <main id="main-content" style={shell}>
         <h1 style={h1}>Shopping Cart</h1>
         <p style={{ color: C.inkDim, margin: "12px 0 16px" }}>Sign in to see your cart.</p>
-        {onSignIn && <button type="button" onClick={onSignIn} style={{ ...goldBtn(false), width: "auto", padding: "10px 24px" }}>Sign in</button>}
+        {onSignIn && <button type="button" onClick={onSignIn} style={{ ...goldBtn(false), width: "auto", minHeight: 44, padding: "10px 24px" }}>Sign in</button>}
       </main>
     );
   }
 
   if (cartQuery.isPending) {
-    return <main style={shell} aria-busy="true"><h1 style={h1}>Shopping Cart</h1><SkeletonStatus label={"Loading your cart…"} style={{ marginTop: 12 }}><SkeletonRow photo={phone ? 84 : 120} /><SkeletonRow photo={phone ? 84 : 120} /></SkeletonStatus></main>;
+    return <main id="main-content" style={shell} aria-busy="true"><h1 style={h1}>Shopping Cart</h1><SkeletonStatus label={"Loading your cart…"} style={{ marginTop: 12 }}><SkeletonRow photo={phone ? 84 : 120} /><SkeletonRow photo={phone ? 84 : 120} /></SkeletonStatus></main>;
   }
   if (cartQuery.isError) {
     // Only the server's 403 for a non-customer account means "not for you"; any other failure is just a failed read.
     const notCustomer = !isCustomer && cartQuery.error?.status === 403;
     return (
-      <main style={shell}>
+      <main id="main-content" style={shell}>
         <h1 style={h1}>Shopping Cart</h1>
         {notCustomer ? (
           <p role="alert" style={{ color: C.errInk }}>Carts are for customer accounts.</p>
@@ -140,7 +140,7 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn,
 
   if (items.length === 0) {
     return (
-      <main style={shell}>
+      <main id="main-content" style={shell}>
         <h1 style={h1}>Shopping Cart</h1>
         <p style={{ color: C.inkDim, margin: "12px 0 16px" }}>Your cart is empty.</p>
         <button type="button" onClick={() => go("/")} style={{ ...goldBtn(false), width: "auto", padding: "10px 24px", marginBottom: 32 }}>Continue shopping</button>
@@ -155,7 +155,7 @@ export default function CartPage({ user, currency = "GHS", onNavigate, onSignIn,
   });
 
   return (
-    <main style={shell}>
+    <main id="main-content" style={shell}>
       <div style={{ display: "grid", gridTemplateColumns: phone ? "minmax(0, 1fr)" : "minmax(0, 1fr) 300px", gap: 24, alignItems: "start" }}>
         <section aria-label="Cart items" style={{ minWidth: 0 }}>
           <h1 style={{ ...h1, paddingBottom: 12, borderBottom: `1px solid ${C.line}` }}>Shopping Cart</h1>

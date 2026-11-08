@@ -169,7 +169,7 @@ function LeaveRow({ row, mineId, onChanged, onMessage, showEffect }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 190 }}>
             <div style={dim}>{`Cancel this leave? ${row.staff_name.split(" ")[0]}'s targets count again on those days.`}</div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button type="button" onClick={() => act(() => apiDelete(`/api/targets/leave/${row.id}/`), `Leave cancelled for ${row.staff_name}.`)} style={button(D.red, "#fff")}>Cancel leave</button>
+              <button type="button" onClick={() => act(() => apiDelete(`/api/targets/leave/${row.id}/`), `Leave cancelled for ${row.staff_name}.`)} style={button(D.red, D.white)}>Cancel leave</button>
               <button type="button" onClick={() => setMode(null)} style={button(D.panelBg, D.text)}>Keep it</button>
             </div>
           </div>

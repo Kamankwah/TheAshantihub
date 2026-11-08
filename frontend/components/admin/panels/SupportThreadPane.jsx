@@ -164,7 +164,7 @@ function ResolveForm({ id, onDone, onError }) {
         <select value={code} onChange={(e) => setCode(e.target.value)} style={field}>{RESOLUTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
       </label>
       <label style={{ ...labelStyle, flex: "1 1 180px" }}>Note (optional)<input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} style={field} /></label>
-      <button type="button" onClick={go} style={button(D.green, "#fff")}>Resolve</button>
+      <button type="button" onClick={go} style={button(D.green, D.white)}>Resolve</button>
       <div style={{ ...dim, flexBasis: "100%" }}>If they reply within 7 days it reopens by itself; later, a new linked conversation starts.</div>
     </div>
   );

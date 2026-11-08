@@ -164,7 +164,7 @@ export default function Navbar({
             </div>
             {!isStaff && <button onClick={act(goToDashboard)} style={{...utilityBtnStyle,width:"100%",justifyContent:"flex-start"}}>{isBusiness ? "🏪 My Dashboard" : "👤 My Account"}</button>}
             {isBusiness && <button onClick={act(() => setShowPayments(true))} style={{...utilityBtnStyle,width:"100%",justifyContent:"flex-start"}}>💳 Payments</button>}
-            <button onClick={act(signOut)} style={{...utilityBtnStyle,width:"100%",justifyContent:"flex-start",borderColor:`${C.kente1}66`,color:"#ffb4b4"}}>⏻ Sign Out</button>
+            <button onClick={act(signOut)} style={{...utilityBtnStyle,width:"100%",justifyContent:"flex-start",borderColor:`${C.kente1}66`,color:C.errOnDark}}>⏻ Sign Out</button>
           </>
         ) : (
           <>

@@ -66,7 +66,7 @@ function NewVariantForm({ onAdd, disabled, note }) {
       <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
         <input aria-label="New variant price" type="number" min={0} step="0.01" disabled={disabled} value={price} onChange={e => setPrice(e.target.value)} placeholder="Price (GHS)" style={{ ...inputStyle, width: 130 }} />
         <input aria-label="New variant stock" type="number" min={0} disabled={disabled} value={stock} onChange={e => setStock(e.target.value)} placeholder="Stock (blank = not tracked)" style={{ ...inputStyle, width: 190 }} />
-        <button type="button" onClick={add} disabled={!ready} style={{ ...btn, background: ready ? D.green : D.panelBg2, color: ready ? "#fff" : D.textFaint, cursor: ready ? "pointer" : "default" }}>Add variant</button>
+        <button type="button" onClick={add} disabled={!ready} style={{ ...btn, background: ready ? D.green : D.panelBg2, color: ready ? D.white : D.textFaint, cursor: ready ? "pointer" : "default" }}>Add variant</button>
       </div>
       {note && <div style={{ ...noteStyle, marginTop: 4 }}>{note}</div>}
       {error && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginTop: 4 }}>{error}</div>}
@@ -107,14 +107,14 @@ function ExistingRow({ variant, mode, locked, staged, onLive, onRemove, onAttrib
       <AttributeFields pairs={pairs} onChange={setPairs} disabled={locked || staged === "remove"} />
       {attributesChanged && revisionMode && (
         <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button type="button" disabled={locked} onClick={() => guard(() => onAttributes(objectOf(pairs)), "Could not save that change.")} style={{ ...btn, background: D.gold, color: "#1a1205" }}>Save attribute change</button>
+          <button type="button" disabled={locked} onClick={() => guard(() => onAttributes(objectOf(pairs)), "Could not save that change.")} style={{ ...btn, background: D.gold, color: D.onGold }}>Save attribute change</button>
           <Chip color={D.amber}>Needs approval</Chip>
         </div>
       )}
       <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
         <input aria-label={`Price for ${variant.label || "variant"}`} type="number" min={0} step="0.01" value={price} onChange={e => setPrice(e.target.value)} style={{ ...inputStyle, width: 120 }} />
         <input aria-label={`Stock for ${variant.label || "variant"}`} type="number" min={0} value={stock} disabled={untracked} onChange={e => setStock(e.target.value)} placeholder="Stock not tracked" style={{ ...inputStyle, width: 120 }} />
-        <button type="button" onClick={() => guard(saveLive, "Could not save price and stock.")} style={{ ...btn, background: D.gold, color: "#1a1205" }}>Save price &amp; stock</button>
+        <button type="button" onClick={() => guard(saveLive, "Could not save price and stock.")} style={{ ...btn, background: D.gold, color: D.onGold }}>Save price &amp; stock</button>
         {revisionMode && <Chip color={D.green}>Live now</Chip>}
         {untracked && <span style={noteStyle}>Stock is not tracked for this variant; tracking cannot be switched on or off here.</span>}
         <button type="button" disabled={locked || staged === "remove"} onClick={() => guard(onRemove, "Could not remove that variant.")} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>Remove</button>

@@ -42,12 +42,12 @@ function Waiting({ kind, title, now, next, detail, proposer, onApprove, onReturn
       {returning ? (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <input aria-label={`Note for ${title}`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why it is returned" style={{ ...field, flex: "1 1 200px" }} />
-          <button type="button" disabled={busy || (onReturn.needsNote && !note.trim())} onClick={() => run(() => onReturn(note.trim()))} style={button(D.red, "#fff", busy || (onReturn.needsNote && !note.trim()))}>Confirm return</button>
+          <button type="button" disabled={busy || (onReturn.needsNote && !note.trim())} onClick={() => run(() => onReturn(note.trim()))} style={button(D.red, D.white, busy || (onReturn.needsNote && !note.trim()))}>Confirm return</button>
           <button type="button" onClick={() => setReturning(false)} style={button(D.panelBg, D.text)}>Cancel</button>
         </div>
       ) : (
         <div style={{ display: "flex", gap: 6 }}>
-          <button type="button" disabled={busy} onClick={() => run(onApprove)} style={button(D.green, "#fff", busy)}>Approve</button>
+          <button type="button" disabled={busy} onClick={() => run(onApprove)} style={button(D.green, D.white, busy)}>Approve</button>
           <button type="button" disabled={busy} onClick={() => setReturning(true)} style={button(D.panelBg, D.text, busy)}>Return with note</button>
         </div>
       )}

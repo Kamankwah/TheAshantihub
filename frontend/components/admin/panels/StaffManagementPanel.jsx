@@ -75,7 +75,7 @@ function PermissionEditor({ staff, roleCodenames, onDone }) {
       )}
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.75rem", marginTop: 8 }}>{actionError}</div>}
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <button onClick={save} disabled={saving} style={{ ...pillBtn, background: D.gold, color: "#1a1205", opacity: saving ? 0.6 : 1 }}>{saving ? "Saving…" : "Save permissions"}</button>
+        <button onClick={save} disabled={saving} style={{ ...pillBtn, background: D.gold, color: D.onGold, opacity: saving ? 0.6 : 1 }}>{saving ? "Saving…" : "Save permissions"}</button>
         <button onClick={onDone} style={{ ...pillBtn, background: D.panelBg, color: D.textDim, border: `1px solid ${D.cardBorder}` }}>Close</button>
       </div>
     </div>
@@ -123,10 +123,10 @@ function StaffRow({ staff, onResend, resent, resending, onChanged }) {
           )}
           <button onClick={() => setEditingPerms(e => !e)} style={{ ...pillBtn, background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}` }}>🔑 Permissions</button>
           {isSuspended
-            ? <button onClick={() => act("unsuspend")} style={{ ...pillBtn, background: D.green, color: "#fff" }}>↩️ Unsuspend</button>
+            ? <button onClick={() => act("unsuspend")} style={{ ...pillBtn, background: D.green, color: D.white }}>↩️ Unsuspend</button>
             : <button onClick={() => setSuspending(s => !s)} style={{ ...pillBtn, background: "rgba(248,113,113,0.14)", color: D.red }}>🚫 Suspend</button>}
           {isDeactivated
-            ? <button onClick={() => act("reactivate")} style={{ ...pillBtn, background: D.green, color: "#fff" }}>↩️ Reactivate</button>
+            ? <button onClick={() => act("reactivate")} style={{ ...pillBtn, background: D.green, color: D.white }}>↩️ Reactivate</button>
             : <button onClick={() => act("deactivate")} style={{ ...pillBtn, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.cardBorder}` }}>⏹ Deactivate</button>}
         </div>
       </div>
@@ -136,7 +136,7 @@ function StaffRow({ staff, onResend, resent, resending, onChanged }) {
       {suspending && !isSuspended && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
           <input value={suspendReason} onChange={e => setSuspendReason(e.target.value)} placeholder="Reason for suspension" style={{ flex: "1 1 160px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-          <button onClick={() => act("suspend", { reason: suspendReason })} disabled={!suspendReason} style={{ ...pillBtn, background: D.red, color: "#fff", cursor: suspendReason ? "pointer" : "default" }}>Confirm suspend</button>
+          <button onClick={() => act("suspend", { reason: suspendReason })} disabled={!suspendReason} style={{ ...pillBtn, background: D.redFill, color: D.white, cursor: suspendReason ? "pointer" : "default" }}>Confirm suspend</button>
         </div>
       )}
 
@@ -203,7 +203,7 @@ export default function StaffManagementPanel() {
             <option value="dispatch">Dispatch</option>
             <option value="cosigner">Co-signer</option>
           </select>
-          <button onClick={sendInvite} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>Send invite</button>
+          <button onClick={sendInvite} style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>Send invite</button>
         </div>
       </div>
 

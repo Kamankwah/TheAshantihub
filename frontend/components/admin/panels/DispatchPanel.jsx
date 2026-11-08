@@ -89,10 +89,10 @@ function DeliveryCard({ delivery, onDone }) {
 
       <div style={{ marginTop: 12 }}>
         {delivery.status === "assigned" && (
-          <button onClick={() => act("pickup")} disabled={busy} style={{ ...bigBtn, background: D.gold, color: "#1a1205", opacity: busy ? 0.6 : 1 }}>📦 Confirm pickup</button>
+          <button onClick={() => act("pickup")} disabled={busy} style={{ ...bigBtn, background: D.gold, color: D.onGold, opacity: busy ? 0.6 : 1 }}>📦 Confirm pickup</button>
         )}
         {delivery.status === "picked_up" && (
-          <button onClick={() => act("deliver")} disabled={busy} style={{ ...bigBtn, background: D.green, color: "#fff", opacity: busy ? 0.6 : 1 }}>✓ Confirm delivered</button>
+          <button onClick={() => act("deliver")} disabled={busy} style={{ ...bigBtn, background: D.green, color: D.white, opacity: busy ? 0.6 : 1 }}>✓ Confirm delivered</button>
         )}
         {delivery.status === "delivered" && (
           <div style={{ color: D.textDim, fontSize: "0.74rem", textAlign: "center" }}>Waiting for the customer to confirm receipt.</div>

@@ -70,7 +70,7 @@ function ScoreRow({ row, onChanged }) {
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <input type="number" value={delta} onChange={e => setDelta(e.target.value)} placeholder="+/- points" style={{ ...inputStyle, width: 100 }} />
           <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason (required)" style={{ ...inputStyle, flex: 1, minWidth: 160 }} />
-          <button onClick={save} disabled={!reason} style={{ ...pillBtn, background: D.gold, color: "#1a1205", cursor: reason ? "pointer" : "default" }}>Save</button>
+          <button onClick={save} disabled={!reason} style={{ ...pillBtn, background: D.gold, color: D.onGold, cursor: reason ? "pointer" : "default" }}>Save</button>
         </div>
       )}
     </div>
@@ -116,7 +116,7 @@ function PartnerForm({ initial, onSubmit, onCancel, submitLabel }) {
       <input value={form.focus} onChange={e => set("focus", e.target.value)} placeholder="Focus" style={inputStyle} />
       <input value={form.contact} onChange={e => set("contact", e.target.value)} placeholder="Contact" style={inputStyle} />
       <div style={{ display: "flex", gap: 6 }}>
-        <button onClick={() => onSubmit({ ...form, min_score: Number(form.min_score) })} disabled={!form.name} style={{ ...pillBtn, background: D.gold, color: "#1a1205", cursor: form.name ? "pointer" : "default" }}>{submitLabel}</button>
+        <button onClick={() => onSubmit({ ...form, min_score: Number(form.min_score) })} disabled={!form.name} style={{ ...pillBtn, background: D.gold, color: D.onGold, cursor: form.name ? "pointer" : "default" }}>{submitLabel}</button>
         {onCancel && <button onClick={onCancel} style={{ ...pillBtn, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.cardBorder}` }}>Cancel</button>}
       </div>
     </div>
@@ -148,7 +148,7 @@ function PartnersSection() {
     <div style={{ ...glassCard, padding: 18, marginBottom: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem" }}>Lending partners</div>
-        <button onClick={() => setAdding(a => !a)} style={{ ...pillBtn, background: D.gold, color: "#1a1205" }}>{adding ? "Close" : "+ Add partner"}</button>
+        <button onClick={() => setAdding(a => !a)} style={{ ...pillBtn, background: D.gold, color: D.onGold }}>{adding ? "Close" : "+ Add partner"}</button>
       </div>
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{actionError}</div>}
       {adding && <PartnerForm initial={BLANK_PARTNER} onSubmit={create} onCancel={() => setAdding(false)} submitLabel="Add partner" />}
@@ -164,7 +164,7 @@ function PartnersSection() {
               <button onClick={() => setEditingId(editingId === p.id ? null : p.id)} style={{ ...pillBtn, background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}` }}>✏️ Edit</button>
               {p.is_active
                 ? <button onClick={() => update(p.id, { is_active: false })} style={{ ...pillBtn, background: "rgba(248,113,113,0.14)", color: D.red }}>Deactivate</button>
-                : <button onClick={() => update(p.id, { is_active: true })} style={{ ...pillBtn, background: D.green, color: "#fff" }}>Reactivate</button>}
+                : <button onClick={() => update(p.id, { is_active: true })} style={{ ...pillBtn, background: D.green, color: D.white }}>Reactivate</button>}
             </div>
           </div>
           {editingId === p.id && <PartnerForm initial={{ ...BLANK_PARTNER, ...p }} onSubmit={(form) => update(p.id, form)} onCancel={() => setEditingId(null)} submitLabel="Save" />}
@@ -209,8 +209,8 @@ function LoanRow({ app, onChanged }) {
       {reviewing && !isFinal && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Decision notes (optional)" style={{ ...inputStyle, flex: 1, minWidth: 160 }} />
-          <button onClick={() => review("approved")} style={{ ...pillBtn, background: D.green, color: "#fff" }}>Approve</button>
-          <button onClick={() => review("declined")} style={{ ...pillBtn, background: D.red, color: "#fff" }}>Decline</button>
+          <button onClick={() => review("approved")} style={{ ...pillBtn, background: D.green, color: D.white }}>Approve</button>
+          <button onClick={() => review("declined")} style={{ ...pillBtn, background: D.redFill, color: D.white }}>Decline</button>
         </div>
       )}
     </div>

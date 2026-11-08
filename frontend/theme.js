@@ -26,15 +26,16 @@ export const THEME_TOKENS = {
     "ah-surface-2": "#F5ECD8",               // recessed well (list rows, secondary buttons)
     "ah-surface-3": "#EADFC6",               // stronger well (disabled buttons, tracks)
     "ah-ink": "#2C1810",                     // C.darkBrown — body text
-    "ah-ink-dim": "rgba(44, 24, 16, 0.62)",
-    "ah-ink-faint": "rgba(44, 24, 16, 0.42)",
+    "ah-ink-dim": "rgba(44, 24, 16, 0.72)",
+    "ah-ink-faint": "rgba(44, 24, 16, 0.62)",    // AA (4.5:1) on canvas, surface and wells
     "ah-line": "rgba(44, 24, 16, 0.12)",     // dividers, neutral input borders
     "ah-border": "rgba(212, 160, 23, 0.35)", // C.gold, low opacity — card borders
     "ah-border-strong": "rgba(212, 160, 23, 0.6)",
     "ah-shadow": "0 10px 28px rgba(44, 24, 16, 0.12)",
     "ah-price": "#2C1810",                   // DESIGN.md: prices dark brown on light
     "ah-green": "#006400",                   // C.kente2 — trust/verified/success
-    "ah-red": "#CC0000",                     // C.kente1 — error/destructive
+    "ah-red": "#CC0000",                     // C.kente1 — error/destructive text and borders
+    "ah-red-fill": "#CC0000",                // destructive button fill (white text)
     "ah-blue": "#000080",                    // C.kente3 — info
     "ah-ok-bg": "#E3F1E3", "ah-ok-ink": "#00500A",
     "ah-err-bg": "#FDECEA", "ah-err-ink": "#A30000",
@@ -48,15 +49,16 @@ export const THEME_TOKENS = {
     "ah-surface-2": "#3D281A",               // darkBrown, lightened (index.css .dark --secondary)
     "ah-surface-3": "#4A3324",
     "ah-ink": "#F5DEB3",                     // C.lightGold
-    "ah-ink-dim": "rgba(245, 222, 179, 0.72)",
-    "ah-ink-faint": "rgba(245, 222, 179, 0.5)",
+    "ah-ink-dim": "rgba(245, 222, 179, 0.78)",
+    "ah-ink-faint": "rgba(245, 222, 179, 0.62)",
     "ah-line": "rgba(245, 222, 179, 0.14)",
     "ah-border": "rgba(212, 160, 23, 0.4)",
     "ah-border-strong": "rgba(212, 160, 23, 0.65)",
     "ah-shadow": "0 10px 28px rgba(0, 0, 0, 0.45)",
     "ah-price": "#F5DEB3",                   // C.lightGold — prices on dark surfaces
     "ah-green": "#2F9E2F",                   // kente green retuned for dark (index.css .dark --chart-3)
-    "ah-red": "#E03A3A",                     // kente red retuned for dark (DESIGN.md)
+    "ah-red": "#F57474",                     // kente red retuned for dark text: 4.5:1 on canvas, surface and wells
+    "ah-red-fill": "#C62828",                // destructive button fill in dark (white text 5.6:1)
     "ah-blue": "#9A9AFF",                    // kente navy retuned for dark (navy is unreadable on brown)
     "ah-ok-bg": "rgba(47, 158, 47, 0.18)", "ah-ok-ink": "#8FD98F",
     "ah-err-bg": "rgba(224, 58, 58, 0.18)", "ah-err-ink": "#FF9B9B",
@@ -85,6 +87,8 @@ export const C = {
   ghRed:"#CE1126", ghGold:"#FCD116", ghGreen:"#006B3F",
   whatsapp:"#25D366", orange:"#E8621A",
   pureBlack:"#000000", white:"#ffffff",
+  // Fixed text colours for fixed fills (same in both themes): ink on gold/amber buttons, light red on dark red-tinted fills.
+  onGold:"#1A1205", errOnDark:"#FFB4B4",
   void:"#160E08",
   // Always white in both themes: QR codes (scanners need dark-on-white) and
   // the frame behind product photos/logos that have their own white ground.
@@ -104,6 +108,7 @@ export const C = {
   price: token("ah-price"),
   trust: token("ah-green"),
   danger: token("ah-red"),
+  dangerFill: token("ah-red-fill"),
   info: token("ah-blue"),
   okBg: token("ah-ok-bg"), okInk: token("ah-ok-ink"),
   errBg: token("ah-err-bg"), errInk: token("ah-err-ink"),

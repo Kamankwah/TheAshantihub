@@ -45,7 +45,8 @@ export const D = {
   deepGold: C.deepGold,    // #B8860B
   green: C.trust,    // #006400 light / retuned for dark
   amber: C.orange,   // #E8621A
-  red: C.danger,     // #CC0000 light / retuned for dark
+  red: C.danger,     // #CC0000 light / retuned for dark (text, borders)
+  redFill: C.dangerFill, // destructive button fill; pair with white/cream text
   blue: C.info,      // #000080 light / retuned for dark
   purple: "#6B4E8E", // new — no purple exists in C; used only for chart/usage-meter variety
   kente1: C.kente1, kente2: C.kente2, kente3: C.kente3,
@@ -55,6 +56,9 @@ export const D = {
   // and solid green/red buttons
   darkBrown: C.darkBrown,
   cream: C.cream,
+  white: C.white,
+  onGold: C.onGold,
+  errOnDark: C.errOnDark,
   // tinted status wells with their readable text colour
   okBg: C.okBg, okInk: C.okInk,
   errBg: C.errBg, errInk: C.errInk,

@@ -42,7 +42,7 @@ const inputStyle = {
   fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text,
 };
 const goldBtn = {
-  background: D.gold, color: "#1a1205", border: "none", borderRadius: 20,
+  background: D.gold, color: D.onGold, border: "none", borderRadius: 20,
   padding: "6px 14px", fontSize: "0.72rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
 };
 const ghostBtn = {

@@ -58,7 +58,7 @@ export default function PrivacyNoticePage({ onNavigate }) {
   ].filter(Boolean);
 
   return (
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: "28px 16px 64px", boxSizing: "border-box", fontFamily: BODY_FONT, color: C.ink }}>
+    <main id="main-content" style={{ maxWidth: 720, margin: "0 auto", padding: "28px 16px 64px", boxSizing: "border-box", fontFamily: BODY_FONT, color: C.ink }}>
       <p style={{ margin: "0 0 6px" }}>
         <a href="/" onClick={(e) => { if (onNavigate) { e.preventDefault(); onNavigate("/"); } }} style={{ color: C.ink, fontWeight: 700, fontSize: "0.85rem", textDecoration: "underline" }}>{"← Back to AshantiHub"}</a>
       </p>

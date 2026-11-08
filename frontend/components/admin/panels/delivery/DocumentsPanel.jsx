@@ -46,7 +46,7 @@ function Row({ d, onDone, setError }) {
           {rejecting && (
             <>
               <input aria-label={`Why ${d.kind_label} is sent back`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why it is sent back" style={field} />
-              <button type="button" disabled={!reason.trim()} onClick={() => run(() => apiPost(`/api/delivery/documents/${d.id}/review/`, { decision: "reject", reject_reason: reason }), "Could not send this paper back.")} style={button(D.red, "#fff", !reason.trim())}>Send back</button>
+              <button type="button" disabled={!reason.trim()} onClick={() => run(() => apiPost(`/api/delivery/documents/${d.id}/review/`, { decision: "reject", reject_reason: reason }), "Could not send this paper back.")} style={button(D.red, D.white, !reason.trim())}>Send back</button>
               <button type="button" onClick={() => setRejecting(false)} style={button(D.panelBg, D.text)}>Cancel</button>
             </>
           )}

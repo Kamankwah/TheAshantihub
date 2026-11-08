@@ -52,10 +52,10 @@ export default function EventPricingPanel({ auth }) {
           )}
           {canPropose && <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
             <input value={draftById[t.id] || ""} onChange={e => setDraftById(d => ({ ...d, [t.id]: e.target.value }))} placeholder="New price" style={{ width: 100, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-            <button onClick={() => propose(t.id)} disabled={!draftById[t.id]} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: draftById[t.id] ? "pointer" : "default" }}>Propose</button>
+            <button onClick={() => propose(t.id)} disabled={!draftById[t.id]} style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: draftById[t.id] ? "pointer" : "default" }}>Propose</button>
           </div>}
           {canApprove && t.pending_price && <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
-            <button onClick={() => approve(t.id)} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
+            <button onClick={() => approve(t.id)} style={{ background: D.green, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
             <button onClick={() => reject(t.id)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
           </div>}
         </div>

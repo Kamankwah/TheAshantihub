@@ -22,7 +22,7 @@ function YesNo({ label, value, onChange }) {
           <button
             key={String(v)}
             onClick={() => onChange(v)}
-            style={{ ...pillBtn, flex: 1, background: value === v ? (v ? D.green : D.red) : D.panelBg2, color: value === v ? "#fff" : D.textDim, border: `1px solid ${D.cardBorder}` }}
+            style={{ ...pillBtn, flex: 1, background: value === v ? (v ? D.green : D.red) : D.panelBg2, color: value === v ? D.white : D.textDim, border: `1px solid ${D.cardBorder}` }}
           >
             {lbl}
           </button>
@@ -74,7 +74,7 @@ function AssignmentCard({ assignment, onDone }) {
         </div>
         {done
           ? <span style={{ background: tint(D.green, "22"), color: D.green, borderRadius: 20, padding: "3px 10px", fontSize: "0.66rem", fontWeight: 800 }}>✓ Visited</span>
-          : <button onClick={() => setOpen(o => !o)} style={{ ...pillBtn, background: D.gold, color: "#1a1205" }}>{open ? "Close" : "📋 Submit report"}</button>}
+          : <button onClick={() => setOpen(o => !o)} style={{ ...pillBtn, background: D.gold, color: D.onGold }}>{open ? "Close" : "📋 Submit report"}</button>}
       </div>
 
       {done && (
@@ -98,7 +98,7 @@ function AssignmentCard({ assignment, onDone }) {
           <button
             onClick={submit}
             disabled={addressConfirmed === null || submitting}
-            style={{ ...pillBtn, width: "100%", background: addressConfirmed !== null ? D.green : D.panelBg2, color: addressConfirmed !== null ? "#fff" : D.textFaint, cursor: addressConfirmed !== null && !submitting ? "pointer" : "default", opacity: submitting ? 0.6 : 1 }}
+            style={{ ...pillBtn, width: "100%", background: addressConfirmed !== null ? D.green : D.panelBg2, color: addressConfirmed !== null ? D.white : D.textFaint, cursor: addressConfirmed !== null && !submitting ? "pointer" : "default", opacity: submitting ? 0.6 : 1 }}
           >
             {submitting ? "Submitting…" : "Submit field report"}
           </button>

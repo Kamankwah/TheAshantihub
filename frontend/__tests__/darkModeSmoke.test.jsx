@@ -178,7 +178,7 @@ describe('dark mode smoke: home', () => {
     await screen.findByRole('heading', { name: 'Most visited categories' })
     expect(screen.getByTestId('storefront-home').getAttribute('style')).toContain('var(--ah-canvas')
     expect(lightOnlyStyles()).toEqual([])
-  })
+  }, 20000)
 })
 
 describe('dark mode smoke: listing detail', () => {

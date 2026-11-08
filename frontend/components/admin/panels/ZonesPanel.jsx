@@ -47,7 +47,7 @@ function Row({ zone, onDone, onMessage }) {
         {mode === "delete" && (
           <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <span style={dim}>Delete {zone.name}?</span>
-            <button type="button" disabled={busy} style={button(D.red, "#fff", busy)} onClick={() => act(() => apiDelete(`/api/listings/zones/${zone.id}/`), `Deleted ${zone.name}.`)}>Delete</button>
+            <button type="button" disabled={busy} style={button(D.red, D.white, busy)} onClick={() => act(() => apiDelete(`/api/listings/zones/${zone.id}/`), `Deleted ${zone.name}.`)}>Delete</button>
             <button type="button" style={button(D.panelBg, D.text)} onClick={() => setMode(null)}>Keep</button>
           </span>
         )}

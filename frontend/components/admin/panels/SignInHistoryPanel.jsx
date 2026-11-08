@@ -82,7 +82,7 @@ export default function SignInHistoryPanel() {
                     <td style={td}>
                       {r.who ? (
                         <>
-                          <span style={{ background: ROLE_ACCENTS[r.who.role] || D.textDim, color: ROLE_BADGE_TEXT[r.who.role] || "#fff", borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 800, marginRight: 6, textTransform: "capitalize" }}>{r.who.role.replace("_", " ")}</span>
+                          <span style={{ background: ROLE_ACCENTS[r.who.role] || D.textDim, color: ROLE_BADGE_TEXT[r.who.role] || D.white, borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 800, marginRight: 6, textTransform: "capitalize" }}>{r.who.role.replace("_", " ")}</span>
                           <span style={{ fontWeight: 700 }}>{r.who.name}</span>
                         </>
                       ) : <span style={dim}>{r.identifier ? `${r.identifier} (no account)` : "Unknown"}</span>}

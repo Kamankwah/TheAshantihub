@@ -102,7 +102,7 @@ export default function PromotionsMarketing({ auth }) {
                               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 <input aria-label={`Reason for rejecting ${p.listing_name}`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason the business can read" style={inputStyle} />
                                 <div style={{ display: "flex", gap: 6 }}>
-                                  <button type="button" disabled={busy || !reason.trim()} onClick={() => call(p, "reject", { reason: reason.trim() }, "Could not reject this promotion.")} style={button("#A30000", "#fff", busy || !reason.trim())}>Confirm reject</button>
+                                  <button type="button" disabled={busy || !reason.trim()} onClick={() => call(p, "reject", { reason: reason.trim() }, "Could not reject this promotion.")} style={button("#A30000", D.white, busy || !reason.trim())}>Confirm reject</button>
                                   <button type="button" onClick={() => { setRejectingId(null); setReason(""); }} style={button(D.panelBg, D.text)}>Keep</button>
                                 </div>
                               </div>
@@ -117,7 +117,7 @@ export default function PromotionsMarketing({ auth }) {
                               <div role="alertdialog" aria-label={`Cancel ${p.business_owner_name}'s promotion?`} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 <Honest tone="warn">Cancelling is not a refund. The listing stops being promoted now and the {money(p.amount_paid)} stays paid.</Honest>
                                 <div style={{ display: "flex", gap: 6 }}>
-                                  <button type="button" disabled={busy} onClick={() => call(p, "cancel", {}, "Could not cancel this promotion.")} style={button("#A30000", "#fff", busy)}>Confirm cancel</button>
+                                  <button type="button" disabled={busy} onClick={() => call(p, "cancel", {}, "Could not cancel this promotion.")} style={button("#A30000", D.white, busy)}>Confirm cancel</button>
                                   <button type="button" onClick={() => setCancelling(null)} style={button(D.panelBg, D.text)}>Keep</button>
                                 </div>
                               </div>

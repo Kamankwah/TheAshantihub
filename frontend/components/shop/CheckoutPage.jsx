@@ -338,7 +338,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
       <div style={{ maxWidth: 1120, margin: "0 auto", padding: "10px 16px", display: "flex", alignItems: "center", gap: 14, boxSizing: "border-box" }}>
         <img src={logoIcon} alt="AshantiHub" style={{ height: 36, width: "auto", display: "block", flexShrink: 0 }} />
         <h1 style={{ margin: 0, flex: 1, fontFamily: HEADING_FONT, fontWeight: 600, fontSize: phoneLayout ? "1.15rem" : "1.4rem", color: C.ink }}>Secure checkout</h1>
-        <a href="/cart" onClick={(e) => { e.preventDefault(); go("/cart"); }} style={{ color: C.trust, fontWeight: 700, fontSize: "0.85rem", textDecoration: "none" }}>Back to cart</a>
+        <a href="/cart" onClick={(e) => { e.preventDefault(); go("/cart"); }} style={{ color: C.trust, fontWeight: 700, fontSize: "0.85rem", textDecoration: "none", display: "inline-flex", alignItems: "center", minHeight: 44 }}>Back to cart</a>
       </div>
     </header>
   );
@@ -357,7 +357,7 @@ export default function CheckoutPage({ user, currency = "GHS", PaymentComponent,
   const page = (content) => (
     <div style={shell}>
       {header}
-      <main style={inner}>{content}</main>
+      <main id="main-content" style={inner}>{content}</main>
       {modal}
     </div>
   );

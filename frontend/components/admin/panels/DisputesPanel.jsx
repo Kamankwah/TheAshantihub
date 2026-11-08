@@ -105,10 +105,10 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
           )}
           {state === "pending" && canResolve && (
             <>
-              <button onClick={() => setResolving(r => !r)} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Resolve</button>
+              <button onClick={() => setResolving(r => !r)} style={{ background: D.green, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Resolve</button>
               {confirmingReject ? (
                 <>
-                  <button onClick={() => resolve("rejected")} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm reject</button>
+                  <button onClick={() => resolve("rejected")} style={{ background: D.redFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm reject</button>
                   <button onClick={() => setConfirmingReject(false)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Keep</button>
                 </>
               ) : (
@@ -133,7 +133,7 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
       {flagging && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <input value={summary} onChange={e => setSummary(e.target.value)} placeholder="Summary for Accounting (required)" aria-label="Summary for Accounting" style={{ flex: 1, minWidth: 200, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-          <button onClick={flag} disabled={!summary.trim()} style={{ background: D.blue, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: summary.trim() ? "pointer" : "default", opacity: summary.trim() ? 1 : 0.5 }}>Confirm flag</button>
+          <button onClick={flag} disabled={!summary.trim()} style={{ background: D.blue, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: summary.trim() ? "pointer" : "default", opacity: summary.trim() ? 1 : 0.5 }}>Confirm flag</button>
         </div>
       )}
 
@@ -150,7 +150,7 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
               </span>
             </label>
           )}
-          <button onClick={() => resolve("resolved")} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm resolve</button>
+          <button onClick={() => resolve("resolved")} style={{ background: D.green, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm resolve</button>
         </div>
       )}
     </div>

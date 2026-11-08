@@ -31,7 +31,7 @@ export default function AshantiDirectPanel() {
       <div role="tablist" aria-label="Ashanti Direct" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
         {TABS.map(([id, label]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-            style={{ background: tab === id ? D.gold : D.panelBg2, color: tab === id ? "#1a1205" : D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "7px 16px", fontSize: "0.74rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>
+            style={{ background: tab === id ? D.gold : D.panelBg2, color: tab === id ? D.onGold : D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "7px 16px", fontSize: "0.74rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>
             {label}
           </button>
         ))}
