@@ -136,7 +136,7 @@ function StaffRow({ staff, onResend, resent, resending, onChanged }) {
       {suspending && !isSuspended && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
           <input value={suspendReason} onChange={e => setSuspendReason(e.target.value)} placeholder="Reason for suspension" style={{ flex: "1 1 160px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-          <button onClick={() => act("suspend", { reason: suspendReason })} disabled={!suspendReason} style={{ ...pillBtn, background: D.red, color: D.white, cursor: suspendReason ? "pointer" : "default" }}>Confirm suspend</button>
+          <button onClick={() => act("suspend", { reason: suspendReason })} disabled={!suspendReason} style={{ ...pillBtn, background: D.redFill, color: D.white, cursor: suspendReason ? "pointer" : "default" }}>Confirm suspend</button>
         </div>
       )}
 

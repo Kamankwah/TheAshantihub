@@ -74,7 +74,7 @@ export default function MessagingPanel() {
             <div>
               <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>
                 {conv.starter_name} <span style={{ color: D.textDim, fontWeight: 400 }}>({conv.subject || "No subject"})</span>
-                {conv.needs_reply && <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: D.red, marginLeft: 8, verticalAlign: "middle" }} title="Needs reply" />}
+                {conv.needs_reply && <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: D.redFill, marginLeft: 8, verticalAlign: "middle" }} title="Needs reply" />}
                 <span style={{ background: conv.status === "open" ? "rgba(96,165,250,0.16)" : "rgba(148,164,191,0.16)", color: conv.status === "open" ? D.blue : D.textDim, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>{conv.status}</span>
               </div>
               <div style={{ color: D.textDim, fontSize: "0.65rem", marginTop: 2 }}>

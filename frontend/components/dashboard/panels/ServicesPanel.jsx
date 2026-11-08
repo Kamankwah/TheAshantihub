@@ -95,7 +95,7 @@ function RequestCard({ sr, onChanged }) {
       {mode === "decline" && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason (optional)" style={{ ...inputStyle, flex: 1, minWidth: 160 }} />
-          <button onClick={() => call("respond", { action: "decline", reason })} style={{ ...btn, background: D.red, color: D.white }}>Confirm decline</button>
+          <button onClick={() => call("respond", { action: "decline", reason })} style={{ ...btn, background: D.redFill, color: D.white }}>Confirm decline</button>
         </div>
       )}
       {mode === "progress" && (

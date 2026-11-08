@@ -210,7 +210,7 @@ function LoanRow({ app, onChanged }) {
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Decision notes (optional)" style={{ ...inputStyle, flex: 1, minWidth: 160 }} />
           <button onClick={() => review("approved")} style={{ ...pillBtn, background: D.green, color: D.white }}>Approve</button>
-          <button onClick={() => review("declined")} style={{ ...pillBtn, background: D.red, color: D.white }}>Decline</button>
+          <button onClick={() => review("declined")} style={{ ...pillBtn, background: D.redFill, color: D.white }}>Decline</button>
         </div>
       )}
     </div>

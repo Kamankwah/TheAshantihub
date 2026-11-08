@@ -172,7 +172,7 @@ function IdentityRow({ row, state, onDone }) {
       {rejecting && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-start" }}>
           <textarea aria-label="Rejection reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why the owner's documents are not accepted (the owner sees this)" style={{ ...field, flex: "1 1 240px", minWidth: 0 }} />
-          <button type="button" onClick={reject} disabled={!reason.trim() || busy} style={{ background: D.red, color: D.cream, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: reason.trim() && !busy ? "pointer" : "not-allowed", opacity: reason.trim() && !busy ? 1 : 0.5, fontFamily: "inherit" }}>Confirm reject</button>
+          <button type="button" onClick={reject} disabled={!reason.trim() || busy} style={{ background: D.redFill, color: D.cream, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: reason.trim() && !busy ? "pointer" : "not-allowed", opacity: reason.trim() && !busy ? 1 : 0.5, fontFamily: "inherit" }}>Confirm reject</button>
           <button type="button" onClick={() => { setRejecting(false); setReason(""); }} style={{ background: "none", border: "none", color: D.textDim, fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
         </div>
       )}

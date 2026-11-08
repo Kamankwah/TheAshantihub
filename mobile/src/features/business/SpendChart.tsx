@@ -32,7 +32,7 @@ export function SpendChart({ series }: { series: SpendMonth[] }) {
             {series.map((r) => (
               <View key={r.key} style={{ flex: 1, alignItems: "center", paddingTop: 4 }}>
                 <Text style={{ color: c.dim, fontFamily: fonts.body, fontSize: 12 }}>{r.month}</Text>
-                <Text style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 11, fontVariant: ["tabular-nums"] }}>{formatCedis(r.amount)}</Text>
+                <Text style={{ color: c.ink, fontFamily: fonts.bodySemi, fontSize: 12, fontVariant: ["tabular-nums"] }}>{formatCedis(r.amount)}</Text>
               </View>
             ))}
           </View>

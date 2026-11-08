@@ -108,7 +108,7 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
               <button onClick={() => setResolving(r => !r)} style={{ background: D.green, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Resolve</button>
               {confirmingReject ? (
                 <>
-                  <button onClick={() => resolve("rejected")} style={{ background: D.red, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm reject</button>
+                  <button onClick={() => resolve("rejected")} style={{ background: D.redFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm reject</button>
                   <button onClick={() => setConfirmingReject(false)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Keep</button>
                 </>
               ) : (

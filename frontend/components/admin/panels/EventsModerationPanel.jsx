@@ -91,7 +91,7 @@ function EventRow({ event, state, onDone, presetReasons = false }) {
           </select>
         )}
         <input value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder={presetReasons ? "Note to the organiser (optional)" : "Rejection reason"} aria-label={presetReasons ? "Note to the organiser" : "Rejection reason"} style={{ flex: "1 1 160px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-        <button onClick={reject} disabled={presetReasons ? !presetChoice : !rejectReason} style={{ background: D.red, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: (presetReasons ? presetChoice : rejectReason) ? "pointer" : "default" }}>Confirm reject</button>
+        <button onClick={reject} disabled={presetReasons ? !presetChoice : !rejectReason} style={{ background: D.redFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: (presetReasons ? presetChoice : rejectReason) ? "pointer" : "default" }}>Confirm reject</button>
       </div>}
 
       {expanded && (

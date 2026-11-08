@@ -53,7 +53,7 @@ one deliberate pairing across the whole app.
 - **Deep gold (accent):** `#B8860B`. Eyebrows, secondary emphasis, `--accent`.
 - **Canvas:** `#FDF6E3` (cream) — the page background everywhere; does most of the "warm Ashanti" work invisibly.
 - **Surface (raised cards):** `#FFFFFF`. Recessed well: `#F5ECD8` (`D.panelBg2`).
-- **Text:** `#2C1810` (dark brown) on cream — warmer/more premium than pure black. Dim `rgba(44,24,16,0.62)`, faint `rgba(44,24,16,0.42)`.
+- **Text:** `#2C1810` (dark brown) on cream — warmer/more premium than pure black. Dim `rgba(44,24,16,0.72)`, faint `rgba(44,24,16,0.62)` (both pass 4.5:1 on cream, white and the recessed well; retuned 2026-11-08 from 0.62/0.42, which measured 4.5 and 2.6).
 - **Light gold:** `#F5DEB3` (`--secondary`/`--muted`).
 - **Kente / semantic:**
   - `#006400` kente green → **verified / success** (verification's mark).
@@ -64,7 +64,7 @@ one deliberate pairing across the whole app.
 - **Draft/neutral:** `#8A7A6B` (warm gray, listing "draft" status — the other non-`C` hex).
 - **Staff role accents** (`components/admin/theme.js` `ROLE_ACCENTS`, the role chip + active-nav mark) reuse palette tokens — super admin = gold, admin = kente navy, accountant = kente red, marketing = kente green, support = `ghGreen`, scout = dark brown, delivery manager = deep gold, dispatch = orange, pickup desk = light gold — and **identify a role, not a status**: a red accountant chip is not an error, an orange dispatch chip is not "pending".
 - **Borders:** gold at low opacity — `#D4A01733` light / `#D4A01740` dark.
-- **Dark mode (every page — owner decision 2026-10-19):** page `#160E08` (`C.void`), cards `#2C1810`, recessed well `#3D281A`, text `#F5DEB3` (dim/faint as light-gold alphas), same gold primary; kente green/red/navy retuned for contrast on brown (`#2F9E2F` / `#E03A3A` / `#9A9AFF`). Customer, business, staff and public pages all follow the toggle (header toggle on the public site; a toggle in the business, staff and account top bars); the first visit follows the device. Implemented as `--ah-*` CSS variables (`index.css`, mirrored in `theme.js` `THEME_TOKENS`) read through `C`'s theme tokens (`C.canvas`, `C.surface`, `C.ink`, `C.price`, `C.trust`, …) and `D`. QR codes stay on white (`C.paper`); photos are never inverted.
+- **Dark mode (every page — owner decision 2026-10-19):** page `#160E08` (`C.void`), cards `#2C1810`, recessed well `#3D281A`, text `#F5DEB3` (dim/faint as light-gold alphas), same gold primary; kente green/red/navy retuned for contrast on brown (`#2F9E2F` / `#F57474` / `#9A9AFF`; red measured 3.9:1 at the old `#E03A3A` on cards, so red text is `#F57474` and destructive button fills use the separate `ah-red-fill` token, `#CC0000` light / `#C62828` dark, with white text). Customer, business, staff and public pages all follow the toggle (header toggle on the public site; a toggle in the business, staff and account top bars); the first visit follows the device. Implemented as `--ah-*` CSS variables (`index.css`, mirrored in `theme.js` `THEME_TOKENS`) read through `C`'s theme tokens (`C.canvas`, `C.surface`, `C.ink`, `C.price`, `C.trust`, …) and `D`. QR codes stay on white (`C.paper`); photos are never inverted.
 
 ### Trust-surface color rules (non-negotiable)
 - **Prices, totals, checkout amounts:** dark-brown text (`C.price`; light gold `#F5DEB3` on dark surfaces), tabular figures, **zero decoration**. Money must look like money. Never gold, never on a pattern.

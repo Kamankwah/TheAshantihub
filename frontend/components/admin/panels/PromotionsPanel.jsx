@@ -83,7 +83,7 @@ function PromotionRow({ promotion, state, canManage, onDone }) {
           {state === "active" && canManage && (
             confirming ? (
               <>
-                <button onClick={cancel} style={{ background: D.red, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm cancel</button>
+                <button onClick={cancel} style={{ background: D.redFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm cancel</button>
                 <button onClick={() => setConfirming(false)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Keep</button>
               </>
             ) : (
@@ -112,7 +112,7 @@ function PromotionRow({ promotion, state, canManage, onDone }) {
       {state === "pending" && rejecting && (
         <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
           <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional)" style={{ flex: 1, minWidth: 160, padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${D.divider}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-          <button onClick={reject} style={{ background: D.red, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm reject</button>
+          <button onClick={reject} style={{ background: D.redFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm reject</button>
           <button onClick={() => { setRejecting(false); setReason(""); }} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Keep</button>
         </div>
       )}

@@ -205,7 +205,7 @@ function KYCRow({ owner, state, onDone, canSendScout }) {
 
       {rejecting && <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Rejection reason" style={{ flex: "1 1 160px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-        <button onClick={reject} disabled={!rejectReason} style={{ background: D.red, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: rejectReason ? "pointer" : "default" }}>Confirm reject</button>
+        <button onClick={reject} disabled={!rejectReason} style={{ background: D.redFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: rejectReason ? "pointer" : "default" }}>Confirm reject</button>
       </div>}
 
       {expanded && (
@@ -268,7 +268,7 @@ function KYCRow({ owner, state, onDone, canSendScout }) {
               {state === "pending" && (
                 <div style={{ display: "flex", gap: 6 }}>
                   <button onClick={() => verifyAddress(true)} style={{ background: addressVerified === true ? D.green : D.panelBg, color: addressVerified === true ? D.white : D.green, border: `1px solid ${D.green}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Address verified</button>
-                  <button onClick={() => verifyAddress(false)} style={{ background: (addressDecided && !addressVerified) ? D.red : D.panelBg, color: (addressDecided && !addressVerified) ? D.white : D.red, border: `1px solid ${D.red}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✗ Address wrong</button>
+                  <button onClick={() => verifyAddress(false)} style={{ background: (addressDecided && !addressVerified) ? D.redFill : D.panelBg, color: (addressDecided && !addressVerified) ? D.white : D.red, border: `1px solid ${D.red}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✗ Address wrong</button>
                 </div>
               )}
               {state === "pending" && canSendScout && <SendScout ownerId={owner.id} />}

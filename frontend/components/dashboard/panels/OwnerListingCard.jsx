@@ -302,7 +302,7 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
         <div role="alertdialog" aria-label={`Confirm ${confirm}`} style={{ marginTop: 10, padding: "10px 12px", border: `1px solid ${D.red}`, borderRadius: 10, color: D.text, fontSize: "0.76rem" }}>
           <div>{CONFIRM_TEXT[confirm].text}</div>
           <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-            <button type="button" disabled={busy} onClick={() => lifecycle(confirm)} style={{ ...btn, background: D.red, color: D.white }}>{CONFIRM_TEXT[confirm].action}</button>
+            <button type="button" disabled={busy} onClick={() => lifecycle(confirm)} style={{ ...btn, background: D.redFill, color: D.white }}>{CONFIRM_TEXT[confirm].action}</button>
             <button type="button" onClick={() => setConfirm(null)} style={quietBtn}>Cancel</button>
           </div>
         </div>

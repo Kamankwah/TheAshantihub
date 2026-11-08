@@ -270,7 +270,7 @@ function UserRow({ user, config, canManage, onChanged }) {
       {canManage && suspending && !user.is_suspended && (
         <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
           <input value={suspendReason} onChange={e => setSuspendReason(e.target.value)} placeholder="Reason for suspension" style={{ ...inputStyle, flex: 1 }} />
-          <button onClick={suspend} disabled={!suspendReason} style={{ ...pillBtn, background: D.red, color: D.white, cursor: suspendReason ? "pointer" : "default" }}>Confirm suspend</button>
+          <button onClick={suspend} disabled={!suspendReason} style={{ ...pillBtn, background: D.redFill, color: D.white, cursor: suspendReason ? "pointer" : "default" }}>Confirm suspend</button>
         </div>
       )}
 

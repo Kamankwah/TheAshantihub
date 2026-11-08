@@ -83,7 +83,7 @@ export default function RaiseDisputeForm({ orderId }) {
         <button
           type="submit"
           disabled={sending || !description.trim()}
-          style={{ background: D.red, color: D.white, border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: sending ? "wait" : "pointer", fontFamily: "inherit", opacity: sending || !description.trim() ? 0.6 : 1 }}
+          style={{ background: D.redFill, color: D.white, border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: sending ? "wait" : "pointer", fontFamily: "inherit", opacity: sending || !description.trim() ? 0.6 : 1 }}
         >
           {sending ? "Sending…" : "Send dispute"}
         </button>

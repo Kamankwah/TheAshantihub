@@ -126,7 +126,7 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast, b
             <div style={{ fontWeight: 900, fontSize: "0.95rem", color: D.red, marginBottom: 4 }}>⏰ Your subscription has expired</div>
             <div style={{ fontSize: "0.78rem", color: D.textDim }}>Renew now to keep creating new listings.</div>
           </div>
-          <button onClick={handleRenewClick} style={{ background: D.red, color: D.white, border: "none", borderRadius: 20, padding: "9px 18px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", whiteSpace: "nowrap" }}>Renew Now</button>
+          <button onClick={handleRenewClick} style={{ background: D.redFill, color: D.white, border: "none", borderRadius: 20, padding: "9px 18px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", whiteSpace: "nowrap" }}>Renew Now</button>
         </div>
       )}
       {!plansGone && <div style={{ display: "inline-flex", background: D.panelBg2, borderRadius: 30, padding: 3, gap: 3, marginBottom: 16, flexWrap: "wrap" }}>
