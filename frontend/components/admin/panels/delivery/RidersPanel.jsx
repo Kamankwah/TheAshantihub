@@ -104,12 +104,12 @@ function Suspend({ staff, suspended, onDone }) {
       setError(apiErrorMessage(err, suspended ? "Could not lift the suspension." : "Could not suspend."));
     }
   };
-  if (!open) return <button type="button" onClick={() => setOpen(true)} style={button(suspended ? D.green : D.red, "#fff")}>{suspended ? "Lift suspension" : "Suspend"}</button>;
+  if (!open) return <button type="button" onClick={() => setOpen(true)} style={button(suspended ? D.green : D.red, D.white)}>{suspended ? "Lift suspension" : "Suspend"}</button>;
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
       <ErrorLine>{error}</ErrorLine>
       {!suspended && <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700, color: D.text }}>Reason (the rider is told)<input value={reason} onChange={(e) => setReason(e.target.value)} style={field} /></label>}
-      <button type="button" disabled={!suspended && !reason.trim()} onClick={run} style={button(D.red, "#fff", !suspended && !reason.trim())}>{suspended ? "Lift it" : "Confirm suspension"}</button>
+      <button type="button" disabled={!suspended && !reason.trim()} onClick={run} style={button(D.red, D.white, !suspended && !reason.trim())}>{suspended ? "Lift it" : "Confirm suspension"}</button>
       <button type="button" onClick={() => setOpen(false)} style={button(D.panelBg, D.text)}>Cancel</button>
     </div>
   );

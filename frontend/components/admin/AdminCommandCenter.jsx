@@ -486,7 +486,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
         </StaffHeader>
 
         {saved && <div role="status" style={{
-          position: "fixed", zIndex: 999, background: D.green, color: "#fff", borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, boxShadow: "0 6px 24px rgba(0,100,0,0.28)",
+          position: "fixed", zIndex: 999, background: D.green, color: D.white, borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, boxShadow: "0 6px 24px rgba(0,100,0,0.28)",
           ...(isPhone ? { left: 12, right: 12, bottom: "calc(80px + env(safe-area-inset-bottom, 0px))", textAlign: "center" } : { top: 74, right: 20 }),
         }}>✓ Saved!</div>}
 

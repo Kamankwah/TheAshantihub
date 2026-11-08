@@ -85,6 +85,8 @@ export const C = {
   ghRed:"#CE1126", ghGold:"#FCD116", ghGreen:"#006B3F",
   whatsapp:"#25D366", orange:"#E8621A",
   pureBlack:"#000000", white:"#ffffff",
+  // Fixed text colours for fixed fills (same in both themes): ink on gold/amber buttons, light red on dark red-tinted fills.
+  onGold:"#1A1205", errOnDark:"#FFB4B4",
   void:"#160E08",
   // Always white in both themes: QR codes (scanners need dark-on-white) and
   // the frame behind product photos/logos that have their own white ground.

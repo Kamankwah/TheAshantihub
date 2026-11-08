@@ -103,7 +103,7 @@ export default function SaInvitesPanel() {
                             <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 190 }}>
                               <div style={dim}>{`${expired ? "Remove" : "Revoke"} the invite to ${i.full_name}? The link stops working and the pending account is deleted.`}</div>
                               <div style={{ display: "flex", gap: 6 }}>
-                                <button type="button" disabled={busy} onClick={() => run(() => apiPost(`/api/accounts/staff/${i.id}/cancel-invite/`, {}), `Invite to ${i.full_name} ${expired ? "removed" : "revoked"}.`, "Could not revoke the invite.")} style={button(D.red, "#fff", busy)}>{expired ? "Remove" : "Revoke"}</button>
+                                <button type="button" disabled={busy} onClick={() => run(() => apiPost(`/api/accounts/staff/${i.id}/cancel-invite/`, {}), `Invite to ${i.full_name} ${expired ? "removed" : "revoked"}.`, "Could not revoke the invite.")} style={button(D.red, D.white, busy)}>{expired ? "Remove" : "Revoke"}</button>
                                 <button type="button" onClick={() => setRevoking(null)} style={button(D.panelBg, D.text)}>Keep it</button>
                               </div>
                             </div>

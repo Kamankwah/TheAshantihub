@@ -148,7 +148,7 @@ export default function SupportContactPanel({ auth, onNavigate }) {
                 </label>
               )}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {selected.status !== "resolved" && selected.has_email && <button type="button" disabled={!body.trim()} onClick={send} style={button(D.green, "#fff", !body.trim())}>Send email</button>}
+                {selected.status !== "resolved" && selected.has_email && <button type="button" disabled={!body.trim()} onClick={send} style={button(D.green, D.white, !body.trim())}>Send email</button>}
                 {selected.status === "read" && <button type="button" onClick={() => act(`${base}/mark-unread/`, {}, "Could not mark this unread.")} style={button(D.panelBg, D.text)}>Mark unread</button>}
                 {selected.status === "new" && <button type="button" onClick={() => act(`${base}/read/`, {}, "Could not mark this read.")} style={button(D.panelBg, D.text)}>Mark read</button>}
                 {!selected.passed_to_operations_at && selected.status !== "resolved" && (passing

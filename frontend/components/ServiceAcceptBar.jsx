@@ -112,7 +112,7 @@ function Bar({ request, onChanged, onContactSupport, onWalletChanged }) {
       )}
       {panel !== "report" && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button type="button" disabled={busy} onClick={accept} style={pill(D.green, "#fff")}>Accept service</button>
+          <button type="button" disabled={busy} onClick={accept} style={pill(D.green, D.white)}>Accept service</button>
           {canReport && <button type="button" disabled={busy} onClick={() => setPanel("report")} style={pill(tint(D.red, "22"), D.red)}>Report a problem</button>}
         </div>
       )}

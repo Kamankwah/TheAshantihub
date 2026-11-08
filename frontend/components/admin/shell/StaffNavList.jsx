@@ -46,7 +46,7 @@ export default function StaffNavList({ navGroups, activeTab, onSelect, collapsed
                   <span aria-label={`${badgeCount} open`} style={{ color: D.textDim, fontSize: "0.7rem", fontWeight: 700, flexShrink: 0 }}>{badgeCount > 99 ? "99+" : badgeCount}</span>
                 )}
                 {!collapsed && badgeCount > 0 && !countOnly?.has(item.id) && (
-                  <span aria-label={`${badgeCount} pending`} style={{ background: D.red, color: "#fff", borderRadius: 10, minWidth: 18, height: 18, fontSize: "0.62rem", fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px", flexShrink: 0 }}>
+                  <span aria-label={`${badgeCount} pending`} style={{ background: D.red, color: D.white, borderRadius: 10, minWidth: 18, height: 18, fontSize: "0.62rem", fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px", flexShrink: 0 }}>
                     {badgeCount > 99 ? "99+" : badgeCount}
                   </span>
                 )}

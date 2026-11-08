@@ -126,12 +126,12 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast, b
             <div style={{ fontWeight: 900, fontSize: "0.95rem", color: D.red, marginBottom: 4 }}>⏰ Your subscription has expired</div>
             <div style={{ fontSize: "0.78rem", color: D.textDim }}>Renew now to keep creating new listings.</div>
           </div>
-          <button onClick={handleRenewClick} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "9px 18px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", whiteSpace: "nowrap" }}>Renew Now</button>
+          <button onClick={handleRenewClick} style={{ background: D.red, color: D.white, border: "none", borderRadius: 20, padding: "9px 18px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", whiteSpace: "nowrap" }}>Renew Now</button>
         </div>
       )}
       {!plansGone && <div style={{ display: "inline-flex", background: D.panelBg2, borderRadius: 30, padding: 3, gap: 3, marginBottom: 16, flexWrap: "wrap" }}>
         {CYCLE_OPTIONS.map(c => (
-          <button key={c.months} onClick={() => setCycleMonths(c.months)} style={{ background: cycleMonths === c.months ? D.gold : "transparent", border: "none", borderRadius: 28, padding: "6px 16px", fontWeight: cycleMonths === c.months ? 800 : 600, fontSize: "0.75rem", cursor: "pointer", fontFamily: "inherit", color: cycleMonths === c.months ? "#1a1205" : D.textDim }}>
+          <button key={c.months} onClick={() => setCycleMonths(c.months)} style={{ background: cycleMonths === c.months ? D.gold : "transparent", border: "none", borderRadius: 28, padding: "6px 16px", fontWeight: cycleMonths === c.months ? 800 : 600, fontSize: "0.75rem", cursor: "pointer", fontFamily: "inherit", color: cycleMonths === c.months ? D.onGold : D.textDim }}>
             {c.label}
           </button>
         ))}
@@ -142,12 +142,12 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast, b
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 12 }}>
           {visiblePlans.map(plan => (
             <div key={plan.id} style={{ ...glassCard, padding: "18px", border: `2px solid ${plan.is_recommended ? D.cardBorderStrong : D.cardBorder}`, position: "relative" }}>
-              {plan.is_recommended && <div style={{ position: "absolute", top: -9, left: "50%", transform: "translateX(-50%)", background: D.gold, color: "#1a1205", borderRadius: 20, padding: "2px 12px", fontSize: "0.58rem", fontWeight: 900, whiteSpace: "nowrap" }}>⭐ MOST POPULAR</div>}
+              {plan.is_recommended && <div style={{ position: "absolute", top: -9, left: "50%", transform: "translateX(-50%)", background: D.gold, color: D.onGold, borderRadius: 20, padding: "2px 12px", fontSize: "0.58rem", fontWeight: 900, whiteSpace: "nowrap" }}>⭐ MOST POPULAR</div>}
               <div style={{ fontWeight: 900, color: D.text, marginBottom: 2 }}>{plan.name}{plan.kind && <span style={{ marginLeft: 8, fontSize: "0.6rem", fontWeight: 800, color: D.textDim, background: D.panelBg2, borderRadius: 12, padding: "2px 8px", verticalAlign: "middle" }}>{plan.kind === "service" ? "Service" : "Product"}</span>}</div>
               <div style={{ fontWeight: 900, fontSize: "1.5rem", color: D.text, marginBottom: 10 }}>GHS {(Number(plan.monthly_price) * cycleMonths).toLocaleString()}<span style={{ fontSize: "0.7rem", fontWeight: 400, color: D.textFaint }}>/{cycleMonths} mo{cycleMonths === 1 ? "" : "s"}</span></div>
               {plan.max_active_listings != null && <div style={{ fontSize: "0.68rem", color: D.textFaint, marginBottom: 6 }}>Up to {plan.max_active_listings} active listings</div>}
               {(plan.features || []).map(f => <div key={f} style={{ fontSize: "0.7rem", color: D.textDim, marginBottom: 4 }}>✓ {f}</div>)}
-              <button onClick={() => { setSelectedPlan(plan); setShowPayModal(true); }} style={{ width: "100%", marginTop: 12, background: plan.is_recommended ? D.gold : D.panelBg2, color: plan.is_recommended ? "#1a1205" : D.textDim, border: plan.is_recommended ? "none" : `1px solid ${D.divider}`, borderRadius: 20, padding: "9px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem" }}>💰 Pay with MoMo</button>
+              <button onClick={() => { setSelectedPlan(plan); setShowPayModal(true); }} style={{ width: "100%", marginTop: 12, background: plan.is_recommended ? D.gold : D.panelBg2, color: plan.is_recommended ? D.onGold : D.textDim, border: plan.is_recommended ? "none" : `1px solid ${D.divider}`, borderRadius: 20, padding: "9px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem" }}>💰 Pay with MoMo</button>
             </div>
           ))}
         </div>

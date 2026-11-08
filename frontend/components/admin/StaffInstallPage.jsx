@@ -24,7 +24,7 @@ const noteText = { margin: 0, color: D.textDim, fontSize: "0.82rem", lineHeight:
 const stepList = { margin: 0, paddingLeft: 22, listStyle: "decimal", display: "grid", gap: 10, ...bodyText };
 const primaryButton = {
   display: "flex", alignItems: "center", justifyContent: "center", width: "100%", minHeight: 48, boxSizing: "border-box",
-  background: D.gold, color: "#1a1205", border: "none", borderRadius: 12, padding: "0 18px",
+  background: D.gold, color: D.onGold, border: "none", borderRadius: 12, padding: "0 18px",
   fontSize: "0.95rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit", textDecoration: "none",
 };
 

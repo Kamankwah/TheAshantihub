@@ -134,7 +134,7 @@ export default function MediaManager({ listing = null, basePath = DEFAULT_LISTIN
             {p.staged && <div style={{ color: D.amber, fontSize: "0.6rem", fontWeight: 700 }}>Waiting for approval</div>}
             {queuedPhotos.has(p.id) && <div style={{ color: D.amber, fontSize: "0.6rem", fontWeight: 700 }}>Removal waiting for approval</div>}
             {!queuedPhotos.has(p.id) && (
-              <button type="button" onClick={() => removePhoto(p.id)} disabled={busy} title="Remove photo" aria-label="Remove photo" style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: D.red, color: "#fff", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer", lineHeight: 1, padding: 0 }}>✕</button>
+              <button type="button" onClick={() => removePhoto(p.id)} disabled={busy} title="Remove photo" aria-label="Remove photo" style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: D.red, color: D.white, fontSize: "0.7rem", fontWeight: 800, cursor: "pointer", lineHeight: 1, padding: 0 }}>✕</button>
             )}
           </div>
         ))}

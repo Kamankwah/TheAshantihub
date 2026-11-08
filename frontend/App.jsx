@@ -130,7 +130,7 @@ const InlineFallback = <div role="status" aria-label="Loading" style={{minHeight
 
 // ─── Payment System ───────────────────────────────────────────────────────────
 const MOMO_NETWORKS = [
-  { id:"mtn", name:"MTN MoMo", color:"#FCD116", textColor:"#1A1A1A", logo:"🟡", ussd:"*170#", fee:"1.5%" },
+  { id:"mtn", name:"MTN MoMo", color:C.ghGold, textColor:"#1A1A1A", logo:"🟡", ussd:"*170#", fee:"1.5%" },
   { id:"telecel", name:"Telecel Cash", color:"#E31837", textColor:"white", logo:"🔴", ussd:"*110#", fee:"1.5%" },
   { id:"airteltigo", name:"AirtelTigo Money", color:"#E87722", textColor:"white", logo:"🟠", ussd:"*500#", fee:"1.5%" },
 ];
@@ -1086,7 +1086,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
                 framed as an AshantiHub Support conversation about this listing,
                 not a direct line to the business. */}
             <button onClick={()=>{ if(onMessage) onMessage(item); }}
-              style={{background:`${C.kente3}22`,color:"#fff",border:`1px solid ${C.kente3}66`,borderRadius:20,padding:"5px 12px",minHeight:44,fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+              style={{background:`${C.kente3}22`,color:C.white,border:`1px solid ${C.kente3}66`,borderRadius:20,padding:"5px 12px",minHeight:44,fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
               🎧 Contact Support
             </button>
           </div>
@@ -1654,7 +1654,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     return (
       <div style={{minHeight:"100vh",background:D.pageBg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20,textAlign:"center"}}>
         <div style={{fontSize:"1.15rem",fontWeight:700,color:D.text}}>Sign in with a customer account to view this page.</div>
-        <button onClick={onExit} style={{padding:"10px 24px",borderRadius:8,border:"none",background:D.gold,color:"#1a1205",fontWeight:700,cursor:"pointer",fontSize:"0.85rem"}}>← Back to AshantiHub</button>
+        <button onClick={onExit} style={{padding:"10px 24px",borderRadius:8,border:"none",background:D.gold,color:C.onGold,fontWeight:700,cursor:"pointer",fontSize:"0.85rem"}}>← Back to AshantiHub</button>
       </div>
     );
   }
@@ -1696,7 +1696,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
 
       <div style={{position:"relative"}}>
         <button onClick={()=>setShowProfileMenu(v=>!v)} aria-label="Account menu" style={{display:"flex",alignItems:"center",gap:6,background:"none",border:`1px solid ${D.divider}`,borderRadius:20,padding:"4px 10px 4px 4px",cursor:"pointer"}}>
-          <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",background:D.gold,color:"#1a1205",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.72rem"}}>
+          <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",background:D.gold,color:C.onGold,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.72rem"}}>
             {user?.avatar ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (user?.fullName?.[0]?.toUpperCase()||"U")}
           </div>
           <span style={{color:D.text,fontSize:"0.7rem"}}>▾</span>

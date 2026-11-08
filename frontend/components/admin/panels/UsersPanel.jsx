@@ -259,7 +259,7 @@ function UserRow({ user, config, canManage, onChanged }) {
           <button onClick={openView} style={{ ...pillBtn, background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}` }}>{mode === "view" ? "▲ Hide" : "👁️ View"}</button>
           {canManage && <button onClick={openEdit} style={{ ...pillBtn, background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}` }}>✏️ Edit</button>}
           {canManage && (user.is_suspended
-            ? <button onClick={unsuspend} style={{ ...pillBtn, background: D.green, color: "#fff" }}>↩️ Unsuspend</button>
+            ? <button onClick={unsuspend} style={{ ...pillBtn, background: D.green, color: D.white }}>↩️ Unsuspend</button>
             : <button onClick={() => setSuspending(s => !s)} style={{ ...pillBtn, background: "rgba(248,113,113,0.14)", color: D.red }}>🚫 Suspend</button>)}
         </div>
       </div>
@@ -270,7 +270,7 @@ function UserRow({ user, config, canManage, onChanged }) {
       {canManage && suspending && !user.is_suspended && (
         <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
           <input value={suspendReason} onChange={e => setSuspendReason(e.target.value)} placeholder="Reason for suspension" style={{ ...inputStyle, flex: 1 }} />
-          <button onClick={suspend} disabled={!suspendReason} style={{ ...pillBtn, background: D.red, color: "#fff", cursor: suspendReason ? "pointer" : "default" }}>Confirm suspend</button>
+          <button onClick={suspend} disabled={!suspendReason} style={{ ...pillBtn, background: D.red, color: D.white, cursor: suspendReason ? "pointer" : "default" }}>Confirm suspend</button>
         </div>
       )}
 
@@ -304,7 +304,7 @@ function UserRow({ user, config, canManage, onChanged }) {
                 </div>
               ))}
               <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                <button onClick={save} style={{ ...pillBtn, background: D.gold, color: "#1a1205" }}>Save changes</button>
+                <button onClick={save} style={{ ...pillBtn, background: D.gold, color: D.onGold }}>Save changes</button>
                 <button onClick={close} style={{ ...pillBtn, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.cardBorder}` }}>Cancel</button>
               </div>
             </div>
@@ -326,8 +326,8 @@ export default function UsersPanel({ auth }) {
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        <button onClick={() => setSubTab("customers")} style={{ padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer", fontWeight: 700, fontSize: "0.75rem", background: subTab === "customers" ? D.gold : D.panelBg2, color: subTab === "customers" ? "#1a1205" : D.textDim, fontFamily: "inherit" }}>Customers</button>
-        <button onClick={() => setSubTab("owners")} style={{ padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer", fontWeight: 700, fontSize: "0.75rem", background: subTab === "owners" ? D.gold : D.panelBg2, color: subTab === "owners" ? "#1a1205" : D.textDim, fontFamily: "inherit" }}>Business Owners</button>
+        <button onClick={() => setSubTab("customers")} style={{ padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer", fontWeight: 700, fontSize: "0.75rem", background: subTab === "customers" ? D.gold : D.panelBg2, color: subTab === "customers" ? D.onGold : D.textDim, fontFamily: "inherit" }}>Customers</button>
+        <button onClick={() => setSubTab("owners")} style={{ padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer", fontWeight: 700, fontSize: "0.75rem", background: subTab === "owners" ? D.gold : D.panelBg2, color: subTab === "owners" ? D.onGold : D.textDim, fontFamily: "inherit" }}>Business Owners</button>
       </div>
       {active.isLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>}
       {active.isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load this list.</div>}

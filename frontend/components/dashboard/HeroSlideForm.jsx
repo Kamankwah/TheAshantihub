@@ -157,7 +157,7 @@ export default function HeroSlideForm({ mode = "business", onDone }) {
         </div>
         {error && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", fontWeight: 700 }}>{error}</div>}
         {notice && <div role="status" style={{ color: D.green, fontSize: "0.74rem", fontWeight: 700 }}>{notice}</div>}
-        <button type="submit" disabled={busy} style={{ alignSelf: "flex-start", background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "8px 18px", fontWeight: 900, fontSize: "0.78rem", cursor: busy ? "default" : "pointer", fontFamily: "inherit" }}>
+        <button type="submit" disabled={busy} style={{ alignSelf: "flex-start", background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "8px 18px", fontWeight: 900, fontSize: "0.78rem", cursor: busy ? "default" : "pointer", fontFamily: "inherit" }}>
           {busy ? "Sending…" : staff ? "Create slide" : "Submit slide"}
         </button>
       </form>

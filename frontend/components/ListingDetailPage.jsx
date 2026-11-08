@@ -369,7 +369,7 @@ function ServiceListingDetail({
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               onClick={() => onMessage && onMessage(item)}
-              style={{ background: `${C.kente3}22`, color: "#fff", border: `1px solid ${C.kente3}66`, borderRadius: 20, padding: "10px 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", minHeight: 44 }}
+              style={{ background: `${C.kente3}22`, color: C.white, border: `1px solid ${C.kente3}66`, borderRadius: 20, padding: "10px 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", minHeight: 44 }}
             >
               🎧 Contact Support
             </button>
@@ -419,10 +419,10 @@ function ServiceListingDetail({
                     {pay.problem && <div role="alert" style={{ ...stayStyles.error, marginTop: 8 }}>{pay.problem}</div>}
                   </div>
                 )}
-                {!pay.ledgerOn && pay.problem && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{pay.problem}</div>}
+                {!pay.ledgerOn && pay.problem && <div role="alert" style={{ color: C.errOnDark, fontSize: "0.72rem", marginBottom: 8 }}>{pay.problem}</div>}
                 {stayPayActive && pay.state === "unknown" && !pay.problem && <div role="status" style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.72rem", marginBottom: 8 }}>Checking payment options…</div>}
                 {checkIn && <BookingTermsNote kind="stay" policy={item.cancellation_policy} start={stayStart(checkIn, bookingTerms.data?.stay_check_in_time)} />}
-                {bookingError && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{bookingError}</div>}
+                {bookingError && <div role="alert" style={{ color: C.errOnDark, fontSize: "0.72rem", marginBottom: 8 }}>{bookingError}</div>}
                 <button
                   disabled={booking || !checkIn || !checkOut || !canBuy || (pay.ledgerOn && !stayReady) || pay.state === "unknown"}
                   onClick={() => {
@@ -469,7 +469,7 @@ function ServiceListingDetail({
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: "0.8rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
                 />
                 <BookingTermsNote kind="service" policy={item.cancellation_policy} />
-                {requestError && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{requestError}</div>}
+                {requestError && <div role="alert" style={{ color: C.errOnDark, fontSize: "0.72rem", marginBottom: 8 }}>{requestError}</div>}
                 <button
                   disabled={requesting || !requestMessage.trim()}
                   onClick={async () => {
@@ -574,7 +574,7 @@ function ServiceListingDetail({
           </button>
           )}
           {cartError && (
-            <div style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.72rem" }}>{cartError}</div>
+            <div style={{ marginTop: 8, color: C.errOnDark, fontSize: "0.72rem" }}>{cartError}</div>
           )}
           </>
           )}
@@ -645,7 +645,7 @@ function VariantPicker({ variants, qty, setQty, canBuy, opensLabel, adding, adde
               <PriceLine item={v} tone="dark" size="0.85rem" />
             </div>
             {out ? (
-              <span style={{ color: "#ffb4b4", fontSize: "0.78rem", fontWeight: 700 }}>Out of stock</span>
+              <span style={{ color: C.errOnDark, fontSize: "0.78rem", fontWeight: 700 }}>Out of stock</span>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <button type="button" aria-label={`One fewer ${v.label}`} style={stepBtn} onClick={() => change(v, -1)} disabled={(qty[v.id] || 0) === 0}>−</button>

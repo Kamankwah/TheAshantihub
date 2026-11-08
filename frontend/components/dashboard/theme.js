@@ -55,6 +55,9 @@ export const D = {
   // and solid green/red buttons
   darkBrown: C.darkBrown,
   cream: C.cream,
+  white: C.white,
+  onGold: C.onGold,
+  errOnDark: C.errOnDark,
   // tinted status wells with their readable text colour
   okBg: C.okBg, okInk: C.okInk,
   errBg: C.errBg, errInk: C.errInk,

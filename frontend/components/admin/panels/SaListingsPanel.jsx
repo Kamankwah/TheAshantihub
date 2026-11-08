@@ -96,7 +96,7 @@ function ReviewSheet({ listing, canModerate, approving, onApprove, onClose }) {
       )}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button type="button" onClick={onClose} style={button(D.panelBg, D.text)}>Not now</button>
-        {canModerate && listing.status === "pending_review" && <button type="button" disabled={approving || !d} onClick={() => onApprove(listing)} style={button(D.green, "#fff", approving || !d)}>{`Approve ${listing.name}`}</button>}
+        {canModerate && listing.status === "pending_review" && <button type="button" disabled={approving || !d} onClick={() => onApprove(listing)} style={button(D.green, D.white, approving || !d)}>{`Approve ${listing.name}`}</button>}
       </div>
     </section>
   );
@@ -128,7 +128,7 @@ function TakeDown({ listing, onDone, onCancel }) {
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
-        <button type="submit" disabled={!reason.trim() || busy} style={button(D.red, "#fff", !reason.trim() || busy)}>Take down</button>
+        <button type="submit" disabled={!reason.trim() || busy} style={button(D.red, D.white, !reason.trim() || busy)}>Take down</button>
       </div>
     </form>
   );
@@ -170,7 +170,7 @@ function MoveCategory({ listing, categories, onDone, onCancel }) {
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
-        <button type="submit" disabled={!target || busy} style={button(D.gold, "#1a1205", !target || busy)}>Move</button>
+        <button type="submit" disabled={!target || busy} style={button(D.gold, D.onGold, !target || busy)}>Move</button>
       </div>
     </form>
   );
@@ -274,7 +274,7 @@ function AllListingsView({ auth, onOpenBusiness }) {
                       <td style={td}>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" aria-label={`History of ${l.name}`} onClick={() => setHistory(l)} style={button(D.panelBg, D.text)}>History</button>
-                          {canModerate && l.status === "pending_review" && <button type="button" aria-label={`View or approve ${l.name}`} onClick={() => { setNotice(null); setApproveError(null); setReviewing(l); }} style={button(D.green, "#fff")}>View / Approve</button>}
+                          {canModerate && l.status === "pending_review" && <button type="button" aria-label={`View or approve ${l.name}`} onClick={() => { setNotice(null); setApproveError(null); setReviewing(l); }} style={button(D.green, D.white)}>View / Approve</button>}
                           {canSponsor && isProductListing(l) && l.status === "published" && <SponsoredToggle id={l.id} name={l.name} sponsored={Boolean(l.sponsored)} onChanged={() => queryClient.invalidateQueries({ queryKey: ["sa-listings"] })} />}
                           {canMove && l.status !== "discontinued" && <button type="button" aria-label={`Move ${l.name} to another category`} onClick={() => { setNotice(null); setMoving(l); }} style={button(D.panelBg, D.text)}>Move category</button>}
                           {canModerate && l.status === "published" && <button type="button" aria-label={`Take down ${l.name}`} onClick={() => { setNotice(null); setTakingDown(l); }} style={button(D.panelBg, D.red)}>Take down</button>}

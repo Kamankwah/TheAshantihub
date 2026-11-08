@@ -132,7 +132,7 @@ function Detail({ id, onClose }) {
       {open ? (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <button type="button" onClick={save} style={button(D.panelBg, D.text)}>Save intake</button>
-          <button type="button" disabled={!values.intake_summary.trim()} onClick={flag} style={button(D.deepGold, "#fff", !values.intake_summary.trim())}>Flag for investigation</button>
+          <button type="button" disabled={!values.intake_summary.trim()} onClick={flag} style={button(D.deepGold, D.white, !values.intake_summary.trim())}>Flag for investigation</button>
           <span style={dim}>Sends it to Accounting. Needs a summary.</span>
         </div>
       ) : (

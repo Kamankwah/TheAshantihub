@@ -16,7 +16,7 @@ function Tile({ node, onOpen }) {
       type="button"
       onClick={() => onOpen(node)}
       className="ah-dept-tile"
-      style={{ position: "relative", display: "block", width: "100%", aspectRatio: "4 / 5", padding: 0, border: "none", borderRadius: 16, overflow: "hidden", background: `linear-gradient(rgba(0,0,0,0.28), rgba(0,0,0,0.28)), ${colour}`, textAlign: "left", cursor: "pointer", color: "#fff", fontFamily: BODY_FONT, minWidth: 0, boxShadow: "0 4px 14px rgba(44,24,16,0.12)" }}
+      style={{ position: "relative", display: "block", width: "100%", aspectRatio: "4 / 5", padding: 0, border: "none", borderRadius: 16, overflow: "hidden", background: `linear-gradient(rgba(0,0,0,0.28), rgba(0,0,0,0.28)), ${colour}`, textAlign: "left", cursor: "pointer", color: C.white, fontFamily: BODY_FONT, minWidth: 0, boxShadow: "0 4px 14px rgba(44,24,16,0.12)" }}
     >
       {node.image
         ? <img {...pictureProps(node, "(max-width: 600px) 45vw, 260px")} alt="" loading="lazy" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }} />

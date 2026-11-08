@@ -100,7 +100,7 @@ function SponsoredAd({ listings, listingId, promoteBase, PaymentComponent, user,
       <div style={{ color: D.textFaint, fontSize: "0.68rem", marginBottom: 8 }}>ℹ️ Promotions are reviewed by our team before they go live. Your listing starts ranking higher once approved.</div>
       {notice && <div role="status" style={{ color: D.green, fontSize: "0.74rem", marginBottom: 8 }}>{notice}</div>}
       {error && <div role="alert" style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{error}</div>}
-      <button onClick={submit} disabled={!target || needsKeywords} style={{ width: "100%", background: (!target || needsKeywords) ? D.panelBg2 : D.kente1, color: (!target || needsKeywords) ? D.textFaint : "#fff", border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: (!target || needsKeywords) ? "default" : "pointer", fontFamily: "inherit" }}>📣 Promote {days}d</button>
+      <button onClick={submit} disabled={!target || needsKeywords} style={{ width: "100%", background: (!target || needsKeywords) ? D.panelBg2 : D.kente1, color: (!target || needsKeywords) ? D.textFaint : D.white, border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: (!target || needsKeywords) ? "default" : "pointer", fontFamily: "inherit" }}>📣 Promote {days}d</button>
     </div>
   );
 }

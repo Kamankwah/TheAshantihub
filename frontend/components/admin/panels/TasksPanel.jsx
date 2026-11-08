@@ -66,7 +66,7 @@ export default function TasksPanel({ auth }) {
           </div>
         </div>
         {t.status === "open" && (
-          <button type="button" aria-label={`Mark "${t.title}" done`} onClick={() => finish(t.id)} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Done</button>
+          <button type="button" aria-label={`Mark "${t.title}" done`} onClick={() => finish(t.id)} style={{ background: D.green, color: D.white, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Done</button>
         )}
       </div>
     );

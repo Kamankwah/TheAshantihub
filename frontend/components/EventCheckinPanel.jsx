@@ -91,7 +91,7 @@ export default function EventCheckinPanel({ eventId }) {
       </form>
       {scanning && <QrScanner onDetected={handleScanned} onClose={() => setScanning(false)} />}
 
-      {checkinError && <div role="alert" style={{ marginBottom: 8, color: "#ffb4b4", fontSize: "0.72rem" }}>{checkinError}</div>}
+      {checkinError && <div role="alert" style={{ marginBottom: 8, color: C.errOnDark, fontSize: "0.72rem" }}>{checkinError}</div>}
       {lastCheckedIn && (
         <div style={{ marginBottom: 10, color: C.trust, fontSize: "0.72rem", fontWeight: 700 }}>
           ✓ Checked in {lastCheckedIn.purchased_by_name} — {lastCheckedIn.ticket_type_name}
@@ -100,7 +100,7 @@ export default function EventCheckinPanel({ eventId }) {
 
       {isLoading && <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.74rem" }}>Loading tickets…</div>}
       {isError && (
-        <div style={{ color: "#ffb4b4", fontSize: "0.74rem" }}>
+        <div style={{ color: C.errOnDark, fontSize: "0.74rem" }}>
           Could not load tickets.{" "}
           <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "1px 8px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
             Retry

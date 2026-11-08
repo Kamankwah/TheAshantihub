@@ -140,7 +140,7 @@ export default function DeliveryPromosPanel({ auth }) {
             {rejecting === p.id && (
               <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                 <input aria-label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Tell the business why" maxLength={300} style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
-                <button type="button" disabled={!reason.trim() || busyId === p.id} onClick={() => act(p.id, "reject", { reason })} style={button(D.red, "#fff", !reason.trim())}>Send</button>
+                <button type="button" disabled={!reason.trim() || busyId === p.id} onClick={() => act(p.id, "reject", { reason })} style={button(D.red, D.white, !reason.trim())}>Send</button>
               </div>
             )}
           </div>

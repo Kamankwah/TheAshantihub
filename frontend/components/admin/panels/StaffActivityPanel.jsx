@@ -214,7 +214,7 @@ export default function StaffActivityPanel({ live = false, superAdmin = false })
                       {...(superAdmin ? { onClick: () => setOpened(e), onKeyDown: (k) => { if (k.key === "Enter") setOpened(e); }, tabIndex: 0, "aria-label": `${e.actor_label} ${e.verb}, open entry` } : {})}>
                       <td style={{ ...td, whiteSpace: "nowrap", ...figures }}>{timeCell(e.occurred_at)}</td>
                       <td style={td}>
-                        {e.actor_role && <span style={{ background: ROLE_ACCENTS[e.actor_role] || D.textDim, color: ROLE_BADGE_TEXT[e.actor_role] || "#fff", borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 800, marginRight: 6, textTransform: "capitalize" }}>{roleName(e.actor_role)}</span>}
+                        {e.actor_role && <span style={{ background: ROLE_ACCENTS[e.actor_role] || D.textDim, color: ROLE_BADGE_TEXT[e.actor_role] || D.white, borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 800, marginRight: 6, textTransform: "capitalize" }}>{roleName(e.actor_role)}</span>}
                         <span style={{ fontWeight: 700 }}>{e.actor_label}</span>
                       </td>
                       <td style={{ ...td, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: "0.74rem" }}>{e.verb}</td>

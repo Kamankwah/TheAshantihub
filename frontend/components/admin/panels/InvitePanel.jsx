@@ -179,7 +179,7 @@ export default function InvitePanel({ auth }) {
                               <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 190 }}>
                                 <div style={dim}>{`Cancel the invite to ${v.full_name}? The link stops working.`}</div>
                                 <div style={{ display: "flex", gap: 6 }}>
-                                  <button type="button" onClick={() => run(() => apiPost(`/api/accounts/staff/${v.id}/cancel-invite/`, {}), `Invite to ${v.full_name} cancelled.`, "Could not cancel the invite.")} style={button(D.red, "#fff")}>Cancel invite</button>
+                                  <button type="button" onClick={() => run(() => apiPost(`/api/accounts/staff/${v.id}/cancel-invite/`, {}), `Invite to ${v.full_name} cancelled.`, "Could not cancel the invite.")} style={button(D.red, D.white)}>Cancel invite</button>
                                   <button type="button" onClick={() => setCancelling(null)} style={button(D.panelBg, D.text)}>Keep it</button>
                                 </div>
                               </div>

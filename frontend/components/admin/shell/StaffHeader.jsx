@@ -2,7 +2,7 @@ import { D, ROLE_BADGE_TEXT, tint } from "../theme.js";
 
 export function RoleChip({ role, roleColor }) {
   return (
-    <span style={{ background: roleColor, color: ROLE_BADGE_TEXT[role] || "#fff", borderRadius: 20, padding: "3px 10px", fontSize: "0.62rem", fontWeight: 800, textTransform: "capitalize", whiteSpace: "nowrap" }}>
+    <span style={{ background: roleColor, color: ROLE_BADGE_TEXT[role] || D.white, borderRadius: 20, padding: "3px 10px", fontSize: "0.62rem", fontWeight: 800, textTransform: "capitalize", whiteSpace: "nowrap" }}>
       {role?.replace("_", " ")}
     </span>
   );

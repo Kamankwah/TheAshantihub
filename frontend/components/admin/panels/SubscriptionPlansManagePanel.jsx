@@ -141,7 +141,7 @@ export default function SubscriptionPlansManagePanel() {
       <div style={{ ...glassCard, padding: 18, marginBottom: 16, maxWidth: 560 }}>
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 12 }}>Create a new plan</div>
         <SubscriptionPlanFormFields form={createForm} setField={setCreateField} />
-        <button onClick={createPlan} disabled={creating || !createForm.tier || !createForm.name} style={{ marginTop: 12, background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "8px 20px", fontSize: "0.78rem", fontWeight: 800, cursor: creating ? "default" : "pointer", fontFamily: "inherit" }}>{creating ? "Creating…" : "Create plan"}</button>
+        <button onClick={createPlan} disabled={creating || !createForm.tier || !createForm.name} style={{ marginTop: 12, background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "8px 20px", fontSize: "0.78rem", fontWeight: 800, cursor: creating ? "default" : "pointer", fontFamily: "inherit" }}>{creating ? "Creating…" : "Create plan"}</button>
       </div>
 
       <div style={{ ...glassCard, padding: 18 }}>
@@ -155,7 +155,7 @@ export default function SubscriptionPlansManagePanel() {
                 <div>
                   <SubscriptionPlanFormFields form={editForm} setField={setEditFieldValue} />
                   <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                    <button onClick={saveEdit} disabled={saving} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "6px 16px", fontSize: "0.75rem", fontWeight: 800, cursor: saving ? "default" : "pointer", fontFamily: "inherit" }}>{saving ? "Saving…" : "Save"}</button>
+                    <button onClick={saveEdit} disabled={saving} style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "6px 16px", fontSize: "0.75rem", fontWeight: 800, cursor: saving ? "default" : "pointer", fontFamily: "inherit" }}>{saving ? "Saving…" : "Save"}</button>
                     <button onClick={() => { setEditingId(null); setEditForm(null); }} style={{ background: "none", border: `1px solid ${D.cardBorder}`, color: D.textDim, borderRadius: 20, padding: "6px 16px", fontSize: "0.75rem", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
                   </div>
                 </div>

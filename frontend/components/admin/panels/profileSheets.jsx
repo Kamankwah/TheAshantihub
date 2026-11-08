@@ -21,7 +21,7 @@ function Sheet({ title, lines, error, busy, ready, submitLabel, onSubmit, onCanc
       {error && <div role="alert" style={errorStyle}>{error}</div>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
-        <button type="submit" disabled={!ready || busy} style={button(tone || D.gold, tone ? "#fff" : D.text, !ready || busy)}>{busy ? "Saving…" : submitLabel}</button>
+        <button type="submit" disabled={!ready || busy} style={button(tone || D.gold, tone ? D.white : D.text, !ready || busy)}>{busy ? "Saving…" : submitLabel}</button>
       </div>
     </form>
   );
