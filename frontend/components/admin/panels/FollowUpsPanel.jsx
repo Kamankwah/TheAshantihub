@@ -122,7 +122,7 @@ export default function FollowUpsPanel({ onOpenBusiness, onOpenProspects, leadNa
             <input type="date" value={day} min={dateInputValue()} onChange={(e) => setDay(e.target.value)} style={{ ...field, minHeight: 44 }} />
           </label>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="submit" disabled={busy} style={{ ...button(D.gold, D.text, busy), minHeight: 44 }}>{busy ? "Adding…" : "Add"}</button>
+            <button type="submit" disabled={busy} style={{ ...button(D.gold, D.onGold, busy), minHeight: 44 }}>{busy ? "Adding…" : "Add"}</button>
             <button type="button" onClick={() => setAdding(false)} style={{ ...button(D.panelBg, D.text), minHeight: 44 }}>Cancel</button>
           </div>
         </form>

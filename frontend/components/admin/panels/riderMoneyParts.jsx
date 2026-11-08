@@ -19,7 +19,7 @@ export function DaysTable({ rows }) {
   const given = showGivenBack(rows);
   const heads = ["Day", "Deliveries", "Delivery fees", "Commission", "Net", ...(given ? ["Given back"] : [])];
   return (
-    <div style={scroll}>
+    <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
       <table style={table}>
         <thead><tr>{heads.map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
         <tbody>

@@ -84,7 +84,7 @@ export default function NewCampaignPanel({ detailId, onOpenDetail, onNavigate })
       {error && <div role="alert" style={errorStyle}>{error}</div>}
       {note && <div role="status" style={chip(D.green)}>{note}</div>}
       {locked && <ApprovalNote>This campaign is {status?.[0].toLowerCase()}, so it can't be changed. {["waiting_approval", "scheduled"].includes(c.status) && <button type="button" onClick={withdraw} style={linkStyle}>Withdraw it to edit</button>}</ApprovalNote>}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(360px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="nc-compose" title="Compose">
           <fieldset disabled={locked || busy} style={{ border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
             <label style={labelStyle}>Campaign name <span style={dim}>Only staff see this</span><input type="text" value={form.name} onChange={(e) => set({ name: e.target.value })} style={inputStyle} /></label>
@@ -141,7 +141,7 @@ export default function NewCampaignPanel({ detailId, onOpenDetail, onNavigate })
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button type="button" disabled={busy || !form.name.trim()} onClick={saveDraft} style={button(D.panelBg, D.text, busy || !form.name.trim())}>Save draft</button>
               <button type="button" disabled={busy || !form.name.trim() || !form.body.trim()} onClick={test} style={button(D.panelBg, D.text, busy || !form.name.trim() || !form.body.trim())}>Send a test to me</button>
-              <button type="button" disabled={busy || !form.name.trim()} onClick={go} style={button(D.gold, D.text, busy || !form.name.trim())}>{needsApproval ? "Send to Super Admin for approval" : "Schedule"}</button>
+              <button type="button" disabled={busy || !form.name.trim()} onClick={go} style={button(D.gold, D.onGold, busy || !form.name.trim())}>{needsApproval ? "Send to Super Admin for approval" : "Schedule"}</button>
             </div>
           )}
         </Section>

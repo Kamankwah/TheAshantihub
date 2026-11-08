@@ -467,7 +467,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
         }}>
           <div style={{ padding: "16px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${D.divider}` }}>
             <Flag w={28} h={19} />
-            {isDesktop && !sidebarCollapsed && <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.85rem" }}>AshantiHub Staff</div>}
+            {isDesktop && !sidebarCollapsed && <div style={{ color: D.goldInk, fontWeight: 900, fontSize: "0.85rem" }}>AshantiHub Staff</div>}
           </div>
           {isDesktop && <button onClick={() => setSidebarCollapsed(s => !s)} style={{ background: "none", border: "none", color: D.textDim, cursor: "pointer", padding: "8px 12px", fontSize: "0.7rem", fontFamily: "inherit", width: "100%", textAlign: "left" }}>{sidebarCollapsed ? "→" : "← Collapse"}</button>}
           <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} collapsed={!isDesktop || sidebarCollapsed} badgeFor={badgeFor} roleColor={roleColor} overviewLabel={overviewLabel(role)} noteFor={noteFor} countOnly={COUNT_ONLY_TABS[role]} />
@@ -486,7 +486,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
         </StaffHeader>
 
         {saved && <div role="status" style={{
-          position: "fixed", zIndex: 999, background: D.green, color: "#fff", borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, boxShadow: "0 6px 24px rgba(0,100,0,0.28)",
+          position: "fixed", zIndex: 999, background: D.greenFill, color: D.white, borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, boxShadow: "0 6px 24px rgba(0,100,0,0.28)",
           ...(isPhone ? { left: 12, right: 12, bottom: "calc(80px + env(safe-area-inset-bottom, 0px))", textAlign: "center" } : { top: 74, right: 20 }),
         }}>✓ Saved!</div>}
 
@@ -664,7 +664,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
       <StaffDrawer open={drawerOpen && !isDesktop} onClose={() => setDrawerOpen(false)} returnFocusRef={menuButtonRef}>
         <div style={{ padding: "12px 8px 12px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${D.divider}` }}>
           <Flag w={28} h={19} />
-          <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.85rem", flex: 1 }}>AshantiHub Staff</div>
+          <div style={{ color: D.goldInk, fontWeight: 900, fontSize: "0.85rem", flex: 1 }}>AshantiHub Staff</div>
           <button type="button" aria-label="Close navigation" onClick={() => setDrawerOpen(false)} style={{ minWidth: 44, minHeight: 44, background: "none", border: "none", color: D.textDim, fontSize: "1.1rem", cursor: "pointer", fontFamily: "inherit" }}>✕</button>
         </div>
         {isScout ? <ScoutProfileBlock user={auth.user} roleColor={roleColor} /> : <div style={{ padding: "12px 14px", borderBottom: `1px solid ${D.divider}`, display: "flex", flexDirection: "column", gap: 8 }}>

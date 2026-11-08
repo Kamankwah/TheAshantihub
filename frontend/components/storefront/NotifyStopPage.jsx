@@ -26,7 +26,7 @@ export default function NotifyStopPage({ token, onHome }) {
         {state === "failed" && <p role="alert" style={{ color: C.danger }}>Something went wrong. Please open the link again.</p>}
         {onHome && (
           <p style={{ marginBottom: 0 }}>
-            <button type="button" onClick={onHome} style={{ background: "none", border: 0, padding: 0, color: C.deepGold, textDecoration: "underline", cursor: "pointer", fontFamily: "inherit", fontSize: 15 }}>Go to AshantiHub</button>
+            <button type="button" onClick={onHome} className="ah-tap" style={{ background: "none", border: 0, padding: 0, color: C.goldInk, textDecoration: "underline", cursor: "pointer", fontFamily: "inherit", fontSize: 15 }}>Go to AshantiHub</button>
           </p>
         )}
       </div>

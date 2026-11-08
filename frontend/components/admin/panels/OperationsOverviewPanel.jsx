@@ -88,7 +88,7 @@ export default function OperationsOverviewPanel({ auth, onNavigate, onOpenApprov
           <div role="group" aria-label="Period" style={toggleGroup}>
             {PERIODS.map(([id, label]) => <button key={id} type="button" aria-pressed={period === id} onClick={() => setPeriod(id)} style={toggleButton(period === id)}>{label}</button>)}
           </div>
-          {canInvite && <button type="button" onClick={() => onNavigate?.("my-team")} style={button(D.gold, D.text)}>Invite to your team</button>}
+          {canInvite && <button type="button" onClick={() => onNavigate?.("my-team")} style={button(D.gold, D.onGold)}>Invite to your team</button>}
         </div>
       </div>
 
@@ -117,7 +117,7 @@ export default function OperationsOverviewPanel({ auth, onNavigate, onOpenApprov
             {data.scouts.length === 0 ? (
               <div style={dim}>No scouts report to you yet. Invite one from the Invite screen.</div>
             ) : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead>
                     <tr>
@@ -155,7 +155,7 @@ export default function OperationsOverviewPanel({ auth, onNavigate, onOpenApprov
             </div>
           </section>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14 }}>
             <section aria-labelledby="ov-waiting" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <h3 id="ov-waiting" style={{ ...h2, fontSize: "0.95rem" }}>Waiting for you</h3>
@@ -184,7 +184,7 @@ export default function OperationsOverviewPanel({ auth, onNavigate, onOpenApprov
               {!feed.isLoading && !feed.isError && events.length === 0 && <div style={dim}>No activity yet.</div>}
               {events.map((e) => (
                 <div key={e.id} style={{ display: "flex", gap: 8, alignItems: "baseline", borderTop: `1px solid ${D.divider}`, paddingTop: 6, fontSize: "0.8rem", flexWrap: "wrap" }}>
-                  {e.actor_role && <span style={{ background: ROLE_ACCENTS[e.actor_role] || D.textDim, color: ROLE_BADGE_TEXT[e.actor_role] || "#fff", borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 800 }}>{e.actor_role.replace("_", " ")}</span>}
+                  {e.actor_role && <span style={{ background: ROLE_ACCENTS[e.actor_role] || D.textDim, color: ROLE_BADGE_TEXT[e.actor_role] || D.white, borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 800 }}>{e.actor_role.replace("_", " ")}</span>}
                   <span style={{ color: D.text, flex: 1, minWidth: 140 }}>{`${e.actor_label} · ${e.verb.replace(/[._-]+/g, " ").trim()}${e.target_label ? ` · ${e.target_label}` : ""}`}</span>
                   <span style={{ ...dim, ...figures }}>{timeShort(e.occurred_at)}</span>
                 </div>
@@ -203,7 +203,7 @@ export default function OperationsOverviewPanel({ auth, onNavigate, onOpenApprov
             {data.issues.length === 0 ? (
               <div style={dim}>{data.kpis.issues.support != null ? "No open fraud cases or service issues on your team's businesses." : "No open fraud cases on your team's businesses."}</div>
             ) : (
-              <div style={scroll}>
+              <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                 <table style={table}>
                   <thead><tr>{["Type", "Business", "What happened", "Account manager", "Open for"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                   <tbody>
@@ -229,4 +229,4 @@ export default function OperationsOverviewPanel({ auth, onNavigate, onOpenApprov
   );
 }
 
-const linkStyle = { background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", fontWeight: 800, color: D.deepGold, textDecoration: "underline" };
+const linkStyle = { background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.78rem", fontWeight: 800, color: D.goldInk, textDecoration: "underline" };

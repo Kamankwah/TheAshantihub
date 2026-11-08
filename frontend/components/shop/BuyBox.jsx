@@ -110,7 +110,7 @@ export default function BuyBox({ item, user, selection = {}, currency = "GHS", o
               <a
                 href={`/seller/${owner.id}`}
                 onClick={(e) => { if (onOpenSeller) { e.preventDefault(); onOpenSeller(owner.id); } }}
-                style={{ color: C.ink, fontWeight: 800 }}
+                style={{ color: C.ink, fontWeight: 800, display: "inline-flex", alignItems: "center", minHeight: 44 }}
               >{ownerName}</a>
             ) : <strong style={{ color: C.ink }}>{ownerName}</strong>}
           </span>
@@ -119,7 +119,7 @@ export default function BuyBox({ item, user, selection = {}, currency = "GHS", o
             <>
               <span style={{ background: tint(C.gold, "22"), color: C.ink, border: `1px solid ${tint(C.gold, "66")}`, borderRadius: 20, padding: "2px 9px", fontSize: "0.68rem", fontWeight: 800 }}>Ashanti Direct</span>
               {onShowDirect && (
-                <button type="button" onClick={onShowDirect} style={{ background: "none", border: "none", padding: 0, color: C.info, fontWeight: 700, fontSize: "0.78rem", textDecoration: "underline", cursor: "pointer", fontFamily: "inherit" }}>More from Ashanti Direct</button>
+                <button type="button" onClick={onShowDirect} style={{ background: "none", border: "none", padding: 0, color: C.info, fontWeight: 700, fontSize: "0.78rem", textDecoration: "underline", cursor: "pointer", fontFamily: "inherit", minHeight: 44 }}>More from Ashanti Direct</button>
               )}
             </>
           )}
@@ -178,7 +178,7 @@ export default function BuyBox({ item, user, selection = {}, currency = "GHS", o
   );
 }
 
-const secondary = { marginTop: 10, width: "100%", minHeight: 42, borderRadius: 24, background: C.surface2, color: C.ink, border: `1px solid ${C.line}`, fontFamily: "inherit", fontSize: "0.85rem", fontWeight: 700, cursor: "pointer" };
-const linkBtn = { background: "none", border: "none", padding: 0, color: C.info, fontWeight: 700, fontSize: "0.78rem", textDecoration: "underline", cursor: "pointer", fontFamily: "inherit", minHeight: 32 };
+const secondary = { marginTop: 10, width: "100%", minHeight: 44, borderRadius: 24, background: C.surface2, color: C.ink, border: `1px solid ${C.line}`, fontFamily: "inherit", fontSize: "0.85rem", fontWeight: 700, cursor: "pointer" };
+const linkBtn = { background: "none", border: "none", padding: 0, color: C.info, fontWeight: 700, fontSize: "0.78rem", textDecoration: "underline", cursor: "pointer", fontFamily: "inherit", minHeight: 44 };
 const dt = { fontWeight: 800, color: C.inkDim, marginTop: 6 };
 const dd = { margin: 0, color: C.ink, whiteSpace: "pre-wrap" };

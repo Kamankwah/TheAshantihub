@@ -29,7 +29,7 @@ export const STATUS_LABELS = {
 
 const label = { color: D.textDim, fontSize: "0.72rem", fontWeight: 700 };
 const input = { width: "100%", padding: "8px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.82rem", fontFamily: "inherit", background: D.panelBg2, color: D.text, boxSizing: "border-box" };
-const btn = (disabled) => ({ border: "none", borderRadius: 20, padding: "8px 16px", fontSize: "0.74rem", fontWeight: 800, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.55 : 1, background: D.gold, color: "#1a1205", fontFamily: "inherit" });
+const btn = (disabled) => ({ border: "none", borderRadius: 20, padding: "8px 16px", fontSize: "0.74rem", fontWeight: 800, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.55 : 1, background: D.gold, color: D.onGold, fontFamily: "inherit" });
 
 // What the server's refusal says, in its own words when it gave one; a step-up code is the one case this screen
 // cannot complete by itself, so it says so instead of failing silently.

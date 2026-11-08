@@ -37,7 +37,7 @@ export function AboutPage() {
           <h1 className="text-3xl md:text-4xl font-extrabold text-foreground tracking-tight mb-2">
             About AshantiHub 👑
           </h1>
-          <p className="text-primary font-semibold mb-4">The Marketplace of Ashanti</p>
+          <p className="text-foreground font-semibold mb-4">The Marketplace of Ashanti</p>
           <p className="text-muted-foreground leading-relaxed max-w-2xl mx-auto">
             AshantiHub is the digital home of Ashanti commerce — one platform
             connecting the businesses of Kumasi and the Ashanti Region to

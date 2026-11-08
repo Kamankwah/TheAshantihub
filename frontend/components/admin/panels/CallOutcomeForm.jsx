@@ -81,7 +81,7 @@ export default function CallOutcomeForm({ subject, id, customerConfirmed, confir
       </fieldset>
       {error && <div role="alert" style={callout(D.red)}>{error}</div>}
       <div>
-        <button type="submit" disabled={!ready || busy} style={button(D.gold, D.text, !ready || busy)}>Submit</button>
+        <button type="submit" disabled={!ready || busy} style={button(D.gold, D.onGold, !ready || busy)}>Submit</button>
       </div>
     </form>
   );

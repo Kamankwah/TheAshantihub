@@ -102,7 +102,7 @@ export default function StorefrontHeader({
     >
       <div aria-hidden="true" style={{ height: 4, background: `linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)` }} />
       <div className="ah-sf-bar" style={{ display: "grid", gridTemplateColumns: "auto auto minmax(0,1fr) auto", gridTemplateAreas: '"logo deliver search actions"', alignItems: "center", gap: "8px 16px", padding: "10px 16px" }}>
-        <button type="button" onClick={onLogoClick} aria-label="AshantiHub home" style={{ gridArea: "logo", display: "flex", alignItems: "center", gap: 8, padding: 0, border: "none", background: "transparent", color: C.gold, cursor: "pointer", minWidth: 0 }}>
+        <button type="button" onClick={onLogoClick} aria-label="AshantiHub home" style={{ gridArea: "logo", display: "flex", alignItems: "center", gap: 8, padding: 0, minHeight: 44, border: "none", background: "transparent", color: C.gold, cursor: "pointer", minWidth: 0 }}>
           <img src={logoIcon} alt="" style={{ height: 36, width: "auto", display: "block" }} />
           <span className="ah-sf-wordmark" style={{ fontFamily: HEADING_FONT, fontWeight: 600, fontSize: 20, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>AshantiHub</span>
         </button>
@@ -184,6 +184,10 @@ export default function StorefrontHeader({
 
       <style>{`
         .ah-sf-strip button:hover, .ah-sf-actions button:hover:not(:disabled) { box-shadow: inset 0 0 0 1px ${C.gold}88; }
+        /* Tablet: the one-row bar squeezes the search box to ~100px (its category picker alone is 150px), so search drops to its own row. */
+        @media (max-width: 1023px) {
+          .ah-sf-bar { grid-template-columns: auto minmax(0,1fr) auto !important; grid-template-areas: "logo deliver actions" "search search search" !important; }
+        }
         @media (max-width: ${MOBILE}px) {
           .ah-sf-bar { grid-template-columns: auto minmax(0,1fr) !important; grid-template-areas: "logo actions" "search search" "deliver deliver" !important; padding: 8px 12px !important; column-gap: 8px !important; }
           .ah-sf-actions { flex-wrap: wrap; justify-content: flex-end; gap: 2px !important; min-width: 0; }
@@ -198,11 +202,11 @@ export default function StorefrontHeader({
 }
 
 const iconButton = {
-  width: 40, height: 40, borderRadius: 10, border: "none", background: "transparent", color: C.white,
+  width: 44, height: 44, borderRadius: 10, border: "none", background: "transparent", color: C.white,
   display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 17, flexShrink: 0,
 };
 const textButton = {
-  display: "flex", flexDirection: "column", justifyContent: "center", minHeight: 44, padding: "4px 8px", borderRadius: 10,
+  display: "flex", flexDirection: "column", justifyContent: "center", minHeight: 44, minWidth: 44, padding: "4px 8px", borderRadius: 10,
   border: "none", background: "transparent", color: C.white, cursor: "pointer", fontFamily: BODY_FONT, textAlign: "left", flexShrink: 0,
 };
 const smallLine = { fontSize: 12, lineHeight: 1.2, color: C.lightGold, whiteSpace: "nowrap" };
@@ -212,6 +216,6 @@ const countBadge = {
   display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
 };
 const stripButton = {
-  minHeight: 40, padding: "8px 12px", border: "none", borderRadius: 8, background: "transparent", color: C.white,
+  minHeight: 44, padding: "8px 12px", border: "none", borderRadius: 8, background: "transparent", color: C.white,
   fontFamily: BODY_FONT, fontSize: 14, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
 };

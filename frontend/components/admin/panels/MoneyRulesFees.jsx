@@ -79,7 +79,7 @@ export default function MoneyRulesFees({ category, pending, onSaved, canPropose 
     <div data-fees={category.category} style={{ ...card, gap: 8 }}>
       <h3 style={h3}>{category.label}</h3>
       {pending.map((p) => (
-        <div key={p.id} style={{ ...dim, color: D.amber, fontWeight: 700 }}>
+        <div key={p.id} style={{ ...dim, color: D.amberInk, fontWeight: 700 }}>
           {`Waiting for approval, proposed by ${p.maker}: ${p.bands.length} ${p.bands.length === 1 ? "tier" : "tiers"}`}
         </div>
       ))}
@@ -115,7 +115,7 @@ export default function MoneyRulesFees({ category, pending, onSaved, canPropose 
           {error && <div role="alert" style={errorStyle}>{error}</div>}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={() => setRows([...rows, { upper: "", kind: rows[rows.length - 1].kind, amount: "" }])} style={button(D.panelBg, D.text)}>Add tier</button>
-            <button type="button" onClick={propose} disabled={busy} style={button(D.gold, D.text, busy)}>Propose these tiers</button>
+            <button type="button" onClick={propose} disabled={busy} style={button(D.gold, D.onGold, busy)}>Propose these tiers</button>
             <button type="button" onClick={() => { setRows(null); setError(""); }} disabled={busy} style={button(D.panelBg, D.text, busy)}>Cancel</button>
           </div>
           <div style={dim}>Applies only to sales paid after it starts. Sales already paid keep the fee they were given.</div>

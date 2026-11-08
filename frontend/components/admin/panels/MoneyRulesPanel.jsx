@@ -55,7 +55,7 @@ export function SettingRow({ setting, pending, onSaved, canPropose = true, super
         </div>
       </div>
       {pending.map((p) => (
-        <div key={p.id} style={{ ...dim, color: D.amber, fontWeight: 700 }}>
+        <div key={p.id} style={{ ...dim, color: D.amberInk, fontWeight: 700 }}>
           {`Waiting for approval: ${showValue(setting.key, p.value === null || p.value === "" ? null : Number(p.value))}, proposed by ${p.maker}`}
         </div>
       ))}
@@ -69,7 +69,7 @@ export function SettingRow({ setting, pending, onSaved, canPropose = true, super
             onChange={(e) => { setText(e.target.value); setNotice(""); }} style={{ ...field, width: 150 }}
           />
           {UNIT_WORDS[unit] && <span style={dim}>{UNIT_WORDS[unit]}</span>}
-          <button type="button" onClick={save} disabled={busy || text === stored} style={button(D.gold, D.text, busy || text === stored)}>{superAdmin ? "Save" : "Propose"}</button>
+          <button type="button" onClick={save} disabled={busy || text === stored} style={button(D.gold, D.onGold, busy || text === stored)}>{superAdmin ? "Save" : "Propose"}</button>
           {notice && <span role="status" style={{ color: D.green, fontWeight: 700, fontSize: "0.8rem" }}>{notice}</span>}
         </div>
       )}

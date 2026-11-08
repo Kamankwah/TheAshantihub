@@ -109,7 +109,7 @@ export default function SaBusinessesPanel({ auth, detailId, onOpenDetail }) {
         <LoadState query={list} what="the businesses" />
         {!list.isLoading && !list.isError && rows.length === 0 && <div style={dim}>No business matches these filters.</div>}
         {rows.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table aria-label="Businesses" style={{ ...tableStyle, minWidth: 980 }}>
               <thead>
                 <tr><th style={th}>Business</th><th style={th}>KYC</th><th style={th}>Subscription</th><th style={th}>Account manager</th><th style={th}>Health</th><th style={th}>Flags</th><th style={th}>Last order</th><th style={th}>Actions</th></tr>
@@ -125,7 +125,7 @@ export default function SaBusinessesPanel({ auth, detailId, onOpenDetail }) {
                       </td>
                       <td style={td}>{kycChip(b)}{b.is_suspended && b.suspension_reason && <div style={dim}>{b.suspension_reason}</div>}</td>
                       <td style={td}>{subscriptionText(b.subscription, b.kyc_status, plansGone)}{b.subscription?.plan_name && <div style={dim}>{b.subscription.plan_name}</div>}</td>
-                      <td style={td}>{b.account_manager?.full_name || <span style={{ color: D.amber, fontWeight: 800 }}>{b.registration_channel === "self" ? "None · self-registered" : "None"}</span>}</td>
+                      <td style={td}>{b.account_manager?.full_name || <span style={{ color: D.amberInk, fontWeight: 800 }}>{b.registration_channel === "self" ? "None · self-registered" : "None"}</span>}</td>
                       <td style={td}><HealthChip rating={b.health?.rating} /><div style={dim}>{b.health?.reasons?.[0] || ""}</div></td>
                       <td style={td}>{flags.length ? flags.map((f) => <div key={f} style={{ ...chip(D.red), display: "inline-block", marginBottom: 2 }}>{f}</div>) : "—"}</td>
                       <td style={td}>{b.last_order_at ? dateOnly(b.last_order_at) : "No orders yet"}</td>

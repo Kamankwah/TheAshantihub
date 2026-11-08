@@ -45,7 +45,7 @@ export default function EventHeroCarousel({ onOpen }) {
             </div>
             {onOpen && (
               <button onClick={() => onOpen(slide.id)} style={{
-                marginTop: 22, background: C.gold, color: "#1a1205", border: "none",
+                marginTop: 22, background: C.gold, color: C.onGold, border: "none",
                 borderRadius: 40, padding: "15px 34px", fontSize: "clamp(0.95rem, 1.6vw, 1.15rem)",
                 fontWeight: 900, cursor: "pointer", fontFamily: "inherit",
                 boxShadow: "0 8px 28px rgba(212,160,23,0.45)",

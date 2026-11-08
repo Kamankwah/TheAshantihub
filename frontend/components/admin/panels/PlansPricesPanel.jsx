@@ -42,12 +42,12 @@ function Waiting({ kind, title, now, next, detail, proposer, onApprove, onReturn
       {returning ? (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <input aria-label={`Note for ${title}`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why it is returned" style={{ ...field, flex: "1 1 200px" }} />
-          <button type="button" disabled={busy || (onReturn.needsNote && !note.trim())} onClick={() => run(() => onReturn(note.trim()))} style={button(D.red, "#fff", busy || (onReturn.needsNote && !note.trim()))}>Confirm return</button>
+          <button type="button" disabled={busy || (onReturn.needsNote && !note.trim())} onClick={() => run(() => onReturn(note.trim()))} style={button(D.red, D.white, busy || (onReturn.needsNote && !note.trim()))}>Confirm return</button>
           <button type="button" onClick={() => setReturning(false)} style={button(D.panelBg, D.text)}>Cancel</button>
         </div>
       ) : (
         <div style={{ display: "flex", gap: 6 }}>
-          <button type="button" disabled={busy} onClick={() => run(onApprove)} style={button(D.green, "#fff", busy)}>Approve</button>
+          <button type="button" disabled={busy} onClick={() => run(onApprove)} style={button(D.greenFill, D.white, busy)}>Approve</button>
           <button type="button" disabled={busy} onClick={() => setReturning(true)} style={button(D.panelBg, D.text, busy)}>Return with note</button>
         </div>
       )}
@@ -102,7 +102,7 @@ export default function PlansPricesPanel() {
           {livePlans.isLoading && <div role="status" style={dim}>Loading…</div>}
           {livePlans.isError && <div role="alert" style={errorStyle}>Could not load the live plans.</div>}
           {livePlans.data && (
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr><th style={th}>Plan</th><th style={th}>For</th><th style={th}>Includes</th><th style={th}>Per month</th></tr></thead>
                 <tbody>
@@ -123,7 +123,7 @@ export default function PlansPricesPanel() {
 
         <section aria-labelledby="pp-events" style={section}>
           <h3 id="pp-events" style={sectionTitle}>Event visibility · price for the whole window</h3>
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr><th style={th}>Shown for</th><th style={th}>Live</th><th style={th}>Proposed</th></tr></thead>
               <tbody>

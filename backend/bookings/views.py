@@ -95,7 +95,7 @@ class BookingCreateView(APIView):
                     return Response({"listing": "This listing isn't available."}, status=400)
                 if not (listing.category and listing.category.is_accommodation):
                     return Response({"listing": "This listing isn't a bookable accommodation."}, status=400)
-                if listing.price_amount is None:
+                if listing.price_amount is None or listing.price_amount <= 0:
                     return Response({"listing": "This listing has no nightly rate set."}, status=400)
 
                 if not is_available(listing, data["check_in"], data["check_out"], data["units"]):

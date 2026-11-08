@@ -13,7 +13,7 @@ import { errorStyle, eyebrow, h3 } from "./portfolioParts.jsx";
 // says so, and nothing is filled in with a plausible number.
 const figures = { fontVariantNumeric: "tabular-nums" };
 const card = { ...glassCard, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 };
-const link = { background: "none", border: "none", padding: 0, color: D.deepGold, fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit", textDecoration: "underline", minHeight: 44 };
+const link = { background: "none", border: "none", padding: 0, color: D.goldInk, fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit", textDecoration: "underline", minHeight: 44 };
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 export function greeting(hour) {
@@ -91,7 +91,7 @@ function ActionsCard({ canCheckIn, canRegister, onCheckIn, onRegister }) {
   return (
     <section aria-label="Quick actions" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "grid", gridTemplateColumns: canCheckIn && canRegister ? "1fr 1fr" : "1fr", gap: 8 }}>
-        {canCheckIn && <button type="button" onClick={onCheckIn} style={{ ...button(D.gold, D.text), minHeight: 52, fontSize: "0.95rem" }}>Check in</button>}
+        {canCheckIn && <button type="button" onClick={onCheckIn} style={{ ...button(D.gold, D.onGold), minHeight: 52, fontSize: "0.95rem" }}>Check in</button>}
         {canRegister && <button type="button" onClick={onRegister} style={{ ...button(D.panelBg, D.text), minHeight: 52, fontSize: "0.95rem" }}>Register a business</button>}
       </div>
       {canCheckIn && <div style={{ ...dim, textAlign: "center" }}>Your location is recorded only when you check in or out.</div>}

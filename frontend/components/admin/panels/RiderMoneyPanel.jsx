@@ -32,7 +32,7 @@ function WalletsTab({ onOpen }) {
   if (!rows.length) return <div style={dim}>No rider has a wallet yet.</div>;
   return (
     <>
-      <div style={scroll}>
+      <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
         <table style={table}>
           <thead><tr>{["Name", "Company", "Works for", "Balance", "Commission held", ""].map((h, i) => <th key={i} style={th}>{h}</th>)}</tr></thead>
           <tbody>
@@ -79,7 +79,7 @@ function CommissionTab() {
         <>
           <h3 style={sectionTitle}>Commission posted for {data.day}</h3>
           {rows.length === 0 ? <div style={dim}>No commission was posted for {data.day}.</div> : (
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr>{heads.map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
                 <tbody>

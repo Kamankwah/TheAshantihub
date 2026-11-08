@@ -7,7 +7,7 @@ one shared live-events rule (events.views._live_events_queryset)."""
 from django.db.models import Min, Q
 
 from listings.models import Category, Listing
-from listings.visibility import hidden_business_q, sold_out_q
+from listings.visibility import hidden_business_q, sold_out_q, unpriced_q
 
 MIN_QUERY = 2
 MAX_LIMIT = 20
@@ -90,7 +90,7 @@ def run(q, department=None, kind=None, limit=MAX_LIMIT, request=None):
         return result
 
     listings = (Listing.objects.filter(status=Listing.PUBLISHED).filter(_text_q(q))
-                .exclude(hidden_business_q()).exclude(sold_out_q()))
+                .exclude(hidden_business_q()).exclude(unpriced_q()).exclude(sold_out_q()))
     if ids is not None:
         listings = listings.filter(category_id__in=ids)
     if "products" in wanted:

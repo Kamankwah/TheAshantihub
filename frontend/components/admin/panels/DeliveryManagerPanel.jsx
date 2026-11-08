@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch, apiPost } from "../../../apiClient.js";
 import { useDeliveryManagerOrders } from "../../../hooks/useDeliveryManagerOrders.js";
-import { D, glassCard, tint } from "../theme.js";
+import { D, glassCard, tint, inkOf } from "../theme.js";
 import SendNow, { canSendEarly, isHeld } from "./delivery/SendNow.jsx";
 import { dayTime } from "./delivery/deliveryParts.jsx";
 
@@ -33,7 +33,7 @@ function OrderCard({ order, dispatches, onDone, canSend }) {
           <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 2 }}>🏠 {order.delivery_address} · 📞 {order.delivery_phone}</div>
         </div>
         {assignment && (
-          <span style={{ background: tint(D.blue, "22"), color: D.blue, borderRadius: 20, padding: "2px 10px", fontSize: "0.64rem", fontWeight: 800 }}>{assignment.status}</span>
+          <span style={{ background: tint(D.blue, "22"), color: inkOf(D.blue), borderRadius: 20, padding: "2px 10px", fontSize: "0.64rem", fontWeight: 800 }}>{assignment.status}</span>
         )}
       </div>
 
@@ -47,7 +47,7 @@ function OrderCard({ order, dispatches, onDone, canSend }) {
       </div>
 
       {isHeld(order.ready_not_before) && (
-        <div style={{ color: D.amber, fontSize: "0.74rem", marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ color: D.amberInk, fontSize: "0.74rem", marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
           <span>Held until the shop opens ({dayTime(order.ready_not_before)}). A rider cannot be assigned before then.</span>
           <SendNow canSend={canSend} orderId={order.id} readyNotBefore={order.ready_not_before} onDone={onDone} />
         </div>
@@ -60,7 +60,7 @@ function OrderCard({ order, dispatches, onDone, canSend }) {
           <option value="">Choose a dispatch…</option>
           {dispatches.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
         </select>
-        <button onClick={assign} disabled={!dispatchId} style={{ ...pillBtn, background: dispatchId ? D.gold : D.panelBg2, color: dispatchId ? "#1a1205" : D.textFaint, cursor: dispatchId ? "pointer" : "default" }}>
+        <button onClick={assign} disabled={!dispatchId} style={{ ...pillBtn, background: dispatchId ? D.gold : D.panelBg2, color: dispatchId ? D.onGold : D.textFaint, cursor: dispatchId ? "pointer" : "default" }}>
           {assignment ? "Reassign" : "Assign"}
         </button>
       </div>

@@ -63,9 +63,9 @@ function UpdateForm({ order, onDone }) {
       {error && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{error}</div>}
       {notice && <div role="status" style={callout(D.green)}>{notice}</div>}
       {late || confirming ? (
-        <button type="button" disabled={!ready} onClick={save} style={{ ...button(late ? D.text : D.red, late ? D.panelBg : "#fff", !ready), alignSelf: "flex-start" }}>{late ? "Save and notify" : "Confirm cancel and notify"}</button>
+        <button type="button" disabled={!ready} onClick={save} style={{ ...button(late ? D.text : D.red, late ? D.panelBg : D.white, !ready), alignSelf: "flex-start" }}>{late ? "Save and notify" : "Confirm cancel and notify"}</button>
       ) : (
-        <button type="button" disabled={!ready} onClick={() => setConfirming(true)} style={{ ...button(D.red, "#fff", !ready), alignSelf: "flex-start" }}>Cancel the order…</button>
+        <button type="button" disabled={!ready} onClick={() => setConfirming(true)} style={{ ...button(D.red, D.white, !ready), alignSelf: "flex-start" }}>Cancel the order…</button>
       )}
       <div style={dim}>Support cannot mark an order Delivered; that happens when the delivery is confirmed. Your change is recorded with your name and reason.</div>
     </section>

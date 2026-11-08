@@ -41,7 +41,7 @@ const TONES = {
     field: "rgba(255,255,255,0.06)", fieldEdge: "rgba(255,255,255,0.25)",
     idle: "rgba(255,255,255,0.12)", idleInk: "rgba(255,255,255,0.4)",
     done: "rgba(34,197,94,0.1)", doneEdge: "rgba(34,197,94,0.35)", doneInk: "#4ade80",
-    verified: "#22c55e22", verifiedInk: "#22c55e", error: "#ffb4b4",
+    verified: "#22c55e22", verifiedInk: "#22c55e", error: C.errOnDark,
   },
   theme: {
     ink: C.ink, body: C.ink, dim: C.inkDim, faint: C.inkDim,

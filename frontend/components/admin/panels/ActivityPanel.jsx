@@ -24,7 +24,7 @@ export default function ActivityPanel() {
       {events.map((e) => (
         <div key={e.id} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "8px 0", borderTop: `1px solid ${D.divider}`, fontSize: "0.8rem", flexWrap: "wrap" }}>
           <span style={{ color: D.textDim, minWidth: 120 }}>{new Date(e.occurred_at).toLocaleString("en-GH")}</span>
-          {e.actor_role && <span style={{ background: ROLE_ACCENTS[e.actor_role] || D.textDim, color: ROLE_BADGE_TEXT[e.actor_role] || "#fff", borderRadius: 20, padding: "2px 8px", fontSize: "0.65rem", fontWeight: 800 }}>{e.actor_role.replace("_", " ")}</span>}
+          {e.actor_role && <span style={{ background: ROLE_ACCENTS[e.actor_role] || D.textDim, color: ROLE_BADGE_TEXT[e.actor_role] || D.white, borderRadius: 20, padding: "2px 8px", fontSize: "0.65rem", fontWeight: 800 }}>{e.actor_role.replace("_", " ")}</span>}
           <span style={{ color: D.text, fontWeight: 700 }}>{e.actor_label}</span>
           <span style={{ color: D.text }}>{humanise(e.verb)}</span>
           {e.target_label && <span style={{ color: D.textDim }}>· {e.target_label}</span>}

@@ -21,7 +21,7 @@ export const errorStyle = { color: D.red, fontSize: "0.8rem", fontWeight: 700 };
 
 export const HEALTH = {
   at_risk: { label: "At risk", color: D.red },
-  needs_attention: { label: "Needs attention", color: D.amber },
+  needs_attention: { label: "Needs attention", color: D.amberInk },
   new: { label: "New · KYC waiting", color: D.blue },
   healthy: { label: "Healthy", color: D.green },
 };
@@ -191,7 +191,7 @@ export function ReassignForm({ businesses, auth, onDone, onCancel }) {
       </label>
       <div style={{ display: "flex", gap: 8 }}>
         {onCancel && <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>}
-        <button type="submit" disabled={!ready} style={button(D.gold, D.text, !ready)}>Reassign</button>
+        <button type="submit" disabled={!ready} style={button(D.gold, D.onGold, !ready)}>Reassign</button>
       </div>
       {!isLoading && scouts.length === 0 && <div style={{ ...dim, flexBasis: "100%" }}>There are no scouts on your team to move it to.</div>}
       {actionError && <div role="alert" style={{ ...errorStyle, flexBasis: "100%" }}>{actionError}</div>}
@@ -252,7 +252,7 @@ export function FollowUpForm({ business, auth, onDone, onCancel }) {
       {actionError && <div role="alert" style={{ ...errorStyle, gridColumn: "1 / -1" }}>{actionError}</div>}
       <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, justifyContent: "flex-end" }}>
         {onCancel && <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>}
-        <button type="submit" disabled={busy} style={button(D.gold, D.text, busy)}>Create task</button>
+        <button type="submit" disabled={busy} style={button(D.gold, D.onGold, busy)}>Create task</button>
       </div>
     </form>
   );

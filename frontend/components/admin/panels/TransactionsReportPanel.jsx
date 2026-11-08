@@ -19,9 +19,9 @@ function formatMonth(key) {
 
 const STATUS_META = {
   success: { label: "Success", color: D.green },
-  pending: { label: "Pending", color: D.amber },
+  pending: { label: "Pending", color: D.amberInk },
   failed: { label: "Failed", color: D.red },
-  refunded: { label: "Refunded", color: D.purple },
+  refunded: { label: "Refunded", color: D.purpleInk },
 };
 
 // Platform-wide transactions report (staff-only, transactions.report) — a
@@ -43,11 +43,11 @@ export default function TransactionsReportPanel() {
       <div style={{ ...glassCard, padding: "14px 18px", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div>
           <div style={{ color: D.textDim, fontSize: "0.66rem", fontWeight: 700, marginBottom: 4 }}>From</div>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
+          <input type="date" aria-label="From date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
         </div>
         <div>
           <div style={{ color: D.textDim, fontSize: "0.66rem", fontWeight: 700, marginBottom: 4 }}>To</div>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
+          <input type="date" aria-label="To date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
         </div>
         {(dateFrom || dateTo) && (
           <button onClick={() => { setDateFrom(""); setDateTo(""); }} style={{ background: "rgba(255,255,255,0.06)", color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Clear</button>

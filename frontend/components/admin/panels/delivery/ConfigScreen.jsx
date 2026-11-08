@@ -93,12 +93,12 @@ export default function ConfigScreen({ query, endpoint, title, intro, fields, st
                   {fields.map((f) => (
                     <div key={f.key} style={{ display: "flex", flexDirection: "column" }}>
                       {labelled(f.label, <input aria-label={f.label} aria-invalid={fieldErrors[f.key] ? true : undefined} inputMode={f.type === "time" ? undefined : "decimal"} type={f.type === "time" ? "time" : "text"} value={form[f.key]} onChange={set(f.key)} style={{ ...field, maxWidth: 140 }} />, [f.unit, f.unenforced ? "Saved with the rules; nothing acts on this yet." : ""].filter(Boolean).join(" · "))}
-                      {fieldErrors[f.key] && <span role="alert" style={{ color: D.amber, fontSize: "0.7rem", fontWeight: 700 }}>{fieldErrors[f.key]}</span>}
+                      {fieldErrors[f.key] && <span role="alert" style={{ color: D.amberInk, fontSize: "0.7rem", fontWeight: 700 }}>{fieldErrors[f.key]}</span>}
                     </div>
                   ))}
                 </div>
                 {labelled("Note for the approver (optional)", <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} style={field} />)}
-                <div><button type="button" disabled={busy || Boolean(data.pending)} onClick={send} style={button(D.gold, D.text, busy || Boolean(data.pending))}>{isSuperAdmin ? "Apply now" : "Send for approval"}</button>{data.pending && <span style={{ ...dim, marginLeft: 8 }}>One change at a time: withdraw the waiting one first.</span>}</div>
+                <div><button type="button" disabled={busy || Boolean(data.pending)} onClick={send} style={button(D.gold, D.onGold, busy || Boolean(data.pending))}>{isSuperAdmin ? "Apply now" : "Send for approval"}</button>{data.pending && <span style={{ ...dim, marginLeft: 8 }}>One change at a time: withdraw the waiting one first.</span>}</div>
               </section>
             )}
             <section aria-label="History" style={section}>

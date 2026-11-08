@@ -44,4 +44,4 @@ export const callout = (color) => {
 export const codeField = { ...field, resize: "none", padding: "9px 10px", fontSize: "0.95rem", fontFamily: "'JetBrains Mono', ui-monospace, monospace", letterSpacing: "0.12em" };
 
 // Links-as-buttons in forms ("Lost your phone? ...").
-export const linkButton = { background: "none", border: "none", color: D.deepGold, fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", textDecoration: "underline", fontFamily: "inherit", padding: 0, alignSelf: "flex-start" };
+export const linkButton = { background: "none", border: "none", color: D.goldInk, fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", textDecoration: "underline", fontFamily: "inherit", padding: 0, alignSelf: "flex-start" };

@@ -57,7 +57,7 @@ export function Filters({ label, options, value, onChange }) {
   );
 }
 
-export const linkStyle = { background: "none", border: "none", padding: 0, color: D.deepGold, fontWeight: 800, cursor: "pointer", textDecoration: "underline", fontFamily: "inherit", fontSize: "inherit", textAlign: "left" };
+export const linkStyle = { background: "none", border: "none", padding: 0, color: D.goldInk, fontWeight: 800, cursor: "pointer", textDecoration: "underline", fontFamily: "inherit", fontSize: "inherit", textAlign: "left" };
 
 export const SOURCE_LABEL = { manual: "Chosen by a manager", auto: "Auto-assigned", forced: "Forced", offer: "Offered and accepted" };
 

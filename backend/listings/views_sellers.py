@@ -9,7 +9,7 @@ from accounts import direct
 from accounts.models import BusinessOwner
 
 from .models import Category, Listing
-from .visibility import hidden_business_q, sold_out_q
+from .visibility import hidden_business_q, sold_out_q, unpriced_q
 
 
 class SellerDetailView(APIView):
@@ -27,7 +27,7 @@ class SellerDetailView(APIView):
         )
         if owner is None:
             raise Http404
-        live = Listing.objects.filter(business_owner=owner, status=Listing.PUBLISHED).exclude(sold_out_q())
+        live = Listing.objects.filter(business_owner=owner, status=Listing.PUBLISHED).exclude(unpriced_q()).exclude(sold_out_q())
         stays = Q(category__is_accommodation=True)
         counts = {
             "products": live.filter(category__kind=Category.PRODUCT).exclude(stays).count(),

@@ -99,7 +99,7 @@ class NotificationTriggerTests(TestCase):
     def test_listing_submit_notifies_moderators(self):
         listing = Listing.objects.create(
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
-            name="Draft Lodge", description="D.", contact_phone="+233201110001",
+            name="Draft Lodge", description="D.", contact_phone="+233201110001", price_amount="100.00",
             status=Listing.DRAFT,
         )
         self._auth(self.owner, "business_owner")
@@ -110,7 +110,7 @@ class NotificationTriggerTests(TestCase):
     def test_listing_approve_notifies_owner(self):
         listing = Listing.objects.create(
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
-            name="Pending Lodge", description="D.", contact_phone="+233201110001",
+            name="Pending Lodge", description="D.", contact_phone="+233201110001", price_amount="100.00",
             status=Listing.PENDING_REVIEW,
         )
         self._auth(self.super_admin, "staff")
@@ -123,7 +123,7 @@ class NotificationTriggerTests(TestCase):
     def test_listing_reject_notifies_owner(self):
         listing = Listing.objects.create(
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
-            name="Pending Lodge 2", description="D.", contact_phone="+233201110001",
+            name="Pending Lodge 2", description="D.", contact_phone="+233201110001", price_amount="100.00",
             status=Listing.PENDING_REVIEW,
         )
         self._auth(self.super_admin, "staff")

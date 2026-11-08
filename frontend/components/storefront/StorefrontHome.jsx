@@ -27,7 +27,8 @@ export default function StorefrontHome({ header, user, onNavigate, onOpenListing
     <div data-testid="storefront-home" style={{ background: C.canvas, color: C.ink, fontFamily: BODY_FONT, overflowX: "clip" }}>
       <CountdownTakeover />
       {header}
-      <main>
+      <main id="main-content">
+        <h1 style={visuallyHidden}>AshantiHub, the marketplace of Ashanti</h1>
         <HeroSlider onNavigate={onNavigate} />
         <FlashStrip onNavigate={onNavigate} />
         <DepartmentShowcase onNavigate={onNavigate} />
@@ -40,3 +41,5 @@ export default function StorefrontHome({ header, user, onNavigate, onOpenListing
     </div>
   );
 }
+
+const visuallyHidden = { position: "absolute", width: 1, height: 1, margin: -1, padding: 0, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0 };

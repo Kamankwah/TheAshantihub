@@ -75,7 +75,7 @@ def _kind_errors(kind, raw, cleaned):
     price = cleaned.get("price_amount")
     if price is not None and price <= 0:
         return _errors(price_amount=PRICE_BAD)
-    if kind in (ListingDraft.PRODUCT, ListingDraft.STAY) and price is None:
+    if price is None:  # every kind: an item without a price is not shown in the marketplace
         return _errors(price_amount=PRICE_BAD)
     if kind == ListingDraft.STAY and (raw.get("units_total") in (None, "") or (cleaned.get("units_total") or 0) < 1):
         return _errors(units_total=UNITS_BAD)

@@ -18,7 +18,7 @@ function Breadcrumb({ trail }) {
       {trail.map((c, i) => (
         <span key={c.label} style={{ display: "inline-flex", gap: 6 }}>
           {i > 0 && <span aria-hidden="true">›</span>}
-          {c.to ? <Link to={c.to} style={crumbLink}>{c.label}</Link> : <span aria-current="page" style={{ color: D.text, fontWeight: 700 }}>{c.label}</span>}
+          {c.to ? <Link to={c.to} className="ah-crumb-link" style={crumbLink}>{c.label}</Link> : <span aria-current="page" style={{ color: D.text, fontWeight: 700 }}>{c.label}</span>}
         </span>
       ))}
     </nav>

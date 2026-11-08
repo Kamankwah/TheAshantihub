@@ -2,6 +2,7 @@ import { useState } from "react";
 import { C } from "../theme.js";
 import EventCard from "./EventCard.jsx";
 import { useSeller, useSellerListings, useSellerEvents } from "../hooks/useSeller.js";
+import { Skeleton, SkeletonStatus } from "./Skeleton.jsx";
 
 // ─── SellerPage ─────────────────────────────────────────────────────────────
 // The public page of one business: its name, when it joined, and what it has live now, in a tab per kind
@@ -39,7 +40,7 @@ export default function SellerPage({ id, onBack, user, favourites = [], onFavour
   const shell = { maxWidth: 1280, margin: "0 auto", padding: "16px 14px 40px", background: C.void, borderRadius: 20, color: "white" };
   const back = <button onClick={onBack} style={backBtnStyle}>‹ Back</button>;
 
-  if (isLoading) return <div style={shell}>Loading…</div>;
+  if (isLoading) return <div style={shell}><SkeletonStatus label="Loading this seller…"><Skeleton width="45%" height={26} /><div style={{ height: 12 }} /><Skeleton width="25%" height={14} /></SkeletonStatus></div>;
   if (isError || !seller) {
     return (
       <div style={{ ...shell, textAlign: "center", padding: "40px 14px" }}>
@@ -86,7 +87,7 @@ export default function SellerPage({ id, onBack, user, favourites = [], onFavour
           {loadingRows ? (
             <div style={{ color: "rgba(255,255,255,0.7)" }}>Loading…</div>
           ) : (
-            <div role="tabpanel" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 14 }}>
+            <div role="tabpanel" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(230px, 100%), 1fr))", gap: 14 }}>
               {active.id === "events"
                 ? (events || []).map((e) => <EventCard key={e.id} item={e} onOpen={onOpenEvent} />)
                 : rows.map((r) => (

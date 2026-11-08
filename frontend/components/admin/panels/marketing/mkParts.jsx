@@ -10,7 +10,7 @@ export { figures, plural, scroll, table, td, th, timeShort, dayShort, longDay, t
 export const page = { display: "flex", flexDirection: "column", gap: 14 };
 export const card = { ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 10 };
 export const warnColor = D.warnInk;
-export const linkStyle = { background: "none", border: 0, padding: 0, color: D.deepGold, fontWeight: 800, fontSize: "0.78rem", cursor: "pointer", fontFamily: "inherit", textDecoration: "underline" };
+export const linkStyle = { background: "none", border: 0, padding: 0, color: D.goldInk, fontWeight: 800, fontSize: "0.78rem", cursor: "pointer", fontFamily: "inherit", textDecoration: "underline" };
 export const inputStyle = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", color: D.text, background: D.panelBg, minHeight: 36, boxSizing: "border-box" };
 export const labelStyle = { display: "flex", flexDirection: "column", gap: 4, fontSize: "0.72rem", fontWeight: 700, color: D.text };
 

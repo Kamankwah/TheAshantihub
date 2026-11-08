@@ -49,7 +49,7 @@ export default function SendNow({ orderId, readyNotBefore, onDone, canSend = fal
         Why send it before the shop opens?
         <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={200} style={field} />
       </label>
-      <button type="button" disabled={busy || !ok} onClick={send} style={button(D.gold, D.text, busy || !ok)}>Send now</button>
+      <button type="button" disabled={busy || !ok} onClick={send} style={button(D.gold, D.onGold, busy || !ok)}>Send now</button>
       <button type="button" disabled={busy} onClick={() => setOpen(false)} style={button(D.panelBg, D.text, busy)}>Cancel</button>
       <ErrorLine>{error}</ErrorLine>
     </div>

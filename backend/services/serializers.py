@@ -79,7 +79,9 @@ class ServiceRequestCreateSerializer(serializers.ModelSerializer):
         # Only a published service listing can be requested.
         from listings.models import Listing
 
-        if listing.status != Listing.PUBLISHED:
+        from listings.visibility import has_price
+
+        if listing.status != Listing.PUBLISHED or not has_price(listing):
             raise serializers.ValidationError("This listing isn't available for requests.")
         if listing.category and listing.category.kind != "service":
             raise serializers.ValidationError("Only a service can be requested this way.")

@@ -49,7 +49,7 @@ export default function ConsentPanel() {
     <div style={page}>
       <PageHead title="Consent & opt-outs">
         <span style={dim}>Asks for your password again · recorded in the activity log</span>
-        <button type="button" disabled={busy} onClick={exportProof} style={button(D.gold, D.text, busy)}>{busy ? "Preparing…" : "Export consent proof for an audit"}</button>
+        <button type="button" disabled={busy} onClick={exportProof} style={button(D.gold, D.onGold, busy)}>{busy ? "Preparing…" : "Export consent proof for an audit"}</button>
       </PageHead>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       {(summary.isLoading || summary.isError) && <Loading error={summary.isError} onRetry={summary.refetch} what="the consent summary" />}
@@ -90,7 +90,7 @@ export default function ConsentPanel() {
         {ledger.isError && <Loading error onRetry={ledger.refetch} what="the ledger" />}
         {ledger.data && rows.length === 0 && <Honest>{total === 0 && !Object.values(filters).some(Boolean) ? "The ledger is empty: no one has ticked or stopped anything yet." : "No lines match these filters."}</Honest>}
         {rows.length > 0 && (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{["Contact", "Channel", "Status", "Source", "Wording", "When", "Recorded from"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
               <tbody>
@@ -101,7 +101,7 @@ export default function ConsentPanel() {
                       <td style={td}>
                         <div style={{ fontWeight: 800 }}>{r.who}{r.kind_label === "Business owner" ? " (owner)" : ""}</div>
                         <div style={{ ...dim, ...figures }}>{shown ? [shown.phone, shown.email].filter(Boolean).join(" · ") : [r.phone, r.email].filter(Boolean).join(" · ") || "No contact on file"}</div>
-                        {!shown && <button type="button" onClick={() => reveal(r)} style={{ background: "none", border: 0, padding: 0, color: D.deepGold, fontWeight: 800, fontSize: "0.7rem", cursor: "pointer", textDecoration: "underline" }} aria-label={`Show contact details of ${r.who}`}>Show</button>}
+                        {!shown && <button type="button" onClick={() => reveal(r)} style={{ background: "none", border: 0, padding: 0, color: D.goldInk, fontWeight: 800, fontSize: "0.7rem", cursor: "pointer", textDecoration: "underline" }} aria-label={`Show contact details of ${r.who}`}>Show</button>}
                       </td>
                       <td style={td}>{r.channel_label}</td>
                       <td style={td}><span style={chip(STATUS_TONE[r.status])}>{STATUS_WORD[r.status]}</span></td>
@@ -128,7 +128,7 @@ export default function ConsentPanel() {
         </div>
       </Section>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Section id="cn-words" title="Wording people agreed to">
           {wordings.data?.wordings.map((w) => (
             <div key={w.id} style={{ borderBottom: `1px solid ${D.divider}`, paddingBottom: 8 }}>

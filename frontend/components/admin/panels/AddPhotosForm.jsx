@@ -75,7 +75,7 @@ export default function AddPhotosForm({ businessId, onBack, onSent, leadName }) 
       {!reasonGiven && <div style={dim}>{REASON_NEEDED}</div>}
       <div style={dim}>{`Goes to ${leadName || "your Operations lead"} for approval. The owner is told and can undo it for 7 days.`}</div>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
-      <button type="submit" disabled={!ready} style={{ ...button(D.gold, D.text, !ready), alignSelf: "flex-start" }}>
+      <button type="submit" disabled={!ready} style={{ ...button(D.gold, D.onGold, !ready), alignSelf: "flex-start" }}>
         {n > 0 ? `Send ${n} ${n === 1 ? "photo" : "photos"} ${leadName ? `to ${leadName}` : "for approval"}` : leadName ? `Send photos to ${leadName}` : "Send photos for approval"}
       </button>
     </form>

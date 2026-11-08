@@ -265,7 +265,7 @@ function ApprovalsInbox({ onOpen, initialBox = "mine" }) {
           <div style={dim}>{filtered ? "No request matches these filters." : `${EMPTY[box]} Requests appear here when a change needs someone else's approval.`}</div>
         )}
         {rows.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table aria-label="Requests" style={{ borderCollapse: "collapse", width: "100%", minWidth: 640 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${D.divider}` }}>

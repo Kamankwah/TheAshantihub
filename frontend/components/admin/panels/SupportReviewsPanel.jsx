@@ -49,7 +49,7 @@ function HideSheet({ review, onClose, onDone }) {
       {error && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{error}</div>}
       <div style={{ display: "flex", gap: 6 }}>
         <button type="button" onClick={onClose} style={button(D.panelBg, D.text)}>Cancel</button>
-        <button type="button" disabled={!code || !message.trim()} onClick={submit} style={button(D.red, "#fff", !code || !message.trim())}>Hide and tell reviewer</button>
+        <button type="button" disabled={!code || !message.trim()} onClick={submit} style={button(D.red, D.white, !code || !message.trim())}>Hide and tell reviewer</button>
       </div>
     </div>
   );
@@ -93,7 +93,7 @@ function ReviewCard({ review, state, onDone }) {
       {error && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{error}</div>}
       {state !== "rejected" && !hiding && (
         <div style={{ display: "flex", gap: 6 }}>
-          {state === "pending" && <button type="button" onClick={publish} style={button(D.green, "#fff")}>Publish</button>}
+          {state === "pending" && <button type="button" onClick={publish} style={button(D.greenFill, D.white)}>Publish</button>}
           <button type="button" onClick={() => setHiding(true)} style={button(D.panelBg, D.text)}>Hide…</button>
         </div>
       )}

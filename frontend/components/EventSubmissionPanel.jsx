@@ -339,7 +339,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                 </button>
                 {mediaUploaded && <span style={{ color: C.trust, fontSize: "0.76rem" }}>Photo added ✓</span>}
               </div>
-              {mediaError && <div role="alert" style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.74rem" }}>{mediaError}</div>}
+              {mediaError && <div role="alert" style={{ marginTop: 8, color: C.errOnDark, fontSize: "0.74rem" }}>{mediaError}</div>}
               <button
                 onClick={() => { setJustSubmitted(null); setShowForm(false); setMediaUploaded(false); }}
                 style={{ marginTop: 14, background: "rgba(255,255,255,0.1)", color: "white", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 20, padding: "8px 16px", fontWeight: 700, fontSize: "0.76rem", cursor: "pointer", fontFamily: "inherit" }}
@@ -417,7 +417,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                 <span style={{ color: "white", fontSize: "0.78rem", fontWeight: 700 }}>Make this a private event (code required to view details)</span>
               </label>
 
-              {submitError && <div role="alert" style={{ marginTop: 10, color: "#ffb4b4", fontSize: "0.76rem" }}>{submitError}</div>}
+              {submitError && <div role="alert" style={{ marginTop: 10, color: C.errOnDark, fontSize: "0.76rem" }}>{submitError}</div>}
 
               <button
                 type="submit"
@@ -431,13 +431,13 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
         </div>
       )}
 
-      {payError && <div role="alert" style={{ marginBottom: 12, color: "#ffb4b4", fontSize: "0.76rem" }}>{payError}</div>}
+      {payError && <div role="alert" style={{ marginBottom: 12, color: C.errOnDark, fontSize: "0.76rem" }}>{payError}</div>}
 
       <div>
         <h3 style={{ color: C.gold, fontSize: "0.85rem", fontWeight: 900, margin: "0 0 10px" }}>My Events</h3>
         {isLoading && <div style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.78rem" }}>Loading your events…</div>}
         {isError && (
-          <div style={{ color: "#ffb4b4", fontSize: "0.78rem" }}>
+          <div style={{ color: C.errOnDark, fontSize: "0.78rem" }}>
             Could not load your events. <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "2px 10px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button>
           </div>
         )}
@@ -460,14 +460,14 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
               </div>
             )}
             {ev.status === "rejected" && ev.rejection_reason && (
-              <div style={{ color: "#ffb4b4", fontSize: "0.74rem", marginTop: 6 }}>Reason: {ev.rejection_reason}</div>
+              <div style={{ color: C.errOnDark, fontSize: "0.74rem", marginTop: 6 }}>Reason: {ev.rejection_reason}</div>
             )}
             {/* Expiry countdown (Wave E) — for a paid event. */}
             {ev.status !== "cancelled" && ev.paid_at && ev.expires_at && (() => {
               const d = daysLeft(ev);
               const expired = d != null && d < 0;
               return (
-                <div style={{ color: expired ? "#ffb4b4" : d <= 7 ? C.gold : C.lightGold, fontSize: "0.72rem", marginTop: 6 }}>
+                <div style={{ color: expired ? C.errOnDark : d <= 7 ? C.gold : C.lightGold, fontSize: "0.72rem", marginTop: 6 }}>
                   {expired ? `⚠️ Expired ${-d} day${-d === 1 ? "" : "s"} ago` : `⏳ Live · ${d} day${d === 1 ? "" : "s"} left`}
                 </div>
               );
@@ -532,7 +532,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
               {(ev.status === "approved" || ev.status === "pending") && (
                 <button
                   onClick={() => openCancel(ev)}
-                  style={{ background: "none", color: "#ffb4b4", border: "1px solid rgba(255,180,180,0.45)", borderRadius: 20, padding: "7px 16px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
+                  style={{ background: "none", color: C.errOnDark, border: "1px solid rgba(255,180,180,0.45)", borderRadius: 20, padding: "7px 16px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
                 >
                   {cancelId === ev.id ? "▲ Keep event" : "Cancel event"}
                 </button>
@@ -541,7 +541,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
             )}
             {cancelId === ev.id && ev.status !== "cancelled" && (
               <div style={{ marginTop: 10, padding: "12px 14px", background: "rgba(255,255,255,0.05)", borderRadius: 10, border: "1px solid rgba(255,180,180,0.35)" }}>
-                <div style={{ color: "#ffb4b4", fontSize: "0.74rem", fontWeight: 800, marginBottom: 8 }}>
+                <div style={{ color: C.errOnDark, fontSize: "0.74rem", fontWeight: 800, marginBottom: 8 }}>
                   Every ticket is refunded in full from your account, including tickets already scanned. This cannot be undone.
                 </div>
                 <textarea
@@ -553,7 +553,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                   rows={2}
                   style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }}
                 />
-                {actionError && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{actionError}</div>}
+                {actionError && <div role="alert" style={{ color: C.errOnDark, fontSize: "0.72rem", marginBottom: 8 }}>{actionError}</div>}
                 <button
                   onClick={() => confirmCancel(ev)}
                   disabled={cancelling || cancelReason.trim().length < 5}
@@ -575,7 +575,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                 <input type="number" min={1} max={365} step={1} aria-label="Refund tickets until this many days before" value={editForm.refund_until_days_before ?? ""} onChange={(e) => setEditForm((s) => ({ ...s, refund_until_days_before: e.target.value }))} style={{ ...inputStyle, marginBottom: 8 }} />
                 <div style={{ color: C.lightGold, fontSize: "0.68rem", marginBottom: 4 }}>Add a photo (optional)</div>
                 <input type="file" accept="image/*,video/*" onChange={(e) => setEditFile(e.target.files?.[0] || null)} style={{ color: "white", fontSize: "0.72rem", marginBottom: 8 }} />
-                {editError && <div role="alert" style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{editError}</div>}
+                {editError && <div role="alert" style={{ color: C.errOnDark, fontSize: "0.72rem", marginBottom: 8 }}>{editError}</div>}
                 <button onClick={() => saveEdit(ev)} disabled={savingEdit} style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 20, padding: "7px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit", opacity: savingEdit ? 0.6 : 1 }}>{savingEdit ? "Saving…" : "Save & resubmit"}</button>
               </div>
             )}
@@ -607,7 +607,7 @@ function EventAttendeesPanel({ eventId }) {
   }
   if (isError) {
     return (
-      <div style={{ color: "#ffb4b4", fontSize: "0.74rem", marginTop: 8 }}>
+      <div style={{ color: C.errOnDark, fontSize: "0.74rem", marginTop: 8 }}>
         Could not load attendees.{" "}
         <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.danger, borderRadius: 20, padding: "1px 8px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
           Retry
@@ -640,7 +640,7 @@ function statusColor(status) {
   if (status === "approved") return C.kente2;
   if (status === "rejected") return C.kente1;
   if (status === "expired" || status === "cancelled") return "#666";
-  return C.deepGold;
+  return "#7A5800"; // pending: deep gold darkened so white text is AA (6.5:1)
 }
 
 const labelStyle = {

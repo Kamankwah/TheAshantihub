@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef, useId, Suspense } from "react";
 import { lazyWithRetry as lazy } from "./lib/lazyWithRetry.js";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import FeedbackEcho from "./components/FeedbackEcho.jsx";
@@ -37,7 +37,7 @@ import { useMyTickets } from "./hooks/useMyTickets.js";
 import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
-import { C, optionStyle } from "./theme.js";
+import { C, FONTS, optionStyle, readableOn } from "./theme.js";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 import VerifiedMark from "./components/VerifiedMark.jsx";
 import Flag from "./components/Flag.jsx";
@@ -119,6 +119,8 @@ const OrdersPanel = lazy(() => import("./components/account/OrdersPanel.jsx"));
 const SpendAreaChart = lazy(() => import("./components/dashboard/charts/SpendAreaChart.jsx"));
 const ListingsDonut = lazy(() => import("./components/dashboard/charts/ListingsDonut.jsx"));
 const AboutPage = lazy(() => import("./components/ui/about-page.tsx").then(m => ({ default: m.AboutPage })));
+const PrivacyNoticePage = lazy(() => import("./components/legal/PrivacyNoticePage.jsx"));
+const LegalDocPage = lazy(() => import("./components/legal/LegalDocPage.jsx"));
 const ContactPage = lazy(() => import("./components/ui/contact-page.tsx").then(m => ({ default: m.ContactPage })));
 // A lazy screen with its own error boundary (review FE-01): a chunk that cannot load shows "Try again" in place, the rest of the page stays.
 function PageBoundary({ children }) {
@@ -129,7 +131,7 @@ const InlineFallback = <div role="status" aria-label="Loading" style={{minHeight
 
 // ─── Payment System ───────────────────────────────────────────────────────────
 const MOMO_NETWORKS = [
-  { id:"mtn", name:"MTN MoMo", color:"#FCD116", textColor:"#1A1A1A", logo:"🟡", ussd:"*170#", fee:"1.5%" },
+  { id:"mtn", name:"MTN MoMo", color:C.ghGold, textColor:"#1A1A1A", logo:"🟡", ussd:"*170#", fee:"1.5%" },
   { id:"telecel", name:"Telecel Cash", color:"#E31837", textColor:"white", logo:"🔴", ussd:"*110#", fee:"1.5%" },
   { id:"airteltigo", name:"AirtelTigo Money", color:"#E87722", textColor:"white", logo:"🟠", ussd:"*500#", fee:"1.5%" },
 ];
@@ -304,7 +306,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose,
                   <input value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g,"").slice(0,10))}
                     placeholder="0244 000 000" maxLength={10}
                     style={{ flex:1, padding:"11px 12px", border:"none", fontSize:"0.88rem", outline:"none", fontFamily:"inherit", letterSpacing:1 }}/>
-                  {phone.length>=10 && <div style={{ padding:"11px 12px", color:"#22c55e", fontSize:"1rem" }}>✓</div>}
+                  {phone.length>=10 && <div style={{ padding:"11px 12px", color:C.trust, fontSize:"1rem" }}>✓</div>}
                 </div>
               </div>
 
@@ -363,7 +365,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose,
                   <div style={{ background:C.surface2, borderRadius:20, height:8, marginBottom:8, overflow:"hidden" }}>
                     <div style={{ height:"100%", borderRadius:20, background:`linear-gradient(90deg,${C.kente2},${C.gold})`, width:`${((30-countdown)/30)*100}%`, transition:"width 0.1s" }}/>
                   </div>
-                  <div style={{ fontSize:"0.68rem", color:C.inkFaint }}>Waiting for approval... {countdown}s</div>
+                  <div style={{ fontSize:"0.78rem", color:C.inkDim }}>Waiting for approval... {countdown}s</div>
                   <div style={{ marginTop:16, background:tint(selectedNetwork?.color, "15"), border:`1px solid ${tint(selectedNetwork?.color, "33")}`, borderRadius:12, padding:"10px 14px" }}>
                     <div style={{ fontSize:"0.72rem", color:C.inkDim }}>📱 Check your phone for the {selectedNetwork?.name} payment prompt</div>
                     <div style={{ fontSize:"0.68rem", color:C.inkDim, marginTop:3 }}>Ref: <strong>{txnRef}</strong></div>
@@ -372,13 +374,13 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose,
               ) : (
                 <>
                   <div style={{ fontSize:"3.5rem", marginBottom:12 }}>✅</div>
-                  <div style={{ fontWeight:900, color:"#22c55e", fontSize:"1.1rem", marginBottom:6 }}>Payment Successful!</div>
+                  <div style={{ fontWeight:900, color:C.trust, fontSize:"1.1rem", marginBottom:6 }}>Payment Successful!</div>
                   <div style={{ color:C.inkDim, fontSize:"0.78rem", marginBottom:16, lineHeight:1.6 }}>
                     Your payment of <strong>GHS {totalText}</strong> has been received.<br/>
                     A receipt has been sent to your WhatsApp.
                   </div>
                   <div style={{ background:C.okBg, border:"1px solid #22c55e33", borderRadius:14, padding:"14px", marginBottom:16, textAlign:"left" }}>
-                    <div style={{ fontWeight:800, color:"#22c55e", marginBottom:8, fontSize:"0.82rem" }}>📋 Payment Receipt</div>
+                    <div style={{ fontWeight:800, color:C.trust, marginBottom:8, fontSize:"0.82rem" }}>📋 Payment Receipt</div>
                     {[
                       ["Transaction Ref", txnRef],
                       ["Network", selectedNetwork?.name],
@@ -435,24 +437,24 @@ function Stars({rating,size="0.85rem"}) {
 
 function WABtn({phone,name,style={}}) {
   const msg = encodeURIComponent(`Hello! I found ${name} on AshantiHub and I'd like to enquire.`);
-  return <a href={`https://wa.me/${phone}?text=${msg}`} target="_blank" rel="noopener noreferrer"
-    style={{display:"inline-flex",alignItems:"center",gap:5,background:C.whatsapp,color:"white",borderRadius:20,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,textDecoration:"none",...style}}>
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+  return <a href={`https://wa.me/${phone}?text=${msg}`} target="_blank" rel="noopener noreferrer" className="ah-tap"
+    style={{display:"inline-flex",alignItems:"center",gap:5,background:C.whatsapp,color:"#0B2E13",borderRadius:20,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,textDecoration:"none",...style}}>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="#0B2E13"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
     WhatsApp
   </a>;
 }
 
 // ─── Cookie Consent ───────────────────────────────────────────────────────────
-function CookieBanner({onAccept,onDecline}) {
-  return <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.darkBrown,color:"white",padding:"16px 20px",zIndex:9999,boxShadow:"0 -4px 20px rgba(0,0,0,0.3)"}}>
+function CookieBanner({onAccept,onDecline,onOpenPrivacy}) {
+  return <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.darkBrown,color:"white",padding:"16px 20px",zIndex:2500,boxShadow:"0 -4px 20px rgba(0,0,0,0.3)"}}>
     <div style={{maxWidth:900,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-      <div style={{flex:1}}>
-        <div style={{fontWeight:800,color:C.gold,marginBottom:4,fontSize:"0.85rem"}}>🍪 AshantiHub uses cookies</div>
-        <div style={{fontSize:"0.74rem",opacity:0.85,lineHeight:1.5}}>We use essential cookies to run the platform and analytics cookies to improve your experience. By accepting, you also agree to our <span style={{color:C.gold,textDecoration:"underline",cursor:"pointer"}}>Privacy Policy</span>.</div>
+      <div style={{flex:"1 1 280px"}}>
+        <div style={{fontWeight:800,color:C.gold,marginBottom:4,fontSize:"0.9rem"}}>🍪 AshantiHub uses cookies</div>
+        <div style={{fontSize:"0.8rem",opacity:0.9,lineHeight:1.5}}>We use your browser’s storage to keep you signed in and remember your settings, and, only if you accept, we count which listings are viewed. We run no advertising trackers. Read our <a href="/privacy" onClick={(e)=>{ if(e.metaKey||e.ctrlKey||e.shiftKey||e.button===1) return; e.preventDefault(); if(onOpenPrivacy) onOpenPrivacy(); }} style={{color:C.gold,textDecoration:"underline",fontWeight:700}}>Privacy Notice</a>.</div>
       </div>
       <div style={{display:"flex",gap:8}}>
-        <button onClick={onDecline} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"8px 16px",fontSize:"0.74rem",fontWeight:700,cursor:"pointer"}}>Essential Only</button>
-        <button onClick={onAccept} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"8px 18px",fontSize:"0.74rem",fontWeight:900,cursor:"pointer"}}>Accept All</button>
+        <button onClick={onDecline} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:22,padding:"0 16px",minHeight:44,fontSize:"0.8rem",fontWeight:700,cursor:"pointer"}}>Essential Only</button>
+        <button onClick={onAccept} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:22,padding:"0 18px",minHeight:44,fontSize:"0.8rem",fontWeight:900,cursor:"pointer"}}>Accept All</button>
       </div>
     </div>
   </div>;
@@ -626,7 +628,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
               <div style={{color:C.gold,fontWeight:900,fontSize:"0.9rem"}}>💬 Messages</div>
               <div style={{display:"flex",gap:6,alignItems:"center"}}>
                 {totalUnread>0&&<span style={{background:C.kente1,color:"white",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.6rem",fontWeight:900}}>{totalUnread}</span>}
-                <button onClick={onClose} style={{background:"none",border:"none",color:"white",fontSize:"1.1rem",cursor:"pointer",opacity:0.7}}>✕</button>
+                <button onClick={onClose} aria-label="Close messages" style={{background:"none",border:"none",color:"white",fontSize:"1.1rem",cursor:"pointer",opacity:0.7,minWidth:44,minHeight:44}}>✕</button>
               </div>
             </div>
             <input value={searchConv} onChange={e=>setSearchConv(e.target.value)} placeholder="Search conversations..."
@@ -639,7 +641,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
               conversations yet the compose state is already showing, so
               without the focus jump this click looked like it did nothing. */}
           <button onClick={()=>{setActiveConvId(null);setNewMessage("");setPhonePane("chat");setTimeout(()=>inputRef.current?.focus(),0);}}
-            style={{margin:"10px 12px 4px",background:`${C.gold}15`,color:C.deepGold,border:`1.5px dashed ${C.gold}`,borderRadius:12,padding:"9px",fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            style={{margin:"10px 12px 4px",background:`${C.gold}15`,color:C.goldInk,border:`1.5px dashed ${C.gold}`,borderRadius:12,padding:"9px",fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ✉️ Start New Conversation
           </button>
 
@@ -669,7 +671,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                       <span style={{fontWeight:800,fontSize:"0.78rem",color:C.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>AshantiHub Support</span>
                       <span style={{fontSize:"0.6rem",color:C.inkFaint,flexShrink:0,marginLeft:4}}>{formatConvTime(lastMsg?.created_at||conv.updated_at)}</span>
                     </div>
-                    {conv.subject&&<div style={{fontSize:"0.64rem",color:C.deepGold,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{subjectLine(conv.subject)}</div>}
+                    {conv.subject&&<div style={{fontSize:"0.64rem",color:C.goldInk,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{subjectLine(conv.subject)}</div>}
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <span style={{fontSize:"0.68rem",color:C.inkDim,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{lastMsg?.body||"No messages yet"}</span>
                       {attention&&<span style={{width:10,height:10,borderRadius:"50%",background:C.kente2,flexShrink:0,marginLeft:4}}/>}
@@ -688,7 +690,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
             </div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontWeight:700,fontSize:"0.72rem",color:C.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.fullName||"Guest"}</div>
-              <div style={{fontSize:"0.6rem",color:"#22c55e",fontWeight:600}}>● Online</div>
+              <div style={{fontSize:"0.6rem",color:C.trust,fontWeight:600}}>● Online</div>
             </div>
           </div>
         </div>
@@ -717,7 +719,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                 </div>
                 <div style={{flex:1}}>
                   <div style={{fontWeight:900,fontSize:"0.88rem",color:C.ink}}>AshantiHub Support</div>
-                  <div style={{fontSize:"0.68rem",color:C.deepGold,fontWeight:700,marginBottom:1}}>{activeConv?.subject ? subjectLine(activeConv.subject) : "New conversation"}</div>
+                  <div style={{fontSize:"0.68rem",color:C.goldInk,fontWeight:700,marginBottom:1}}>{activeConv?.subject ? subjectLine(activeConv.subject) : "New conversation"}</div>
                   {/* "Starts once staff replies" status (messaging fixes work) —
                       an open conversation with zero staff messages yet is
                       waiting, not "online"; a brand-new (no activeConv at all)
@@ -726,11 +728,11 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                   {activeConv && !activeConv.messages.some(m=>m.sender_type==="staff") ? (
                     <div style={{fontSize:"0.65rem",color:"#f59e0b",fontWeight:600}}>🕐 Waiting for a staff reply...</div>
                   ) : (
-                    <div style={{fontSize:"0.65rem",color:"#22c55e",fontWeight:600}}>● Support team online now</div>
+                    <div style={{fontSize:"0.65rem",color:C.trust,fontWeight:600}}>● Support team online now</div>
                   )}
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={onClose} style={{background:C.surface2,border:"none",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:C.inkDim,fontSize:"0.9rem"}}>✕</button>
+                  <button onClick={onClose} className="ah-tap" aria-label="Close messages" style={{background:C.surface2,border:"none",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:C.inkDim,fontSize:"0.9rem"}}>✕</button>
                 </div>
               </div>
 
@@ -803,7 +805,7 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                 <div style={{padding:"8px 14px",borderTop:`1px solid ${C.line}`,display:"flex",gap:6,flexWrap:"wrap",background:C.surface}}>
                   {QUICK_REPLIES.map(r=>(
                     <button key={r} onClick={()=>{setNewMessage(r);setShowQuickReplies(false);inputRef.current?.focus();}}
-                      style={{background:`${C.gold}15`,color:C.deepGold,border:`1px solid ${C.gold}33`,borderRadius:20,padding:"4px 10px",fontSize:"0.68rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                      style={{background:`${C.gold}15`,color:C.goldInk,border:`1px solid ${C.gold}33`,borderRadius:20,padding:"4px 10px",fontSize:"0.68rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                       {r}
                     </button>
                   ))}
@@ -839,10 +841,11 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
                       onChange={e=>setNewMessage(e.target.value)}
                       onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!sending)sendMessage();}}}
                       placeholder="Type a message..."
+                      aria-label="Message"
                       disabled={sending}
-                      style={{flex:1,minWidth:0,border:"none",background:"transparent",outline:"none",fontSize:"0.82rem",fontFamily:"inherit",color:C.ink}}/>
+                      style={{flex:1,minWidth:0,minHeight:32,border:"none",background:"transparent",outline:"none",fontSize:"0.82rem",fontFamily:"inherit",color:C.ink}}/>
                     {newMessage&&(
-                      <button onClick={()=>setNewMessage("")} style={{background:"none",border:"none",color:C.inkFaint,cursor:"pointer",fontSize:"0.9rem",padding:0}}>✕</button>
+                      <button onClick={()=>setNewMessage("")} aria-label="Clear message" style={{background:"none",border:"none",color:C.inkDim,cursor:"pointer",fontSize:"0.9rem",padding:0,minWidth:44,minHeight:44}}>✕</button>
                     )}
                   </div>
                   <button
@@ -962,7 +965,7 @@ function ReviewsModal({item,user,onClose}) {
           <div key={r.id} style={{borderBottom:`1px solid ${C.line}`,paddingBottom:14,marginBottom:14}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <div style={{width:30,height:30,borderRadius:"50%",background:`${C.gold}22`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.deepGold,fontSize:"0.8rem"}}>{r.author_name?.[0]}</div>
+                <div style={{width:30,height:30,borderRadius:"50%",background:`${C.gold}22`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.goldInk,fontSize:"0.8rem"}}>{r.author_name?.[0]}</div>
                 <div>
                   <div style={{fontWeight:700,fontSize:"0.8rem"}}>{r.author_name}</div>
                   <Stars rating={r.rating} size="0.7rem"/>
@@ -1046,16 +1049,16 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
             staff both ranks the listing first (server-side) and shows this
             ribbon so customers can see it's promoted. */}
         {item.is_promoted&&(
-          <span style={{position:"absolute",top:8,left:40,background:"linear-gradient(90deg,#f59e0b,#d97706)",color:"white",fontSize:"0.58rem",fontWeight:800,padding:"2px 8px",borderRadius:20,zIndex:2,boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>⭐ Promoted</span>
+          <span style={{position:"absolute",top:8,left:40,background:"linear-gradient(90deg,#f59e0b,#d97706)",color:"#2C1810",fontSize:"0.58rem",fontWeight:800,padding:"2px 8px",borderRadius:20,zIndex:2,boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>⭐ Promoted</span>
         )}
-        <span style={{position:"absolute",top:8,right:8,background:accentColor,color:"white",fontSize:"0.6rem",fontWeight:700,padding:"2px 7px",borderRadius:20,zIndex:2}}>{item.tag}</span>
-        <button aria-label={isFav?"Remove from Your Lists":"Save to Your Lists"} title={favFailed?"We couldn't update Your Lists. Tap to try again.":undefined} onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:8,left:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
-          {isFav?"❤️":"🤍"}
+        <span style={{position:"absolute",top:8,right:8,background:accentColor,color:readableOn(accentColor),fontSize:"0.6rem",fontWeight:700,padding:"2px 7px",borderRadius:20,zIndex:2}}>{item.tag}</span>
+        <button aria-label={isFav?"Remove from Your Lists":"Save to Your Lists"} title={favFailed?"We couldn't update Your Lists. Tap to try again.":undefined} onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:0,left:0,background:"transparent",border:"none",width:44,height:44,padding:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:2}}>
+          <span aria-hidden="true" style={{background:C.surface,borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem"}}>{isFav?"❤️":"🤍"}</span>
         </button>
         {favFailed&&<span role="status" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>We couldn't update Your Lists. Tap the heart to try again.</span>}
-        <button onClick={(e)=>{e.stopPropagation();if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
-          style={{position:"absolute",bottom:8,right:8,background:C.surface,border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.8rem",zIndex:2}}>
-          📤
+        <button aria-label={`Share ${item.name}`} onClick={(e)=>{e.stopPropagation();if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
+          style={{position:"absolute",bottom:0,right:0,background:"transparent",border:"none",width:44,height:44,padding:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:2}}>
+          <span aria-hidden="true" style={{background:C.surface,borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.8rem"}}>📤</span>
         </button>
       </div>
       <div style={{padding:"12px 14px"}}>
@@ -1068,7 +1071,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
         {item.review_count>0&&(
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
             <Stars rating={item.avg_rating}/>
-            <button onClick={()=>setShowReviews(true)} style={{background:"none",border:"none",color:accentColor,fontSize:"0.68rem",cursor:"pointer",fontWeight:600,padding:0}}>
+            <button onClick={()=>setShowReviews(true)} style={{background:"none",border:"none",color:C.lightGold,textDecoration:"underline",fontSize:"0.68rem",cursor:"pointer",fontWeight:600,padding:"0 4px",minHeight:44}}>
               ({item.review_count} reviews)
             </button>
           </div>
@@ -1085,7 +1088,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
                 framed as an AshantiHub Support conversation about this listing,
                 not a direct line to the business. */}
             <button onClick={()=>{ if(onMessage) onMessage(item); }}
-              style={{background:`${C.kente3}22`,color:"#fff",border:`1px solid ${C.kente3}66`,borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+              style={{background:`${C.kente3}22`,color:C.white,border:`1px solid ${C.kente3}66`,borderRadius:20,padding:"5px 12px",minHeight:44,fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
               🎧 Contact Support
             </button>
           </div>
@@ -1097,7 +1100,31 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
 
 
 
-const authInputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.line}`,marginBottom:10,fontSize:"0.82rem",fontFamily:"inherit"};
+const authInputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",minHeight:44,borderRadius:10,border:`1.5px solid ${C.line}`,fontSize:"0.9rem",fontFamily:"inherit"};
+// Sign in / Sign up tabs and the Customer / Business Owner choice: 44px targets, text colour set on both states
+// (the fill flips to gold, so the text must be the dark brown on it in both themes), state also carried by aria-pressed.
+const authTabStyle=(on)=>({flex:1,minHeight:44,borderRadius:22,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.85rem",fontFamily:"inherit",background:on?C.gold:C.surface2,color:on?C.darkBrown:C.ink});
+const authTypeStyle=(on)=>({flex:1,minHeight:44,padding:"6px",borderRadius:22,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.8rem",fontFamily:"inherit",background:on?C.gold:C.surface,color:on?C.darkBrown:C.ink});
+const authLabelStyle={display:"block",fontSize:"0.82rem",fontWeight:700,color:C.ink,marginBottom:4};
+// A visible label above the control (placeholders vanish while typing and are not a label), wired with htmlFor.
+// `render(id)` returns the control so it can take the generated id.
+function AuthField({label,hint,render}) {
+  const id=useId();
+  return <div style={{marginBottom:12}}>
+    <label htmlFor={id} style={authLabelStyle}>{label}</label>
+    {render(id)}
+    {hint&&<div style={{fontSize:"0.78rem",color:C.inkDim,marginTop:4,lineHeight:1.4}}>{hint}</div>}
+  </div>;
+}
+// Password box with a Show / Hide control (it starts hidden and resets whenever the form is left).
+function AuthPasswordInput({id,value,onChange,placeholder,ariaLabel,autoComplete,minLength}) {
+  const [shown,setShown]=useState(false);
+  return <div style={{position:"relative"}}>
+    <input id={id} value={value} onChange={onChange} type={shown?"text":"password"} placeholder={placeholder} aria-label={ariaLabel} autoComplete={autoComplete} required minLength={minLength} style={{...authInputStyle,paddingRight:64}}/>
+    <button type="button" onClick={()=>setShown(v=>!v)} aria-label={shown?"Hide password":"Show password"} style={{position:"absolute",top:0,right:2,height:44,minWidth:56,background:"none",border:"none",color:C.ink,fontSize:"0.8rem",fontWeight:700,fontFamily:"inherit",cursor:"pointer",textDecoration:"underline"}}>{shown?"Hide":"Show"}</button>
+  </div>;
+}
+const authLinkStyle={background:"none",border:"none",color:C.ink,fontSize:"0.82rem",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit",minHeight:44,padding:"0 8px"};
 const authSubmitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"12px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",marginTop:4};
 
 // `onGoToMarketplace` is passed only for the required /staff sign-in in a
@@ -1136,6 +1163,9 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   const [resetSubmitting,setResetSubmitting]=useState(false);
   const [resetSubmitted,setResetSubmitted]=useState(false);
   const [offers,setOffers]=useState({});
+  // The message sits above the fields while the submit button is at the bottom of a scrolling modal: bring it into view.
+  const errorRef=useRef(null);
+  useEffect(()=>{ if(error) errorRef.current?.scrollIntoView?.({block:"nearest"}); },[error]);
 
   const handleLogin=async(e)=>{
     e.preventDefault();
@@ -1220,37 +1250,38 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
 
   return <div data-testid="auth-modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="auth-modal-title" style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
-      <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,borderRadius:"22px 22px 0 0",padding:"20px 24px",position:"relative"}}>
-        <button type="button" onClick={onClose} aria-label="Close" style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
+      <div style={{background:C.darkBrown,borderRadius:"22px 22px 0 0",padding:"22px 64px 18px 24px",position:"relative",overflow:"hidden"}}>
+        <div aria-hidden="true" style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
+        <button type="button" onClick={onClose} aria-label="Close" style={{position:"absolute",top:8,right:8,width:44,height:44,background:"none",border:"none",color:C.lightGold,fontSize:"1.3rem",cursor:"pointer"}}>✕</button>
         <h2 id="auth-modal-title" style={{margin:0,color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>{mode==="forgot"?"Reset your password":lockedAccountType==="staff"?"Staff Sign In":mode==="login"?"Welcome back":"Create your account"}</h2>
       </div>
       <div style={{padding:"20px 24px"}}>
         {!lockedAccountType && mode!=="forgot" && !otp && <div style={{display:"flex",gap:8,marginBottom:16}}>
-          <button type="button" onClick={()=>setMode("login")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="login"?C.gold:C.surface2,color:mode==="login"?C.darkBrown:C.inkDim}}>Sign In</button>
-          <button type="button" onClick={()=>setMode("signup")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="signup"?C.gold:C.surface2,color:mode==="signup"?C.darkBrown:C.inkDim}}>Sign Up</button>
+          <button type="button" aria-pressed={mode==="login"} onClick={()=>setMode("login")} style={authTabStyle(mode==="login")}>Sign In</button>
+          <button type="button" aria-pressed={mode==="signup"} onClick={()=>setMode("signup")} style={authTabStyle(mode==="signup")}>Sign Up</button>
         </div>}
 
         {signedOutNotice && <div role="status" style={{background:C.canvas,border:`1px solid ${C.gold}`,color:C.ink,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{signedOutNotice}</div>}
-        {error && <div role="alert" style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+        {error && <div ref={errorRef} role="alert" style={{background:C.errBg,color:C.errInk,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.85rem",lineHeight:1.5}}>{error}</div>}
 
         {otp && <OtpSignIn challenge={otp.challenge} accountType={otp.accountType} purpose={otp.purpose} auth={auth} onSuccess={onSuccess} onCancel={cancelOtp}/>}
         {mode==="login" && twoStep && <PageBoundary><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/></PageBoundary>}
         {mode==="login" && !twoStep && !otp && twoStepNotice && <div role="status" style={{background:C.warnBg,color:C.inkDim,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{twoStepNotice}</div>}
         {mode==="login" && !twoStep && !otp && <form onSubmit={handleLogin}>
           {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:12}}>
-            <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
-            <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
+            <button type="button" aria-pressed={accountType==="customer"} onClick={()=>setAccountType("customer")} style={authTypeStyle(accountType==="customer")}>Customer</button>
+            <button type="button" aria-pressed={accountType==="business_owner"} onClick={()=>setAccountType("business_owner")} style={authTypeStyle(accountType==="business_owner")}>Business Owner</button>
           </div>}
-          <input value={identifier} onChange={e=>setIdentifier(e.target.value)} placeholder="Phone or email" aria-label="Phone or email" autoComplete="username" required style={authInputStyle}/>
-          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password" aria-label="Password" autoComplete="current-password" required style={authInputStyle}/>
+          <AuthField label="Phone or email" render={id=><input id={id} value={identifier} onChange={e=>setIdentifier(e.target.value)} placeholder="Phone or email" aria-label="Phone or email" autoComplete="username" required style={authInputStyle}/>}/>
+          <AuthField label="Password" render={id=><AuthPasswordInput id={id} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Password" ariaLabel="Password" autoComplete="current-password"/>}/>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Signing in…":"Sign In"}</button>
           <div style={{textAlign:"center",marginTop:10}}>
-            <button type="button" onClick={()=>{setMode("forgot");setError(null);setResetSubmitted(false);}} style={{background:"none",border:"none",color:C.deepGold,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}>Forgot password?</button>
+            <button type="button" onClick={()=>{setMode("forgot");setError(null);setResetSubmitted(false);}} style={authLinkStyle}>Forgot password?</button>
           </div>
         </form>}
 
         {mode==="forgot" && <div>
-          <button type="button" onClick={()=>{setMode("login");setResetSubmitted(false);}} style={{background:"none",border:"none",color:C.deepGold,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",marginBottom:14,padding:0,fontFamily:"inherit"}}>← Back to Sign In</button>
+          <button type="button" onClick={()=>{setMode("login");setResetSubmitted(false);}} style={{...authLinkStyle,textDecoration:"none",marginBottom:6,paddingLeft:0}}>← Back to Sign In</button>
           {resetSubmitted ? (
             <div style={{background:C.okBg,color:C.okInk,borderRadius:10,padding:"12px 14px",fontSize:"0.8rem",lineHeight:1.6}}>
               If an account exists for that email, we've sent a password reset link. Please check your inbox (and spam folder).
@@ -1262,7 +1293,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
                   the type; a visible "Staff" option on a public form would
                   advertise which account classes exist. */}
               <div style={{fontSize:"0.76rem",color:C.inkDim,marginBottom:12,lineHeight:1.5}}>Enter your account email and we'll send you a link to reset your password.</div>
-              <input value={resetEmail} onChange={e=>setResetEmail(e.target.value)} type="email" placeholder="Email" aria-label="Email" autoComplete="email" required style={authInputStyle}/>
+              <AuthField label="Email" render={id=><input id={id} value={resetEmail} onChange={e=>setResetEmail(e.target.value)} type="email" placeholder="Email" aria-label="Email" autoComplete="email" required style={authInputStyle}/>}/>
               <button type="submit" disabled={resetSubmitting} style={authSubmitStyle}>{resetSubmitting?"Sending…":"Send Reset Link"}</button>
             </form>
           )}
@@ -1270,13 +1301,13 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
 
         {mode==="signup" && !otp && <form onSubmit={handleSignup}>
           <div style={{display:"flex",gap:8,marginBottom:12}}>
-            <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:C.surface}}>Customer</button>
-            <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:C.surface}}>Business Owner</button>
+            <button type="button" aria-pressed={accountType==="customer"} onClick={()=>setAccountType("customer")} style={authTypeStyle(accountType==="customer")}>Customer</button>
+            <button type="button" aria-pressed={accountType==="business_owner"} onClick={()=>setAccountType("business_owner")} style={authTypeStyle(accountType==="business_owner")}>Business Owner</button>
           </div>
-          <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" aria-label="Full name" autoComplete="name" required style={authInputStyle}/>
-          <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" aria-label="Phone" type="tel" autoComplete="tel" style={authInputStyle}/>
-          <input value={email} onChange={e=>setEmail(e.target.value)} type={accountType==="business_owner"?"text":"email"} inputMode="email" aria-required={accountType==="business_owner"} placeholder="Email" aria-label="Email" autoComplete="email" style={authInputStyle}/>
-          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" aria-label="Password, at least 8 characters" autoComplete="new-password" required minLength={8} style={authInputStyle}/>
+          <AuthField label="Full name" render={id=><input id={id} value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" aria-label="Full name" autoComplete="name" required style={authInputStyle}/>}/>
+          <AuthField label="Phone" render={id=><input id={id} value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" aria-label="Phone" type="tel" autoComplete="tel" style={authInputStyle}/>}/>
+          <AuthField label={accountType==="business_owner"?"Email (required)":"Email"} hint={accountType==="business_owner"?"We send your confirmation link here.":undefined} render={id=><input id={id} value={email} onChange={e=>setEmail(e.target.value)} type={accountType==="business_owner"?"text":"email"} inputMode="email" aria-required={accountType==="business_owner"} placeholder="Email" aria-label="Email" autoComplete="email" style={authInputStyle}/>}/>
+          <AuthField label="Password" hint="At least 8 characters." render={id=><AuthPasswordInput id={id} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Password (min 8 characters)" ariaLabel="Password, at least 8 characters" autoComplete="new-password" minLength={8}/>}/>
           <fieldset style={{border:`1px solid ${C.line}`,borderRadius:10,padding:"8px 12px",margin:"0 0 12px"}}>
             <legend style={{fontSize:"0.72rem",fontWeight:800,padding:"0 4px"}}>Offers from AshantiHub (optional)</legend>
             {[["sms","SMS"],["whatsapp","WhatsApp"],["email","Email"],["inapp","In the app"]].map(([key,label])=>(
@@ -1289,7 +1320,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
         </form>}
 
         {lockedAccountType==="staff" && onGoToMarketplace && <div style={{textAlign:"center",marginTop:16,paddingTop:12,borderTop:`1px solid ${C.gold}33`}}>
-          <button type="button" onClick={onGoToMarketplace} style={{background:"none",border:"none",color:C.ink,opacity:0.7,fontSize:"0.74rem",fontWeight:600,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit",padding:"6px 8px"}}>Go to marketplace</button>
+          <button type="button" onClick={onGoToMarketplace} className="ah-tap" style={{background:"none",border:"none",color:C.ink,opacity:0.7,fontSize:"0.74rem",fontWeight:600,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit",padding:"6px 8px"}}>Go to marketplace</button>
         </div>}
       </div>
     </div>
@@ -1346,7 +1377,7 @@ function StaffActivatePage({auth,onSuccess}) {
   return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:16}}>
     <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"20px 24px"}}>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Activate Your Staff Account</div>
+        <h1 style={{margin:0,color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Activate Your Staff Account</h1>
       </div>
       <div style={{padding:"20px 24px"}}>
         {twoStep && <PageBoundary><StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setConfirmPassword("");if(typeof message==="string"){setNotice(message);}else{setAccountActive(true);}}}/></PageBoundary>}
@@ -1406,7 +1437,7 @@ function ResetPasswordPage({auth,setPage,setAuthModal}) {
   return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:16}}>
     <div style={{background:C.surface,borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"20px 24px"}}>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Reset Your Password</div>
+        <h1 style={{margin:0,color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Reset Your Password</h1>
       </div>
       <div style={{padding:"20px 24px"}}>
         {success ? (
@@ -1551,9 +1582,9 @@ function StaffNotificationsSlot({ user }) {
   const unread = data?.unread_count ?? 0;
   return <>
     <button type="button" onClick={()=>setOpen(v=>!v)} aria-haspopup="dialog" aria-expanded={open} aria-label={unread>0?`Notifications (${unread} unread)`:"Notifications"} title="Notifications"
-      style={{position:"relative",background:"none",border:`1px solid ${D.divider}`,borderRadius:10,minWidth:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text,fontFamily:"inherit"}}>
+      style={{position:"relative",background:"none",border:`1px solid ${D.divider}`,borderRadius:10,minWidth:44,height:44,cursor:"pointer",fontSize:"0.9rem",color:D.text,fontFamily:"inherit"}}>
       🔔
-      {unread>0&&<span aria-hidden="true" style={{position:"absolute",top:-6,right:-6,background:D.red,color:D.cream,borderRadius:20,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>{unread}</span>}
+      {unread>0&&<span aria-hidden="true" style={{position:"absolute",top:-6,right:-6,background:D.redFill,color:D.cream,borderRadius:20,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>{unread}</span>}
     </button>
     {open&&<NotificationsPanel user={user} onClose={()=>setOpen(false)}/>}
   </>;
@@ -1625,7 +1656,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     return (
       <div style={{minHeight:"100vh",background:D.pageBg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20,textAlign:"center"}}>
         <div style={{fontSize:"1.15rem",fontWeight:700,color:D.text}}>Sign in with a customer account to view this page.</div>
-        <button onClick={onExit} style={{padding:"10px 24px",borderRadius:8,border:"none",background:D.gold,color:"#1a1205",fontWeight:700,cursor:"pointer",fontSize:"0.85rem"}}>← Back to AshantiHub</button>
+        <button onClick={onExit} style={{padding:"10px 24px",borderRadius:8,border:"none",background:D.gold,color:C.onGold,fontWeight:700,cursor:"pointer",fontSize:"0.85rem"}}>← Back to AshantiHub</button>
       </div>
     );
   }
@@ -1652,8 +1683,8 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     <div style={{background:tint(D.pageBg, "e6"),backdropFilter:"blur(8px)",borderBottom:`1px solid ${D.divider}`,padding:"0 16px",display:"flex",alignItems:"center",gap:12,height:64,position:"sticky",top:0,zIndex:80}}>
       <button onClick={()=>navigate(ACCOUNT_ROOT)} aria-label="Your Account home" style={{display:"flex",alignItems:"center",gap:10,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>
         <Flag w={30} h={20}/>
-        <div style={{textAlign:"left"}}>
-          <div style={{color:D.gold,fontWeight:900,fontSize:"0.88rem",lineHeight:1}}>AshantiHub</div>
+        <div className="acct-logo-text" style={{textAlign:"left"}}>
+          <div style={{color:D.goldInk,fontWeight:900,fontSize:"0.88rem",lineHeight:1}}>AshantiHub</div>
           <div style={{color:D.textFaint,fontSize:"0.6rem",letterSpacing:"0.06em",textTransform:"uppercase"}}>My Account</div>
         </div>
       </button>
@@ -1661,13 +1692,13 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
       <div style={{flex:1}}/>
 
       <div style={{position:"relative"}}>
-        <button onClick={()=>setShowNotifs(v=>!v)} title="Notifications" style={{background:"none",border:`1px solid ${D.divider}`,borderRadius:10,width:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text}}>🔔</button>
+        <button onClick={()=>setShowNotifs(v=>!v)} title="Notifications" aria-label="Notifications" style={{background:"none",border:`1px solid ${D.divider}`,borderRadius:10,width:44,height:44,cursor:"pointer",fontSize:"0.9rem",color:D.text}}>🔔</button>
         {showNotifs && <NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       </div>
 
       <div style={{position:"relative"}}>
         <button onClick={()=>setShowProfileMenu(v=>!v)} aria-label="Account menu" style={{display:"flex",alignItems:"center",gap:6,background:"none",border:`1px solid ${D.divider}`,borderRadius:20,padding:"4px 10px 4px 4px",cursor:"pointer"}}>
-          <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",background:D.gold,color:"#1a1205",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.72rem"}}>
+          <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",background:D.gold,color:C.onGold,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.72rem"}}>
             {user?.avatar ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (user?.fullName?.[0]?.toUpperCase()||"U")}
           </div>
           <span style={{color:D.text,fontSize:"0.7rem"}}>▾</span>
@@ -1688,16 +1719,16 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
       <button onClick={onExit} style={{background:"none",border:`1px solid ${D.divider}`,color:D.textDim,borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← Exit</button>
     </div>
 
-    <div style={{padding:"22px 20px 60px",flex:1,width:"100%",maxWidth:1100,margin:"0 auto",boxSizing:"border-box"}}>
+    <main id="main-content" style={{padding:"22px 20px 60px",flex:1,width:"100%",maxWidth:1100,margin:"0 auto",boxSizing:"border-box"}}>
       <PageBoundary><AccountHub user={user} auth={auth} render={render} onContactSupport={()=>contactSupport(null,{startNew:true})} onOpenPage={onOpenPage} onStartRegistration={onStartRegistration}/></PageBoundary>
-    </div>
+    </main>
   </div>;
 }
 
 const ACCOUNT_MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 const ORDER_STATUS_META = {
-  pending: { label: "Pending", color: D.amber },
+  pending: { label: "Pending", color: D.amberInk },
   paid: { label: "Paid", color: D.green },
   cancelled: { label: "Cancelled", color: D.red },
 };
@@ -1765,7 +1796,7 @@ function OverviewPanel({ user, favourites }) {
         {kpis.map(k=><KpiCard key={k.label} {...k}/>)}
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(300px, 100%), 1fr))",gap:14}}>
         <ChartFrame title="Your spend over time" icon="💸">
           <PageBoundary><SpendAreaChart data={spendSeries}/></PageBoundary>
         </ChartFrame>
@@ -1794,7 +1825,7 @@ function OverviewPanel({ user, favourites }) {
 // request's status; an accepted request gets a "Pay to start" button that runs
 // the simulated payment then POSTs the pay endpoint (moving it to in_progress).
 const SR_STATUS_META = {
-  requested: { label: "Awaiting response", color: D.amber },
+  requested: { label: "Awaiting response", color: D.amberInk },
   accepted: { label: "Accepted — pay to start", color: D.blue },
   declined: { label: "Declined", color: D.red },
   in_progress: { label: "In progress", color: D.blue },
@@ -1845,7 +1876,7 @@ export function ServiceRequestsTab({ PaymentComponent, onContactSupport }) {
 // The customer's accommodation bookings (business item 2 / Wave H3). A future
 // booking (confirmed, not yet checked in) can be cancelled, freeing the dates.
 const BK_STATUS_META = {
-  pending: { label: "Pending payment", color: D.amber },
+  pending: { label: "Pending payment", color: D.amberInk },
   confirmed: { label: "Confirmed", color: D.blue },
   checked_in: { label: "Checked in", color: D.green },
   checked_out: { label: "Checked out", color: D.textFaint },
@@ -1906,7 +1937,7 @@ function accountTicketStatus(t) {
   if (t.refunded_at) return { label: "Refunded", color: D.red };
   if (t.delivered_at) return { label: "Delivered", color: D.green };
   if (t.escrow_status === "released") return { label: "Released", color: D.green };
-  return { label: "Held", color: D.gold };
+  return { label: "Held", color: D.goldInk };
 }
 
 function TicketsTab({ searchQuery, onContactSupport }) {
@@ -1946,8 +1977,8 @@ function TicketsTab({ searchQuery, onContactSupport }) {
             <span style={{background:tint(status.color, "22"),color:status.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:800,whiteSpace:"nowrap"}}>{status.label}</span>
           </div>
           <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontFamily:"monospace",fontSize:"0.8rem",fontWeight:800,color:D.text,background:D.panelBg2,borderRadius:8,padding:"4px 10px"}}>{t.code}</span>
-            <button onClick={()=>copyCode(t)} style={{background:"none",border:`1px solid ${D.cardBorderStrong}`,color:D.gold,borderRadius:20,padding:"3px 11px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            <span style={{fontFamily:FONTS.mono,fontSize:"0.8rem",fontWeight:800,color:D.text,background:D.panelBg2,borderRadius:8,padding:"4px 10px"}}>{t.code}</span>
+            <button onClick={()=>copyCode(t)} style={{background:"none",border:`1px solid ${D.cardBorderStrong}`,color:D.goldInk,borderRadius:20,padding:"3px 11px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
               {copiedId===t.id ? "Copied ✓" : "Copy"}
             </button>
           </div>
@@ -1971,9 +2002,11 @@ function NotificationToggleRow({ label, checked, onToggle, disabled }) {
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      style={{width:40,height:22,borderRadius:20,border:"none",cursor:disabled?"wait":"pointer",background:checked?D.gold:D.divider,position:"relative",flexShrink:0,padding:0}}
+      style={{width:48,height:44,border:"none",cursor:disabled?"wait":"pointer",background:"none",display:"flex",alignItems:"center",justifyContent:"flex-end",flexShrink:0,padding:0}}
     >
-      <span style={{position:"absolute",top:2,left:checked?20:2,width:18,height:18,borderRadius:"50%",background:C.surface,transition:"left .15s ease"}}/>
+      <span aria-hidden="true" style={{display:"block",width:40,height:22,borderRadius:20,background:checked?D.gold:D.divider,position:"relative"}}>
+        <span style={{position:"absolute",top:2,left:checked?20:2,width:18,height:18,borderRadius:"50%",background:C.surface,transition:"left .15s ease"}}/>
+      </span>
     </button>
   </div>;
 }
@@ -2027,7 +2060,7 @@ function SettingsTab({ user, auth, lang, setLang, onSignOut }) {
       <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:10}}>Language</div>
       <div style={{display:"flex",gap:8}}>
         {[{id:"en",label:"English"},{id:"tw",label:"Twi"}].map(l=>(
-          <button key={l.id} onClick={()=>setLang?.(l.id)} style={{background:lang===l.id?D.goldSoft:"none",border:`1px solid ${lang===l.id?D.cardBorderStrong:D.divider}`,color:lang===l.id?D.gold:D.textDim,borderRadius:20,padding:"6px 16px",fontSize:"0.76rem",fontWeight:lang===l.id?800:600,cursor:"pointer",fontFamily:"inherit"}}>{l.label}</button>
+          <button key={l.id} onClick={()=>setLang?.(l.id)} style={{background:lang===l.id?D.goldSoft:"none",border:`1px solid ${lang===l.id?D.cardBorderStrong:D.divider}`,color:lang===l.id?D.goldInk:D.textDim,borderRadius:20,padding:"6px 16px",fontSize:"0.76rem",fontWeight:lang===l.id?800:600,cursor:"pointer",fontFamily:"inherit"}}>{l.label}</button>
         ))}
       </div>
     </div>
@@ -2059,8 +2092,8 @@ function LoadingScreen() {
     <div style={{position:"fixed",inset:0,background:`linear-gradient(135deg,${C.darkBrown},${C.black})`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:9999}}>
       <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
       <Flag w={80} h={53}/>
-      <div style={{color:C.gold,fontWeight:900,fontSize:"1.8rem",letterSpacing:2,marginTop:16,fontFamily:"Georgia,serif"}}>AshantiHub</div>
-      <div style={{color:C.lightGold,fontSize:"0.65rem",letterSpacing:3,opacity:0.8,marginTop:4,fontFamily:"Georgia,serif"}}>THE MARKETPLACE OF ASHANTI</div>
+      <div style={{color:C.gold,fontWeight:900,fontSize:"1.8rem",letterSpacing:2,marginTop:16,fontFamily:FONTS.display}}>AshantiHub</div>
+      <div style={{color:C.lightGold,fontSize:"0.65rem",letterSpacing:3,opacity:0.8,marginTop:4,fontFamily:FONTS.body}}>THE MARKETPLACE OF ASHANTI</div>
       {/* Animated loading bar */}
       <div style={{width:120,height:4,background:"rgba(255,255,255,0.1)",borderRadius:10,marginTop:28,overflow:"hidden"}}>
         <div style={{height:"100%",background:`linear-gradient(90deg,${C.ghRed},${C.ghGold},${C.ghGreen})`,borderRadius:10,animation:"loadBar 1.5s ease-in-out infinite"}}/>
@@ -2114,12 +2147,12 @@ function OfflineBanner() {
 // ─── 404 Not Found Page ───────────────────────────────────────────────────────
 function NotFoundPage({ onHome, user }) {
   return (
-    <div style={{fontFamily:"'Georgia',serif",background:C.canvas,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+    <div style={{fontFamily:FONTS.body,background:C.canvas,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{textAlign:"center",maxWidth:400}}>
         <div style={{fontSize:"4rem",marginBottom:12}}>👑</div>
         <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,borderRadius:20,padding:"28px 24px",marginBottom:20,color:"white"}}>
           <div style={{fontSize:"3rem",fontWeight:900,color:C.gold,marginBottom:4}}>404</div>
-          <div style={{fontWeight:900,fontSize:"1.1rem",marginBottom:8}}>Page Not Found</div>
+          <h1 style={{margin:"0 0 8px",fontWeight:900,fontSize:"1.1rem"}}>Page Not Found</h1>
           <div style={{fontSize:"0.8rem",opacity:0.85,lineHeight:1.6}}>
             The page you're looking for doesn't exist or has been moved. Let's get you back to the marketplace.
           </div>
@@ -2133,8 +2166,8 @@ function NotFoundPage({ onHome, user }) {
           </button>
           {/* WhatsApp support is an account-holder channel — guests use the
               in-app chat (open to everyone) instead. */}
-          {user && <a href="https://wa.me/233502481685?text=Hello AshantiHub, I need help." target="_blank" rel="noopener noreferrer"
-            style={{display:"block",background:C.whatsapp,color:"white",border:"none",borderRadius:30,padding:"11px 28px",fontWeight:700,fontSize:"0.82rem",textDecoration:"none"}}>
+          {user && <a href="https://wa.me/233502481685?text=Hello AshantiHub, I need help." target="_blank" rel="noopener noreferrer" className="ah-tap"
+            style={{display:"block",background:C.whatsapp,color:"#0B2E13",border:"none",borderRadius:30,padding:"11px 28px",fontWeight:700,fontSize:"0.82rem",textDecoration:"none"}}>
             📱 Contact Support on WhatsApp
           </a>}
         </div>
@@ -2238,7 +2271,7 @@ const resultsCountStyle = { color: tint(C.lightGold, "b3"), fontWeight: 400, fon
 
 // ─── Listings loading skeleton ────────────────────────────────────────────────
 function ListingsSkeleton() {
-  return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
+  return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(215px, 100%), 1fr))",gap:14}}>
     {Array.from({length:6}).map((_,i)=>(
       <div key={i} style={{background:C.surface,borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.10)"}}>
         <div style={{height:140,background:C.surface2}}/>
@@ -2270,11 +2303,22 @@ function ListingsSkeleton() {
 // real routing in a follow-up slice (see DASH_PATH_TO_FLAG/FLAG_TO_DASH_PATH
 // and the businessDetailMatch/eventDetailMatch useMatch()es below) so every
 // page in the app is hard-reload-safe, per an explicit scope override.
+// Pages whose component already renders its own <main id="main-content">; every other page is wrapped in one
+// here so each screen has exactly one main landmark (and the "Skip to content" link has a target).
+const MAIN_OWNERS = new Set(["home", "cart", "checkout", "privacy", "terms", "business-agreement"]);
+function MainRegion({ own, children }) {
+  return own ? <>{children}</> : <main id="main-content" tabIndex={-1} style={{ display: "block", outline: "none" }}>{children}</main>;
+}
+
 const PATH_TO_PAGE = {
   "/": "home",
   "/business": "business",
   "/events": "events",
   "/about": "about",
+  // The Privacy Notice (Act 843): public, linked from the footer and the cookie banner.
+  "/privacy": "privacy",
+  "/terms": "terms",
+  "/business-agreement": "business-agreement",
   "/contact": "contact",
   "/register": "register",
   // Staff onboarding + account-recovery work: two more standalone pages,
@@ -2318,6 +2362,9 @@ const PAGE_TO_PATH = {
   business: "/business",
   events: "/events",
   about: "/about",
+  privacy: "/privacy",
+  terms: "/terms",
+  "business-agreement": "/business-agreement",
   contact: "/contact",
   register: "/register",
   "staff-activate": "/staff/activate",
@@ -2439,7 +2486,8 @@ function AshantiHubApp() {
   // The toggle is threaded as props to the Navbar/StorefrontHeader and the
   // business, staff and account top bars.
   const {theme,toggleTheme} = useTheme();
-  const [legalDoc,setLegalDoc]=useState(null);
+  // Footer documents are real pages: /privacy, /terms (not yet published notice) and /business-agreement.
+  const openLegalDoc=(doc)=>{ setPage(doc==="business"?"business-agreement":doc); };
   // showBizDash/showPayments/showCredit — same "derive from the URL, wrap the
   // setter in a navigate() closure" pattern as `page`/`setPage` above, so
   // Navbar.jsx/BusinessRegistrationFlow.jsx/the inline CTA buttons in this
@@ -2710,7 +2758,7 @@ function AshantiHubApp() {
   useEffect(()=>{ if(!isLoading) Analytics.track("page_view",{page}); },[page,isLoading]);
 
   useEffect(()=>{
-    const handler=(e)=>setLegalDoc(e.detail);
+    const handler=(e)=>openLegalDoc(e.detail);
     window.addEventListener("openLegal",handler);
     return()=>window.removeEventListener("openLegal",handler);
   },[]);
@@ -2834,9 +2882,9 @@ function AshantiHubApp() {
   }
   if(page==="register" && user?.accountType==="customer"){
     return (
-      <div style={{minHeight:"100vh",background:C.void,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:24,textAlign:"center"}}>
-        <div style={{fontSize:"2.2rem"}}>🏪</div>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"1.35rem"}}>Register your business</div>
+      <MainRegion own={false}><div style={{minHeight:"100vh",background:C.void,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:24,textAlign:"center"}}>
+        <div aria-hidden="true" style={{fontSize:"2.2rem"}}>🏪</div>
+        <h1 style={{margin:0,color:C.gold,fontWeight:900,fontSize:"1.35rem"}}>Register your business</h1>
         <div style={{color:C.lightGold,fontSize:"0.9rem",maxWidth:440,lineHeight:1.6}}>
           You're signed in as a customer. A business on AshantiHub uses its own <strong>Business Owner</strong> account — separate from your shopping account. Sign out to register one.
         </div>
@@ -2848,13 +2896,13 @@ function AshantiHubApp() {
             Back
           </button>
         </div>
-      </div>
+      </div></MainRegion>
     );
   }
 
   const showRegistrationFlow = (page==="register" && !user) ||
     (user?.accountType==="business_owner" && user.registrationStep && user.registrationStep!=="complete");
-  if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
+  if(showRegistrationFlow) return <MainRegion own={false}><BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/></MainRegion>;
 
   // The user check keeps the dashboard from rendering for the one commit
   // between logout() and the URL → isAdmin effect flipping isAdmin off — with
@@ -2883,21 +2931,21 @@ function AshantiHubApp() {
     user={user} auth={auth} PaymentComponent={MoMoPayment} theme={theme} toggleTheme={toggleTheme}/>;
   // Staff onboarding + account-recovery work — two more standalone early
   // returns, same convention as showAccount/showBizDash above.
-  if(page==="staff-activate") return <StaffActivatePage auth={auth} onSuccess={handleAuthSuccess}/>;
+  if(page==="staff-activate") return <MainRegion own={false}><StaffActivatePage auth={auth} onSuccess={handleAuthSuccess}/></MainRegion>;
   if(page==="staff-install") return <StaffInstallPage/>;
-  if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
-  if(page==="payment-return"||page==="checkout-verify") return <PaymentVerifyPage/>;
+  if(page==="reset-password") return <MainRegion own={false}><ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/></MainRegion>;
+  if(page==="payment-return"||page==="checkout-verify") return <MainRegion own={false}><PaymentVerifyPage/></MainRegion>;
   if(page==="checkout") return <CheckoutPage user={user} currency={currency} PaymentComponent={MoMoPayment} authLoading={auth.isLoading} onNavigate={navigate} onSignIn={()=>{setAuthReturn("/checkout");setAuthModal("login");setPage("home");}}/>;
-  if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
-  if(page==="business-confirm") return <OwnerConfirmPage/>;
-  if(page==="share-location") return <ShareLocationPage/>;
-  if(page==="confirm-email") return <ConfirmEmailPage/>;
+  if(page==="business-claim") return <MainRegion own={false}><BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/></MainRegion>;
+  if(page==="business-confirm") return <MainRegion own={false}><OwnerConfirmPage/></MainRegion>;
+  if(page==="share-location") return <MainRegion own={false}><ShareLocationPage/></MainRegion>;
+  if(page==="confirm-email") return <MainRegion own={false}><ConfirmEmailPage/></MainRegion>;
   if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
   if(unsubscribeMatch) return <UnsubscribePage token={unsubscribeMatch.params.token} onHome={()=>navigate("/")}/>;
   if(notifyStopMatch) return <NotifyStopPage token={notifyStopMatch.params.token} onHome={()=>navigate("/")}/>;
   if(isLoading) return <LoadingScreen/>;
   if(sellerMatch) return (
-    <SellerPage
+    <MainRegion own={false}><SellerPage
       id={sellerMatch.params.id}
       onBack={()=>navigate("/business")}
       user={user}
@@ -2908,9 +2956,9 @@ function AshantiHubApp() {
       onOpenListing={(listingId)=>navigate(`/business/${listingId}`)}
       onOpenEvent={(eventId)=>navigate(`/events/${eventId}`)}
       CardComponent={Card}
-    />
+    /></MainRegion>
   );
-  if(show404) return <NotFoundPage onHome={()=>setPage("home")} user={user}/>;
+  if(show404) return <MainRegion own={false}><NotFoundPage onHome={()=>setPage("home")} user={user}/></MainRegion>;
 
   const activeCatObj=categories?.find(c=>c.slug===filters.category);
 
@@ -2961,11 +3009,12 @@ function AshantiHubApp() {
   );
 
   return (
-    <div style={{fontFamily:"'Georgia',serif",background:C.canvas,minHeight:"100vh",
+    <div style={{fontFamily:FONTS.body,background:C.canvas,minHeight:"100vh",
       ...(showStaffBar ? {"--ah-top-offset":`${STAFF_VIEW_ONLY_BAR_HEIGHT}px`,paddingTop:STAFF_VIEW_ONLY_BAR_HEIGHT} : {})}}>
+      <a href="#main-content" className="ah-skip-link" onClick={(e)=>{const el=document.getElementById("main-content");if(el){e.preventDefault();if(!el.hasAttribute("tabindex"))el.setAttribute("tabindex","-1");el.style.outline="none";el.focus({preventScroll:false});el.scrollIntoView?.({block:"start"});}}}>Skip to main content</a>
       {showStaffBar&&<StaffViewOnlyBar onBackToDashboard={()=>navigate("/staff")} onSignOut={staffSignOut}/>}
       {appStaffGate.shownFor&&<StaffGateNotice floating onDismiss={appStaffGate.dismiss}/>}
-      {!cookieDismissed&&<CookieBanner onAccept={()=>{saveCookieConsent("accepted");setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{saveCookieConsent("essential");setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
+      {!cookieDismissed&&<CookieBanner onOpenPrivacy={()=>setPage("privacy")} onAccept={()=>{saveCookieConsent("accepted");setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{saveCookieConsent("essential");setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
       <OfflineBanner/>
       {shownAuthModal&&<AuthModal key={shownAuthModal} authState={shownAuthModal} auth={auth} onClose={()=>{setAuthModal(null);setAuthReturn(null);}} onSuccess={handleAuthSuccess} onGoToMarketplace={leaveStaffSignInForMarketplace}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
@@ -2978,6 +3027,8 @@ function AshantiHubApp() {
           it is passed into StorefrontHome (below) so it sits under the
           opening countdown; every other page renders it here. */}
       {page!=="home"&&storefrontHeader}
+
+      <MainRegion own={MAIN_OWNERS.has(page)}>
 
       {/* A staff session can't register a business — same notice the
           "Register Your Business" CTAs show, for a direct /register visit. */}
@@ -3048,7 +3099,7 @@ function AshantiHubApp() {
               this bar is mobile-only (media query below); it opens the rail
               as a slide-in drawer. */}
           <div className="ah-filter-trigger-bar" style={{background:C.darkBrown,padding:"12px 16px"}}>
-            <button onClick={() => setShowFilters((f) => !f)} aria-expanded={showFilters} style={{ background: C.surface2, border: "none", borderRadius: 30, padding: "10px 20px", cursor: "pointer", fontSize: "0.8rem", fontWeight: 700, fontFamily: "inherit" }}>
+            <button onClick={() => setShowFilters((f) => !f)} aria-expanded={showFilters} style={{ background: C.surface2, border: "none", borderRadius: 30, padding: "10px 20px", minHeight: 44, cursor: "pointer", fontSize: "0.8rem", fontWeight: 700, fontFamily: "inherit" }}>
               ⚙️ Filters & Search
             </button>
             <style>{`
@@ -3118,7 +3169,7 @@ function AshantiHubApp() {
                     gets a sign-up prompt button instead of a dead WhatsApp
                     button (in-app chat stays open to everyone). */}
                 {user ? (
-                <button onClick={staffGated(()=>handleConciergeWA("233244999000","AshantiHub Grocery Concierge"))} style={{marginTop:16,background:C.whatsapp,color:"white",border:"none",borderRadius:30,padding:"11px 24px",fontWeight:900,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+                <button onClick={staffGated(()=>handleConciergeWA("233244999000","AshantiHub Grocery Concierge"))} style={{marginTop:16,background:C.whatsapp,color:"#0B2E13",border:"none",borderRadius:30,padding:"11px 24px",fontWeight:900,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
                   📱 Order via WhatsApp
                 </button>
                 ) : (
@@ -3130,14 +3181,14 @@ function AshantiHubApp() {
             ):(
               <>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px 12px",marginBottom:12}}>
-                  <h2 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
+                  <h1 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
                     {activeCatObj ? <>{activeCatObj.icon} {activeCatObj.label}</> : (filters.kind==="product" ? "🛍️ All Products" : filters.kind==="service" ? "🛠️ All Services" : "🛍️ All Products & Services")}
                     {listingsCountLabel&&<span style={resultsCountStyle}>{listingsCountLabel}</span>}
-                  </h2>
+                  </h1>
                   <div style={{display:"flex",gap:10,alignItems:"center"}}>
                     <label style={{display:"flex",alignItems:"center",gap:6,fontSize:"0.7rem",fontWeight:700,color:C.lightGold}}>
                       Sort by
-                      <select value={filters.ordering||""} onChange={(e)=>{const v=e.target.value;setFilters(f=>({...f,ordering:v||undefined}));}} style={{background:C.surface,color:C.ink,border:`1px solid ${C.line}`,borderRadius:8,padding:"4px 8px",fontSize:"0.72rem",fontFamily:"inherit"}}>
+                      <select value={filters.ordering||""} onChange={(e)=>{const v=e.target.value;setFilters(f=>({...f,ordering:v||undefined}));}} style={{background:C.surface,color:C.ink,border:`1px solid ${C.line}`,borderRadius:8,padding:"4px 8px",minHeight:44,fontSize:"0.72rem",fontFamily:"inherit"}}>
                         <option value="" style={optionStyle}>Newest</option>
                         {/* price_effective: the price paid (the sale price while a discount is live), as the cards and the price filter use. */}
                         <option value="price_effective" style={optionStyle}>Lowest price</option>
@@ -3197,7 +3248,7 @@ function AshantiHubApp() {
                       const renderCard=(item)=><Card key={item.id} item={item} accentColor={activeCatObj?.color||C.gold} user={user} favourites={favourites} onFavourite={toggleFav} favFailed={favFailedId===item.id} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>;
                       return listings.some((l)=>"cart_tier" in l)
                         ? <PageBoundary><CartTieredResults listings={listings} renderCard={renderCard}/></PageBoundary>
-                        : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>{listings.map(renderCard)}</div>;
+                        : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(215px, 100%), 1fr))",gap:14}}>{listings.map(renderCard)}</div>;
                     })()}
                     {hasNextPage&&(
                       <div style={{textAlign:"center",marginTop:18}}>
@@ -3251,8 +3302,8 @@ function AshantiHubApp() {
               the mobile filters trigger + the Submit-an-Event toggle. */}
           <div style={{background:C.darkBrown,padding:"12px 16px"}}>
             <div style={{maxWidth:1280,margin:"0 auto",display:"flex",justifyContent:"flex-end",gap:8}}>
-              <button onClick={()=>setShowEventFilters(f=>!f)} className="ah-event-filter-trigger" aria-expanded={showEventFilters} style={{background:"rgba(255,255,255,0.12)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}} title="Filters">⚙️ Filters & Search</button>
-              <button onClick={showEventSubmit?()=>setShowEventSubmit(false):openEventSubmit} style={{background:showEventSubmit?C.gold:"rgba(255,255,255,0.12)",color:showEventSubmit?C.darkBrown:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}}>
+              <button onClick={()=>setShowEventFilters(f=>!f)} className="ah-event-filter-trigger" aria-expanded={showEventFilters} style={{background:"rgba(255,255,255,0.12)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",minHeight:44,fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}} title="Filters">⚙️ Filters & Search</button>
+              <button onClick={showEventSubmit?()=>setShowEventSubmit(false):openEventSubmit} style={{background:showEventSubmit?C.gold:"rgba(255,255,255,0.12)",color:showEventSubmit?C.darkBrown:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",minHeight:44,fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}}>
                 {showEventSubmit?"✕ Close":"📅 Submit an Event"}
               </button>
             </div>
@@ -3295,10 +3346,10 @@ function AshantiHubApp() {
               />
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                  <h2 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
+                  <h1 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
                     {activeEventCatObj?activeEventCatObj.icon:"🥁"} {activeEventCatObj?activeEventCatObj.label:"All Events"}
                     {eventsCountLabel&&<span style={resultsCountStyle}>{eventsCountLabel}</span>}
-                  </h2>
+                  </h1>
                   <span style={{background:`${C.gold}15`,border:`1px solid ${C.gold}44`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:C.gold,fontWeight:700}}>📍 Kumasi</span>
                 </div>
 
@@ -3317,7 +3368,7 @@ function AshantiHubApp() {
                 ) : (
                   <>
                     {eventsFetching&&<div style={{height:3,background:C.gold,marginBottom:10,borderRadius:2}}/>}
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(215px, 100%), 1fr))",gap:14}}>
                       {events.map(item=><EventCard key={item.id} item={item} onOpen={(id)=>setSelectedEventId(id)}/>)}
                     </div>
                     {hasNextEventsPage&&(
@@ -3346,6 +3397,15 @@ function AshantiHubApp() {
         <AboutCtaBand user={user} onCreateAccount={()=>setAuthModal("signup")} onRegister={openRegister}/>
       )}
 
+      {/* Privacy Notice */}
+      {(page==="terms"||page==="business-agreement")&&(
+        <PageBoundary><LegalDocPage kind={page==="terms"?"terms":"business"} onNavigate={(path)=>navigate(path)} onSupport={()=>setShowIntake(true)}/></PageBoundary>
+      )}
+
+      {page==="privacy"&&(
+        <PageBoundary><PrivacyNoticePage onNavigate={(path)=>navigate(path)}/></PageBoundary>
+      )}
+
       {/* Contact page */}
       {page==="contact"&&(
         <PageBoundary><ContactPage user={user} onCreateAccount={()=>setAuthModal("signup")} WhatsAppButton={WABtn}/></PageBoundary>
@@ -3362,7 +3422,9 @@ function AshantiHubApp() {
       )}
 
       {/* Footer — every public page, home included: Support, About us, Contact + legal */}
-      <Footer2 setPage={setPage} setLegalDoc={setLegalDoc} onSupport={()=>setShowIntake(true)}/>
+      </MainRegion>
+
+      <Footer2 setPage={setPage} setLegalDoc={openLegalDoc} onSupport={()=>setShowIntake(true)}/>
 
       {/* Floating chat launcher — opens the Support intake (name, email, phone,
           issue -> a messaging.Conversation for AshantiHub Support, never a
@@ -3377,7 +3439,7 @@ function AshantiHubApp() {
       {/* Floating WhatsApp — an account-holder channel only; guests use the
           in-app chat (ChatLauncher above, open to everyone) instead. */}
       {user && <div onClick={()=>window.open("https://wa.me/233502481685","_blank")}
-        style={{position:"fixed",bottom:cookieDismissed?24:100,right:20,background:C.whatsapp,color:"white",borderRadius:"50%",width:50,height:50,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 20px rgba(37,211,102,0.5)",zIndex:998,cursor:"pointer"}}>
+        style={{position:"fixed",bottom:cookieDismissed?24:100,right:20,background:C.whatsapp,color:"#0B2E13",borderRadius:"50%",width:50,height:50,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 20px rgba(37,211,102,0.5)",zIndex:998,cursor:"pointer"}}>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
       </div>}
     </div>

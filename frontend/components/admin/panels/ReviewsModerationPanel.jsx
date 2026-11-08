@@ -53,7 +53,7 @@ function ReviewRow({ review, state, canReReview, onDone }) {
             )}
           </div>
           {review.target_name && (
-            <div style={{ color: D.gold, fontSize: "0.68rem", fontWeight: 700, marginTop: 2 }}>{review.target_name}</div>
+            <div style={{ color: D.goldInk, fontSize: "0.68rem", fontWeight: 700, marginTop: 2 }}>{review.target_name}</div>
           )}
           {review.comment && (
             <div style={{ color: D.textDim, fontSize: "0.75rem", margin: "4px 0", maxWidth: 420 }}>"{review.comment}"</div>
@@ -78,7 +78,7 @@ function ReviewRow({ review, state, canReReview, onDone }) {
         <div style={{ display: "flex", gap: 6 }}>
           {state === "pending" && (
             <>
-              <button onClick={approve} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
+              <button onClick={approve} style={{ background: D.greenFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
               <button onClick={() => setRejecting(true)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
             </>
           )}
@@ -109,7 +109,7 @@ function ReviewRow({ review, state, canReReview, onDone }) {
             placeholder="Reason for rejecting"
             style={{ flex: "1 1 160px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }}
           />
-          <button onClick={reject} disabled={!rejectReason} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: rejectReason ? "pointer" : "default" }}>Confirm reject</button>
+          <button onClick={reject} disabled={!rejectReason} style={{ background: D.redFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: rejectReason ? "pointer" : "default" }}>Confirm reject</button>
         </div>
       )}
     </div>

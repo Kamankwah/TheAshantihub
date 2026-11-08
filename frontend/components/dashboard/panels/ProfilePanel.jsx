@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiPut } from "../../../apiClient.js";
 import BusinessHoursEditor from "../../BusinessHoursEditor.jsx";
 import { useBusinessProfile } from "../../../hooks/useBusinessProfile.js";
-import { D, glassCard, tint } from "../theme.js";
+import { D, glassCard, tint, inkOf } from "../theme.js";
 import MarketingConsentCard from "../../MarketingConsentCard.jsx";
 import AccountSecurityCard from "../../security/AccountSecurityCard.jsx";
 import DetailChangeRequest from "../DetailChangeRequest.jsx";
@@ -22,7 +22,7 @@ import CategoriesCard from "./CategoriesCard.jsx";
 // "can't self-edit once live" situation.
 const KYC_CHIPS = {
   verified: { label: "✓ Business approved", color: D.green },
-  pending: { label: "Waiting for approval", color: D.amber },
+  pending: { label: "Waiting for approval", color: D.amberInk },
   rejected: { label: "Needs attention", color: D.red },
 };
 // The server's go-live rule decides whether a business can list; kyc_status is only the staff review. So a
@@ -30,7 +30,7 @@ const KYC_CHIPS = {
 function chipFor(user) {
   const kyc = user?.kycStatus;
   if (kyc === "pending" && user?.goLive) {
-    return user.goLive.live ? { label: "Live", color: D.green } : { label: "Finish setup", color: D.amber };
+    return user.goLive.live ? { label: "Live", color: D.green } : { label: "Finish setup", color: D.amberInk };
   }
   return KYC_CHIPS[kyc];
 }
@@ -67,13 +67,13 @@ export default function ProfilePanel({ user }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ ...glassCard, padding: "20px 22px", display: "flex", alignItems: "center", gap: 14 }}>
-        <div style={{ width: 52, height: 52, borderRadius: "50%", background: D.goldSoft, color: D.deepGold, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.3rem", fontWeight: 900, flexShrink: 0 }}>
+        <div style={{ width: 52, height: 52, borderRadius: "50%", background: D.goldSoft, color: D.goldInk, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.3rem", fontWeight: 900, flexShrink: 0 }}>
           {user?.fullName?.[0]?.toUpperCase() || "B"}
         </div>
         <div>
           <div style={{ fontWeight: 900, fontSize: "1.05rem", color: D.text }}>{user?.fullName || "Your Business"}</div>
           {chip && (
-            <span style={{ background: tint(chip.color, "20"), color: chip.color, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>{chip.label}</span>
+            <span style={{ background: tint(chip.color, "20"), color: inkOf(chip.color), borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>{chip.label}</span>
           )}
         </div>
       </div>

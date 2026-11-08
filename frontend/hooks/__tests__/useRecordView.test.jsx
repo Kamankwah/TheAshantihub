@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { server } from '../../mocks/server.js'
@@ -15,6 +15,8 @@ function capture(id) {
   }))
   return posts
 }
+
+beforeEach(() => { localStorage.setItem('ashantihub.cookie_consent', 'accepted') })
 
 afterEach(() => {
   vi.useRealTimers()
@@ -90,5 +92,19 @@ describe('anonymousViewerId', () => {
     const first = anonymousViewerId()
     expect(first).toMatch(UUID)
     expect(anonymousViewerId()).toBe(first)
+  })
+})
+
+describe('useRecordView and the cookie choice', () => {
+  test.each([['Essential Only', 'essential'], ['no choice yet', null]])('records nothing and creates no viewer id after %s', async (_label, value) => {
+    if (value) localStorage.setItem('ashantihub.cookie_consent', value)
+    else localStorage.removeItem('ashantihub.cookie_consent')
+    const posts = capture(7)
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    renderHook(() => useRecordView(7, null))
+    await act(async () => { vi.advanceTimersByTime(3500) })
+    await new Promise((r) => setTimeout(r, 30))
+    expect(posts).toEqual([])
+    expect(localStorage.getItem('ashantihub.viewerId')).toBeNull()
   })
 })

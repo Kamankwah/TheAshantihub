@@ -21,7 +21,7 @@ function Sheet({ title, lines, error, busy, ready, submitLabel, onSubmit, onCanc
       {error && <div role="alert" style={errorStyle}>{error}</div>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
-        <button type="submit" disabled={!ready || busy} style={button(tone || D.gold, tone ? "#fff" : D.text, !ready || busy)}>{busy ? "Saving…" : submitLabel}</button>
+        <button type="submit" disabled={!ready || busy} style={button(tone || D.gold, tone ? D.white : D.text, !ready || busy)}>{busy ? "Saving…" : submitLabel}</button>
       </div>
     </form>
   );
@@ -111,7 +111,7 @@ export function ChangeSheet({ staff, onDone, onCancel }) {
         </label>
         <div style={{ fontSize: "0.78rem", color: D.text }}>They and both managers are told; requests already waiting stay with the old manager. Asks for your password; recorded in the audit log.</div>
         {m.error && <div role="alert" style={errorStyle}>{m.error}</div>}
-        <div><button type="submit" disabled={!manager || !managerReason.trim() || m.busy} style={button(D.gold, D.text, !manager || !managerReason.trim() || m.busy)}>{m.busy ? "Saving…" : "Change manager"}</button></div>
+        <div><button type="submit" disabled={!manager || !managerReason.trim() || m.busy} style={button(D.gold, D.onGold, !manager || !managerReason.trim() || m.busy)}>{m.busy ? "Saving…" : "Change manager"}</button></div>
       </form>
       <form aria-label="Change role" noValidate onSubmit={(e) => { e.preventDefault(); r.run(() => apiPost(`/api/people/staff/${staff.id}/role/`, { role, reason: roleReason.trim() }), `${staff.full_name} is now ${roleLabel(role)}.`, "Could not change the role."); }} style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: `1px solid ${D.divider}`, paddingTop: 10 }}>
         <label style={labelStyle}>New role
@@ -125,7 +125,7 @@ export function ChangeSheet({ staff, onDone, onCancel }) {
         </label>
         <div style={{ fontSize: "0.78rem", color: D.text }}>Their individual grants and revokes are kept and apply on top of the new role. A team lead must hand their team over first; a scout must hand over their businesses. Asks for your password; recorded in the audit log.</div>
         {r.error && <div role="alert" style={errorStyle}>{r.error}</div>}
-        <div><button type="submit" disabled={!role || !roleReason.trim() || r.busy} style={button(D.gold, D.text, !role || !roleReason.trim() || r.busy)}>{r.busy ? "Saving…" : "Change role"}</button></div>
+        <div><button type="submit" disabled={!role || !roleReason.trim() || r.busy} style={button(D.gold, D.onGold, !role || !roleReason.trim() || r.busy)}>{r.busy ? "Saving…" : "Change role"}</button></div>
       </form>
       <div><button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Close</button></div>
     </section>
@@ -166,7 +166,7 @@ export function PermissionsSheet({ staff, permissions, onDone, onCancel }) {
       {error && <div role="alert" style={errorStyle}>{error}</div>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
-        <button type="submit" disabled={busy} style={button(D.gold, D.text, busy)}>{busy ? "Saving…" : "Save permissions"}</button>
+        <button type="submit" disabled={busy} style={button(D.gold, D.onGold, busy)}>{busy ? "Saving…" : "Save permissions"}</button>
       </div>
     </form>
   );

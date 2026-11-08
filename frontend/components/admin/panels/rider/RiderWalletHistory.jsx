@@ -80,7 +80,7 @@ export function RiderDays() {
   const th = { textAlign: 'left', padding: '8px 10px', fontSize: 13, fontWeight: 600, color: s.label.color }
   const num = { ...s.amount, padding: '10px', textAlign: 'right', whiteSpace: 'nowrap' }
   return (
-    <div style={{ ...s.card, overflowX: 'auto' }}>
+    <div style={{ ...s.card, overflowX: 'auto' }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>

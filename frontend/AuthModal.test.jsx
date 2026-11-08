@@ -16,6 +16,61 @@ function makeAuth(overrides = {}) {
 }
 
 describe('AuthModal', () => {
+  // UX phase 1b: every field has a visible label wired to its input, and passwords can be shown or hidden.
+  it('gives each sign-in and sign-up field a visible label tied to its input', () => {
+    const { unmount } = render(<AuthModal authState="login" auth={makeAuth()} onClose={vi.fn()} onSuccess={vi.fn()} />)
+    for (const name of ['Phone or email', 'Password']) {
+      const label = screen.getByText(name, { selector: 'label' })
+      expect(document.getElementById(label.getAttribute('for'))).toBe(screen.getByLabelText(name))
+    }
+    unmount()
+
+    render(<AuthModal authState="signup" auth={makeAuth()} onClose={vi.fn()} onSuccess={vi.fn()} />)
+    for (const name of ['Full name', 'Phone', 'Email', 'Password']) {
+      const label = screen.getByText(name, { selector: 'label' })
+      expect(document.getElementById(label.getAttribute('for'))).toBeInstanceOf(HTMLInputElement)
+    }
+    expect(screen.getByText('At least 8 characters.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Business Owner' }))
+    expect(screen.getByText('Email (required)', { selector: 'label' })).toBeInTheDocument()
+    expect(screen.getByText('We send your confirmation link here.')).toBeInTheDocument()
+  })
+
+  it('shows and hides the password without losing what was typed, starting hidden', () => {
+    render(<AuthModal authState="login" auth={makeAuth()} onClose={vi.fn()} onSuccess={vi.fn()} />)
+    const field = screen.getByPlaceholderText('Password')
+    expect(field).toHaveAttribute('type', 'password')
+    fireEvent.change(field, { target: { value: 'secret-word' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show password' }))
+    expect(field).toHaveAttribute('type', 'text')
+    expect(field).toHaveValue('secret-word')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide password' }))
+    expect(field).toHaveAttribute('type', 'password')
+    expect(field).toHaveValue('secret-word')
+  })
+
+  // UX phase 1: the chosen option is carried by aria-pressed (not colour alone), and the controls are 44px targets
+  // whose selected text is the dark brown on the gold fill in both themes.
+  it('exposes the chosen tab and account type with aria-pressed and gives them 44px targets', () => {
+    render(<AuthModal authState="login" auth={makeAuth()} onClose={vi.fn()} onSuccess={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'Customer' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Business Owner' })).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(screen.getByRole('button', { name: 'Business Owner' }))
+    expect(screen.getByRole('button', { name: 'Business Owner' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Customer' })).toHaveAttribute('aria-pressed', 'false')
+
+    const signUp = screen.getByRole('button', { name: 'Sign Up' })
+    expect(signUp).toHaveAttribute('aria-pressed', 'false')
+    for (const el of [signUp, screen.getByRole('button', { name: 'Customer' }), screen.getByRole('button', { name: 'Close' }), screen.getByRole('button', { name: 'Forgot password?' })]) {
+      const { minHeight, height } = el.style
+      expect(minHeight === '44px' || height === '44px').toBe(true)
+    }
+    expect(screen.getByRole('button', { name: 'Business Owner' }).style.color).toBe('rgb(44, 24, 16)')
+  })
+
   it('submits identifier and password to auth.login on the Sign In form', async () => {
     const auth = makeAuth()
     const onSuccess = vi.fn()

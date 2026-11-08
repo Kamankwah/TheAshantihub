@@ -44,10 +44,13 @@ function Calendar({ month, leave, holidays, today, onMonth }) {
           <button type="button" aria-label="Next month" onClick={() => onMonth(1)} style={button(D.panelBg, D.text)}>›</button>
         </div>
       </div>
-      <div style={scroll}>
+      <div style={scroll} tabIndex={0} role="region" aria-label="Leave calendar (scrolls sideways on a narrow screen)">
         <div role="grid" aria-labelledby="leave-cal" style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(84px, 1fr))", gap: 4, minWidth: 620 }}>
-          {WEEKDAYS.map((w) => <div key={w} role="columnheader" style={{ ...dim, fontWeight: 800, textAlign: "center" }}>{w}</div>)}
-          {cells.map((n, i) => {
+          <div role="row" style={{ display: "contents" }}>
+            {WEEKDAYS.map((w) => <div key={w} role="columnheader" style={{ ...dim, fontWeight: 800, textAlign: "center" }}>{w}</div>)}
+          </div>
+          {Array.from({ length: Math.ceil(cells.length / 7) }, (_, wk) => <div key={wk} role="row" style={{ display: "contents" }}>{cells.slice(wk * 7, wk * 7 + 7).map((n, j) => {
+            const i = wk * 7 + j;
             if (n < 1 || n > count) return <div key={i} role="gridcell" aria-hidden="true" />;
             const iso = isoDay(new Date(month.getFullYear(), month.getMonth(), n));
             const sunday = i % 7 === 6;
@@ -64,7 +67,7 @@ function Calendar({ month, leave, holidays, today, onMonth }) {
                 ))}
               </div>
             );
-          })}
+          })}</div>)}
         </div>
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", ...dim }}>
@@ -118,7 +121,7 @@ function RecordForm({ team, auth, onDone, everyone }) {
         </div>
       )}
       {error && <div role="alert" style={errorStyle}>{error}</div>}
-      <button type="submit" disabled={!person || saving} style={button(D.gold, D.text, !person || saving)}>{saving ? "Recording…" : "Record leave"}</button>
+      <button type="submit" disabled={!person || saving} style={button(D.gold, D.onGold, !person || saving)}>{saving ? "Recording…" : "Record leave"}</button>
       <div style={dim}>{everyone ? "As Super Admin you record leave for anyone on the staff. The person sees it, and it's in the activity log." : "You record leave for your own team only. The person sees it, and it's in the activity log."}</div>
     </form>
   );
@@ -160,7 +163,7 @@ function LeaveRow({ row, mineId, onChanged, onMessage, showEffect }) {
             <input aria-label="From" type="date" value={start} disabled={started} onChange={(e) => setStart(e.target.value)} style={field} />
             <input aria-label="To" type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} style={field} />
             <div style={{ display: "flex", gap: 6 }}>
-              <button type="button" onClick={() => act(() => apiPatch(`/api/targets/leave/${row.id}/`, { kind, start, end }), `Leave changed for ${row.staff_name}.`)} style={button(D.gold, D.text)}>Save</button>
+              <button type="button" onClick={() => act(() => apiPatch(`/api/targets/leave/${row.id}/`, { kind, start, end }), `Leave changed for ${row.staff_name}.`)} style={button(D.gold, D.onGold)}>Save</button>
               <button type="button" onClick={() => setMode(null)} style={button(D.panelBg, D.text)}>Close</button>
             </div>
           </div>
@@ -169,7 +172,7 @@ function LeaveRow({ row, mineId, onChanged, onMessage, showEffect }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 190 }}>
             <div style={dim}>{`Cancel this leave? ${row.staff_name.split(" ")[0]}'s targets count again on those days.`}</div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button type="button" onClick={() => act(() => apiDelete(`/api/targets/leave/${row.id}/`), `Leave cancelled for ${row.staff_name}.`)} style={button(D.red, "#fff")}>Cancel leave</button>
+              <button type="button" onClick={() => act(() => apiDelete(`/api/targets/leave/${row.id}/`), `Leave cancelled for ${row.staff_name}.`)} style={button(D.red, D.white)}>Cancel leave</button>
               <button type="button" onClick={() => setMode(null)} style={button(D.panelBg, D.text)}>Keep it</button>
             </div>
           </div>
@@ -223,7 +226,7 @@ function AddHoliday({ onDone }) {
       <label style={labelStyle}>Holiday name<input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} style={field} /></label>
       <label style={labelStyle}>Day off (the observed date)<input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={field} /></label>
       {error && <div role="alert" style={errorStyle}>{error}</div>}
-      <div><button type="submit" disabled={!name.trim() || !date || busy} style={button(D.gold, D.text, !name.trim() || !date || busy)}>{busy ? "Adding…" : "Add a public holiday"}</button></div>
+      <div><button type="submit" disabled={!name.trim() || !date || busy} style={button(D.gold, D.onGold, !name.trim() || !date || busy)}>{busy ? "Adding…" : "Add a public holiday"}</button></div>
     </form>
   );
 }
@@ -269,7 +272,7 @@ export default function LeavePanel({ auth }) {
       {isSa && all && <LeaveKpis all={all} inMonth={inMonth || []} holidays={holidays} todayIso={todayIso} year={month.getFullYear()} />}
       {message && <div role="status" style={{ color: D.green, fontSize: "0.82rem", fontWeight: 700 }}>{message}</div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
         <Calendar month={month} leave={inMonth || []} holidays={holidays} today={todayIso} onMonth={(n) => setMonth(new Date(month.getFullYear(), month.getMonth() + n, 1))} />
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <section aria-labelledby="leave-hol" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -309,7 +312,7 @@ export default function LeavePanel({ auth }) {
         {isError && <div role="alert" style={errorStyle}>Couldn't load the leave. <button type="button" onClick={() => refetch()} style={button(D.panelBg, D.text)}>Try again</button></div>}
         {all && rows.length === 0 && <div style={dim}>{isSa ? "No leave recorded in the last 90 days, and none coming up." : "No leave recorded for your team in the last 90 days, and none coming up."}</div>}
         {rows.length > 0 && (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead>
                 <tr>

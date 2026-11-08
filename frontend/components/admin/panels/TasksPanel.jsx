@@ -66,14 +66,14 @@ export default function TasksPanel({ auth }) {
           </div>
         </div>
         {t.status === "open" && (
-          <button type="button" aria-label={`Mark "${t.title}" done`} onClick={() => finish(t.id)} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Done</button>
+          <button type="button" aria-label={`Mark "${t.title}" done`} onClick={() => finish(t.id)} style={{ background: D.greenFill, color: D.white, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Done</button>
         )}
       </div>
     );
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: leadsTeam ? "repeat(auto-fit, minmax(300px, 1fr))" : "1fr", gap: 14, alignItems: "start" }}>
+    <div style={{ display: "grid", gridTemplateColumns: leadsTeam ? "repeat(auto-fit, minmax(min(300px, 100%), 1fr))" : "1fr", gap: 14, alignItems: "start" }}>
       <div style={{ ...glassCard, padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.95rem" }}>Tasks</div>

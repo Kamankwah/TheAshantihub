@@ -55,7 +55,6 @@ class HomeFeedTests(TestCase):
         self.listing("baby")
         slugs = [r["slug"] for r in self.client.get(URL).json()["most_visited"]]
         self.assertIn("baby", slugs)
-        self.assertLessEqual(len(slugs), 24)
 
     def test_an_empty_department_with_a_picture_is_listed(self):
         # Staff uploaded its picture, so it shows even before anything is live in it.
@@ -66,6 +65,22 @@ class HomeFeedTests(TestCase):
         rows = self.client.get(URL).json()["most_visited"]
         self.assertIn("toys-games", [r["slug"] for r in rows])
         self.assertTrue(next(r for r in rows if r["slug"] == "toys-games")["image"])
+
+    def test_a_department_with_items_is_never_cut_by_pictured_empty_ones(self):
+        # Production bug: the feed kept 24 departments in visit order, and a department staff had pictured but left empty
+        # took a slot ahead of a newly stocked one, so the stocked department fell off the end.
+        product_departments = list(Category.objects.filter(parent__isnull=True, kind=Category.PRODUCT).order_by("sort_order", "id"))
+        self.assertGreater(len(product_departments), 24)
+        for department in product_departments[:-1]:
+            department.image = "category_images/x.jpg"
+            department.save(update_fields=["image"])
+        last = product_departments[-1]
+        self.listing(last.slug)
+        rows = self.client.get(URL).json()["most_visited"]
+        slugs = [r["slug"] for r in rows]
+        self.assertIn(last.slug, slugs)
+        # Departments with something live come first, then the pictured empty ones.
+        self.assertEqual(slugs[0], last.slug)
 
     def test_ranked_true_when_ordered_by_visits(self):
         self.listing("books")

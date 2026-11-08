@@ -54,7 +54,7 @@ export default function LiveOperationsPanel({ auth, onNavigate, onOpenDelivery, 
         <>
           {autoOn !== undefined && <span style={chip(autoOn ? D.green : D.amber)}>{autoOn ? "Auto-assign on" : "Auto-assign off"}</span>}
           {canSwitch && autoOn !== undefined && <button type="button" disabled={pending} onClick={toggle} style={button(D.panelBg, D.text, pending)}>{autoOn ? "Switch to manual" : "Switch auto-assign on"}</button>}
-          <button type="button" onClick={() => onNavigate?.("dm-queue")} style={button(D.gold, D.text)}>Open dispatch queue</button>
+          <button type="button" onClick={() => onNavigate?.("dm-queue")} style={button(D.gold, D.onGold)}>Open dispatch queue</button>
         </>
       )}>Live operations</Title>
       <ErrorLine>{actionError}</ErrorLine>
@@ -97,7 +97,7 @@ export default function LiveOperationsPanel({ auth, onNavigate, onOpenDelivery, 
                 <button type="button" onClick={() => onNavigate?.("dm-queue")} style={linkStyle}>All {k.waiting}</button>
               </div>
               {data.queue.length === 0 ? <Empty>No order is waiting for a rider.</Empty> : (
-                <div style={scroll}>
+                <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
                   <table style={table}>
                     <thead><tr>{["Order", "Waiting", "Route", "Zone"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                     <tbody>

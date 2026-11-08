@@ -19,7 +19,7 @@ export function VideoLine({ video, removed = false }) {
   } else if (video.status === "failed") {
     body = <span style={{ color: D.red, fontSize: "0.72rem" }}>Video could not be processed</span>;
   } else {
-    body = <span style={{ color: D.amber, fontSize: "0.72rem" }}>Video is still being processed</span>;
+    body = <span style={{ color: D.amberInk, fontSize: "0.72rem" }}>Video is still being processed</span>;
   }
   if (body === null) return null;
   return (

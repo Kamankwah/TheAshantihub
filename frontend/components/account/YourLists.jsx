@@ -153,7 +153,7 @@ export default function YourLists({ user }) {
       ) : shown.length === 0 ? (
         <div style={{ color: D.textDim, fontSize: "0.85rem" }}>Nothing in this list matches your search.</div>
       ) : (
-        <ul style={{ margin: 0, padding: 0, display: "grid", gap: 14, gridTemplateColumns: grid ? "repeat(auto-fill, minmax(220px, 1fr))" : "1fr" }}>
+        <ul style={{ margin: 0, padding: 0, display: "grid", gap: 14, gridTemplateColumns: grid ? "repeat(auto-fill, minmax(min(220px, 100%), 1fr))" : "1fr" }}>
           {shown.map((row) => (
             <Item key={row.id} row={row} grid={grid} canBuy={canBuy} buyLabel={buyLabel} busy={busyId === row.id} note={notes[row.id]} onAdd={() => addToCart(row)} onRemove={() => remove(row)} />
           ))}

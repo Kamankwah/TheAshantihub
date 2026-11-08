@@ -246,7 +246,7 @@ function ChangeForm({ business: live, onBack, onSent, leadName, maskPhones }) {
       </label>
       <div style={dim}>{`Goes to ${who} for approval. The owner is told and can undo it for 7 days.`}</div>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
-      <button type="submit" disabled={!ready} style={{ ...button(D.gold, D.text, !ready), alignSelf: "flex-start" }}>{sendLabel}</button>
+      <button type="submit" disabled={!ready} style={{ ...button(D.gold, D.onGold, !ready), alignSelf: "flex-start" }}>{sendLabel}</button>
     </form>
   );
 }

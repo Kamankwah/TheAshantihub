@@ -18,7 +18,7 @@ export function BarButton({ icon, label, active, count = 0, onClick, roleColor }
     }}>
       <span aria-hidden="true" style={{ position: "relative", fontSize: "1.15rem", lineHeight: 1 }}>
         {icon}
-        {count > 0 && <span style={{ position: "absolute", top: -2, right: -6, width: 8, height: 8, borderRadius: "50%", background: D.red }} />}
+        {count > 0 && <span style={{ position: "absolute", top: -2, right: -6, width: 8, height: 8, borderRadius: "50%", background: D.redFill }} />}
       </span>
       <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
       {count > 0 && <span style={visuallyHidden}>, {count} pending</span>}

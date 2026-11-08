@@ -191,7 +191,7 @@ export function SendClaimLinkCard({ businessId, ownerFirstName, ownerEmail }) {
         <span style={chip(D.textDim)}>Not connected yet</span>
       </div>
       {!ownerEmail && <div style={callout(D.amber)}>Add the owner's email first — text messages (SMS) aren't connected yet.</div>}
-      <button type="button" onClick={send} disabled={disabled} style={button(D.gold, D.text, disabled)}>
+      <button type="button" onClick={send} disabled={disabled} style={button(D.gold, D.onGold, disabled)}>
         {sending ? "Sending…" : sent ? "Send the link again" : "Send link by email"}
       </button>
       {sent && <div role="status" style={callout(D.green)}>Link sent to {sent.sent_to}. It works until {dayMonth(sent.expires_at)}.</div>}

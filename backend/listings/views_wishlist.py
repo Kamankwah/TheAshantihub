@@ -16,14 +16,14 @@ from accounts.views import IsCustomer
 from .models import Listing, WishlistItem
 from .serializers import PublicListingSerializer
 from .views import _with_rating_annotations
-from .visibility import hidden_business_q
+from .visibility import hidden_business_q, unpriced_q
 
 CANT_SAVE = "This item can't be saved."
 
 
 def _saveable():
     """Listings a shopper may see and save: the public detail view's rule (published, business not hidden)."""
-    return Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q())
+    return Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q()).exclude(unpriced_q())
 
 
 def _rows(request, item_ids):

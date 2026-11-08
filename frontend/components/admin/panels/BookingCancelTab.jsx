@@ -56,7 +56,7 @@ function CancelForm({ sale, onDone }) {
         </div>
       </fieldset>
       {error && <div role="alert" style={callout(D.red)}>{error}</div>}
-      <div><button type="submit" disabled={!ready || busy} style={button(D.gold, D.text, !ready || busy)}>Cancel and refund</button></div>
+      <div><button type="submit" disabled={!ready || busy} style={button(D.gold, D.onGold, !ready || busy)}>Cancel and refund</button></div>
     </form>
   );
 }

@@ -20,7 +20,7 @@ export default function IntegrationsPanel() {
       <Title>Integrations</Title>
       <div style={dim}>Keys are kept on the server and are never shown here. "Connected" means the setting exists on the server; it does not mean the provider was reached just now. Where a service is not connected, the rest of AshantiHub says so instead of pretending.</div>
       <Status isLoading={query.isLoading} isError={query.isError}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))", gap: 12 }}>
           {(query.data?.items || []).map((item) => {
             const [label, color] = STATES[item.status] || [item.status, D.textDim];
             return (

@@ -381,10 +381,11 @@ describe('Your Orders (the Orders tab)', () => {
     expect(screen.queryByText(/no longer available/)).not.toBeInTheDocument()
   })
 
-  it('Confirm receipt text is the page colour on the green fill (readable in both themes), not dark brown', async () => {
+  it('Confirm receipt text is white on the green fill token (AA in both themes), not dark brown', async () => {
     renderOrders([order({ delivery_assignment_status: 'delivered' })])
     const btn = await screen.findByRole('button', { name: /Confirm receipt/ })
-    expect(btn.style.color).toBe(D.pageBg)
+    expect(btn.style.color).toBe('rgb(255, 255, 255)')
+    expect(btn.style.background).toBe(D.greenFill)
     expect(btn.style.color).not.toBe(D.darkBrown)
   })
 

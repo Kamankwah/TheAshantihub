@@ -1,4 +1,4 @@
-import { D, tint } from "../theme.js";
+import { D, tint, inkOf } from "../theme.js";
 
 // Small things shared by the listing editor parts (card, variants, media, banner).
 // Every part takes a `basePath` and builds its URLs from it, so Ashanti Direct can
@@ -30,6 +30,6 @@ export function canHaveVariants(category) {
 
 export function Chip({ color, children }) {
   return (
-    <span style={{ background: tint(color, "22"), color, borderRadius: 20, padding: "2px 9px", fontSize: "0.62rem", fontWeight: 800 }}>{children}</span>
+    <span style={{ background: tint(color, "22"), color: inkOf(color), borderRadius: 20, padding: "2px 9px", fontSize: "0.62rem", fontWeight: 800 }}>{children}</span>
   );
 }

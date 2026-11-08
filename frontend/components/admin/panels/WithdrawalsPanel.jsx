@@ -74,7 +74,7 @@ function ResolveSheet({ row, onClose, onSent, onStale }) {
       </div>
       {error && <div role="alert" style={s.error}>{error}</div>}
       <div style={{ display: "flex", gap: 8 }}>
-        <button type="button" onClick={send} disabled={!ready || busy} style={button(D.gold, D.text, !ready || busy)}>Send for approval</button>
+        <button type="button" onClick={send} disabled={!ready || busy} style={button(D.gold, D.onGold, !ready || busy)}>Send for approval</button>
         <button type="button" onClick={onClose} style={button(D.panelBg, D.text, false)}>Cancel</button>
       </div>
     </div>
@@ -91,7 +91,7 @@ function Rows({ status, holderType, canManage, onResolve }) {
   if (!rows.length) return <div style={dim}>No withdrawals here.</div>;
   return (
     <>
-      <div style={{ overflowX: "auto" }}>
+      <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>{["Reference", "Holder", "Amount", "Charge", "Status", "Destination", "Submitted", ""].map((h) => <th key={h || "action"} style={th}>{h}</th>)}</tr>

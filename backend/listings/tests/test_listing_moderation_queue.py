@@ -32,7 +32,7 @@ class ListingModerationQueueTests(TestCase):
         )
 
     def _listing(self, name, status, rejection_reason=None):
-        return Listing.objects.create(
+        return Listing.objects.create(price_amount="10.00",
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,
             name=name, description="D.", contact_phone="+233207550001",
             status=status, rejection_reason=rejection_reason,

@@ -132,7 +132,7 @@ function Offer({ offer, onChanged }) {
       <section aria-label="New delivery offer" style={{ ...card, border: `2px solid ${D.gold}`, borderRadius: 20, padding: "18px 16px", gap: 14, boxShadow: "0 10px 28px rgba(44,24,16,0.12)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <div>
-            <div style={{ fontSize: "0.74rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: D.deepGold }}>Order #{offer.order_id}</div>
+            <div style={{ fontSize: "0.74rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: D.goldInk }}>Order #{offer.order_id}</div>
             <h1 style={{ margin: 0, fontFamily: "'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif", fontWeight: 600, fontSize: "1.7rem", lineHeight: 1.1, color: D.text }}>New delivery offer</h1>
           </div>
           <div role="timer" aria-label={`${left} seconds left to answer`} style={{ ...mono, width: 76, height: 76, borderRadius: "50%", border: `7px solid ${left <= 10 ? D.red : D.gold}`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: "1.1rem", color: D.text, flex: "none" }}>{mmss(left)}</div>

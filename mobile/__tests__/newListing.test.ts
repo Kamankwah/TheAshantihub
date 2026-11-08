@@ -65,6 +65,10 @@ describe("what is needed before saving", () => {
     expect(canSave({ ...product(), hasWarranty: "yes", warrantyDetails: "" }, cloth)).toBe(false);
     expect(canSave({ ...product(), hasExpiry: "yes", expiryDate: "" }, cloth)).toBe(false);
   });
+  it("every_listing_needs_a_price_above_zero", () => {
+    expect(canSave({ ...product(), price: "" }, cloth)).toBe(false);
+    expect(canSave({ ...product(), price: "0" }, cloth)).toBe(false);
+  });
   it("every_listing_needs_category_zone_name_and_description", () => {
     expect(canSave({ ...product(), zone: null }, cloth)).toBe(false);
     expect(canSave({ ...product(), name: " " }, cloth)).toBe(false);

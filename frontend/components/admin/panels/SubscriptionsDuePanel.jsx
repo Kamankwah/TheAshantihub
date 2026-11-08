@@ -74,7 +74,7 @@ function Manager({ business }) {
 
 function DueTable({ label, rows, paused = false, pauseOff = false, auth, openId, toggle, onOpen, onCreated }) {
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
       <table aria-label={label} style={tableStyle}>
         <thead>
           <tr>

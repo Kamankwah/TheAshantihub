@@ -77,7 +77,7 @@ export default function FeedbackEcho() {
       {items.map((item) => (
         <div key={item.id} style={{ pointerEvents: "auto", maxWidth: 480, width: "100%", display: "flex", gap: 10, alignItems: "flex-start", background: C.surface, color: C.ink, border: `1px solid ${C.line}`, borderLeft: `4px solid ${item.kind === "error" ? C.danger : C.trust}`, borderRadius: 10, padding: "10px 12px", boxShadow: "0 6px 24px rgba(0,0,0,0.25)", fontSize: "0.84rem", lineHeight: 1.4 }}>
           <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{item.text}</span>
-          <button type="button" aria-label="Dismiss message" onClick={() => setItems((list) => list.filter((i) => i.id !== item.id))} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: "1rem", lineHeight: 1, padding: 0 }}>×</button>
+          <button type="button" aria-label="Dismiss message" onClick={() => setItems((list) => list.filter((i) => i.id !== item.id))} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: "1.25rem", lineHeight: 1, padding: 0, minWidth: 44, minHeight: 44 }}>×</button>
         </div>
       ))}
     </div>

@@ -69,7 +69,7 @@ export default function PromotionsMarketing({ auth }) {
           action={tab === "pending" ? <span style={dim}>Approved late? The end date moves so the business gets every day it paid for.</span> : null}>
           {rows.length === 0 && <Honest>{{ pending: "No promotions are waiting for approval.", active: "No promotions are running.", rejected: "No promotions have been rejected.", cancelled: "No promotions have been cancelled.", expired: "No promotions have finished yet." }[tab]}</Honest>}
           {rows.length > 0 && (
-            <div style={scroll}>
+            <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={table}>
                 <thead><tr>
                   <th scope="col" style={th}>Business and listing</th><th scope="col" style={th}>Kind</th>
@@ -102,7 +102,7 @@ export default function PromotionsMarketing({ auth }) {
                               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 <input aria-label={`Reason for rejecting ${p.listing_name}`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason the business can read" style={inputStyle} />
                                 <div style={{ display: "flex", gap: 6 }}>
-                                  <button type="button" disabled={busy || !reason.trim()} onClick={() => call(p, "reject", { reason: reason.trim() }, "Could not reject this promotion.")} style={button("#A30000", "#fff", busy || !reason.trim())}>Confirm reject</button>
+                                  <button type="button" disabled={busy || !reason.trim()} onClick={() => call(p, "reject", { reason: reason.trim() }, "Could not reject this promotion.")} style={button("#A30000", D.white, busy || !reason.trim())}>Confirm reject</button>
                                   <button type="button" onClick={() => { setRejectingId(null); setReason(""); }} style={button(D.panelBg, D.text)}>Keep</button>
                                 </div>
                               </div>
@@ -117,7 +117,7 @@ export default function PromotionsMarketing({ auth }) {
                               <div role="alertdialog" aria-label={`Cancel ${p.business_owner_name}'s promotion?`} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 <Honest tone="warn">Cancelling is not a refund. The listing stops being promoted now and the {money(p.amount_paid)} stays paid.</Honest>
                                 <div style={{ display: "flex", gap: 6 }}>
-                                  <button type="button" disabled={busy} onClick={() => call(p, "cancel", {}, "Could not cancel this promotion.")} style={button("#A30000", "#fff", busy)}>Confirm cancel</button>
+                                  <button type="button" disabled={busy} onClick={() => call(p, "cancel", {}, "Could not cancel this promotion.")} style={button("#A30000", D.white, busy)}>Confirm cancel</button>
                                   <button type="button" onClick={() => setCancelling(null)} style={button(D.panelBg, D.text)}>Keep</button>
                                 </div>
                               </div>

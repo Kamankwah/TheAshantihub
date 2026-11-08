@@ -17,12 +17,12 @@ import StaffHoursSection from "./StaffHoursSection.jsx";
 const STATUS_COLOR = { active: D.green, verified: D.green, dispute: D.amber, review: D.amber, suspended: D.red };
 const th = { padding: "8px 10px", fontSize: "0.7rem", fontWeight: 800, textAlign: "left", color: D.textDim };
 const td = { padding: "9px 10px", fontSize: "0.82rem", color: D.text };
-const linkBtn = { border: 0, background: "none", cursor: "pointer", color: D.deepGold, fontWeight: 800, textDecoration: "underline", fontFamily: "inherit", padding: 0, fontSize: "0.82rem" };
+const linkBtn = { border: 0, background: "none", cursor: "pointer", color: D.goldInk, fontWeight: 800, textDecoration: "underline", fontFamily: "inherit", padding: 0, fontSize: "0.82rem" };
 
 function PeopleTable({ rows, onOpen, empty }) {
   if (rows.length === 0) return <div style={dim}>{empty}</div>;
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
       <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse" }}>
         <thead><tr>{["Name", "Type", "Area", "Phone", "Activity", "Open conversations", "Status"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
         <tbody>
@@ -112,7 +112,7 @@ function Profile({ kind, id, auth, onBack, onLogCall, onNavigate, canRecover }) 
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {onLogCall && <button type="button" onClick={() => onLogCall(null, profile.name)} style={button(D.panelBg, D.text)}>Log a call</button>}
-            {customer && <button type="button" onClick={() => setStarting(!starting)} style={button(D.gold, D.text)}>Start a conversation</button>}
+            {customer && <button type="button" onClick={() => setStarting(!starting)} style={button(D.gold, D.onGold)}>Start a conversation</button>}
           </div>
         </div>
         {starting && customer && <StartConversation profile={profile} orders={q.data.orders} onDone={() => setStarting(false)} />}
@@ -152,7 +152,7 @@ function Profile({ kind, id, auth, onBack, onLogCall, onNavigate, canRecover }) 
       {customer && (
         <Section title="Orders">
           {q.data.orders.length === 0 ? <div style={dim}>No orders yet.</div> : (
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
               <table style={{ width: "100%", minWidth: 680, borderCollapse: "collapse" }}>
                 <thead><tr>{["Order", "Placed", "From", "What", "How", "Total", "Status"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                 <tbody>

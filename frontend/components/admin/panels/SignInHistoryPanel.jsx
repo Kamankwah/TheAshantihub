@@ -72,7 +72,7 @@ export default function SignInHistoryPanel() {
         {isError && <div role="alert" style={errorStyle}>Could not load the sign-in history. <button type="button" onClick={() => refetch()} style={{ ...button(D.panelBg, D.text), padding: "4px 10px" }}>Try again</button></div>}
         {data && rows.length === 0 && <div style={dim}>Nothing matches those filters.</div>}
         {rows.length > 0 && (
-          <div style={scroll}>
+          <div style={scroll} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
             <table style={table}>
               <thead><tr>{["When", "Who", "What happened", "Device", "Address", "2-step"].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>
@@ -82,7 +82,7 @@ export default function SignInHistoryPanel() {
                     <td style={td}>
                       {r.who ? (
                         <>
-                          <span style={{ background: ROLE_ACCENTS[r.who.role] || D.textDim, color: ROLE_BADGE_TEXT[r.who.role] || "#fff", borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 800, marginRight: 6, textTransform: "capitalize" }}>{r.who.role.replace("_", " ")}</span>
+                          <span style={{ background: ROLE_ACCENTS[r.who.role] || D.textDim, color: ROLE_BADGE_TEXT[r.who.role] || D.white, borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 800, marginRight: 6, textTransform: "capitalize" }}>{r.who.role.replace("_", " ")}</span>
                           <span style={{ fontWeight: 700 }}>{r.who.name}</span>
                         </>
                       ) : <span style={dim}>{r.identifier ? `${r.identifier} (no account)` : "Unknown"}</span>}

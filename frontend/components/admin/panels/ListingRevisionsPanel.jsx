@@ -154,7 +154,7 @@ function RevisionRow({ rev, state, onDone, staffId }) {
           {state === "pending" && (
             <>
               {madeByMe && <span style={{ color: D.textDim, fontSize: "0.68rem" }}>You made this</span>}
-              <button type="button" onClick={approve} disabled={madeByMe} style={{ background: madeByMe ? D.panelBg2 : D.green, color: madeByMe ? D.textFaint : "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: madeByMe ? "not-allowed" : "pointer" }}>✓ Approve</button>
+              <button type="button" onClick={approve} disabled={madeByMe} style={{ background: madeByMe ? D.panelBg2 : D.green, color: madeByMe ? D.textFaint : D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: madeByMe ? "not-allowed" : "pointer" }}>✓ Approve</button>
               <button type="button" onClick={() => setRejecting(true)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
             </>
           )}
@@ -167,7 +167,7 @@ function RevisionRow({ rev, state, onDone, staffId }) {
       {rejecting && state === "pending" && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-start" }}>
           <textarea aria-label="Reason for rejecting" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason the owner will see" rows={2} style={{ flex: "1 1 220px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-          <button type="button" onClick={reject} disabled={!reason.trim()} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: reason.trim() ? "pointer" : "default", opacity: reason.trim() ? 1 : 0.6 }}>Confirm reject</button>
+          <button type="button" onClick={reject} disabled={!reason.trim()} style={{ background: D.redFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: reason.trim() ? "pointer" : "default", opacity: reason.trim() ? 1 : 0.6 }}>Confirm reject</button>
         </div>
       )}
 

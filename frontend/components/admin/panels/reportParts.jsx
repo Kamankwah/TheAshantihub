@@ -11,8 +11,8 @@ export const STATUS_META = {
   draft: { label: "Draft", color: D.textDim },
   submitted: { label: "Submitted", color: D.blue },
   acknowledged: { label: "Acknowledged", color: D.green },
-  returned: { label: "Returned", color: D.amber },
-  late: { label: "Late", color: D.amber },
+  returned: { label: "Returned", color: D.amberInk },
+  late: { label: "Late", color: D.amberInk },
 };
 const RESULT_TEXT = { done: "Done", partly: "Partly done", not_done: "Not done", "": "Not marked" };
 const humanise = (label) => String(label).replace(/[._-]+/g, " ").trim();
@@ -67,7 +67,7 @@ function Row({ row }) {
 }
 
 // Support's "Calls by outcome" (canvas 17): one bar per outcome, scaled to the largest, with the number.
-const OUTCOME_COLOUR = { Connected: "#006400", "No answer": "#E8621A", "Left voicemail": "#8A7A6B" };
+const OUTCOME_COLOUR = { Connected: D.kente2, "No answer": "#E8621A", "Left voicemail": "#8A7A6B" };
 function OutcomeBars({ section }) {
   const top = Math.max(1, ...section.rows.map((row) => Number(row.value) || 0));
   return (
@@ -91,7 +91,7 @@ function OutcomeBars({ section }) {
 // person, one cell per column. The frozen snapshot holds the same rows.
 function SectionTable({ section }) {
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div style={{ overflowX: "auto" }} role="region" tabIndex={0} aria-label="Table (scrolls sideways)">
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.72rem", color: D.text }}>
         <thead>
           <tr>

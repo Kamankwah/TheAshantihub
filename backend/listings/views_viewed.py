@@ -25,7 +25,7 @@ from accounts.models import Customer
 from .models import Listing, ListingView
 from .serializers import PublicListingSerializer
 from .views import _with_rating_annotations
-from .visibility import hidden_business_q, sold_out_q
+from .visibility import hidden_business_q, sold_out_q, unpriced_q
 
 WINDOW_DAYS = 30
 MIN_CO_VIEWERS = 3
@@ -42,7 +42,7 @@ def anonymous_key(viewer):
 
 def visible_listings():
     """Published listings a shopper may see in a list (the same filters as the public list and the related rail)."""
-    return Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q()).exclude(sold_out_q())
+    return Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q()).exclude(unpriced_q()).exclude(sold_out_q())
 
 
 class ListingViewRecordView(APIView):
@@ -54,7 +54,7 @@ class ListingViewRecordView(APIView):
 
     def post(self, request, pk):
         listing = generics.get_object_or_404(
-            Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q()), pk=pk,
+            Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q()).exclude(unpriced_q()), pk=pk,
         )
         user = request.user
         if isinstance(user, Customer):
@@ -84,7 +84,7 @@ class AlsoViewedView(APIView):
 
     def get(self, request, pk):
         anchor = generics.get_object_or_404(
-            Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q()), pk=pk,
+            Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q()).exclude(unpriced_q()), pk=pk,
         )
         try:
             limit = max(1, min(MAX_LIMIT, int(request.query_params.get("limit", DEFAULT_LIMIT))))

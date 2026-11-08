@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { apiPost, apiPatch } from "../../../apiClient.js";
 import { useSubscriptionPlansManageQueue } from "../../../hooks/useSubscriptionPlansManageQueue.js";
-import { D, glassCard, SUBSCRIPTION_PLAN_STATUS_META, tint } from "../theme.js";
+import { D, glassCard, SUBSCRIPTION_PLAN_STATUS_META, tint, inkOf } from "../theme.js";
 
 const EMPTY_SUBSCRIPTION_PLAN_FORM = {
   tier: "", name: "", kind: "product", monthly_price: "",
@@ -53,7 +53,7 @@ function SubscriptionPlanFormFields({ form, setField }) {
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input value={form.tier} onChange={e => setField("tier", e.target.value)} placeholder="Tier slug (e.g. product_basic)" style={{ ...fieldStyle, flex: 1, minWidth: 160 }} />
         <input value={form.name} onChange={e => setField("name", e.target.value)} placeholder="Plan name" style={{ ...fieldStyle, flex: 1, minWidth: 140 }} />
-        <select value={form.kind} onChange={e => setField("kind", e.target.value)} style={{ ...fieldStyle, width: 120 }}>
+        <select aria-label="Plan kind" value={form.kind} onChange={e => setField("kind", e.target.value)} style={{ ...fieldStyle, width: 120 }}>
           <option value="product">Product</option>
           <option value="service">Service</option>
         </select>
@@ -141,7 +141,7 @@ export default function SubscriptionPlansManagePanel() {
       <div style={{ ...glassCard, padding: 18, marginBottom: 16, maxWidth: 560 }}>
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 12 }}>Create a new plan</div>
         <SubscriptionPlanFormFields form={createForm} setField={setCreateField} />
-        <button onClick={createPlan} disabled={creating || !createForm.tier || !createForm.name} style={{ marginTop: 12, background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "8px 20px", fontSize: "0.78rem", fontWeight: 800, cursor: creating ? "default" : "pointer", fontFamily: "inherit" }}>{creating ? "Creating…" : "Create plan"}</button>
+        <button onClick={createPlan} disabled={creating || !createForm.tier || !createForm.name} style={{ marginTop: 12, background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "8px 20px", fontSize: "0.78rem", fontWeight: 800, cursor: creating ? "default" : "pointer", fontFamily: "inherit" }}>{creating ? "Creating…" : "Create plan"}</button>
       </div>
 
       <div style={{ ...glassCard, padding: 18 }}>
@@ -155,7 +155,7 @@ export default function SubscriptionPlansManagePanel() {
                 <div>
                   <SubscriptionPlanFormFields form={editForm} setField={setEditFieldValue} />
                   <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                    <button onClick={saveEdit} disabled={saving} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "6px 16px", fontSize: "0.75rem", fontWeight: 800, cursor: saving ? "default" : "pointer", fontFamily: "inherit" }}>{saving ? "Saving…" : "Save"}</button>
+                    <button onClick={saveEdit} disabled={saving} style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "6px 16px", fontSize: "0.75rem", fontWeight: 800, cursor: saving ? "default" : "pointer", fontFamily: "inherit" }}>{saving ? "Saving…" : "Save"}</button>
                     <button onClick={() => { setEditingId(null); setEditForm(null); }} style={{ background: "none", border: `1px solid ${D.cardBorder}`, color: D.textDim, borderRadius: 20, padding: "6px 16px", fontSize: "0.75rem", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
                   </div>
                 </div>
@@ -164,8 +164,8 @@ export default function SubscriptionPlansManagePanel() {
                   <div>
                     <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>
                       {p.name} <span style={{ color: D.textDim, fontWeight: 400 }}>({p.tier})</span>
-                      {p.is_recommended && <span style={{ background: `${D.gold}33`, color: D.gold, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>★ Recommended</span>}
-                      <span style={{ background: tint(statusMeta.color, "22"), color: statusMeta.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>{statusMeta.label}</span>
+                      {p.is_recommended && <span style={{ background: `${D.gold}33`, color: D.goldInk, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>★ Recommended</span>}
+                      <span style={{ background: tint(statusMeta.color, "22"), color: inkOf(statusMeta.color), borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>{statusMeta.label}</span>
                     </div>
                     <div style={{ color: D.textDim, fontSize: "0.72rem", margin: "3px 0" }}>{p.kind === "product" ? "Product" : "Service"} · GHS {p.monthly_price}/mo · Max listings: {p.max_active_listings ?? "Unlimited"} · Hero days: {p.hero_days} · Boost credits: {p.boost_credits_per_month}</div>
                     <div style={{ color: D.textDim, fontSize: "0.72rem" }}>{p.paying_businesses == null ? "" : `${p.paying_businesses} paying business${p.paying_businesses === 1 ? "" : "es"} (active, not on a free trial)`}</div>

@@ -67,25 +67,25 @@ export function BusinessCtaBand({ onRegister }: BusinessCtaBandProps) {
 
               <div className="flex items-center gap-4">
                 <div
-                  aria-label="QR code"
+                  aria-hidden="true"
                   className="flex h-20 w-20 shrink-0 items-center justify-center rounded-md border-2 border-dashed border-border bg-muted"
                 >
                   <QrCode className="size-10 text-muted-foreground" aria-hidden="true" />
                 </div>
-                <form onSubmit={handleSendLink} className="flex flex-1 flex-col gap-2 min-w-[200px]">
+                <form onSubmit={handleSendLink} className="flex min-w-0 flex-1 flex-col gap-2">
                   <label htmlFor="cta-band-phone" className="text-xs text-muted-foreground">
                     Or text me the link
                   </label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <input
                       id="cta-band-phone"
                       type="tel"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="e.g. 024 123 4567"
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex h-11 min-w-[9rem] flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
-                    <Button type="submit" variant="secondary">
+                    <Button type="submit" variant="secondary" className="h-11 shrink-0">
                       Send Link
                     </Button>
                   </div>

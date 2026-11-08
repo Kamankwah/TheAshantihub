@@ -46,8 +46,9 @@ describe('BusinessCtaBand', () => {
     expect(screen.getByText('Google Play')).toBeInTheDocument()
   })
 
-  it('renders a QR code placeholder', () => {
-    renderBand()
-    expect(screen.getByLabelText('QR code')).toBeInTheDocument()
+  it('renders a decorative QR placeholder that assistive tech skips', () => {
+    const { container } = renderBand()
+    expect(screen.queryByLabelText('QR code')).not.toBeInTheDocument()
+    expect(container.querySelector('[aria-hidden="true"].border-dashed')).toBeInTheDocument()
   })
 })

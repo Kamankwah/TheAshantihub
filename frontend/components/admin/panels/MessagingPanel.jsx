@@ -5,7 +5,7 @@ import { D, glassCard } from "../theme.js";
 
 // A chat-assistant visitor's contact details: AshantiHub staff may call, text
 // or email them (the reply box below stays as the in-app route).
-const contactLink = { color: D.gold, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "3px 12px", fontSize: "0.7rem", fontWeight: 700, textDecoration: "none" };
+const contactLink = { color: D.goldInk, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "3px 12px", fontSize: "0.7rem", fontWeight: 700, textDecoration: "none" };
 const SENDER_LABEL = { guest: "Visitor", customer: "Customer", business_owner: "Business Owner", staff: "Staff" };
 
 // Staff support-ticket view (messaging app, messaging.manage permission).
@@ -74,7 +74,7 @@ export default function MessagingPanel() {
             <div>
               <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>
                 {conv.starter_name} <span style={{ color: D.textDim, fontWeight: 400 }}>({conv.subject || "No subject"})</span>
-                {conv.needs_reply && <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: D.red, marginLeft: 8, verticalAlign: "middle" }} title="Needs reply" />}
+                {conv.needs_reply && <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: D.redFill, marginLeft: 8, verticalAlign: "middle" }} title="Needs reply" />}
                 <span style={{ background: conv.status === "open" ? "rgba(96,165,250,0.16)" : "rgba(148,164,191,0.16)", color: conv.status === "open" ? D.blue : D.textDim, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>{conv.status}</span>
               </div>
               <div style={{ color: D.textDim, fontSize: "0.65rem", marginTop: 2 }}>
@@ -99,7 +99,7 @@ export default function MessagingPanel() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
                     {thread.messages?.map(msg => (
                       <div key={msg.id} style={{ fontSize: "0.75rem" }}>
-                        <span style={{ fontWeight: 700, color: msg.sender_type === "staff" ? D.gold : D.text }}>{SENDER_LABEL[msg.sender_type] || msg.sender_type}:</span>{" "}
+                        <span style={{ fontWeight: 700, color: msg.sender_type === "staff" ? D.goldInk : D.text }}>{SENDER_LABEL[msg.sender_type] || msg.sender_type}:</span>{" "}
                         <span style={{ color: D.textDim }}>{msg.body}</span>
                         <span style={{ color: D.textFaint, fontSize: "0.62rem", marginLeft: 6 }}>{msg.created_at?.slice(0, 16).replace("T", " ")}</span>
                       </div>
@@ -108,7 +108,7 @@ export default function MessagingPanel() {
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <input value={replyBody} onChange={e => setReplyBody(e.target.value)} placeholder="Reply as AshantiHub Support…" style={{ flex: "1 1 160px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelSolid, color: D.text }} />
-                    <button onClick={() => sendReply(conv.id)} disabled={!replyBody.trim() || sending} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 800, cursor: replyBody.trim() && !sending ? "pointer" : "default", opacity: replyBody.trim() && !sending ? 1 : 0.6 }}>Reply</button>
+                    <button onClick={() => sendReply(conv.id)} disabled={!replyBody.trim() || sending} style={{ background: D.gold, color: D.onGold, border: "none", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 800, cursor: replyBody.trim() && !sending ? "pointer" : "default", opacity: replyBody.trim() && !sending ? 1 : 0.6 }}>Reply</button>
                   </div>
                 </>
               )}

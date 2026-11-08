@@ -72,7 +72,7 @@ export default function ListingsModerationPanel({ auth }) {
     return (
       <div style={{ padding: "12px 0", borderBottom: `1px solid ${D.divider}` }}>
         {newBusiness && (
-          <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+          <div style={{ color: D.goldInk, fontWeight: 800, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
             🏢 {l.business_owner_name}
           </div>
         )}
@@ -83,7 +83,7 @@ export default function ListingsModerationPanel({ auth }) {
             {(l.specs || []).length > 0 && <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{l.specs.map((x) => `${x.label}: ${x.value}`).join(" · ")}</div>}
             {state === "pending" && <ListingChips listing={l} />}
             {state === "pending" && Array.isArray(l.hold_reasons) && l.hold_reasons.map((r, i) => (
-              <div key={r?.code || i} style={{ color: D.amber, fontSize: "0.7rem", fontWeight: 700, marginTop: 4 }}>{`Held: ${r?.message}`}</div>
+              <div key={r?.code || i} style={{ color: D.amberInk, fontSize: "0.7rem", fontWeight: 700, marginTop: 4 }}>{`Held: ${r?.message}`}</div>
             ))}
             {state === "approved" && <ApprovedByLine name={l.reviewed_by_name} at={l.reviewed_at} verb="Published" />}
             {state === "rejected" && <RejectedReason reason={l.rejection_reason} />}
@@ -94,7 +94,7 @@ export default function ListingsModerationPanel({ auth }) {
             <button onClick={() => setExpandedId(id => id === l.id ? null : l.id)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>{expandedId === l.id ? "Close" : "👁 View"}</button>
             {state === "pending" && (
               <>
-                <button onClick={() => approve(l.id)} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
+                <button onClick={() => approve(l.id)} style={{ background: D.greenFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
                 <button onClick={() => setRejectingId(l.id)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
               </>
             )}
@@ -137,7 +137,7 @@ export default function ListingsModerationPanel({ auth }) {
         {rejectingId === l.id && state === "pending" && (
           <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
             <input value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Rejection reason" style={{ flex: "1 1 160px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-            <button onClick={() => reject(l.id)} disabled={!rejectReason} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: rejectReason ? "pointer" : "default" }}>Confirm reject</button>
+            <button onClick={() => reject(l.id)} disabled={!rejectReason} style={{ background: D.redFill, color: D.white, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: rejectReason ? "pointer" : "default" }}>Confirm reject</button>
           </div>
         )}
       </div>

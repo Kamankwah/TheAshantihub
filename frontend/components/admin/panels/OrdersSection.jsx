@@ -125,7 +125,7 @@ export function FlagForm({ businessId, onCancel, onDone }) {
       <div style={callout(D.gold)}>The Delivery Manager is told and takes it from here.</div>
       {error && <div role="alert" style={errorStyle}>{error}</div>}
       <div style={{ display: "flex", gap: 8 }}>
-        <button type="submit" disabled={busy} style={{ ...button(D.gold, D.text, busy), minHeight: 44 }}>{busy ? "Sending…" : "Tell the Delivery Manager"}</button>
+        <button type="submit" disabled={busy} style={{ ...button(D.gold, D.onGold, busy), minHeight: 44 }}>{busy ? "Sending…" : "Tell the Delivery Manager"}</button>
         <button type="button" onClick={onCancel} style={{ ...button(D.panelBg, D.text), minHeight: 44 }}>Cancel</button>
       </div>
     </form>

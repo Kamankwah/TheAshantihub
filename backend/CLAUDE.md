@@ -177,6 +177,12 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   phone key (customer `phone`, owner `login_phone`), created by `core.migration_ops.AddUniqueGuarded` (skipped with a warning if
   legacy duplicates exist: `manage.py find_identity_duplicates` lists them). A test that models such a legacy duplicate calls
   `core.testing.drop_index`.
+- **An item without a price is not in the marketplace (`listings.visibility.unpriced_q`, `has_price`).** Products, food,
+  services and stays alike: price blank or 0 and every public listing query leaves it out (list, detail, related, search,
+  wishlist, also-viewed, seller counts, category tree, cart add). A variant listing's price is derived from its variants.
+  The submit door and staff approve refuse it (400 `price_required`; with auto-publish on, the check names it first), a
+  live or waiting listing cannot have its price blanked, and a staff draft needs a price for every kind. A draft or
+  rejected listing may still be unpriced while the owner works. A new public listing query must `.exclude(unpriced_q())`.
 - **Hidden businesses:** a suspended owner - or, only while `SUBSCRIPTION_PAUSE_ENABLED` is on, one
   whose subscription is paused - is hidden from public browse by
   `listings.visibility.hidden_business_q()`. Every public listing or event queryset, and adding to

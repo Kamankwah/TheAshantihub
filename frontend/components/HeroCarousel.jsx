@@ -64,7 +64,7 @@ export default function HeroCarousel({ onEngage }) {
               </div>
               {slide.listing != null && onEngage && (
                 <button onClick={() => onEngage(slide)} style={{
-                  pointerEvents: "auto", marginTop: 24, background: C.gold, color: C.pureBlack || "#1a1205", border: "none",
+                  pointerEvents: "auto", marginTop: 24, background: C.gold, color: C.pureBlack || C.onGold, border: "none",
                   borderRadius: 40, padding: "15px 34px", fontSize: "clamp(0.95rem, 1.6vw, 1.15rem)",
                   fontWeight: 900, cursor: "pointer", fontFamily: "inherit",
                   boxShadow: "0 8px 28px rgba(212,160,23,0.45)", display: "inline-flex", alignItems: "center", gap: 8,
