@@ -27,6 +27,8 @@ describe('page landmarks', () => {
     ['/about', 'About AshantiHub'],
     ['/contact', 'Get In Touch'],
     ['/privacy', 'Privacy Notice'],
+    ['/terms', 'Terms & Conditions'],
+    ['/business-agreement', 'Business Agreement'],
   ])('%s has one main landmark and a skip link to it', async (path, heading) => {
     window.history.pushState({}, '', path)
     mountApp(path)

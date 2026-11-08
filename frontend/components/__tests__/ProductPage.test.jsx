@@ -266,6 +266,7 @@ describe('ProductPage', () => {
       posts.push(await request.json())
       return new HttpResponse(null, { status: 204 })
     }))
+    localStorage.setItem('ashantihub.cookie_consent', 'accepted')
     showListing(GOODS)
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {

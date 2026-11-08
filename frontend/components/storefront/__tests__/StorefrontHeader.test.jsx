@@ -38,7 +38,7 @@ const CUSTOMER = { fullName: 'Ama Boateng', accountType: 'customer', id: 1 }
 
 describe('StorefrontHeader', () => {
   // The delivery panel opens itself once per session while nothing is chosen; these tests are about the rest of the header.
-  beforeEach(() => { localStorage.clear(); sessionStorage.setItem('ashantihub.deliverToAsked', '1') })
+  beforeEach(() => { localStorage.clear() })
 
   it('wishlist_and_cart_present_cart_greyed_before_opening', async () => {
     server.use(gatedOpening({ opensAt: '2026-11-06T06:00:00Z', serverNow: '2026-11-03T06:00:00Z' }))

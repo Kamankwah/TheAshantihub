@@ -120,6 +120,7 @@ const SpendAreaChart = lazy(() => import("./components/dashboard/charts/SpendAre
 const ListingsDonut = lazy(() => import("./components/dashboard/charts/ListingsDonut.jsx"));
 const AboutPage = lazy(() => import("./components/ui/about-page.tsx").then(m => ({ default: m.AboutPage })));
 const PrivacyNoticePage = lazy(() => import("./components/legal/PrivacyNoticePage.jsx"));
+const LegalDocPage = lazy(() => import("./components/legal/LegalDocPage.jsx"));
 const ContactPage = lazy(() => import("./components/ui/contact-page.tsx").then(m => ({ default: m.ContactPage })));
 // A lazy screen with its own error boundary (review FE-01): a chunk that cannot load shows "Try again" in place, the rest of the page stays.
 function PageBoundary({ children }) {
@@ -449,7 +450,7 @@ function CookieBanner({onAccept,onDecline,onOpenPrivacy}) {
     <div style={{maxWidth:900,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap"}}>
       <div style={{flex:"1 1 280px"}}>
         <div style={{fontWeight:800,color:C.gold,marginBottom:4,fontSize:"0.9rem"}}>🍪 AshantiHub uses cookies</div>
-        <div style={{fontSize:"0.8rem",opacity:0.9,lineHeight:1.5}}>We use your browser’s storage to keep you signed in and remember your settings, and we count which listings are viewed. We run no advertising trackers. Read our <a href="/privacy" onClick={(e)=>{ if(e.metaKey||e.ctrlKey||e.shiftKey||e.button===1) return; e.preventDefault(); if(onOpenPrivacy) onOpenPrivacy(); }} style={{color:C.gold,textDecoration:"underline",fontWeight:700}}>Privacy Notice</a>.</div>
+        <div style={{fontSize:"0.8rem",opacity:0.9,lineHeight:1.5}}>We use your browser’s storage to keep you signed in and remember your settings, and, only if you accept, we count which listings are viewed. We run no advertising trackers. Read our <a href="/privacy" onClick={(e)=>{ if(e.metaKey||e.ctrlKey||e.shiftKey||e.button===1) return; e.preventDefault(); if(onOpenPrivacy) onOpenPrivacy(); }} style={{color:C.gold,textDecoration:"underline",fontWeight:700}}>Privacy Notice</a>.</div>
       </div>
       <div style={{display:"flex",gap:8}}>
         <button onClick={onDecline} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:22,padding:"0 16px",minHeight:44,fontSize:"0.8rem",fontWeight:700,cursor:"pointer"}}>Essential Only</button>
@@ -2301,7 +2302,7 @@ function ListingsSkeleton() {
 // page in the app is hard-reload-safe, per an explicit scope override.
 // Pages whose component already renders its own <main id="main-content">; every other page is wrapped in one
 // here so each screen has exactly one main landmark (and the "Skip to content" link has a target).
-const MAIN_OWNERS = new Set(["home", "cart", "checkout", "privacy"]);
+const MAIN_OWNERS = new Set(["home", "cart", "checkout", "privacy", "terms", "business-agreement"]);
 function MainRegion({ own, children }) {
   return own ? <>{children}</> : <main id="main-content" tabIndex={-1} style={{ display: "block", outline: "none" }}>{children}</main>;
 }
@@ -2313,6 +2314,8 @@ const PATH_TO_PAGE = {
   "/about": "about",
   // The Privacy Notice (Act 843): public, linked from the footer and the cookie banner.
   "/privacy": "privacy",
+  "/terms": "terms",
+  "/business-agreement": "business-agreement",
   "/contact": "contact",
   "/register": "register",
   // Staff onboarding + account-recovery work: two more standalone pages,
@@ -2357,6 +2360,8 @@ const PAGE_TO_PATH = {
   events: "/events",
   about: "/about",
   privacy: "/privacy",
+  terms: "/terms",
+  "business-agreement": "/business-agreement",
   contact: "/contact",
   register: "/register",
   "staff-activate": "/staff/activate",
@@ -2478,9 +2483,8 @@ function AshantiHubApp() {
   // The toggle is threaded as props to the Navbar/StorefrontHeader and the
   // business, staff and account top bars.
   const {theme,toggleTheme} = useTheme();
-  const [legalDoc,setLegalDoc]=useState(null);
-  // The Privacy Notice is a real page; the other footer documents still only set `legalDoc`.
-  const openLegalDoc=(doc)=>{ if(doc==="privacy") setPage("privacy"); else setLegalDoc(doc); };
+  // Footer documents are real pages: /privacy, /terms (not yet published notice) and /business-agreement.
+  const openLegalDoc=(doc)=>{ setPage(doc==="business"?"business-agreement":doc); };
   // showBizDash/showPayments/showCredit — same "derive from the URL, wrap the
   // setter in a navigate() closure" pattern as `page`/`setPage` above, so
   // Navbar.jsx/BusinessRegistrationFlow.jsx/the inline CTA buttons in this
@@ -3391,6 +3395,10 @@ function AshantiHubApp() {
       )}
 
       {/* Privacy Notice */}
+      {(page==="terms"||page==="business-agreement")&&(
+        <PageBoundary><LegalDocPage kind={page==="terms"?"terms":"business"} onNavigate={(path)=>navigate(path)} onSupport={()=>setShowIntake(true)}/></PageBoundary>
+      )}
+
       {page==="privacy"&&(
         <PageBoundary><PrivacyNoticePage onNavigate={(path)=>navigate(path)}/></PageBoundary>
       )}

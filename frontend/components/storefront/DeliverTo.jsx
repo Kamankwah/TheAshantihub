@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { C } from "../../theme.js";
-import { shouldAutoAsk, useDeliveryPlace } from "../../hooks/useDeliveryPlace.js";
+import { useDeliveryPlace } from "../../hooks/useDeliveryPlace.js";
 import { COUNTRY_CODES, GHANA_REGIONS, countryName, deliveryNote, isDeliverable, placeFromChoice, regionLabel } from "../../lib/deliveryPlace.js";
 import { BODY_FONT } from "./storefrontType.js";
 
@@ -9,9 +9,9 @@ import { BODY_FONT } from "./storefrontType.js";
 //  - offers to use their current location (the browser asks permission), then asks "Deliver to Accra?" as a yes/no;
 //  - or lets them pick a country, and in Ghana a region, by hand;
 //  - says plainly where door-to-door delivery is available (Ashanti only), never a made-up delivery time.
-// Opens by itself once per session while nothing is chosen, and on that first visit asks the browser for the location
-// (its own permission prompt; a site the shopper has blocked is not asked). The choice lives in this browser only. A signed-in
-// customer's saved address is the fallback label until they choose.
+// It never opens or asks for the location by itself: the shopper taps the control, then "Use my current location" (the
+// browser's own permission prompt). The choice lives in this browser only. A signed-in customer's saved address is the
+// fallback label until they choose.
 export default function DeliverTo({ firstName, savedAddress }) {
   const { place, suggestion, status, locate, choose, dismissSuggestion } = useDeliveryPlace();
   const [open, setOpen] = useState(false);
@@ -21,7 +21,6 @@ export default function DeliverTo({ firstName, savedAddress }) {
   const trigger = useRef(null);
   const panelId = useId();
 
-  useEffect(() => { if (shouldAutoAsk(place)) setOpen(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => { if (e.key === "Escape") { setOpen(false); trigger.current?.focus(); } };

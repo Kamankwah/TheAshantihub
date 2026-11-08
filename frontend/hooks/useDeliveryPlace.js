@@ -2,13 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { placeFromChoice, placeFromGeocode, readStoredPlace, storePlace } from '../lib/deliveryPlace.js'
 import { reverseGeocodePlace } from '../lib/reverseGeocode.js'
 
-const ASKED_KEY = 'ashantihub.deliverToAsked'
-const LOCATED_KEY = 'ashantihub.deliverToLocated'
-
 // Where this shopper is, as a suggestion they confirm: `locate()` asks the browser for the position and
-// reverse-geocodes it to a Ghana region or a country. The browser shows its own permission prompt; on arrival with
-// no choice made the page asks once per session (never when the shopper has blocked location for the site), and the
-// "Use my current location" button asks again on demand. Nothing is stored until `choose()`.
+// reverse-geocodes it to a Ghana region or a country. The browser shows its own permission prompt, and only when the
+// shopper taps "Use my current location": nothing asks for the location (or opens a panel) by itself on arrival, since
+// a permission prompt before the visitor has done anything is routinely refused and then blocks the later, wanted ask.
+// Nothing is stored until `choose()`.
 // `place` is the confirmed choice (localStorage); `suggestion` is what was detected and awaits a yes.
 export function useDeliveryPlace() {
   const [place, setPlace] = useState(() => readStoredPlace())
@@ -40,33 +38,5 @@ export function useDeliveryPlace() {
     )
   }, [])
 
-  // On arrival with nothing chosen: ask the browser for the location once per session. A blocked site is never asked.
-  useEffect(() => {
-    if (place || typeof navigator === 'undefined' || !navigator.geolocation) return
-    try {
-      if (sessionStorage.getItem(LOCATED_KEY)) return
-      sessionStorage.setItem(LOCATED_KEY, '1')
-    } catch {
-      return
-    }
-    if (!navigator.permissions?.query) { locate(); return }
-    navigator.permissions.query({ name: 'geolocation' })
-      .then((p) => { if (live.current && p.state !== 'denied') locate() })
-      .catch(() => { if (live.current) locate() })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   return { place, suggestion, status, locate, choose, dismissSuggestion: () => setSuggestion(null) }
-}
-
-// The panel opens by itself once per browser session while nothing is chosen (the first visit's "where to?").
-export function shouldAutoAsk(place) {
-  if (place) return false
-  try {
-    if (sessionStorage.getItem(ASKED_KEY)) return false
-    sessionStorage.setItem(ASKED_KEY, '1')
-  } catch {
-    return false
-  }
-  return true
 }
