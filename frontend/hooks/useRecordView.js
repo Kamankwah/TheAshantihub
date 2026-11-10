@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { apiPost } from '../apiClient.js'
 import { readCookieConsent } from '../lib/cookieConsent.js'
+import { newUuid } from '../lib/uuid.js'
 
 // POST /api/listings/<id>/view/ — the "customers also viewed" signal. One post
 // per listing once the page has been on screen for three seconds (a hidden tab
@@ -13,18 +14,6 @@ const DELAY_MS = 3000
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 let sessionViewer = null
-
-function newUuid() {
-  const cryptoApi = globalThis.crypto
-  if (cryptoApi?.randomUUID) return cryptoApi.randomUUID()
-  const bytes = new Uint8Array(16)
-  if (cryptoApi?.getRandomValues) cryptoApi.getRandomValues(bytes)
-  else for (let i = 0; i < 16; i += 1) bytes[i] = Math.floor(Math.random() * 256)
-  bytes[6] = (bytes[6] & 0x0f) | 0x40
-  bytes[8] = (bytes[8] & 0x3f) | 0x80
-  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
-}
 
 // The browser's anonymous viewer id (a v4 uuid), created on first use. When
 // storage is unavailable the id lives in memory for this session instead.
