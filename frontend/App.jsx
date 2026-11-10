@@ -1056,7 +1056,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,favFailed,cur
           <span aria-hidden="true" style={{background:C.surface,borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem"}}>{isFav?"❤️":"🤍"}</span>
         </button>
         {favFailed&&<span role="status" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>We couldn't update Your Lists. Tap the heart to try again.</span>}
-        <button aria-label={`Share ${item.name}`} onClick={(e)=>{e.stopPropagation();if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
+        <button aria-label={`Share ${item.name}`} onClick={(e)=>{e.stopPropagation();if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href}).catch(()=>{/* sheet dismissed (AbortError) or share unsupported — nothing to do */});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
           style={{position:"absolute",bottom:0,right:0,background:"transparent",border:"none",width:44,height:44,padding:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:2}}>
           <span aria-hidden="true" style={{background:C.surface,borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.8rem"}}>📤</span>
         </button>
