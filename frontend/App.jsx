@@ -127,6 +127,11 @@ function PageBoundary({ children }) {
   return <ErrorBoundary><Suspense fallback={InlineFallback}>{children}</Suspense></ErrorBoundary>;
 }
 
+// A lazy modal/drawer (chat intake, cart drawer) with its own error boundary: a failure shows "Try again" over the page instead of taking the whole app down.
+function ModalBoundary({ children }) {
+  return <ErrorBoundary><Suspense fallback={null}>{children}</Suspense></ErrorBoundary>;
+}
+
 const InlineFallback = <div role="status" aria-label="Loading" style={{minHeight:"40vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.gold,fontSize:"0.9rem"}}>Loading…</div>;
 
 // ─── Payment System ───────────────────────────────────────────────────────────

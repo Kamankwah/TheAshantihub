@@ -1167,4 +1167,13 @@ describe('AshantiHub — dark theme scope', () => {
     expect(home.getAttribute('style')).toContain('var(--ah-canvas')
     expect(container.firstChild.getAttribute('style')).toContain('var(--ah-canvas')
   }, 8000)
+
+  // Regression: App.jsx rendered <ModalBoundary> without defining it, so opening the chat launcher
+  // threw a ReferenceError and the error boundary replaced the page ("Something went wrong").
+  it('opens the support chat intake from the chat launcher without crashing', async () => {
+    renderAtPath('/')
+    fireEvent.click(await screen.findByLabelText('Open messages', {}, { timeout: 8000 }))
+    expect(await screen.findByRole('dialog', { name: 'Contact AshantiHub Support' }, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument()
+  }, 20000)
 })
